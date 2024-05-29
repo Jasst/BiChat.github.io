@@ -1,0 +1,2 @@
+# BiChat
+Blockchain Messenger
