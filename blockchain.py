@@ -2,7 +2,7 @@ import hashlib
 import json
 from time import time
 
-class Blockchain:
+class blockchain:
     def __init__(self):
         self.chain = []
         self.current_messages = []

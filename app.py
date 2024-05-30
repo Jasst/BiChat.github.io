@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
-from Blockchain import Blockchain  # Ваш модуль блокчейна
+from blockchain import blockchain  # Ваш модуль блокчейна
 
 app = Flask(__name__)
 CORS(app)
 
-blockchain = Blockchain()  # Инициализация блокчейна
+blockchain = blockchain()  # Инициализация блокчейна
 
 @app.route('/')
 def index():
