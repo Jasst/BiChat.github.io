@@ -1,0 +1,7 @@
+{
+  "create_wallet": "Create Wallet",
+  "send_message": "Send Message",
+  "get_messages": "Get Messages",
+  "message_sent_successfully": "Message sent successfully",
+  "error_sending_message": "Error sending message"
+}
