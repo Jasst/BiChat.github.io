@@ -1,167 +1,76 @@
 body {
     font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
     background-color: #f4f4f4;
     color: #333;
-    padding: 20px;
-    transition: background-color 0.3s, color 0.3s;
+}
+
+.dark-theme {
+    background-color: #333;
+    color: #f4f4f4;
 }
 
 .container {
     max-width: 600px;
     margin: 0 auto;
-    background: #fff;
     padding: 20px;
-    border-radius: 10px;
+    background-color: #fff;
+    border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
 h1, h2 {
-    color: #007bff;
-}
-
-label {
-    display: block;
-    margin-top: 10px;
-    font-weight: bold;
-}
-
-input, textarea {
-    width: 100%;
-    padding: 10px;
-    margin-top: 5px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background-color: #fff;
-    color: #333;
+    margin-top: 0;
 }
 
 button {
-    display: block;
-    width: 100%;
-    padding: 10px;
-    margin-top: 20px;
     background-color: #007bff;
-    color: white;
+    color: #fff;
     border: none;
-    border-radius: 4px;
+    padding: 10px 20px;
+    border-radius: 5px;
     cursor: pointer;
-    transition: background-color 0.3s;
 }
 
 button:hover {
     background-color: #0056b3;
 }
 
-p {
-    margin-top: 20px;
-    color: #333;
-}
-
-#messages, #chat-box {
-    margin-top: 20px;
+input, textarea {
+    width: calc(100% - 22px);
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
 }
 
 #chat-box {
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 10px;
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
-    background-color: #fff;
-    color: #333;
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
 }
 
 .message {
-    padding: 10px;
-    border-radius: 4px;
     margin-bottom: 10px;
-    background-color: #d4edda;
-    color: #333;
-    position: relative;
+    padding: 10px;
+    border-radius: 5px;
+    background-color: #f1f1f1;
 }
 
 .message.sent {
-    background-color: #d1ecf1;
+    background-color: #d1e7dd;
     text-align: right;
 }
 
 .message.received {
-    background-color: #d4edda;
-    text-align: left;
+    background-color: #f8d7da;
 }
 
-.message .message-content {
-    margin-bottom: 5px;
+.mnemonic-container {
+    margin-bottom: 10px;
+    transition: max-height 0.5s ease-out;
 }
-
-.message .message-timestamp {
-    font-size: 0.8em;
-    color: #999;
-    position: absolute;
-    bottom: 5px;
-    right: 10px;
-}
-
-.dark-theme {
-    background-color: #222;
-    color: #fff;
-}
-
-.dark-theme .container {
-    background-color: #333;
-}
-
-.dark-theme button {
-    background-color: #444;
-    color: #ddd;
-}
-
-.dark-theme button:hover {
-    background-color: #555;
-}
-
-.dark-theme input, .dark-theme textarea {
-    background-color: #555;
-    color: #ddd;
-    border: 1px solid #444;
-}
-
-.dark-theme .message {
-    background-color: #333;
-    color: #fff;
-}
-
-.dark-theme .message.sent {
-    background-color: #555;
-}
-
-.dark-theme .message.received {
-    background-color: #444;
-}
-
-.dark-theme h1, .dark-theme h2, .dark-theme label, .dark-theme p {
-    color: #ddd;
-}
-
-.dark-theme #chat-box {
-    background-color: #555;
-    color: #ddd;
-}
-
-.dark-theme .message .message-timestamp {
-    color: #aaa;
-}
-
-.message-content {
-    font-size: 17px; /* Установим размер шрифта для содержимого сообщения */
-}
-
-.message-sender {
-    font-size: 13px; /* Установим размер шрифта для имени отправителя */
-}
-
-.message-timestamp {
-    margin-top: 5px; /* Добавляем отступ между сообщением и временем */
-}
-
-

@@ -1,57 +1,76 @@
 import hashlib
-import time
-from mnemonic import Mnemonic
-from cryptography.fernet import Fernet
-
-mnemonic = Mnemonic('english')
-cipher_suite = Fernet(Fernet.generate_key())
+import json
+from time import time
 
 class Blockchain:
     def __init__(self):
         self.chain = []
-        self.current_transactions = []
-        self.new_block(previous_hash='1', proof=100)  # Создаем блок genesis
+        self.current_messages = []
+        self.create_block(previous_hash='1', proof=100)
 
-    def new_block(self, proof, previous_hash=None):
+    def create_block(self, proof, previous_hash):
         block = {
             'index': len(self.chain) + 1,
-            'timestamp': time.time(),  # Текущее время
-            'transactions': self.current_transactions,
+            'timestamp': time(),
+            'messages': self.current_messages,
             'proof': proof,
-            'previous_hash': previous_hash or self.hash(self.chain[-1]),
+            'previous_hash': previous_hash,
         }
-        self.current_transactions = []
+        self.current_messages = []
         self.chain.append(block)
         return block
 
-    def new_transaction(self, sender, recipient, content):
-        self.current_transactions.append({
-            'sender': sender,
-            'recipient': recipient,
-            'content': content,
-            'timestamp': time.time(),  # Текущее время
-        })
-        return self.last_block['index'] + 1
-
-    @property
-    def last_block(self):
+    def get_previous_block(self):
         return self.chain[-1]
 
-    @staticmethod
-    def hash(block):
-        block_string = f"{block['index']}{block['timestamp']}{block['transactions']}{block['proof']}{block['previous_hash']}"
-        return hashlib.sha256(block_string.encode()).hexdigest()
+    def proof_of_work(self, previous_proof):
+        new_proof = 1
+        check_proof = False
+        while not check_proof:
+            hash_operation = hashlib.sha256(str(new_proof**2 - previous_proof**2).encode()).hexdigest()
+            if hash_operation[:4] == '0000':
+                check_proof = True
+            else:
+                new_proof += 1
+        return new_proof
 
-    def generate_address(self, phrase):
-        return hashlib.sha256(phrase.encode()).hexdigest()
+    def hash(self, block):
+        encoded_block = json.dumps(block, sort_keys=True).encode()
+        return hashlib.sha256(encoded_block).hexdigest()
 
-    def generate_key_from_phrase(self, phrase):
-        return hashlib.sha256(phrase.encode()).digest()
+    def is_chain_valid(self, chain):
+        previous_block = chain[0]
+        block_index = 1
+        while block_index < len(chain):
+            block = chain[block_index]
+            if block['previous_hash'] != self.hash(previous_block):
+                return False
+            previous_proof = previous_block['proof']
+            proof = block['proof']
+            hash_operation = hashlib.sha256(str(proof**2 - previous_proof**2).encode()).hexdigest()
+            if hash_operation[:4] != '0000':
+                return False
+            previous_block = block
+            block_index += 1
+        return True
 
-    def get_messages(self, key_hex):
-        messages = []
-        for block in self.chain:
-            for transaction in block['transactions']:
-                if transaction['sender'] == key_hex or transaction['recipient'] == key_hex:
-                    messages.append(transaction)
-        return messages
+    def create_wallet(self):
+        # Реализуйте логику создания кошелька
+        return {
+            'mnemonic_phrase': 'example mnemonic phrase',
+            'address': 'example_address'
+        }
+
+    def send_message(self, mnemonic, recipient, content):
+        # Реализуйте логику отправки сообщения
+        message = {
+            'sender': 'example_address',
+            'recipient': recipient,
+            'content': content
+        }
+        self.current_messages.append(message)
+        return message
+
+    def get_messages(self, mnemonic):
+        # Реализуйте логику получения сообщений
+        return self.current_messages
