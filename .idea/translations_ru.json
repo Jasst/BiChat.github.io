@@ -1,7 +1,0 @@
-{
-  "create_wallet": "Создать кошелек",
-  "send_message": "Отправить сообщение",
-  "get_messages": "Получить сообщения",
-  "message_sent_successfully": "Сообщение успешно отправлено",
-  "error_sending_message": "Ошибка при отправке сообщения"
-}
