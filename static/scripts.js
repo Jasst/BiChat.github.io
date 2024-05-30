@@ -5,7 +5,7 @@ let updateMessagesInterval;
 let userAddress = '';
 
 function createWallet() {
-    fetch(`${apiUrl}/create_wallet`, {
+    fetch('/create_wallet', {
         method: 'POST',
     })
     .then(response => response.json())
@@ -24,7 +24,7 @@ function createWallet() {
         mnemonicContainer.classList.add('visible');
         setTimeout(() => {
             mnemonicContainer.classList.remove('visible');
-        }, 1500);  // Скрыть через 1.5 секунды
+        }, 1500);  // Скрыть через 5 секунд
 
         // Запуск автоматического обновления сообщений
         clearInterval(updateMessagesInterval);
@@ -39,7 +39,7 @@ function toggleMnemonicVisibility() {
     const mnemonicContainer = document.getElementById('mnemonic-container');
     mnemonicContainer.classList.toggle('visible');
     const mnemonicVisibilityButton = document.getElementById('toggle-mnemonic-visibility');
-    mnemonicVisibilityButton.innerText = mnemonicContainer.classList.contains('visible') ? 'Заблокировать' : 'Разблокировать';
+    mnemonicVisibilityButton.innerText = mnemonicContainer.classList.contains('visible') ? 'Заблокировать' : 'Разблокироватть';
 }
 
 function sendMessage() {
@@ -47,7 +47,7 @@ function sendMessage() {
     const recipient = document.getElementById('recipient').value;
     const content = document.getElementById('content').value;
 
-    fetch(`${apiUrl}/send_message`, {
+    fetch('/send_message', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -88,7 +88,7 @@ function sendMessage() {
 function getMessages() {
     const mnemonic = document.getElementById('mnemonic-get').value;
 
-    fetch(`${apiUrl}/get_messages`, {
+    fetch('/get_messages', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -112,6 +112,7 @@ function getMessages() {
             messageElement.innerHTML = `
                 <div class="message-content">${message.content}</div>
                 <div class="message-sender">From: ${message.sender}</div>
+                <!-- <div class="message-timestamp">Timestamp</div> -->
             `;
             chatBox.appendChild(messageElement);
         });
@@ -164,7 +165,6 @@ function switchLanguage() {
             "wallet_section": "Create Wallet",
             "send_message_section": "Send Message",
             "chat_section": "Chat",
-            "get_messages_section": "Get Messages",
             "mnemonic_label": "Mnemonic Phrase:",
             "recipient_label": "Recipient Address:",
             "content_label": "Message:",
@@ -172,7 +172,7 @@ function switchLanguage() {
             "get_messages_button": "Get Messages"
         },
         ru: {
-            "title": "Blockchain Messenger",
+            "title": "Блокчейн Мессенджер",
             "toggle_theme": "Переключить тему",
             "create_wallet": "Создать кошелек",
             "send_message": "Отправить сообщение",
@@ -180,19 +180,24 @@ function switchLanguage() {
             "wallet_section": "Создать кошелек",
             "send_message_section": "Отправить сообщение",
             "chat_section": "Чат",
-            "get_messages_section": "Получить сообщения",
             "mnemonic_label": "Мнемоническая фраза:",
             "recipient_label": "Адрес получателя:",
             "content_label": "Сообщение:",
-            "send_button": "Отправить",
+            "send_button": "Отправить сообщение",
             "get_messages_button": "Получить сообщения"
         }
     };
 
-    document.querySelectorAll('[data-translate]').forEach(element => {
-        const key = element.getAttribute('data-translate');
-        element.innerText = translations[currentLanguage][key];
+    const selectedTranslations = translations[currentLanguage];
+    const elementsToTranslate = document.querySelectorAll('[data-translate]');
+    elementsToTranslate.forEach(element => {
+        const translationKey = element.dataset.translate;
+        element.innerText = selectedTranslations[translationKey];
     });
 
-    languageToggle.innerText = currentLanguage === 'en' ? 'Switch to English' : 'Переключить на русский';
+    if (currentLanguage === 'en') {
+        languageToggle.innerText = 'Переключить  английский';
+    } else {
+        languageToggle.innerText = 'Переключить  русский';
+    }
 }
