@@ -3,15 +3,12 @@ import time
 import subprocess
 from flask import Flask, jsonify, request, render_template
 from mnemonic import Mnemonic
-
-from flask_cors import CORS
-
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
-CORS(app)
 
 mnemonic = Mnemonic('english')
-
+cipher_suite = Fernet(Fernet.generate_key())
 
 class Blockchain:
     def __init__(self):
@@ -84,7 +81,6 @@ def send_message():
         return jsonify({'error': 'Missing required fields'}), 400
 
     key = blockchain.generate_key_from_phrase(phrase)
-    from blockchain import cipher_suite
     encrypted_content = cipher_suite.encrypt(content.encode()).decode()
     blockchain.new_transaction(key.hex(), recipient, encrypted_content)
     blockchain.new_block(proof=100)
@@ -105,7 +101,6 @@ def get_messages():
     decrypted_messages = []
     for message in messages:
         if 'content' in message:
-            from blockchain import cipher_suite
             decrypted_content = cipher_suite.decrypt(message['content'].encode()).decode()
             decrypted_messages.append({'sender': message['sender'], 'content': decrypted_content})
 
@@ -122,7 +117,5 @@ def full_chain():
 if __name__ == '__main__':
     blockchain = Blockchain()
     port = 5000
-
-
 
     app.run(host='0.0.0.0', port=port, debug=True)
