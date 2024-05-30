@@ -1,6 +1,5 @@
 import hashlib
 import time
-import subprocess
 from flask import Flask, jsonify, request, render_template
 from mnemonic import Mnemonic
 from cryptography.fernet import Fernet
