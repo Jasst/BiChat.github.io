@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockchain Messenger</title>
+    <link href="../static/styles.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1>Blockchain Messenger</h1>
+        <button id="theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
+
+        <div id="wallet-section">
+            <h2>Create Wallet</h2>
+            <button onclick="createWallet()">Create Wallet</button>
+            <p id="wallet-info"></p>
+        </div>
+
+        <div id="send-message-section">
+            <h2>Send Message</h2>
+            <label for="mnemonic">Mnemonic Phrase:</label>
+            <input type="text" id="mnemonic" onkeypress="handleKeyPress(event, sendMessage)">
+            <label for="recipient">Recipient Address:</label>
+            <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
+            <label for="content">Message:</label>
+            <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
+            <button onclick="sendMessage()">Send Message</button>
+            <p id="send-status"></p>
+        </div>
+
+        <div id="chat-section">
+            <h2>Chat</h2>
+            <div id="chat-box"></div>
+        </div>
+
+        <div id="get-messages-section" style="display: none;">
+            <h2>Get Messages</h2>
+            <label for="mnemonic-get">Mnemonic Phrase:</label>
+            <input type="text" id="mnemonic-get" onkeypress="handleKeyPress(event, getMessages)">
+            <button onclick="getMessages()">Get Messages</button>
+            <div id="messages"></div>
+        </div>
+    </div>
+
+    <script src="../static/scripts.js"></script>
+</body>
+</html>

@@ -1,0 +1,142 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 20px;
+    color: #333;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1, h2 {
+    text-align: center;
+    color: #333;
+}
+
+label {
+    display: block;
+    margin-top: 10px;
+    color: #333;
+}
+
+input, textarea {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #fff;
+    color: #333;
+}
+
+button {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-top: 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+p {
+    margin-top: 20px;
+    color: #333;
+}
+
+#messages {
+    margin-top: 20px;
+}
+
+#chat-box {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    margin-top: 20px;
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: #fff;
+    color: #333;
+}
+
+.message {
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    color: #333;
+    font-size: 14px; /* Уменьшенный шрифт для всех сообщений */
+}
+
+.message.sent {
+    background-color: #d1ecf1;
+    text-align: right;
+}
+
+.message.received {
+    background-color: #d4edda;
+    text-align: left;
+}
+
+.message-status {
+    font-size: 10px; /* Очень маленький шрифт для статуса сообщений */
+    display: block;
+    margin-top: 5px;
+}
+
+/* Стили для темной темы */
+.dark-theme {
+    background-color: #222;
+    color: #fff;
+}
+
+.dark-theme .container {
+    background-color: #333;
+}
+
+.dark-theme button {
+    background-color: #444;
+    color: #ddd;
+}
+
+.dark-theme button:hover {
+    background-color: #555;
+}
+
+.dark-theme input, .dark-theme textarea {
+    background-color: #555;
+    color: #ddd;
+    border: 1px solid #444;
+}
+
+.dark-theme .message.sent {
+    background-color: #007bff;
+    color: #fff; /* Добавлен белый цвет текста */
+}
+
+.dark-theme .message.received {
+    background-color: #28a745;
+    color: #fff; /* Добавлен белый цвет текста */
+}
+
+.dark-theme h1, .dark-theme h2, .dark-theme label, .dark-theme p {
+    color: #ddd; /* Добавлен белый цвет текста */
+}
+
+.dark-theme #chat-box {
+    background-color: #555;
+    color: #ddd; /* Добавлен белый цвет текста */
+}
+
