@@ -9,6 +9,15 @@ mnemonic = Mnemonic('english')
 cipher_key = Fernet.generate_key()
 cipher_suite = Fernet(cipher_key)
 
+
+def generate_key_from_phrase(phrase):
+    return hashlib.sha256(phrase.encode()).digest()
+
+
+def generate_address(phrase):
+    return hashlib.sha256(phrase.encode()).hexdigest()
+
+
 class Blockchain:
     def __init__(self):
         self.chain = []
@@ -49,12 +58,6 @@ class Blockchain:
         block_string = f"{block['index']}{block['timestamp']}{block['transactions']}{block['proof']}{block['previous_hash']}"
         return hashlib.sha256(block_string.encode()).hexdigest()
 
-    def generate_address(self, phrase):
-        return hashlib.sha256(phrase.encode()).hexdigest()
-
-    def generate_key_from_phrase(self, phrase):
-        return hashlib.sha256(phrase.encode()).digest()
-
     def get_messages(self, key_hex):
         messages = []
         with self.lock:  # Используем блокировку
@@ -64,18 +67,22 @@ class Blockchain:
                         messages.append(transaction)
         return messages
 
+
 app = Flask(__name__)
 blockchain = Blockchain()
+
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
     phrase = mnemonic.generate(256)
-    address = blockchain.generate_address(phrase)
+    address = generate_address(phrase)
     return jsonify({'mnemonic_phrase': phrase, 'address': address}), 200
+
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -87,12 +94,13 @@ def send_message():
     if not phrase or not recipient or not content:
         return jsonify({'error': 'Отсутствуют обязательные поля'}), 400
 
-    key = blockchain.generate_key_from_phrase(phrase)
+    key = generate_key_from_phrase(phrase)
     encrypted_content = cipher_suite.encrypt(content.encode()).decode()
     blockchain.new_transaction(key.hex(), recipient, encrypted_content)
     blockchain.new_block(proof=100)
 
     return jsonify({'message': 'Сообщение успешно отправлено'}), 201
+
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
@@ -102,7 +110,7 @@ def get_messages():
     if not phrase:
         return jsonify({'error': 'Отсутствует обязательное поле'}), 400
 
-    key = blockchain.generate_key_from_phrase(phrase)
+    key = generate_key_from_phrase(phrase)
     messages = blockchain.get_messages(key.hex())
 
     decrypted_messages = []
@@ -113,6 +121,7 @@ def get_messages():
 
     return jsonify(decrypted_messages), 200
 
+
 @app.route('/chain', methods=['GET'])
 def full_chain():
     response = {
@@ -120,6 +129,7 @@ def full_chain():
         'length': len(blockchain.chain),
     }
     return jsonify(response), 200
+
 
 if __name__ == '__main__':
     port = 5000
