@@ -5,6 +5,7 @@ from mnemonic import Mnemonic
 from cryptography.fernet import Fernet
 from flask import Flask, jsonify, request, render_template
 
+
 mnemonic = Mnemonic('english')
 cipher_key = Fernet.generate_key()
 cipher_suite = Fernet(cipher_key)
@@ -134,4 +135,5 @@ def full_chain():
 
 if __name__ == '__main__':
     port = 5000
+
     app.run(host='0.0.0.0', port=port, debug=True)
