@@ -1,14 +1,12 @@
 import hashlib
 import time
-import subprocess
 from flask import Flask, jsonify, request, render_template
 from mnemonic import Mnemonic
 from cryptography.fernet import Fernet
-from flask_cors import CORS
+
 
 
 app = Flask(__name__)
-CORS(app)
 
 mnemonic = Mnemonic('english')
 cipher_suite = Fernet(Fernet.generate_key())
@@ -65,7 +63,7 @@ class Blockchain:
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('templates/index.html')
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -120,18 +118,5 @@ def full_chain():
 if __name__ == '__main__':
     blockchain = Blockchain()
     port = 5000
-
-    # Запуск Serveo и получение публичного URL
-    proc = subprocess.Popen(['plink', 'serveo.net', '-R', f'80:localhost:{port}'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    for line in proc.stdout:
-        if b'Forwarding HTTP traffic from' in line:
-            public_url = line.decode().strip().split(' ')[-1]
-            print(f" * Serveo public URL: {public_url}")
-            print(f" * Serveo public URL: {public_url}")
-            print(f" * Serveo public URL: {public_url}")
-            print(f" * Serveo public URL: {public_url}")
-            print(f" * Serveo public URL: {public_url}")
-            print(f" * Serveo public URL: {public_url}")
-            break
 
     app.run(host='0.0.0.0', port=port, debug=True)
