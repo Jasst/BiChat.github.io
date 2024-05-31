@@ -69,6 +69,8 @@ p {
     overflow-y: auto;
     background-color: #fff;
     color: #333;
+    height: 300px;
+    overflow-y: auto;
 }
 
 .message {
