@@ -1,46 +1,48 @@
 import hashlib
 import time
-from flask import Flask, jsonify, request, render_template
+import threading
 from mnemonic import Mnemonic
 from cryptography.fernet import Fernet
-
-
-
-app = Flask(__name__)
+from flask import Flask, jsonify, request, render_template
 
 mnemonic = Mnemonic('english')
-cipher_suite = Fernet(Fernet.generate_key())
+cipher_key = Fernet.generate_key()
+cipher_suite = Fernet(cipher_key)
 
 class Blockchain:
     def __init__(self):
         self.chain = []
         self.current_transactions = []
-        self.new_block(previous_hash='1', proof=100)  # Создаем блок genesis
+        self.lock = threading.Lock()  # Создаем блокировку
+        self.new_block(previous_hash='1', proof=100)  # Создаем блок генезис
 
     def new_block(self, proof, previous_hash=None):
-        block = {
-            'index': len(self.chain) + 1,
-            'timestamp': time.time(),  # Текущее время
-            'transactions': self.current_transactions,
-            'proof': proof,
-            'previous_hash': previous_hash or self.hash(self.chain[-1]),
-        }
-        self.current_transactions = []
-        self.chain.append(block)
+        with self.lock:  # Используем блокировку
+            block = {
+                'index': len(self.chain) + 1,
+                'timestamp': time.time(),
+                'transactions': self.current_transactions,
+                'proof': proof,
+                'previous_hash': previous_hash or self.hash(self.chain[-1]),
+            }
+            self.current_transactions = []
+            self.chain.append(block)
         return block
 
     def new_transaction(self, sender, recipient, content):
-        self.current_transactions.append({
-            'sender': sender,
-            'recipient': recipient,
-            'content': content,
-            'timestamp': time.time(),  # Текущее время
-        })
+        with self.lock:  # Используем блокировку
+            self.current_transactions.append({
+                'sender': sender,
+                'recipient': recipient,
+                'content': content,
+                'timestamp': time.time(),
+            })
         return self.last_block['index'] + 1
 
     @property
     def last_block(self):
-        return self.chain[-1]
+        with self.lock:  # Используем блокировку
+            return self.chain[-1]
 
     @staticmethod
     def hash(block):
@@ -55,15 +57,19 @@ class Blockchain:
 
     def get_messages(self, key_hex):
         messages = []
-        for block in self.chain:
-            for transaction in block['transactions']:
-                if transaction['sender'] == key_hex or transaction['recipient'] == key_hex:
-                    messages.append(transaction)
+        with self.lock:  # Используем блокировку
+            for block in self.chain:
+                for transaction in block['transactions']:
+                    if transaction['sender'] == key_hex or transaction['recipient'] == key_hex:
+                        messages.append(transaction)
         return messages
+
+app = Flask(__name__)
+blockchain = Blockchain()
 
 @app.route('/')
 def index():
-    return render_template('templates/index.html')
+    return render_template('index.html')
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -79,14 +85,14 @@ def send_message():
     content = data.get('content')
 
     if not phrase or not recipient or not content:
-        return jsonify({'error': 'Missing required fields'}), 400
+        return jsonify({'error': 'Отсутствуют обязательные поля'}), 400
 
     key = blockchain.generate_key_from_phrase(phrase)
     encrypted_content = cipher_suite.encrypt(content.encode()).decode()
     blockchain.new_transaction(key.hex(), recipient, encrypted_content)
     blockchain.new_block(proof=100)
 
-    return jsonify({'message': 'Message sent successfully'}), 201
+    return jsonify({'message': 'Сообщение успешно отправлено'}), 201
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
@@ -94,7 +100,7 @@ def get_messages():
     phrase = data.get('mnemonic_phrase')
 
     if not phrase:
-        return jsonify({'error': 'Missing required field'}), 400
+        return jsonify({'error': 'Отсутствует обязательное поле'}), 400
 
     key = blockchain.generate_key_from_phrase(phrase)
     messages = blockchain.get_messages(key.hex())
@@ -116,7 +122,5 @@ def full_chain():
     return jsonify(response), 200
 
 if __name__ == '__main__':
-    blockchain = Blockchain()
     port = 5000
-
     app.run(host='0.0.0.0', port=port, debug=True)
