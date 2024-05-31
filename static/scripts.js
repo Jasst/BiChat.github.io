@@ -1,5 +1,3 @@
-const apiUrl = 'https://bi-chat-github-io.vercel.app/'; // Укажите URL вашего бэкенда на Vercel
-
 let mnemonicPhrase = '';
 let updateMessagesInterval;
 let userAddress = '';
