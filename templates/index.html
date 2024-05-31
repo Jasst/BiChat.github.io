@@ -37,7 +37,7 @@
                 <label for="mnemonic" data-translate="mnemonic_label">Mnemonic Phrase:</label>
                 <input type="text" id="mnemonic" onkeypress="handleKeyPress(event, sendMessage)" readonly>
             </div>
-            <button id="toggle-mnemonic-visibility" onclick="toggleMnemonicVisibility()">Разблокировать/заблокировать</button>
+            <button id="toggle-mnemonic-visibility" onclick="toggleMnemonicVisibility()" aria-label="Toggle Visibility" data-translate="toggle_visibility_button">Toggle Visibility</button>
             <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
             <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
             <label for="content" data-translate="content_label">Message:</label>

@@ -33,11 +33,12 @@ function createWallet() {
     });
 }
 
+
 function toggleMnemonicVisibility() {
     const mnemonicContainer = document.getElementById('mnemonic-container');
     mnemonicContainer.classList.toggle('visible');
     const mnemonicVisibilityButton = document.getElementById('toggle-mnemonic-visibility');
-    mnemonicVisibilityButton.innerText = mnemonicContainer.classList.contains('visible') ? 'Заблокировать' : 'Разблокироватть';
+    mnemonicVisibilityButton.innerText = mnemonicContainer.classList.contains('visible') ? translations[currentLanguage]["toggle_visibility_button"] : "Toggle Visibility";
 }
 
 function sendMessage() {
@@ -155,6 +156,7 @@ function switchLanguage() {
 
     const translations = {
         en: {
+            "toggle_visibility_button": "Toggle Visibility",
             "title": "Blockchain Messenger",
             "toggle_theme": "Toggle Theme",
             "create_wallet": "Create Wallet",
@@ -171,7 +173,7 @@ function switchLanguage() {
 
         },
         ru: {
-
+            "toggle_visibility_button": "Разблокировать/заблокировать",
             "title": "Блокчейн Мессенджер",
             "toggle_theme": "Переключить тему",
             "create_wallet": "Создать кошелек",
