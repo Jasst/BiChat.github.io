@@ -168,8 +168,10 @@ function switchLanguage() {
             "content_label": "Message:",
             "send_button": "Send Message",
             "get_messages_button": "Get Messages"
+
         },
         ru: {
+
             "title": "Блокчейн Мессенджер",
             "toggle_theme": "Переключить тему",
             "create_wallet": "Создать кошелек",
@@ -183,6 +185,7 @@ function switchLanguage() {
             "content_label": "Сообщение:",
             "send_button": "Отправить сообщение",
             "get_messages_button": "Получить сообщения"
+
         }
     };
 
