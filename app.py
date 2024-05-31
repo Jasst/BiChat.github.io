@@ -8,6 +8,7 @@ from flask import Flask, jsonify, request, render_template
 mnemonic = Mnemonic('english')
 cipher_key = Fernet.generate_key()
 cipher_suite = Fernet(cipher_key)
+app: Flask = Flask(__name__, static_folder='/home/jasstme/BiChat.github.io/static')
 
 
 def generate_key_from_phrase(phrase):
