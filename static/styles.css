@@ -1,20 +1,14 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-    color: #333;
-    padding: 20px;
-    transition: background-color 0.3s, color 0.3s;
+    background-color: var(--background-color);
+    color: var(--text-color);
 }
 
 .container {
-    max-width: 600px;
-    margin: 0 auto;
-    background: #fff;
+    max-width: 800px;
+    margin: auto;
     padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
-
 h1, h2 {
     color: #007bff;
 }
@@ -28,24 +22,16 @@ label {
 input, textarea {
     width: 100%;
     padding: 10px;
-    margin-top: 5px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background-color: #fff;
-    color: #333;
+    margin-top: 10px;
 }
 
 button {
-    display: block;
-    width: 100%;
+    margin-top: 10px;
     padding: 10px;
-    margin-top: 20px;
-    background-color: #007bff;
-    color: white;
+    background-color: var(--button-background-color);
+    color: var(--button-text-color);
     border: none;
-    border-radius: 4px;
     cursor: pointer;
-    transition: background-color 0.3s;
 }
 
 button:hover {
@@ -104,9 +90,20 @@ p {
     right: 10px;
 }
 
+
+
 .dark-theme {
-    background-color: #222;
-    color: #fff;
+    --background-color: #333;
+    --text-color: #fff;
+    --button-background-color: #555;
+    --button-text-color: #fff;
+}
+
+.light-theme {
+    --background-color: #fff;
+    --text-color: #000;
+    --button-background-color: #ccc;
+    --button-text-color: #000;
 }
 
 .dark-theme .container {

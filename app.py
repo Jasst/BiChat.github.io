@@ -1,23 +1,12 @@
 import hashlib
 import time
 import threading
+from translations import translations
 from mnemonic import Mnemonic
 from cryptography.fernet import Fernet
 from flask import Flask, jsonify, request, render_template
+from flask_babel import Babel, gettext
 
-
-mnemonic = Mnemonic('english')
-cipher_key = Fernet.generate_key()
-cipher_suite = Fernet(cipher_key)
-app: Flask = Flask(__name__, static_folder='/home/jasstme/BiChat.github.io/static')
-
-
-def generate_key_from_phrase(phrase):
-    return hashlib.sha256(phrase.encode()).digest()
-
-
-def generate_address(phrase):
-    return hashlib.sha256(phrase.encode()).hexdigest()
 
 
 class Blockchain:
@@ -69,9 +58,29 @@ class Blockchain:
                         messages.append(transaction)
         return messages
 
-
 app = Flask(__name__)
+babel = Babel(app)
+
+mnemonic = Mnemonic('english')
+cipher_key = Fernet.generate_key()
+cipher_suite = Fernet(cipher_key)
+
+app: Flask = Flask(__name__, static_folder='/home/jasstme/BiChat.github.io/static')
 blockchain = Blockchain()
+
+def generate_key_from_phrase(phrase):
+    return hashlib.sha256(phrase.encode()).digest()
+
+
+def generate_address(phrase):
+    return hashlib.sha256(phrase.encode()).hexdigest()
+
+
+
+def get_locale():
+    return request.args.get('lang', 'en')
+
+
 
 
 @app.route('/')
@@ -83,7 +92,12 @@ def index():
 def create_wallet():
     phrase = mnemonic.generate(256)
     address = generate_address(phrase)
-    return jsonify({'mnemonic_phrase': phrase, 'address': address}), 200
+    response = {
+        'mnemonic_phrase': phrase,
+        'address': address,
+        'message': gettext(translations[get_locale()]['wallet_created'])
+    }
+    return jsonify(response), 200
 
 
 @app.route('/send_message', methods=['POST'])
@@ -94,14 +108,14 @@ def send_message():
     content = data.get('content')
 
     if not phrase or not recipient or not content:
-        return jsonify({'error': 'Отсутствуют обязательные поля'}), 400
+        return jsonify({'error': gettext(translations[get_locale()]['missing_fields'])}), 400
 
     key = generate_key_from_phrase(phrase)
     encrypted_content = cipher_suite.encrypt(content.encode()).decode()
     blockchain.new_transaction(key.hex(), recipient, encrypted_content)
     blockchain.new_block(proof=100)
 
-    return jsonify({'message': 'Сообщение успешно отправлено'}), 201
+    return jsonify({'message': gettext(translations[get_locale()]['message_sent'])}), 201
 
 
 @app.route('/get_messages', methods=['POST'])
