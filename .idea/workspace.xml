@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="Vercel" />
+    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="Vercel">
+      <change afterPath="$PROJECT_DIR$/privat.ur" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -142,7 +145,7 @@
       <updated>1716583557685</updated>
       <workItem from="1716583559848" duration="7510000" />
       <workItem from="1717182853124" duration="2616000" />
-      <workItem from="1717186657747" duration="15495000" />
+      <workItem from="1717186657747" duration="16053000" />
     </task>
     <task id="LOCAL-00001" summary="Merge remote-tracking branch 'origin/main'">
       <option name="closed" value="true" />
@@ -384,7 +387,15 @@
       <option name="project" value="LOCAL" />
       <updated>1717256394874</updated>
     </task>
-    <option name="localTasksCounter" value="31" />
+    <task id="LOCAL-00031" summary="Vercel">
+      <option name="closed" value="true" />
+      <created>1717257167392</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1717257167392</updated>
+    </task>
+    <option name="localTasksCounter" value="32" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
