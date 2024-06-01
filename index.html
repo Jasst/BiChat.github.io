@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blockchain Messenger</title>
-    <link href="/styles.css" rel="stylesheet">
+   <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet">
     <style>
         /* Добавьте стили для анимации сворачивания/раскрытия */
         .mnemonic-container {
@@ -23,7 +23,7 @@
     <div class="container">
         <h1 data-translate="title">Blockchain Messenger</h1>
         <button id="theme-toggle" onclick="toggleTheme()" data-translate="toggle_theme">Toggle Theme</button>
-        <button id="language-toggle" onclick="switchLanguage()">Переключить язык</button>
+        <button id="language-toggle" onclick="switchLanguage()">Switch to Russian</button>
 
         <div id="wallet-section">
             <h2 data-translate="wallet_section">Create Wallet</h2>
@@ -37,7 +37,7 @@
                 <label for="mnemonic" data-translate="mnemonic_label">Mnemonic Phrase:</label>
                 <input type="text" id="mnemonic" onkeypress="handleKeyPress(event, sendMessage)" readonly>
             </div>
-            <button id="toggle-mnemonic-visibility" onclick="toggleMnemonicVisibility()">Разблокировать/заблокировать</button>
+            <button id="toggle-mnemonic-visibility" onclick="toggleMnemonicVisibility()" aria-label="Toggle Visibility" data-translate="toggle_visibility_button">Toggle Visibility</button>
             <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
             <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
             <label for="content" data-translate="content_label">Message:</label>
@@ -56,10 +56,9 @@
             <label for="mnemonic-get" data-translate="mnemonic_label">Mnemonic Phrase:</label>
             <input type="text" id="mnemonic-get" onkeypress="handleKeyPress(event, getMessages)">
             <button onclick="getMessages()" data-translate="get_messages_button">Get Messages</button>
-            <div id="messages"></div>
+            <div id="messages-list"></div>
         </div>
     </div>
-
-    <script src="/scripts.js"></script>
+    <script src="../static/scripts.js"></script>
 </body>
 </html>
