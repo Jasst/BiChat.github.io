@@ -5,6 +5,7 @@ let currentLanguage = 'en';
 
 const translations = {
     'en': {
+
         toggle_visibility_button: "Toggle Visibility",
         title: "Blockchain Messenger",
         toggle_theme: "Toggle Theme",
