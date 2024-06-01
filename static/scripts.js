@@ -81,6 +81,7 @@ function sendMessage() {
         }, 1000);
 
         getMessages();  // Обновление сообщений после отправки
+        document.getElementById('content').value = ''; // Очистка поля сообщения
     })
     .catch(error => {
         console.error('Error:', error);

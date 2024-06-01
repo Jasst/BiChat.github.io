@@ -8,7 +8,6 @@ from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
 
 
-
 class Blockchain:
     def __init__(self):
         self.chain = []
@@ -58,15 +57,19 @@ class Blockchain:
                         messages.append(transaction)
         return messages
 
+
 app = Flask(__name__)
 babel = Babel(app)
-
 mnemonic = Mnemonic('english')
 cipher_key = Fernet.generate_key()
 cipher_suite = Fernet(cipher_key)
-
-app: Flask = Flask(__name__, static_folder='/home/jasstme/BiChat.github.io/static')
+# app: Flask = Flask(__name__, static_folder='/home/jasstme/BiChat.github.io/static')
 blockchain = Blockchain()
+
+
+def get_locale():
+    return request.args.get('lang', 'en')
+
 
 def generate_key_from_phrase(phrase):
     return hashlib.sha256(phrase.encode()).digest()
@@ -74,13 +77,6 @@ def generate_key_from_phrase(phrase):
 
 def generate_address(phrase):
     return hashlib.sha256(phrase.encode()).hexdigest()
-
-
-
-def get_locale():
-    return request.args.get('lang', 'en')
-
-
 
 
 @app.route('/')
