@@ -3,4 +3,3 @@ cryptography==36.0.1
 mnemonic==0.19
 Werkzeug==2.1.0
 Flask-Babel
-python-mnemonic
