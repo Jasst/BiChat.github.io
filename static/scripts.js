@@ -3,42 +3,6 @@ let updateMessagesInterval;
 let userAddress = '';
 let currentLanguage = 'en';
 
-const translations = {
-    'en': {
-
-        toggle_visibility_button: "Toggle Visibility",
-        title: "Blockchain Messenger",
-        toggle_theme: "Toggle Theme",
-        create_wallet: "Create Wallet",
-        send_message: "Send Message",
-        get_messages: "Get Messages",
-        wallet_section: "Create Wallet",
-        send_message_section: "Send Message",
-        chat_section: "Chat",
-        mnemonic_label: "Mnemonic Phrase:",
-        recipient_label: "Recipient Address:",
-        content_label: "Message:",
-        send_button: "Send Message",
-        get_messages_button: "Get Messages"
-    },
-    'ru': {
-        toggle_visibility_button: "Разблокировать/заблокировать",
-        title: "Блокчейн Мессенджер",
-        toggle_theme: "Переключить тему",
-        create_wallet: "Создать кошелек",
-        send_message: "Отправить сообщение",
-        get_messages: "Получить сообщения",
-        wallet_section: "Создать кошелек",
-        send_message_section: "Отправить сообщение",
-        chat_section: "Чат",
-        mnemonic_label: "Мнемоническая фраза:",
-        recipient_label: "Адрес получателя:",
-        content_label: "Сообщение:",
-        send_button: "Отправить сообщение",
-        get_messages_button: "Получить сообщения"
-    }
-};
-
 // Применяем текущий язык к запросам
 function createWallet() {
     fetch(`/create_wallet?lang=${currentLanguage}`, {
@@ -60,7 +24,7 @@ function createWallet() {
         mnemonicContainer.classList.add('visible');
         setTimeout(() => {
             mnemonicContainer.classList.remove('visible');
-        }, 1500);  // Скрыть через 5 секунд
+        }, 1500);  // Скрыть через 1.5 секунд
 
         // Запуск автоматического обновления сообщений
         clearInterval(updateMessagesInterval);
@@ -70,7 +34,6 @@ function createWallet() {
         console.error('Error:', error);
     });
 }
-
 
 function toggleMnemonicVisibility() {
     const mnemonicContainer = document.getElementById('mnemonic-container');
@@ -113,9 +76,8 @@ function sendMessage() {
             sendStatus.style.transition = '';
             sendStatus.style.opacity = 1;
         }, 1000);
-
+        document.getElementById('content').value = '';
         getMessages();  // Обновление сообщений после отправки
-        document.getElementById('content').value = ''; // Очистка поля сообщения
     })
     .catch(error => {
         console.error('Error:', error);
@@ -147,10 +109,13 @@ function getMessages() {
             } else {
                 messageElement.classList.add('received');
             }
+            // Форматируем время отправки сообщения
+            const timestamp = new Date(message.timestamp * 1000).toLocaleString();
+
             messageElement.innerHTML = `
                 <div class="message-content">${message.content}</div>
                 <div class="message-sender">From: ${message.sender}</div>
-                <!-- <div class="message-timestamp">Timestamp</div> -->
+                <div class="message-timestamp">${timestamp}</div>
             `;
             chatBox.appendChild(messageElement);
         });
@@ -159,7 +124,6 @@ function getMessages() {
         console.error('Error:', error);
     });
 }
-
 
 function handleKeyPress(event, callback) {
     if (event.key === 'Enter') {
@@ -184,11 +148,45 @@ function toggleTheme() {
     document.body.classList.toggle('dark-theme');
 }
 
-// Переводим интерфейс при переключении языка
 function switchLanguage() {
     const languageToggle = document.getElementById('language-toggle');
     currentLanguage = currentLanguage === 'en' ? 'ru' : 'en';
     languageToggle.innerText = currentLanguage === 'en' ? 'Переключить на русский' : 'Switch to English';
+
+    const translations = {
+        en: {
+            toggle_visibility_button: "Toggle Visibility",
+            title: "Blockchain Messenger",
+            toggle_theme: "Toggle Theme",
+            create_wallet: "Create Wallet",
+            send_message: "Send Message",
+            get_messages: "Get Messages",
+            wallet_section: "Create Wallet",
+            send_message_section: "Send Message",
+            chat_section: "Chat",
+            mnemonic_label: "Mnemonic Phrase:",
+            recipient_label: "Recipient Address:",
+            content_label: "Message:",
+            send_button: "Send Message",
+            get_messages_button: "Get Messages"
+        },
+        ru: {
+            toggle_visibility_button: "Разблокировать/заблокировать",
+            title: "Блокчейн Мессенджер",
+            toggle_theme: "Переключить тему",
+            create_wallet: "Создать кошелек",
+            send_message: "Отправить сообщение",
+            get_messages: "Получить сообщения",
+            wallet_section: "Создать кошелек",
+            send_message_section: "Отправить сообщение",
+            chat_section: "Чат",
+            mnemonic_label: "Мнемоническая фраза:",
+            recipient_label: "Адрес получателя:",
+            content_label: "Сообщение:",
+            send_button: "Отправить сообщение",
+            get_messages_button: "Получить сообщения"
+        }
+    };
 
     const selectedTranslations = translations[currentLanguage];
     const elementsToTranslate = document.querySelectorAll('[data-translate]');

@@ -7,7 +7,6 @@ from cryptography.fernet import Fernet
 from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
 
-
 class Blockchain:
     def __init__(self):
         self.chain = []
@@ -34,7 +33,7 @@ class Blockchain:
                 'sender': sender,
                 'recipient': recipient,
                 'content': content,
-                'timestamp': time.time(),
+                'timestamp': time.time(),# Добавляем метку времени
             })
         return self.last_block['index'] + 1
 
@@ -63,26 +62,20 @@ babel = Babel(app)
 mnemonic = Mnemonic('english')
 cipher_key = Fernet.generate_key()
 cipher_suite = Fernet(cipher_key)
-# app: Flask = Flask(__name__, static_folder='/home/jasstme/BiChat.github.io/static')
 blockchain = Blockchain()
-
 
 def get_locale():
     return request.args.get('lang', 'en')
 
-
 def generate_key_from_phrase(phrase):
     return hashlib.sha256(phrase.encode()).digest()
-
 
 def generate_address(phrase):
     return hashlib.sha256(phrase.encode()).hexdigest()
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -94,7 +87,6 @@ def create_wallet():
         'message': gettext(translations[get_locale()]['wallet_created'])
     }
     return jsonify(response), 200
-
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -129,10 +121,12 @@ def get_messages():
     for message in messages:
         if 'content' in message:
             decrypted_content = cipher_suite.decrypt(message['content'].encode()).decode()
-            decrypted_messages.append({'sender': message['sender'], 'content': decrypted_content})
-
+            decrypted_messages.append({
+                'sender': message['sender'],
+                'content': decrypted_content,
+                'timestamp': message['timestamp']  # Передаем метку времени
+            })
     return jsonify(decrypted_messages), 200
-
 
 @app.route('/chain', methods=['GET'])
 def full_chain():
@@ -142,8 +136,6 @@ def full_chain():
     }
     return jsonify(response), 200
 
-
 if __name__ == '__main__':
     port = 5000
-
     app.run(host='0.0.0.0', port=port, debug=True)

@@ -116,13 +116,6 @@ p {
     margin-bottom: 5px;
 }
 
-.message .message-timestamp {
-    font-size: 0.8em;
-    color: #999;
-    position: absolute;
-    bottom: 5px;
-    right: 10px;
-}
 
 .dark-theme {
     background-color: #222;
@@ -175,15 +168,11 @@ p {
 }
 
 .message-content {
-    font-size: 17px; /* Установим размер шрифта для содержимого сообщения */
+    font-size: 18px; /* Установим размер шрифта для содержимого сообщения */
 }
 
 .message-sender {
-    font-size: 13px; /* Установим размер шрифта для имени отправителя */
-}
-
-.message-timestamp {
-    margin-top: 5px; /* Добавляем отступ между сообщением и временем */
+    font-size: 15px; /* Установим размер шрифта для имени отправителя */
 }
 
 /* Анимация для контейнера с мнемонической фразой */
@@ -204,4 +193,12 @@ p {
     display: flex;
     flex-direction: column;
     align-items: center;
+}
+
+
+.message .message-timestamp {
+    font-size: 0.8em;
+    color: #999;
+    margin-top: 5px;  /* Добавляем отступ сверху */
+    display: block;  /* Убедимся, что метка времени занимает всю строку */
 }
