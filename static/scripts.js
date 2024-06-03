@@ -229,6 +229,11 @@ function showMnemonic() {
 
     const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
     hideMnemonicButton.style.display = 'block';
+
+    const ShowMnemonicButton = document.getElementById('show-mnemonic-button');
+    ShowMnemonicButton.style.display = 'none' ? 'none' : 'none'
+
+
 }
 
 function hideMnemonic() {
@@ -239,4 +244,7 @@ function hideMnemonic() {
     // Скрываем кнопку "Спрятать мнемонику"
     const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
     hideMnemonicButton.style.display = 'none';
+
+    const ShowMnemonicButton = document.getElementById('show-mnemonic-button');
+    ShowMnemonicButton.style.display = 'none' ? 'block' : 'none'
 }
