@@ -1,16 +1,16 @@
 {
+    "chat_section": "Чат",
+    "content_label": "Сообщение:",
+    "create_wallet": "Создать Кошелек",
+    "get_messages_button": "Получить Сообщения",
+    "get_messages_section": "Получить Сообщения",
+    "language_toggle": "Switch to English",
+    "mnemonic_label": "Мнемоническая фраза:",
+    "recipient_label": "Адрес Получателя:",
+    "send_button": "Отправить Сообщение",
+    "send_message_section": "Отправить Сообщение",
     "title": "Блокчейн Мессенджер",
     "toggle_theme": "Переключить тему",
-    "language_toggle": "Switch to English",
-    "wallet_section": "Создать Кошелек",
-    "create_wallet": "Создать Кошелек",
-    "send_message_section": "Отправить Сообщение",
-    "mnemonic_label": "Мнемоническая фраза:",
     "toggle_visibility_button": "Переключить Видимость",
-    "recipient_label": "Адрес Получателя:",
-    "content_label": "Сообщение:",
-    "send_button": "Отправить Сообщение",
-    "chat_section": "Чат",
-    "get_messages_section": "Получить Сообщения",
-    "get_messages_button": "Получить Сообщения"
+    "wallet_section": "Создать Кошелек"
 }

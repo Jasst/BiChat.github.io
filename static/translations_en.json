@@ -1,16 +1,16 @@
 {
+    "chat_section": "Chat",
+    "content_label": "Message:",
+    "create_wallet": "Create Wallet",
+    "get_messages_button": "Get Messages",
+    "get_messages_section": "Get Messages",
+    "language_toggle": "Switch to Russian",
+    "mnemonic_label": "Mnemonic Phrase:",
+    "recipient_label": "Recipient Address:",
+    "send_button": "Send Message",
+    "send_message_section": "Send Message",
     "title": "Blockchain Messenger",
     "toggle_theme": "Toggle Theme",
-    "language_toggle": "Switch to Russian",
-    "wallet_section": "Create Wallet",
-    "create_wallet": "Create Wallet",
-    "send_message_section": "Send Message",
-    "mnemonic_label": "Mnemonic Phrase:",
     "toggle_visibility_button": "Toggle Visibility",
-    "recipient_label": "Recipient Address:",
-    "content_label": "Message:",
-    "send_button": "Send Message",
-    "chat_section": "Chat",
-    "get_messages_section": "Get Messages",
-    "get_messages_button": "Get Messages"
+    "wallet_section": "Create Wallet"
 }
