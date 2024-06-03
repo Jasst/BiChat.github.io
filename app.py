@@ -110,12 +110,17 @@ def create_wallet():
     }
     return jsonify(response), 200
 
+
 @app.route('/login_wallet', methods=['POST'])
 def login_wallet():
     data = request.get_json()
     phrase = data.get('mnemonic_phrase')
     if not phrase:
         return jsonify({'error': gettext(translations[get_locale()]['mnemonic_required'])}), 400
+
+    # Validate the mnemonic phrase
+    if not mnemonic.check(phrase):
+        return jsonify({'error': gettext(translations[get_locale()]['mnemonic_invalid'])}), 400
 
     address = generate_address(phrase)
     key = generate_key_from_phrase(phrase)
