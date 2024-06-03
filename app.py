@@ -14,7 +14,9 @@ class Blockchain:
         self.chain = []
         self.current_transactions = []
         self.lock = threading.Lock()
-        self.new_block(previous_hash='1', proof=100)
+        if len(self.chain) == 0:
+            self.new_block(previous_hash='1', proof=100)
+
         self.load_chain()
 
     def new_block(self, proof, previous_hash=None):
