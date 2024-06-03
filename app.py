@@ -8,6 +8,7 @@ from mnemonic import Mnemonic
 from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
 
+
 class Blockchain:
     def __init__(self):
         self.chain = []
@@ -86,18 +87,27 @@ babel = Babel(app)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 
+
+def logout() -> request:
+    return jsonify(logout())
+
+
 def get_locale():
     return request.args.get('lang', 'en')
+
 
 def generate_key_from_phrase(phrase):
     return hashlib.sha256(phrase.encode()).digest()
 
+
 def generate_address(phrase):
     return hashlib.sha256(phrase.encode()).hexdigest()
+
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -116,11 +126,11 @@ def login_wallet():
     data = request.get_json()
     phrase = data.get('mnemonic_phrase')
     if not phrase:
-        return jsonify({'error': gettext(translations[get_locale()]['mnemonic_required'])}), 400
+        return jsonify({'error': gettext(translations[get_locale()]['mnemonic_required'])}), 400, logout()
 
     # Validate the mnemonic phrase
     if not mnemonic.check(phrase):
-        return jsonify({'error': gettext(translations[get_locale()]['mnemonic_invalid'])}), 400
+        return jsonify({'error': gettext(translations[get_locale()]['mnemonic_invalid'])}), 400, logout()
 
     address = generate_address(phrase)
     key = generate_key_from_phrase(phrase)
@@ -129,6 +139,7 @@ def login_wallet():
         'message': gettext(translations[get_locale()]['wallet_created'])
     }
     return jsonify(response), 200
+
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -148,6 +159,7 @@ def send_message():
     blockchain.new_block(proof=proof)
 
     return jsonify({'message': gettext(translations[get_locale()]['message_sent'])}), 201
+
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
@@ -170,6 +182,7 @@ def get_messages():
 
     return jsonify(decrypted_messages), 200
 
+
 @app.route('/chain', methods=['GET'])
 def full_chain():
     response = {
@@ -177,6 +190,7 @@ def full_chain():
         'length': len(blockchain.chain),
     }
     return jsonify(response), 200
+
 
 if __name__ == '__main__':
     port = 5000
