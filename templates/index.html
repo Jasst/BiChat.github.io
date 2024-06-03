@@ -8,44 +8,66 @@
 </head>
 <body>
     <div class="container">
-        <h1 data-translate="title">Blockchain Messenger</h1>
-        <button id="theme-toggle" onclick="toggleTheme()" data-translate="toggle_theme">Toggle Theme</button>
-        <button id="language-toggle" onclick="switchLanguage()">Switch to Russian</button>
+        <div class="settings">
+            <button id="settings-toggle" onclick="toggleSettings()" aria-label="Settings">⚙️</button>
+            <div id="settings-menu" class="settings-menu" style="display:none;">
 
-        <div id="wallet-section">
-            <h2 data-translate="wallet_section">Create Wallet</h2>
-            <button onclick="createWallet()" data-translate="create_wallet">Create Wallet</button>
-            <p id="wallet-info"></p>
+
+                <button id="show-mnemonic-button" onclick="showMnemonic()" data-translate="show_mnemonic_button">Show Mnemonic Phrase</button>
+
+
+
+                <button id="theme-toggle" onclick="toggleTheme()" data-translate="toggle_theme">Toggle Theme</button>
+                <button id="language-toggle" onclick="switchLanguage()">Switch to Russian</button>
+                <button id="logout-button" onclick="logout()" data-translate="logout_button">Logout</button> <!-- Новая кнопка "Выйти" -->
+
+            </div>
         </div>
 
-        <div id="send-message-section">
-            <h2 data-translate="send_message_section">Send Message</h2>
-            <div id="mnemonic-container" class="mnemonic-container">
-                <label for="mnemonic" data-translate="mnemonic_label">Mnemonic Phrase:</label>
-                <input type="text" id="mnemonic" onkeypress="handleKeyPress(event, sendMessage)" readonly>
+        <h1 data-translate="title">Blockchain Messenger</h1>
+        <p id="wallet-info" data-translate="address_label"></p>
+        <div id="mnemonic-display"></div> <!-- Новый контейнер для отображения мнемонической фразы -->
+        <button id="hide-mnemonic-button" onclick="hideMnemonic()" data-translate="hide_mnemonic_button">Hide Mnemonic</button> <!-- Новая кнопка "Спрятать мнемонику" -->
+
+        <div id="wallet-section">
+            <h2 data-translate="wallet_section">Create Wallet or Login</h2>
+            <div id="create-wallet-container">
+                <button onclick="createWallet()" data-translate="create_wallet">Create Wallet</button>
+                <p id="wallet-info"></p>
             </div>
-            <button id="toggle-mnemonic-visibility" onclick="toggleMnemonicVisibility()" aria-label="Toggle Visibility" data-translate="toggle_visibility_button">Toggle Visibility</button>
+
+            <div id="login-wallet-container">
+                <label for="mnemonic-login" data-translate="mnemonic_label">Mnemonic Phrase:</label>
+                <input type="text" id="mnemonic-login" onkeypress="handleKeyPress(event, loginWallet)">
+                <button onclick="loginWallet()" data-translate="login_button">Login</button>
+                <p id="login-status"></p>
+            </div>
+        </div>
+
+        <div id="send-message-section" style="display:none;">
+            <h2 data-translate="send_message_section">Send Message</h2>
+
             <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
             <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
             <label for="content" data-translate="content_label">Message:</label>
             <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
             <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
             <p id="send-status"></p>
+
         </div>
 
-        <div id="chat-section">
-            <h2 data-translate="chat_section">Chat</h2>
-            <div id="chat-box"></div>
-        </div>
-
-        <div id="get-messages-section" style="display: none;">
+        <div id="get-messages-section" style="display:none;">
             <h2 data-translate="get_messages_section">Get Messages</h2>
-            <label for="mnemonic-get" data-translate="mnemonic_label">Mnemonic Phrase:</label>
-            <input type="text" id="mnemonic-get" onkeypress="handleKeyPress(event, getMessages)">
             <button onclick="getMessages()" data-translate="get_messages_button">Get Messages</button>
             <div id="messages-list"></div>
         </div>
+
+        <div id="chat-section" style="display:none;">
+            <h2 data-translate="chat_section">Chat</h2>
+            <div id="chat-box"></div>
+        </div>
     </div>
     <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+    <script src="{{ url_for('static', filename='translations.js') }}"></script>
 </body>
 </html>

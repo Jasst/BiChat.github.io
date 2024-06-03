@@ -202,3 +202,57 @@ p {
     margin-top: 5px;  /* Добавляем отступ сверху */
     display: block;  /* Убедимся, что метка времени занимает всю строку */
 }
+
+
+.settings {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.settings-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background-color: #fff;
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.settings-menu button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.3s;
+}
+
+.settings-menu button:hover {
+    background-color: #0056b3;
+    transform: scale(1.05);
+}
+
+.settings-menu button:active {
+    transform: scale(1);
+}
+
+.dark-theme .settings-menu {
+    background-color: #333;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1); /* изменение цвета тени */
+}
+
+.dark-theme .settings-menu button {
+    background-color: #444;
+    color: #ddd;
+}
+
+.dark-theme .settings-menu button:hover {
+    background-color: #555;
+}
+
+.dark-theme .settings-menu button:active {
+    transform: scale(1);
+}

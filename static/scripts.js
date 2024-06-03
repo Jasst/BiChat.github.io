@@ -1,9 +1,9 @@
 let mnemonicPhrase = '';
-let updateMessagesInterval;
 let userAddress = '';
 let currentLanguage = 'en';
 
-// Применяем текущий язык к запросам
+const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
+    hideMnemonicButton.style.display = 'none';
 function createWallet() {
     fetch(`/create_wallet?lang=${currentLanguage}`, {
         method: 'POST',
@@ -12,38 +12,58 @@ function createWallet() {
     .then(data => {
         mnemonicPhrase = data.mnemonic_phrase;
         userAddress = data.address;
-        const walletInfo = `Address: ${data.address}`;
-        document.getElementById('wallet-info').innerHTML = walletInfo;
+        const hideMnemonicButton = document.getElementById('hide-mnemonic-button');hideMnemonicButton.style.display = 'none';
+        document.getElementById('wallet-info').innerHTML = `Address: ${data.address}`;
+        document.getElementById('wallet-section').style.display = 'none';
+        document.getElementById('mnemonic-login').value = mnemonicPhrase;
+        document.getElementById('create-wallet-container').style.display = 'none';
+        document.getElementById('send-message-section').style.display = 'block';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('logout-button').style.display = 'block';
 
-        // Вставка мнемонической фразы в соответствующие поля
-        document.getElementById('mnemonic').value = mnemonicPhrase;
-        document.getElementById('mnemonic-get').value = mnemonicPhrase;
-
-        // Показать и затем автоматически скрыть мнемоническую фразу
-        const mnemonicContainer = document.getElementById('mnemonic-container');
-        mnemonicContainer.classList.add('visible');
-        setTimeout(() => {
-            mnemonicContainer.classList.remove('visible');
-        }, 1500);  // Скрыть через 1.5 секунд
-
-        // Запуск автоматического обновления сообщений
-        clearInterval(updateMessagesInterval);
-        updateMessagesInterval = setInterval(getMessages, 3000);
+        checkIncomingMessages();
+        getMessages();
     })
     .catch(error => {
         console.error('Error:', error);
+        showAlert('Error creating wallet');
     });
 }
 
-function toggleMnemonicVisibility() {
-    const mnemonicContainer = document.getElementById('mnemonic-container');
-    mnemonicContainer.classList.toggle('visible');
-    const mnemonicVisibilityButton = document.getElementById('toggle-mnemonic-visibility');
-    mnemonicVisibilityButton.innerText = mnemonicContainer.classList.contains('visible') ? translations[currentLanguage]["toggle_visibility_button"] : "Toggle Visibility";
+function loginWallet() {
+    const mnemonic = document.getElementById('mnemonic-login').value;
+
+    fetch(`/login_wallet?lang=${currentLanguage}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            mnemonic_phrase: mnemonic,
+        }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        mnemonicPhrase = mnemonic;
+        userAddress = data.address;
+
+        const hideMnemonicButton = document.getElementById('hide-mnemonic-button');hideMnemonicButton.style.display = 'none';
+
+        document.getElementById('login-status').innerHTML = data.message;
+        document.getElementById('login-wallet-container').style.display = 'none';
+        document.getElementById('send-message-section').style.display = 'block';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('logout-button').style.display = 'block';
+        checkIncomingMessages();
+        getMessages();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Error logging in');
+    });
 }
 
 function sendMessage() {
-    const mnemonic = document.getElementById('mnemonic').value;
     const recipient = document.getElementById('recipient').value;
     const content = document.getElementById('content').value;
 
@@ -53,48 +73,31 @@ function sendMessage() {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            mnemonic_phrase: mnemonic,
+            mnemonic_phrase: mnemonicPhrase,
             recipient: recipient,
             content: content,
         }),
     })
     .then(response => response.json())
     .then(data => {
-        const sendStatus = document.getElementById('send-status');
-        sendStatus.innerHTML = data.message || 'Message sent successfully';
-        sendStatus.style.opacity = 1;
-
-        // Плавное исчезновение сообщения
-        setTimeout(() => {
-            sendStatus.style.transition = 'opacity 0.5s';
-            sendStatus.style.opacity = 0;
-        }, 500);
-
-        // Удаление текста после завершения анимации
-        setTimeout(() => {
-            sendStatus.innerText = '';
-            sendStatus.style.transition = '';
-            sendStatus.style.opacity = 1;
-        }, 1000);
+        document.getElementById('send-status').innerHTML = data.message || 'Message sent successfully';
         document.getElementById('content').value = '';
-        getMessages();  // Обновление сообщений после отправки
+        getMessages();
     })
     .catch(error => {
         console.error('Error:', error);
-        document.getElementById('send-status').innerText = 'Error sending message';
+        showAlert('Error sending message');
     });
 }
 
 function getMessages() {
-    const mnemonic = document.getElementById('mnemonic-get').value;
-
     fetch(`/get_messages?lang=${currentLanguage}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            mnemonic_phrase: mnemonic,
+            mnemonic_phrase: mnemonicPhrase,
         }),
     })
     .then(response => response.json())
@@ -109,9 +112,7 @@ function getMessages() {
             } else {
                 messageElement.classList.add('received');
             }
-            // Форматируем время отправки сообщения
             const timestamp = new Date(message.timestamp * 1000).toLocaleString();
-
             messageElement.innerHTML = `
                 <div class="message-content">${message.content}</div>
                 <div class="message-sender">From: ${message.sender}</div>
@@ -122,46 +123,42 @@ function getMessages() {
     })
     .catch(error => {
         console.error('Error:', error);
+        showAlert('Error fetching messages');
     });
-}
-
-function handleKeyPress(event, callback) {
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        callback();
-        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
-            const inputElement = event.target;
-            inputElement.style.transition = 'opacity 0.5s';  // Ускоряем анимацию до 0.5 секунды
-            setTimeout(() => {
-                inputElement.style.opacity = 0;
-            }, 500);  // Ускоряем начало исчезновения до 0.5 секунды
-            setTimeout(() => {
-                inputElement.value = '';
-                inputElement.style.opacity = 1;
-                inputElement.style.transition = '';
-            }, 1000);  // Полное завершение через 1 секунду
-        }
-    }
 }
 
 function toggleTheme() {
     document.body.classList.toggle('dark-theme');
 }
 
+function toggleSettings() {
+    const settingsMenu = document.getElementById('settings-menu');
+    settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
+}
+
+function showAlert(message) {
+    alert(message);
+}
+
 function switchLanguage() {
     const languageToggle = document.getElementById('language-toggle');
     currentLanguage = currentLanguage === 'en' ? 'ru' : 'en';
-    languageToggle.innerText = currentLanguage === 'en' ? 'Переключить на русский' : 'Switch to English';
+    languageToggle.innerText = currentLanguage === 'en' ? 'Switch to Russian' : 'Переключить на русский';
 
     const translations = {
         en: {
+            address_label: "Address:",
+            logout_button: "Logout",
+            show_mnemonic_button: "Show Mnemonic Phrase",
+            hide_mnemonic_button: "Hide Mnemonic",
             toggle_visibility_button: "Toggle Visibility",
             title: "Blockchain Messenger",
             toggle_theme: "Toggle Theme",
             create_wallet: "Create Wallet",
+            login_button: "Login",
             send_message: "Send Message",
             get_messages: "Get Messages",
-            wallet_section: "Create Wallet",
+            wallet_section: "Create Wallet or Login",
             send_message_section: "Send Message",
             chat_section: "Chat",
             mnemonic_label: "Mnemonic Phrase:",
@@ -171,13 +168,18 @@ function switchLanguage() {
             get_messages_button: "Get Messages"
         },
         ru: {
+            address_label: "Адресс:",
+            logout_button: "Выход",
+            show_mnemonic_button: "Показать мнемоническую фразу",
+            hide_mnemonic_button: "Спрятать мнемоническую фразу",
             toggle_visibility_button: "Разблокировать/заблокировать",
             title: "Блокчейн Мессенджер",
             toggle_theme: "Переключить тему",
             create_wallet: "Создать кошелек",
+            login_button: "Войти",
             send_message: "Отправить сообщение",
             get_messages: "Получить сообщения",
-            wallet_section: "Создать кошелек",
+            wallet_section: "Создать кошелек или Войти",
             send_message_section: "Отправить сообщение",
             chat_section: "Чат",
             mnemonic_label: "Мнемоническая фраза:",
@@ -194,4 +196,47 @@ function switchLanguage() {
         const translationKey = element.dataset.translate;
         element.innerText = selectedTranslations[translationKey];
     });
+}
+
+function handleKeyPress(event, callback) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        callback();
+    }
+}
+
+function checkIncomingMessages() {
+    setInterval(() => {
+        // Выполнить проверку входящих сообщений здесь
+        getMessages();
+    }, 5000); // Проверять новые сообщения каждые 5 секунд (5000 миллисекунд)
+}
+
+function logout() {
+    // Обновим страницу при нажатии кнопки "Выйти"
+    location.reload();
+}
+
+function showMnemonic() {
+    // Создаем элемент для отображения мнемонической фразы
+    const mnemonicDisplay = document.getElementById('mnemonic-display');
+    mnemonicDisplay.innerHTML = `<label for="mnemonic-display" data-translate="mnemonic_label">Mnemonic Phrase:</label>
+                                  <input type="text" id="mnemonic-display" value="${mnemonicPhrase}" readonly>`;
+
+    // Показываем раздел отправки сообщения
+    const sendMessageSection = document.getElementById('send-message-section');
+    sendMessageSection.style.display = 'block';
+
+    const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
+    hideMnemonicButton.style.display = 'block';
+}
+
+function hideMnemonic() {
+    // Скрываем контейнер с мнемонической фразой
+    const mnemonicDisplay = document.getElementById('mnemonic-display');
+    mnemonicDisplay.innerHTML = '';
+
+    // Скрываем кнопку "Спрятать мнемонику"
+    const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
+    hideMnemonicButton.style.display = 'none';
 }
