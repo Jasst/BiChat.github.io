@@ -9,6 +9,7 @@ app = Flask(__name__)
 babel = Babel(app)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
+blockchain.load_chain()
 
 
 def logout() -> request:
