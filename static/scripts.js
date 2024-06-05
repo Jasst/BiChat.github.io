@@ -177,6 +177,12 @@ function logout() {
 }
 
 function showMnemonic() {
+         none';
+
+    // Показать адрес
+    const walletInfo = document.getElementById('wallet-info');
+    walletInfo.style.display = 'block';
+    
     // Создаем элемент для отображения мнемонической фразы
     const mnemonicDisplay = document.getElementById('mnemonic-display');
     mnemonicDisplay.innerHTML = `<label for="mnemonic-display" data-translate="mnemonic_label">Mnemonic Phrase:</label>
@@ -196,6 +202,9 @@ function showMnemonic() {
 }
 
 function hideMnemonic() {
+    // Скрыть адрес
+    const walletInfo = document.getElementById('wallet-info');
+    walletInfo.style.display = 'none';
     // Скрываем контейнер с мнемонической фразой
     const mnemonicDisplay = document.getElementById('mnemonic-display');
     mnemonicDisplay.innerHTML = '';
