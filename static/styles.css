@@ -42,9 +42,9 @@ input, textarea {
     background-color: #f9f9f9;
     color: #333;
     transition: background-color 0.3s, border-color 0.3s;
-    box-sizing: border-box; /* Включаем отступы и границы в общую ширину */
-    word-wrap: break-word; /* Перенос длинных слов */
-    overflow-wrap: break-word; /* Перенос длинных слов */
+    box-sizing: border-box;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 input:focus, textarea:focus {
@@ -255,4 +255,12 @@ p {
 
 .dark-theme .settings-menu button:active {
     transform: scale(1);
+}
+
+/* Новые стили для адресного контейнера */
+#address-content {
+    display: block; /* Убедитесь, что адрес занимает всю строку */
+    width: 100%; /* Ограничение ширины */
+    overflow-wrap: break-word; /* Перенос длинных слов */
+    word-wrap: break-word; /* Перенос длинных слов */
 }
