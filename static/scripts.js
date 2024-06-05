@@ -71,8 +71,6 @@ function loginWallet() {
     });
 }
 
-
-
 function sendMessage() {
     const recipient = document.getElementById('recipient').value;
     const content = document.getElementById('content').value;
@@ -153,6 +151,7 @@ function toggleSettings() {
                 settingsMenu.style.display = 'none';
             }
         });
+}
 
 function showAlert(message) {
     alert(message);
