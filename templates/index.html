@@ -11,16 +11,11 @@
         <div class="settings">
             <button id="settings-toggle" onclick="toggleSettings()" aria-label="Settings">⚙️</button>
             <div id="settings-menu" class="settings-menu" style="display:none;">
-
                 <button id="hide-mnemonic-button" onclick="hideMnemonic()" data-translate="hide_mnemonic_button">Hide Mnemonic</button><!-- Новая кнопка "Спрятать мнемонику" -->
                 <button id="show-mnemonic-button" onclick="showMnemonic()" data-translate="show_mnemonic_button">Show Mnemonic Phrase</button>
-
-
-
                 <button id="theme-toggle" onclick="toggleTheme()" data-translate="toggle_theme">Toggle Theme</button>
                 <button id="language-toggle" onclick="switchLanguage()">Switch to Russian</button>
                 <button id="logout-button" onclick="logout()" data-translate="logout_button">Logout</button> <!-- Новая кнопка "Выйти" -->
-
             </div>
         </div>
 
@@ -30,9 +25,7 @@
             <span id="address-content"></span>
         </div>
 
-
         <div id="mnemonic-display"></div> <!-- Новый контейнер для отображения мнемонической фразы -->
-
 
         <div id="wallet-section">
             <h2 data-translate="wallet_section">Create Wallet or Login</h2>
@@ -49,27 +42,25 @@
             </div>
         </div>
 
+        <div id="chat-section" style="display:none;">
+            <h2 data-translate="chat_section">Chat</h2>
+            <div id="chat-box"></div>
+        </div>
+
         <div id="send-message-section" style="display:none;">
             <h2 data-translate="send_message_section">Send Message</h2>
-
             <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
             <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
             <label for="content" data-translate="content_label">Message:</label>
             <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
             <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
             <p id="send-status"></p>
-
         </div>
 
         <div id="get-messages-section" style="display:none;">
             <h2 data-translate="get_messages_section">Get Messages</h2>
             <button onclick="getMessages()" data-translate="get_messages_button">Get Messages</button>
             <div id="messages-list"></div>
-        </div>
-
-        <div id="chat-section" style="display:none;">
-            <h2 data-translate="chat_section">Chat</h2>
-            <div id="chat-box"></div>
         </div>
     </div>
     <script src="{{ url_for('static', filename='scripts.js') }}"></script>
