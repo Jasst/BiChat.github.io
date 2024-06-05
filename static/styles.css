@@ -257,6 +257,7 @@ p {
     transform: scale(1);
 }
 
+#address_leble
 /* Новые стили для адресного контейнера */
 #address-content {
     display: inline-block;
