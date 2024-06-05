@@ -129,6 +129,13 @@
         }
 
         function toggleSettings() {
+           const settingsMenu = document.getElementById('settings-menu');
+           const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
+           const showMnemonicButton = document.getElementById('show-mnemonic-button');
+           if (showMnemonicButton.style.display !== 'none') {
+               hideMnemonicButton.style.display = 'none';
+           }
+                
             const settingsMenu = document.getElementById('settings-menu');
             settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
         }
@@ -246,7 +253,8 @@
                     element.innerText = selectedTranslations[translationKey];
                 }
             });
-
+             const walletInfoContent = document.getElementById('address-content');
+    walletInfoContent.innerText = selectedTranslations.address_label;
             // Update the address label separately to retain the address content
             const walletInfoLabel = document.querySelector('#wallet-info [data-translate="address_label"]');
             if (walletInfoLabel) {
