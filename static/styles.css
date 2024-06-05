@@ -42,6 +42,9 @@ input, textarea {
     background-color: #f9f9f9;
     color: #333;
     transition: background-color 0.3s, border-color 0.3s;
+    box-sizing: border-box; /* Включаем отступы и границы в общую ширину */
+    word-wrap: break-word; /* Перенос длинных слов */
+    overflow-wrap: break-word; /* Перенос длинных слов */
 }
 
 input:focus, textarea:focus {
@@ -115,7 +118,6 @@ p {
 .message .message-content {
     margin-bottom: 5px;
 }
-
 
 .dark-theme {
     background-color: #222;
@@ -195,14 +197,12 @@ p {
     align-items: center;
 }
 
-
 .message .message-timestamp {
     font-size: 0.8em;
     color: #999;
     margin-top: 5px;  /* Добавляем отступ сверху */
     display: block;  /* Убедимся, что метка времени занимает всю строку */
 }
-
 
 .settings {
     position: absolute;
