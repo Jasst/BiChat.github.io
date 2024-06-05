@@ -9,7 +9,8 @@ function toggleSettings() {
     if (showMnemonicButton.style.display !== 'none') {
         hideMnemonicButton.style.display = 'none';
     }
-        
+
+    settingsMenu.classList.toggle('visible');
     settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
 }
 
