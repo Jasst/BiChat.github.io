@@ -151,7 +151,7 @@ function toggleSettings() {
                 settingsMenu.style.display = 'none';
             }
         });
-}
+
 
 function showAlert(message) {
     alert(message);
@@ -266,7 +266,7 @@ function switchLanguage() {
         }
     };
 
-     const selectedTranslations = translations[currentLanguage];
+    const selectedTranslations = translations[currentLanguage];
     const elementsToTranslate = document.querySelectorAll('[data-translate]');
     elementsToTranslate.forEach(element => {
         const translationKey = element.dataset.translate;
