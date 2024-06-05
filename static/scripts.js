@@ -2,8 +2,10 @@ let mnemonicPhrase = '';
 let userAddress = '';
 let currentLanguage = 'en';
 
-const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
-    hideMnemonicButton.style.display = 'none';
+const hideMnemonicButton = 
+    document.getElementById('hide-mnemonic-button');hideMnemonicButton.style.display = 'none';
+    document.getElementById('wallet-info');
+    walletInfo.style.display = 'none';
 
 function createWallet() {
     fetch(`/create_wallet?lang=${currentLanguage}`, {
@@ -177,8 +179,6 @@ function logout() {
 }
 
 function showMnemonic() {
-         none';
-
     // Показать адрес
     const walletInfo = document.getElementById('wallet-info');
     walletInfo.style.display = 'block';
