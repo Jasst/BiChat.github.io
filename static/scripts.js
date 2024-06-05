@@ -194,8 +194,7 @@
             document.getElementById('hide-mnemonic-button').style.display = 'none';
             document.getElementById('show-mnemonic-button').style.display = 'block';
         }
-
-        function switchLanguage() {
+  function switchLanguage() {
             const languageToggle = document.getElementById('language-toggle');
             currentLanguage = currentLanguage === 'en' ? 'ru' : 'en';
             languageToggle.innerText = currentLanguage === 'en' ? 'Switch to Russian' : 'Переключить на русский';
@@ -252,11 +251,5 @@
                 if (translationKey) {
                     element.innerText = selectedTranslations[translationKey];
                 }
-            });
-        
-            // Update the address label separately to retain the address content
-            const walletInfoLabel = document.querySelector('#wallet-info [data-translate="address_label"]');
-            if (walletInfoLabel) {
-                walletInfoLabel.innerText = selectedTranslations.address_label;
-            }
+            });           
         }
