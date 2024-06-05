@@ -2,6 +2,26 @@
         let userAddress = '';
         let currentLanguage = 'en';
 
+         function toggleSettings() {
+    const settingsMenu = document.getElementById('settings-menu');
+    const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
+    const showMnemonicButton = document.getElementById('show-mnemonic-button');
+    if (showMnemonicButton.style.display !== 'none') {
+        hideMnemonicButton.style.display = 'none';
+    }
+        
+    settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
+}
+
+document.addEventListener('click', function(event) {
+    const settingsMenu = document.getElementById('settings-menu');
+    const settingsToggle = document.getElementById('settings-toggle');
+    if (settingsMenu.style.display === 'block' && !settingsMenu.contains(event.target) && !settingsToggle.contains(event.target)) {
+        settingsMenu.style.display = 'none';
+    }
+});
+
+
         function createWallet() {
             fetch(`/create_wallet?lang=${currentLanguage}`, {
                 method: 'POST',
