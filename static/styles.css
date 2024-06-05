@@ -259,8 +259,21 @@ p {
 
 /* Новые стили для адресного контейнера */
 #address-content {
-    display: block; /* Убедитесь, что адрес занимает всю строку */
-    width: 100%; /* Ограничение ширины */
-    overflow-wrap: break-word; /* Перенос длинных слов */
-    word-wrap: break-word; /* Перенос длинных слов */
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+#address-content:hover {
+    overflow: visible;
+    white-space: normal;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    padding: 5px;
+    border-radius: 5px;
+    z-index: 1;
+    position: relative;
 }
