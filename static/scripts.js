@@ -237,10 +237,7 @@
                     get_messages_button: "Получить сообщения"
                 }
             };
-            const walletInfoLabel = document.querySelector('#wallet-info [data-translate="address_label"]');
-            if (walletInfoLabel) {
-                walletInfoLabel.innerText = selectedTranslations.address_label;
-              } 
+            
             const selectedTranslations = translations[currentLanguage];
             const elementsToTranslate = document.querySelectorAll('[data-translate]');
             elementsToTranslate.forEach(element => {
