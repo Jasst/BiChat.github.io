@@ -253,8 +253,7 @@
                     element.innerText = selectedTranslations[translationKey];
                 }
             });
-             const walletInfoContent = document.getElementById('address-content');
-    walletInfoContent.innerText = selectedTranslations.address_label;
+        
             // Update the address label separately to retain the address content
             const walletInfoLabel = document.querySelector('#wallet-info [data-translate="address_label"]');
             if (walletInfoLabel) {
