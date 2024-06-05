@@ -46,13 +46,13 @@
             <h2 data-translate="chat_section">Chat</h2>
             <div id="chat-box"></div>
             <label for="content" data-translate="content_label">Message:</label>
+                        <h2 data-translate="send_message_section">Send Message</h2>
             <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
             <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
             <p id="send-status"></p>
         </div>
 
         <div id="send-message-section" style="display:none;">
-            <h2 data-translate="send_message_section">Send Message</h2>
             <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
             <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
         </div>
