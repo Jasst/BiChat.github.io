@@ -129,10 +129,7 @@
         }
 
         function toggleSettings() {
-            const settingsMenu =
-            document.getElementById('hide-mnemonic-button').style.display = 'none';
-            document.getElementById('show-mnemonic-button').style.display = 'block';
-            document.getElementById('settings-menu');
+            const settingsMenu = document.getElementById('settings-menu');
             settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
         }
 
