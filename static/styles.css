@@ -63,7 +63,7 @@ button {
     border: none;
     border-radius: 9px;
     cursor: pointer;
-    transition: background-color 0.3s, transform 0.3s;
+    transition: background-color 0.3s, transform 0.5s;
 }
 
 button:hover {
@@ -72,7 +72,7 @@ button:hover {
 }
 
 button:active {
-    transform: scale(1.25);
+    transform: scale(1.04);
 }
 
 p {
@@ -197,16 +197,24 @@ p {
     font-size: 15px;
 }
 
-.mnemonic-container {
+.mnemonic-container:hover {
+    display: -moz-flex;
+    max-width: 100%;
     overflow: hidden;
-    transition: max-height 0.5s ease-out, opacity 0.5s ease-out;
-    max-height: 0;
-    opacity: 0;
+    text-overflow: ellipsis;
+    white-space: pre-wrap;
+    vertical-align: bottom;
 }
 
 .mnemonic-container.visible {
-    max-height: 100px;
-    opacity: 1;
+   overflow: visible;
+    white-space: pre-wrap;
+    background-color: rgba(240, 240, 240, 0.9);
+    border: 1px solid #ccc;
+    padding: 5px;
+    border-radius: 5px;
+    z-index: 0.1;
+    position: relative;
 }
 
 .flex-container {
@@ -246,7 +254,7 @@ p {
     border-radius: 7px;
     padding: 10px;
     cursor: pointer;
-    transition: background-color 0.3s, transform 0.3s;
+    transition: background-color 0.3s, transform 0.5s;
 }
 
 .settings-menu button:hover {
@@ -255,7 +263,7 @@ p {
 }
 
 .settings-menu button:active {
-    transform: scale(1);
+    transform: scale(1.05);
 }
 
 .dark-theme .settings-menu {
@@ -273,21 +281,21 @@ p {
 }
 
 #address-content {
-    display: inline-block;
+    display: -moz-flex;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: pre-wrap;
     vertical-align: bottom;
 }
 
 #address-content:hover {
     overflow: visible;
-    white-space: normal;
+    white-space: pre-wrap;
     background-color: rgba(240, 240, 240, 0.9);
     border: 1px solid #ccc;
     padding: 5px;
     border-radius: 5px;
-    z-index: 1;
+    z-index: 0.1;
     position: relative;
 }

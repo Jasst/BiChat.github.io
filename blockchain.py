@@ -3,7 +3,8 @@ import json
 import os
 import time
 import threading
-
+from cryptography.fernet import Fernet
+from mnemonic import Mnemonic
 
 
 class Blockchain:
@@ -79,3 +80,25 @@ class Blockchain:
         if os.path.exists('blockchain.json'):
             with open('blockchain.json', 'r') as f:
                 self.chain = json.load(f)
+
+
+class CryptoManager:
+    def __init__(self, key):
+        self.key = key
+
+    def encrypt_message(self, message):
+        cipher = Fernet(self.key)
+        encrypted_message = cipher.encrypt(message.encode())
+        return encrypted_message
+
+    def decrypt_message(self, encrypted_message):
+        cipher = Fernet(self.key)
+        decrypted_message = cipher.decrypt(encrypted_message).decode()
+        return decrypted_message
+
+
+mnemonic = Mnemonic('english')
+blockchain = Blockchain()
+blockchain.load_chain()
+
+# Остальной код вашего приложения, включая Flask-маршруты, HTML-шаблоны и JavaScript-код, остается без изменений

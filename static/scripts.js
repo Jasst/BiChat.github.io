@@ -110,40 +110,42 @@ function sendMessage() {
             });
         }
 
+// В функции getMessages()
 function getMessages() {
-            fetch(`/get_messages?lang=${currentLanguage}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ mnemonic_phrase: mnemonicPhrase }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                const chatBox = document.getElementById('chat-box');
-                chatBox.innerHTML = '';
-                data.forEach(message => {
-                    const messageElement = document.createElement('div');
-                    messageElement.classList.add('message');
-                    if (message.sender === userAddress) {
-                        messageElement.classList.add('sent');
-                    } else {
-                        messageElement.classList.add('received');
-                    }
-                    const timestamp = new Date(message.timestamp * 1000).toLocaleString();
-                    messageElement.innerHTML = `
-                        <div class="message-content">${message.content}</div>
-                        <div class="message-sender">From: ${message.sender}</div>
-                        <div class="message-timestamp">${timestamp}</div>
-                    `;
-                    chatBox.appendChild(messageElement);
-                });
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('Error fetching messages');
-            });
-        }
+    fetch(`/get_messages?lang=${currentLanguage}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ mnemonic_phrase: mnemonicPhrase }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        const chatBox = document.getElementById('chat-box');
+        chatBox.innerHTML = '';
+        data.forEach(message => {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            if (message.sender === userAddress) {
+                messageElement.classList.add('sent');
+            } else {
+                messageElement.classList.add('received');
+            }
+            const timestamp = new Date(message.timestamp * 1000).toLocaleString();
+            messageElement.innerHTML = `
+                <div class="message-content">${message.content}</div>
+                <div class="message-sender">From: ${message.sender}</div>
+                <div class="message-recipient">To: ${message.recipient}</div>
+                <div class="message-timestamp">${timestamp}</div>
+            `;
+            chatBox.appendChild(messageElement);
+        });
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Error fetching messages');
+    });
+}
 
 function toggleTheme() {
             document.body.classList.toggle('dark-theme');

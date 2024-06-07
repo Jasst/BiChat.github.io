@@ -4,6 +4,29 @@ from mnemonic import Mnemonic
 from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
 from blockchain import Blockchain
+import os
+
+import os
+from cryptography.fernet import Fernet
+
+
+class CryptoManager:
+    def __init__(self, key):
+        self.key = key
+        self.cipher_suite = Fernet(key)
+
+    def encrypt_message(self, message):
+        encrypted_message = self.cipher_suite.encrypt(message.encode())
+        return encrypted_message.decode()
+
+    def decrypt_message(self, encrypted_message):
+        decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
+        return decrypted_message.decode()
+
+# Генерируем случайный ключ key = Fernet.generate_key()
+
+key = b'U_Urs-adepKN6SnJt1YI_JasstmeWtyyTNno2UeX_-0='
+crypto_manager = CryptoManager(key)  # Создаем экземпляр CryptoManager с каким-то ключом
 
 app = Flask(__name__)
 babel = Babel(app)
@@ -12,8 +35,16 @@ blockchain = Blockchain()
 blockchain.load_chain()
 
 
-def logout() -> request:
-    return jsonify(logout())
+def encrypt_message(content):
+    return crypto_manager.encrypt_message(content)
+
+
+def decrypt_message(encrypted_content):
+    return crypto_manager.decrypt_message(encrypted_content)
+
+
+def logout():
+    return jsonify({'message': 'Logged out successfully.'})
 
 
 def get_locale():
@@ -76,8 +107,7 @@ def send_message():
         return jsonify({'error': gettext(translations[get_locale()]['missing_fields'])}), 400
 
     key = generate_key_from_phrase(phrase)
-    encrypted_content = content
-
+    encrypted_content = encrypt_message(content)
     blockchain.new_transaction(key.hex(), recipient, encrypted_content)
     proof = blockchain.proof_of_work(blockchain.last_block['proof'])
     blockchain.new_block(proof=proof)
@@ -91,16 +121,18 @@ def get_messages():
     phrase = data.get('mnemonic_phrase')
 
     if not phrase:
-        return jsonify({'error': 'Отсутствует обязательное поле'}), 400
+        return jsonify({'error': 'Missing required field.'}), 400
 
     key = generate_key_from_phrase(phrase)
     messages = blockchain.get_messages(key.hex())
 
     decrypted_messages = []
     for message in messages:
+        decrypted_content = decrypt_message(message['content'])
         decrypted_messages.append({
             'sender': message['sender'],
-            'content': message['content'],
+            'recipient': message['recipient'],
+            'content': decrypted_content,
             'timestamp': message['timestamp']
         })
 

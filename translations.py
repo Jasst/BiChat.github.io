@@ -1,4 +1,3 @@
-
 translations = {
     'en': {
         'mnemonic_generated': 'Mnemonic phrase generated successfully.',
