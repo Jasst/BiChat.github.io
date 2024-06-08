@@ -299,3 +299,21 @@ p {
     z-index: 0.1;
     position: relative;
 }
+
+#dialog-tabs {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap; /* Позволяет элементам переноситься на новую строку при необходимости */
+  gap: 6px;
+}
+
+#dialog-tabs button {
+    overflow: hidden; /* Обрезать содержимое, выходящее за границы кнопки */
+  white-space: nowrap; /* Запретить перенос текста на новую строку */
+  text-overflow: ellipsis; /* Отображать многоточие, если текст не помещается в кнопке */
+  width: 20%;
+  margin-bottom: 5px;
+    border: 1px
+}
+
+

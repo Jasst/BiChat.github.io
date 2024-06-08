@@ -46,7 +46,7 @@
 
     <div id="chat-section" style="display:none;">
   <h2 data-translate="chat_section">Chat</h2>
-  <div id="dialog-tabs"></div>
+
   <div id="current-dialog" class="dialog"></div>
   <label for="content" data-translate="content_label">Message:</label>
   <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
@@ -54,7 +54,11 @@
   <p id="send-status"></p>
 </div>
 
+
+
+
     <div id="send-message-section" style="display:none;">
+         <div id="dialog-tabs"></div>
       <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
       <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
     </div>
