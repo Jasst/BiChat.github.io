@@ -45,13 +45,14 @@
     </div>
 
     <div id="chat-section" style="display:none;">
-      <h2 data-translate="chat_section">Chat</h2>
-      <div id="chat-box"></div>
-      <label for="content" data-translate="content_label">Message:</label>
-      <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
-      <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
-      <p id="send-status"></p>
-    </div>
+  <h2 data-translate="chat_section">Chat</h2>
+  <div id="dialog-tabs"></div>
+  <div id="current-dialog" class="dialog"></div>
+  <label for="content" data-translate="content_label">Message:</label>
+  <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
+  <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
+  <p id="send-status"></p>
+</div>
 
     <div id="send-message-section" style="display:none;">
       <label for="recipient" data-translate="recipient_label">Recipient Address:</label>

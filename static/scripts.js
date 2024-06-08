@@ -110,7 +110,8 @@ function sendMessage() {
             });
         }
 
-// В функции getMessages()
+
+
 function getMessages() {
     fetch(`/get_messages?lang=${currentLanguage}`, {
         method: 'POST',
@@ -121,31 +122,87 @@ function getMessages() {
     })
     .then(response => response.json())
     .then(data => {
-        const chatBox = document.getElementById('chat-box');
-        chatBox.innerHTML = '';
+        const dialogTabs = document.getElementById('dialog-tabs');
+        dialogTabs.innerHTML = '';
+
+        const dialogContainer = document.getElementById('current-dialog');
+        dialogContainer.innerHTML = '';
+
+        // Создаем объект для группировки сообщений по диалогам
+        const dialogs = {};
         data.forEach(message => {
-            const messageElement = document.createElement('div');
-            messageElement.classList.add('message');
-            if (message.sender === userAddress) {
-                messageElement.classList.add('sent');
-            } else {
-                messageElement.classList.add('received');
+            const sender = message.sender;
+            const recipient = message.recipient;
+
+            // Определяем адреса отправителя и получателя для данного пользователя
+            const [currentAddress, otherAddress] = userAddress === sender ? [sender, recipient] : [recipient, sender];
+
+            // Определяем ключ для группировки сообщений
+            const dialogKey = currentAddress + "_" + otherAddress;
+
+            // Проверяем, есть ли диалог между отправителем и получателем
+            if (!dialogs[dialogKey]) {
+                dialogs[dialogKey] = [];
             }
-            const timestamp = new Date(message.timestamp * 1000).toLocaleString();
-            messageElement.innerHTML = `
-                <div class="message-content">${message.content}</div>
-                <div class="message-sender">From: ${message.sender}</div>
-                <div class="message-recipient">To: ${message.recipient}</div>
-                <div class="message-timestamp">${timestamp}</div>
-            `;
-            chatBox.appendChild(messageElement);
+
+            // Добавляем сообщение в соответствующий диалог
+            dialogs[dialogKey].push(message);
         });
+
+        // Создаем вкладки для каждого диалога
+        for (const dialogKey in dialogs) {
+            if (dialogs.hasOwnProperty(dialogKey)) {
+                const dialogMessages = dialogs[dialogKey];
+                const [sender, recipient] = dialogKey.split('_');
+
+                const tabButton = document.createElement('button');
+                tabButton.textContent = `Dialog with ${recipient}`;
+                tabButton.onclick = function() {
+                    displayDialog(dialogMessages, recipient);
+                };
+                dialogTabs.appendChild(tabButton);
+            }
+        }
+
+        // При первой загрузке отображаем первый диалог, если он есть
+        const firstDialogKey = Object.keys(dialogs)[0];
+        if (firstDialogKey) {
+            const [sender, recipient] = firstDialogKey.split('_');
+            displayDialog(dialogs[firstDialogKey], recipient);
+        }
     })
     .catch(error => {
         console.error('Error:', error);
         showAlert('Error fetching messages');
     });
 }
+
+function displayDialog(messages, recipient) {
+    const dialogContainer = document.getElementById('current-dialog');
+    dialogContainer.innerHTML = '';
+
+    // Записываем адрес получателя в поле "Recipient Address"
+    document.getElementById('recipient').value = recipient;
+
+    messages.forEach(message => {
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message');
+        if (message.sender === userAddress) {
+            messageElement.classList.add('sent');
+        } else {
+            messageElement.classList.add('received');
+        }
+        const timestamp = new Date(message.timestamp * 1000).toLocaleString();
+        messageElement.innerHTML = `
+            <div class="message-content">${message.content}</div>
+            <div class="message-sender">From: ${message.sender}</div>
+            <div class="message-recipient">To: ${message.recipient}</div>
+            <div class="message-timestamp">${timestamp}</div>
+        `;
+        dialogContainer.appendChild(messageElement);
+    });
+}
+
 
 function toggleTheme() {
             document.body.classList.toggle('dark-theme');
