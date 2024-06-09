@@ -1,6 +1,7 @@
 let mnemonicPhrase = '';
 let userAddress = '';
 let currentLanguage = 'en';
+let activeRecipient = '';
 
 function toggleSettings() {
     const settingsMenu = document.getElementById('settings-menu');
@@ -148,7 +149,7 @@ function getMessages() {
                 tabButton.textContent = `Dialog with ${recipient}`;
                 tabButton.onclick = function() {
                     displayDialog(dialogMessages, recipient);
-                    copyRecipientAddress(recipient); // Copy recipient address on click
+                    copyRecipientAddress(recipient);
                 };
                 dialogTabs.appendChild(tabButton);
             }
@@ -158,6 +159,10 @@ function getMessages() {
         if (firstDialogKey) {
             const [sender, recipient] = firstDialogKey.split('_');
             displayDialog(dialogs[firstDialogKey], recipient);
+            if (!activeRecipient) {
+                copyRecipientAddress(recipient);
+                activeRecipient = recipient;
+            }
         }
     })
     .catch(error => {
@@ -169,8 +174,6 @@ function getMessages() {
 function displayDialog(messages, recipient) {
     const dialogContainer = document.getElementById('current-dialog');
     dialogContainer.innerHTML = '';
-
-    document.getElementById('recipient').value = recipient;
 
     messages.forEach(message => {
         const messageElement = document.createElement('div');
