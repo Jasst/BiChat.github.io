@@ -1,7 +1,7 @@
 let mnemonicPhrase = '';
 let userAddress = '';
 let currentLanguage = 'en';
-let activeRecipient = '';
+let activeDialog = '';
 
 function toggleSettings() {
     const settingsMenu = document.getElementById('settings-menu');
@@ -148,6 +148,7 @@ function getMessages() {
                 const tabButton = document.createElement('button');
                 tabButton.textContent = `Dialog with ${recipient}`;
                 tabButton.onclick = function() {
+                    activeDialog = dialogKey;
                     displayDialog(dialogMessages, recipient);
                     copyRecipientAddress(recipient);
                 };
@@ -155,14 +156,17 @@ function getMessages() {
             }
         }
 
-        const firstDialogKey = Object.keys(dialogs)[0];
-        if (firstDialogKey) {
-            const [sender, recipient] = firstDialogKey.split('_');
-            displayDialog(dialogs[firstDialogKey], recipient);
-            if (!activeRecipient) {
+        if (!activeDialog) {
+            const firstDialogKey = Object.keys(dialogs)[0];
+            if (firstDialogKey) {
+                const [sender, recipient] = firstDialogKey.split('_');
+                activeDialog = firstDialogKey;
+                displayDialog(dialogs[firstDialogKey], recipient);
                 copyRecipientAddress(recipient);
-                activeRecipient = recipient;
             }
+        } else {
+            const [sender, recipient] = activeDialog.split('_');
+            displayDialog(dialogs[activeDialog], recipient);
         }
     })
     .catch(error => {
