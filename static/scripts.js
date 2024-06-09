@@ -24,93 +24,89 @@ document.addEventListener('click', function(event) {
 
 
 function createWallet() {
-            fetch(`/create_wallet?lang=${currentLanguage}`, {
-                method: 'POST',
-            })
-            .then(response => response.json())
-            .then(data => {
-                mnemonicPhrase = data.mnemonic_phrase;
-                userAddress = data.address;
-                document.getElementById('wallet-info').innerHTML = `Address: ${data.address}`;
+    fetch(`/create_wallet?lang=${currentLanguage}`, {
+        method: 'POST',
+    })
+    .then(response => response.json())
+    .then(data => {
+        mnemonicPhrase = data.mnemonic_phrase;
+        userAddress = data.address;
+        document.getElementById('wallet-info').innerHTML = `Address: ${data.address}`;
 
-                document.getElementById('wallet-section').style.display = 'none';
-                document.getElementById('mnemonic-login').value = mnemonicPhrase;
-                document.getElementById('create-wallet-container').style.display = 'none';
-                document.getElementById('send-message-section').style.display = 'block';
-                document.getElementById('chat-section').style.display = 'block';
-                document.getElementById('logout-button').style.display = 'block';
+        document.getElementById('wallet-section').style.display = 'none';
+        document.getElementById('mnemonic-login').value = mnemonicPhrase;
+        document.getElementById('create-wallet-container').style.display = 'none';
+        document.getElementById('send-message-section').style.display = 'block';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('logout-button').style.display = 'block';
 
-                checkIncomingMessages();
-                getMessages();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('Error creating wallet');
-            });
-        }
+        checkIncomingMessages();
+        getMessages();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Error creating wallet');
+    });
+}
 
 function loginWallet() {
-            const mnemonic = document.getElementById('mnemonic-login').value;
+    const mnemonic = document.getElementById('mnemonic-login').value;
 
-            fetch(`/login_wallet?lang=${currentLanguage}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ mnemonic_phrase: mnemonic }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                mnemonicPhrase = mnemonic;
-                userAddress = data.address;
+    fetch(`/login_wallet?lang=${currentLanguage}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ mnemonic_phrase: mnemonic }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        mnemonicPhrase = mnemonic;
+        userAddress = data.address;
 
+        document.getElementById('wallet-section').style.display = 'none';
+        document.getElementById('create-wallet-container').style.display = 'none';
+        document.getElementById('login-status').innerHTML = data.message;
+        document.getElementById('login-wallet-container').style.display = 'none';
+        document.getElementById('send-message-section').style.display = 'block';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('logout-button').style.display = 'block';
 
-
-                document.getElementById('wallet-section').style.display = 'none';
-                document.getElementById('create-wallet-container').style.display = 'none';
-                document.getElementById('login-status').innerHTML = data.message;
-                document.getElementById('login-wallet-container').style.display = 'none';
-                document.getElementById('send-message-section').style.display = 'block';
-                document.getElementById('chat-section').style.display = 'block';
-                document.getElementById('logout-button').style.display = 'block';
-
-                checkIncomingMessages();
-                getMessages();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('Error logging in');
-            });
-        }
+        checkIncomingMessages();
+        getMessages();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Error logging in');
+    });
+}
 
 function sendMessage() {
-            const recipient = document.getElementById('recipient').value;
-            const content = document.getElementById('content').value;
+    const recipient = document.getElementById('recipient').value;
+    const content = document.getElementById('content').value;
 
-            fetch(`/send_message?lang=${currentLanguage}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    mnemonic_phrase: mnemonicPhrase,
-                    recipient: recipient,
-                    content: content,
-                }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('send-status').innerHTML = data.message || 'Message sent successfully';
-                document.getElementById('content').value = '';
-                getMessages();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('Error sending message');
-            });
-        }
-
-
+    fetch(`/send_message?lang=${currentLanguage}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            mnemonic_phrase: mnemonicPhrase,
+            recipient: recipient,
+            content: content,
+        }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('send-status').innerHTML = data.message || 'Message sent successfully';
+        document.getElementById('content').value = '';
+        getMessages();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Error sending message');
+    });
+}
 
 function getMessages() {
     fetch(`/get_messages?lang=${currentLanguage}`, {
@@ -181,7 +177,7 @@ function displayDialog(messages, recipient) {
     const dialogContainer = document.getElementById('current-dialog');
     dialogContainer.innerHTML = '';
 
-    // Записываем адрес получателя в поле "Recipient Address"
+    // Записываем адрес получателя в поле "Recipient Address" только при выборе диалогового окна
     document.getElementById('recipient').value = recipient;
 
     messages.forEach(message => {
@@ -203,30 +199,30 @@ function displayDialog(messages, recipient) {
     });
 }
 
-
 function toggleTheme() {
-            document.body.classList.toggle('dark-theme');
-        }
-  
-function showAlert(message) {
-            alert(message);
-        }
+    document.body.classList.toggle('dark-theme');
+}
 
- function handleKeyPress(event, callback) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                callback();
-            }
-        }
+function showAlert(message) {
+    alert(message);
+}
+
+function handleKeyPress(event, callback) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        callback();
+    }
+}
 
 function checkIncomingMessages() {
-            setInterval(() => {
-                getMessages();
-            }, 5000); // Check for new messages every 5 seconds
-        }
+    setInterval(() => {
+        getMessages();
+    }, 5000); // Check for new messages every 5 seconds
+}
 
 function logout() {
-            location.reload();  }
+    location.reload();
+}
 
 function showMnemonic() {
     const walletInfo = document.getElementById('wallet-info');
@@ -255,6 +251,7 @@ function hideMnemonic() {
     document.getElementById('hide-mnemonic-button').style.display = 'none';
     document.getElementById('show-mnemonic-button').style.display = 'block';
 }
+
 
 function switchLanguage() {
     const languageToggle = document.getElementById('language-toggle');
