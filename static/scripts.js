@@ -191,11 +191,9 @@ function displayDialog(messages, recipient) {
             <div class="message-timestamp">${timestamp}</div>
         `;
         dialogContainer.appendChild(messageElement);
-    });
-
-    // Копируем адрес получателя в поле отправителя
-    copyRecipientAddress(recipient);
+    })
 }
+    // Копируем адрес получателя в поле отправителя
 
 function copyRecipientAddress(recipient) {
     document.getElementById('recipient').value = recipient;
