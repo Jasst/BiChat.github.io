@@ -188,7 +188,6 @@ function displayDialog(messages, recipient) {
         messageElement.innerHTML = `
             <div class="message-content">${message.content}</div>
             <div class="message-sender">From: ${message.sender}</div>
-            <div class="message-recipient">To: ${message.recipient}</div>
             <div class="message-timestamp">${timestamp}</div>
         `;
         dialogContainer.appendChild(messageElement);
