@@ -123,28 +123,22 @@ function getMessages() {
         const dialogContainer = document.getElementById('current-dialog');
         dialogContainer.innerHTML = '';
 
-        // Создаем объект для группировки сообщений по диалогам
         const dialogs = {};
         data.forEach(message => {
             const sender = message.sender;
             const recipient = message.recipient;
 
-            // Определяем адреса отправителя и получателя для данного пользователя
             const [currentAddress, otherAddress] = userAddress === sender ? [sender, recipient] : [recipient, sender];
 
-            // Определяем ключ для группировки сообщений
             const dialogKey = currentAddress + "_" + otherAddress;
 
-            // Проверяем, есть ли диалог между отправителем и получателем
             if (!dialogs[dialogKey]) {
                 dialogs[dialogKey] = [];
             }
 
-            // Добавляем сообщение в соответствующий диалог
             dialogs[dialogKey].push(message);
         });
 
-        // Создаем вкладки для каждого диалога
         for (const dialogKey in dialogs) {
             if (dialogs.hasOwnProperty(dialogKey)) {
                 const dialogMessages = dialogs[dialogKey];
@@ -154,12 +148,12 @@ function getMessages() {
                 tabButton.textContent = `Dialog with ${recipient}`;
                 tabButton.onclick = function() {
                     displayDialog(dialogMessages, recipient);
+                    copyRecipientAddress(recipient); // Copy recipient address on click
                 };
                 dialogTabs.appendChild(tabButton);
             }
         }
 
-        // При первой загрузке отображаем первый диалог, если он есть
         const firstDialogKey = Object.keys(dialogs)[0];
         if (firstDialogKey) {
             const [sender, recipient] = firstDialogKey.split('_');
@@ -176,6 +170,8 @@ function displayDialog(messages, recipient) {
     const dialogContainer = document.getElementById('current-dialog');
     dialogContainer.innerHTML = '';
 
+    document.getElementById('recipient').value = recipient;
+
     messages.forEach(message => {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
@@ -188,12 +184,12 @@ function displayDialog(messages, recipient) {
         messageElement.innerHTML = `
             <div class="message-content">${message.content}</div>
             <div class="message-sender">From: ${message.sender}</div>
+            <div class="message-recipient">To: ${message.recipient}</div>
             <div class="message-timestamp">${timestamp}</div>
         `;
         dialogContainer.appendChild(messageElement);
-    })
+    });
 }
-    // Копируем адрес получателя в поле отправителя
 
 function copyRecipientAddress(recipient) {
     document.getElementById('recipient').value = recipient;
@@ -217,7 +213,7 @@ function handleKeyPress(event, callback) {
 function checkIncomingMessages() {
     setInterval(() => {
         getMessages();
-    }, 5000); // Check for new messages every 5 seconds
+    }, 5000);
 }
 
 function logout() {
@@ -259,4 +255,55 @@ function switchLanguage() {
 
     const translations = {
         en: {
-            address_label
+            address_label: "Address:",
+            logout_button: "Logout",
+            show_mnemonic_button: "Show Mnemonic Phrase",
+            hide_mnemonic_button: "Hide Mnemonic",
+            toggle_visibility_button: "Toggle Visibility",
+            title: "Blockchain Messenger",
+            toggle_theme: "Toggle Theme",
+            create_wallet: "Create Wallet",
+            login_button: "Login",
+            send_message: "Send Message",
+            get_messages: "Get Messages",
+            wallet_section: "Create Wallet or Login",
+            send_message_section: "Send Message",
+            chat_section: "Chat",
+            mnemonic_label: "Mnemonic Phrase:",
+            recipient_label: "Recipient Address:",
+            content_label: "Message:",
+            send_button: "Send Message",
+            get_messages_button: "Get Messages"
+        },
+        ru: {
+            address_label: "Адрес:",
+            logout_button: "Выход",
+            show_mnemonic_button: "Показать мнемоническую фразу",
+            hide_mnemonic_button: "Спрятать мнемоническую фразу",
+            toggle_visibility_button: "Разблокировать/заблокировать",
+            title: "Блокчейн Мессенджер",
+            toggle_theme: "Переключить тему",
+            create_wallet: "Создать кошелек",
+            login_button: "Войти",
+            send_message: "Отправить сообщение",
+            get_messages: "Получить сообщения",
+            wallet_section: "Создать кошелек или Войти",
+            send_message_section: "Отправить сообщение",
+            chat_section: "Чат",
+            mnemonic_label: "Мнемоническая фраза:",
+            recipient_label: "Адрес получателя:",
+            content_label: "Сообщение:",
+            send_button: "Отправить сообщение",
+            get_messages_button: "Получить сообщения"
+        }
+    };
+
+    const selectedTranslations = translations[currentLanguage];
+    const elementsToTranslate = document.querySelectorAll('[data-translate]');
+    elementsToTranslate.forEach(element => {
+        const translationKey = element.dataset.translate;
+        if (translationKey) {
+            element.innerText = selectedTranslations[translationKey];
+        }
+    });
+}
