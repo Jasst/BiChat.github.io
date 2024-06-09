@@ -192,7 +192,6 @@ function displayDialog(messages, recipient) {
         messageElement.innerHTML = `
             <div class="message-content">${message.content}</div>
             <div class="message-sender">From: ${message.sender}</div>
-            <div class="message-recipient">To: ${message.recipient}</div>
             <div class="message-timestamp">${timestamp}</div>
         `;
         dialogContainer.appendChild(messageElement);
@@ -251,7 +250,6 @@ function hideMnemonic() {
     document.getElementById('hide-mnemonic-button').style.display = 'none';
     document.getElementById('show-mnemonic-button').style.display = 'block';
 }
-
 
 function switchLanguage() {
     const languageToggle = document.getElementById('language-toggle');
@@ -312,7 +310,6 @@ function switchLanguage() {
         }
     });
 }
-
 
 
   
