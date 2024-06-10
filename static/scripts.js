@@ -18,6 +18,27 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Другие действия при загрузке страницы
+    if (localStorage.getItem('currentLanguage')) {
+        state.currentLanguage = localStorage.getItem('currentLanguage');
+    }
+
+    // Переключаем язык на сохраненный
+    switchLanguage();
+
+    document.getElementById('create-wallet-button').onclick = createWallet;
+    document.getElementById('login-button').onclick = loginWallet;
+    document.getElementById('send-button').onclick = sendMessage;
+    document.getElementById('language-toggle').onclick = switchLanguage;
+    document.getElementById('toggle-theme-button').onclick = toggleTheme;
+    document.getElementById('show-mnemonic-button').onclick = showMnemonic;
+    document.getElementById('hide-mnemonic-button').onclick = hideMnemonic;
+    document.getElementById('logout-button').onclick = logout;
+
+    document.getElementById('content').addEventListener('keypress', function(event) {
+        handleKeyPress(event, sendMessage);
+    });
+
+    checkIncomingMessages();
 });
 
 function loadState() {
