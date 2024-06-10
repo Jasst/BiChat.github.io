@@ -25,12 +25,12 @@ document.addEventListener('DOMContentLoaded', function() {
     switchLanguage();
     // Переключаем язык на сохраненный
     // Показываем или скрываем мнемоническую фразу в зависимости от сохраненного состояния
-    if (localStorage.getItem('showMnemonic') === 'true') {
-        document.getElementById('hide-mnemonic-button').style.display = 'block';
-        document.getElementById('show-mnemonic-button').style.display = 'none';
-    } else {
-        document.getElementById('hide-mnemonic-button').style.display = 'none';
-        document.getElementById('show-mnemonic-button').style.display = 'block';
+    if (localStorage.getItem('showMnemonic')) {
+        if (localStorage.getItem('showMnemonic') === 'true') {
+            showMnemonic();
+        } else {
+            hideMnemonic();
+        }
     }
     
     document.getElementById('create-wallet-button').onclick = createWallet;
@@ -355,6 +355,10 @@ function logout() {
 }
 
 function showMnemonic() {
+    // Добавляем сохранение состояния кнопки при ее клике
+    localStorage.setItem('showMnemonic', 'true');
+
+    
     const walletInfo = document.getElementById('wallet-info');
     walletInfo.style.display = 'block';
     walletInfo.innerHTML = `<label data-translate="address_label">Address:</label>
@@ -372,6 +376,10 @@ function showMnemonic() {
 }
 
 function hideMnemonic() {
+    // Добавляем сохранение состояния кнопки при ее клике
+    localStorage.setItem('showMnemonic', 'false');
+
+    
     const walletInfo = document.getElementById('wallet-info');
     walletInfo.style.display = 'none';
 
