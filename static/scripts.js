@@ -200,6 +200,10 @@ async function getMessages() {
             const [sender, recipient] = state.activeDialog.split('_');
             displayDialog(dialogs[state.activeDialog], recipient);
         }
+
+        if (localStorage.getItem('activeDialog')) {
+            state.activeDialog = localStorage.getItem('activeDialog');
+        }
     } catch (error) {
         console.error('Error:', error);
         showAlert('Error fetching messages');
@@ -293,16 +297,11 @@ function switchLanguage() {
     });
 
     saveState();
+    localStorage.setItem('currentLanguage', state.currentLanguage); // Update stored language
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     loadState();
-
-    const storedLanguage = localStorage.getItem('currentLanguage');
-    if (storedLanguage) {
-        state.currentLanguage = storedLanguage;
-        switchLanguage();
-    }
 
     document.getElementById('create-wallet-button').onclick = createWallet;
     document.getElementById('login-button').onclick = loginWallet;
@@ -330,6 +329,7 @@ function logout() {
     document.getElementById('chat-section').style.display = 'none';
     document.getElementById('logout-button').style.display = 'none';
     localStorage.removeItem('appState');
+    localStorage.removeItem('activeDialog'); // Remove active dialog from localStorage
 }
 
 function showMnemonic() {
@@ -376,3 +376,4 @@ function checkIncomingMessages() {
         getMessages();
     }, 5000);
 }
+
