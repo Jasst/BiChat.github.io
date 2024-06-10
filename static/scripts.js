@@ -420,6 +420,7 @@ async function checkIncomingMessages() {
 }
 
 function updateChatInterface(messages) {
+    getMessages();
     // Обновление интерфейса чата с учетом полученных сообщений
     // Например, добавление новых сообщений в соответствующий диалог и т.д.
 }
