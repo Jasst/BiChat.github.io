@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Переключаем язык на сохраненный
-    switchLanguage();
 
     document.getElementById('create-wallet-button').onclick = createWallet;
     document.getElementById('login-button').onclick = loginWallet;
