@@ -403,10 +403,13 @@ function handleKeyPress(event, callback) {
     }
 }
 
-
 function checkIncomingMessages() {
     setInterval(() => {
-        getMessages();
+        try {
+            getMessages();
+        } catch (error) {
+            console.error('Error fetching messages:', error);
+        }
     }, 5000);
 }
 
