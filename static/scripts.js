@@ -402,9 +402,25 @@ function handleKeyPress(event, callback) {
     }
 }
 
-function checkIncomingMessages() {
-    setInterval(() => {
-        getMessages();
-    }, 5000);
+async function checkIncomingMessages() {
+    try {
+        const response = await fetch(`/get_messages?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mnemonic_phrase: state.mnemonicPhrase })
+        });
+        const data = await response.json();
+
+        // Обработка полученных сообщений и обновление интерфейса
+        updateChatInterface(data);
+    } catch (error) {
+        console.error('Error:', error);
+        showAlert('Error fetching messages');
+    }
+}
+
+function updateChatInterface(messages) {
+    // Обновление интерфейса чата с учетом полученных сообщений
+    // Например, добавление новых сообщений в соответствующий диалог и т.д.
 }
 
