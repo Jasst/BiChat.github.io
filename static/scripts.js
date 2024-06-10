@@ -24,12 +24,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     switchLanguage();
     // Переключаем язык на сохраненный
-    if (localStorage.getItem('showMnemonic')) {
-        if (localStorage.getItem('showMnemonic') === 'true') {
-            showMnemonic();
-        } else {
-            hideMnemonic();
-        }
+    // Показываем или скрываем мнемоническую фразу в зависимости от сохраненного состояния
+    if (localStorage.getItem('showMnemonic') === 'true') {
+        document.getElementById('hide-mnemonic-button').style.display = 'block';
+        document.getElementById('show-mnemonic-button').style.display = 'none';
+    } else {
+        document.getElementById('hide-mnemonic-button').style.display = 'none';
+        document.getElementById('show-mnemonic-button').style.display = 'block';
     }
     
     document.getElementById('create-wallet-button').onclick = createWallet;
