@@ -53,9 +53,7 @@ function loadState() {
             document.getElementById('chat-section').style.display = 'block';
             document.getElementById('logout-button').style.display = 'block';
         }
-        if (state.currentLanguage === 'ru') {
-            switchLanguage();
-        }
+    
         if (state.theme === 'dark') {
             toggleTheme();
         }
