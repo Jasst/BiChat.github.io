@@ -1,68 +1,81 @@
-let mnemonicPhrase = '';
-let userAddress = '';
-let currentLanguage = 'en';
-let activeDialog = '';
+let state = {
+    mnemonicPhrase: '',
+    userAddress: '',
+    currentLanguage: 'en',
+    activeDialog: '',
+    theme: 'light'
+};
 
-function toggleSettings() {
-    const settingsMenu = document.getElementById('settings-menu');
-    const hideMnemonicButton = document.getElementById('hide-mnemonic-button');
-    const showMnemonicButton = document.getElementById('show-mnemonic-button');
-    if (showMnemonicButton.style.display !== 'none') {
-        hideMnemonicButton.style.display = 'none';
-    }
-
-    settingsMenu.classList.toggle('visible');
-    settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
+function saveState() {
+    localStorage.setItem('appState', JSON.stringify(state));
 }
 
-document.addEventListener('click', function(event) {
-    const settingsMenu = document.getElementById('settings-menu');
-    const settingsToggle = document.getElementById('settings-toggle');
-    if (settingsMenu.style.display === 'block' && !settingsMenu.contains(event.target) && !settingsToggle.contains(event.target)) {
-        settingsMenu.style.display = 'none';
+function loadState() {
+    const storedState = localStorage.getItem('appState');
+    if (storedState) {
+        const parsedState = JSON.parse(storedState);
+        state = { ...state, ...parsedState };
+        if (state.userAddress) {
+            document.getElementById('wallet-section').style.display = 'none';
+            document.getElementById('create-wallet-container').style.display = 'none';
+            document.getElementById('send-message-section').style.display = 'block';
+            document.getElementById('chat-section').style.display = 'block';
+            document.getElementById('logout-button').style.display = 'block';
+        }
+        if (state.currentLanguage === 'ru') {
+            switchLanguage();
+        }
+        if (state.theme === 'dark') {
+            toggleTheme();
+        }
     }
-});
+}
 
-function createWallet() {
-    fetch(`/create_wallet?lang=${currentLanguage}`, {
-        method: 'POST',
-    })
-    .then(response => response.json())
-    .then(data => {
-        mnemonicPhrase = data.mnemonic_phrase;
-        userAddress = data.address;
+function toggleTheme() {
+    document.body.classList.toggle('dark-theme');
+    state.theme = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
+    saveState();
+}
+
+async function createWallet() {
+    try {
+        const response = await fetch(`/create_wallet?lang=${state.currentLanguage}`, { method: 'POST' });
+        const data = await response.json();
+
+        state.mnemonicPhrase = data.mnemonic_phrase;
+        state.userAddress = data.address;
         document.getElementById('wallet-info').innerHTML = `Address: ${data.address}`;
 
         document.getElementById('wallet-section').style.display = 'none';
-        document.getElementById('mnemonic-login').value = mnemonicPhrase;
+        document.getElementById('mnemonic-login').value = state.mnemonicPhrase;
         document.getElementById('create-wallet-container').style.display = 'none';
         document.getElementById('send-message-section').style.display = 'block';
         document.getElementById('chat-section').style.display = 'block';
         document.getElementById('logout-button').style.display = 'block';
 
+        saveState();
+
         checkIncomingMessages();
         getMessages();
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error:', error);
         showAlert('Error creating wallet');
-    });
+    }
 }
 
-function loginWallet() {
-    const mnemonic = document.getElementById('mnemonic-login').value;
+async function loginWallet() {
+    try {
+        const mnemonic = document.getElementById('mnemonic-login').value;
 
-    fetch(`/login_wallet?lang=${currentLanguage}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ mnemonic_phrase: mnemonic }),
-    })
-    .then(response => response.json())
-    .then(data => {
-        mnemonicPhrase = mnemonic;
-        userAddress = data.address;
+        const response = await fetch(`/login_wallet?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mnemonic_phrase: mnemonic })
+        });
+        const data = await response.json();
+
+        state.mnemonicPhrase = mnemonic;
+        state.userAddress = data.address;
 
         document.getElementById('wallet-section').style.display = 'none';
         document.getElementById('create-wallet-container').style.display = 'none';
@@ -72,52 +85,51 @@ function loginWallet() {
         document.getElementById('chat-section').style.display = 'block';
         document.getElementById('logout-button').style.display = 'block';
 
+        saveState();
+
         checkIncomingMessages();
         getMessages();
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error:', error);
         showAlert('Error logging in');
-    });
+    }
 }
 
-function sendMessage() {
-    const recipient = document.getElementById('recipient').value;
-    const content = document.getElementById('content').value;
+async function sendMessage() {
+    try {
+        const recipient = document.getElementById('recipient').value;
+        const content = document.getElementById('content').value;
 
-    fetch(`/send_message?lang=${currentLanguage}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            mnemonic_phrase: mnemonicPhrase,
-            recipient: recipient,
-            content: content,
-        }),
-    })
-    .then(response => response.json())
-    .then(data => {
+        const response = await fetch(`/send_message?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mnemonic_phrase: state.mnemonicPhrase,
+                recipient: recipient,
+                content: content,
+            })
+        });
+        const data = await response.json();
+
         document.getElementById('send-status').innerHTML = data.message || 'Message sent successfully';
         document.getElementById('content').value = '';
+
         getMessages();
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error:', error);
         showAlert('Error sending message');
-    });
+    }
 }
 
-function getMessages() {
-    fetch(`/get_messages?lang=${currentLanguage}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ mnemonic_phrase: mnemonicPhrase }),
-    })
-    .then(response => response.json())
-    .then(data => {
+async function getMessages() {
+    try {
+        const response = await fetch(`/get_messages?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mnemonic_phrase: state.mnemonicPhrase })
+        });
+        const data = await response.json();
+
         const dialogTabs = document.getElementById('dialog-tabs');
         dialogTabs.innerHTML = '';
 
@@ -128,10 +140,8 @@ function getMessages() {
         data.forEach(message => {
             const sender = message.sender;
             const recipient = message.recipient;
-
-            const [currentAddress, otherAddress] = userAddress === sender ? [sender, recipient] : [recipient, sender];
-
-            const dialogKey = currentAddress + "_" + otherAddress;
+            const [currentAddress, otherAddress] = state.userAddress === sender ? [sender, recipient] : [recipient, sender];
+            const dialogKey = `${currentAddress}_${otherAddress}`;
 
             if (!dialogs[dialogKey]) {
                 dialogs[dialogKey] = [];
@@ -147,32 +157,32 @@ function getMessages() {
 
                 const tabButton = document.createElement('button');
                 tabButton.textContent = `Dialog with ${recipient}`;
-                tabButton.onclick = function() {
-                    activeDialog = dialogKey;
+                tabButton.onclick = function () {
+                    state.activeDialog = dialogKey;
                     displayDialog(dialogMessages, recipient);
                     copyRecipientAddress(recipient);
+                    saveState();
                 };
                 dialogTabs.appendChild(tabButton);
             }
         }
 
-        if (!activeDialog) {
+        if (!state.activeDialog) {
             const firstDialogKey = Object.keys(dialogs)[0];
             if (firstDialogKey) {
                 const [sender, recipient] = firstDialogKey.split('_');
-                activeDialog = firstDialogKey;
+                state.activeDialog = firstDialogKey;
                 displayDialog(dialogs[firstDialogKey], recipient);
                 copyRecipientAddress(recipient);
             }
         } else {
-            const [sender, recipient] = activeDialog.split('_');
-            displayDialog(dialogs[activeDialog], recipient);
+            const [sender, recipient] = state.activeDialog.split('_');
+            displayDialog(dialogs[state.activeDialog], recipient);
         }
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error:', error);
         showAlert('Error fetching messages');
-    });
+    }
 }
 
 function displayDialog(messages, recipient) {
@@ -182,7 +192,7 @@ function displayDialog(messages, recipient) {
     messages.forEach(message => {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
-        if (message.sender === userAddress) {
+        if (message.sender === state.userAddress) {
             messageElement.classList.add('sent');
         } else {
             messageElement.classList.add('received');
@@ -202,63 +212,10 @@ function copyRecipientAddress(recipient) {
     document.getElementById('recipient').value = recipient;
 }
 
-function toggleTheme() {
-    document.body.classList.toggle('dark-theme');
-}
-
-function showAlert(message) {
-    alert(message);
-}
-
-function handleKeyPress(event, callback) {
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        callback();
-    }
-}
-
-function checkIncomingMessages() {
-    setInterval(() => {
-        getMessages();
-    }, 5000);
-}
-
-function logout() {
-    location.reload();
-}
-
-function showMnemonic() {
-    const walletInfo = document.getElementById('wallet-info');
-    walletInfo.style.display = 'block';
-    walletInfo.innerHTML = `<label data-translate="address_label">Address:</label>
-                            <span id="address-content">${userAddress}</span>`;
-
-    const mnemonicDisplay = document.getElementById('mnemonic-display');
-    mnemonicDisplay.innerHTML = `<label for="mnemonic-display" data-translate="mnemonic_label">Mnemonic Phrase:</label>
-                                 <input type="text" id="mnemonic-display" value="${mnemonicPhrase}" readonly>`;
-
-    const sendMessageSection = document.getElementById('send-message-section');
-    sendMessageSection.style.display = 'block';
-
-    document.getElementById('hide-mnemonic-button').style.display = 'block';
-    document.getElementById('show-mnemonic-button').style.display = 'none';
-}
-
-function hideMnemonic() {
-    const walletInfo = document.getElementById('wallet-info');
-    walletInfo.style.display = 'none';
-
-    const mnemonicDisplay = document.getElementById('mnemonic-display');
-    mnemonicDisplay.innerHTML = '';
-
-    document.getElementById('hide-mnemonic-button').style.display = 'none';
-    document.getElementById('show-mnemonic-button').style.display = 'block';
-}
-
 function switchLanguage() {
     const languageToggle = document.getElementById('language-toggle');
-    currentLanguage = currentLanguage === 'en' ? 'ru' : 'en';
-    languageToggle.innerText = currentLanguage === 'en' ? 'Switch to Russian' : 'Переключить на английский';
+    state.currentLanguage = state.currentLanguage === 'en' ? 'ru' : 'en';
+    languageToggle.innerText = state.currentLanguage === 'en' ? 'Switch to Russian' : 'Переключить на английский';
 
     const translations = {
         en: {
@@ -305,7 +262,7 @@ function switchLanguage() {
         }
     };
 
-    const selectedTranslations = translations[currentLanguage];
+    const selectedTranslations = translations[state.currentLanguage];
     const elementsToTranslate = document.querySelectorAll('[data-translate]');
     elementsToTranslate.forEach(element => {
         const translationKey = element.dataset.translate;
@@ -313,4 +270,88 @@ function switchLanguage() {
             element.innerText = selectedTranslations[translationKey];
         }
     });
+
+    saveState();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadState();
+
+    const storedLanguage = localStorage.getItem('currentLanguage');
+    if (storedLanguage) {
+        state.currentLanguage = storedLanguage;
+        switchLanguage();
+    }
+
+    document.getElementById('create-wallet-button').onclick = createWallet;
+    document.getElementById('login-button').onclick = loginWallet;
+    document.getElementById('send-button').onclick = sendMessage;
+    document.getElementById('language-toggle').onclick = switchLanguage;
+    document.getElementById('toggle-theme-button').onclick = toggleTheme;
+    document.getElementById('show-mnemonic-button').onclick = showMnemonic;
+    document.getElementById('hide-mnemonic-button').onclick = hideMnemonic;
+    document.getElementById('logout-button').onclick = logout;
+
+    document.getElementById('content').addEventListener('keypress', function(event) {
+        handleKeyPress(event, sendMessage);
+    });
+
+    checkIncomingMessages();
+});
+
+function logout() {
+    state.mnemonicPhrase = '';
+    state.userAddress = '';
+    state.activeDialog = '';
+    document.getElementById('wallet-section').style.display = 'block';
+    document.getElementById('create-wallet-container').style.display = 'block';
+    document.getElementById('send-message-section').style.display = 'none';
+    document.getElementById('chat-section').style.display = 'none';
+    document.getElementById('logout-button').style.display = 'none';
+    localStorage.removeItem('appState');
+}
+
+function showMnemonic() {
+    const walletInfo = document.getElementById('wallet-info');
+    walletInfo.style.display = 'block';
+    walletInfo.innerHTML = `<label data-translate="address_label">Address:</label>
+                            <span id="address-content">${state.userAddress}</span>`;
+
+    const mnemonicDisplay = document.getElementById('mnemonic-display');
+    mnemonicDisplay.innerHTML = `<label for="mnemonic-display" data-translate="mnemonic_label">Mnemonic Phrase:</label>
+                                 <input type="text" id="mnemonic-display" value="${state.mnemonicPhrase}" readonly>`;
+
+    const sendMessageSection = document.getElementById('send-message-section');
+    sendMessageSection.style.display = 'block';
+
+    document.getElementById('hide-mnemonic-button').style.display = 'block';
+    document.getElementById('show-mnemonic-button').style.display = 'none';
+}
+
+function hideMnemonic() {
+    const walletInfo = document.getElementById('wallet-info');
+    walletInfo.style.display = 'none';
+
+    const mnemonicDisplay = document.getElementById('mnemonic-display');
+    mnemonicDisplay.innerHTML = '';
+
+    document.getElementById('hide-mnemonic-button').style.display = 'none';
+    document.getElementById('show-mnemonic-button').style.display = 'block';
+}
+
+function showAlert(message) {
+    alert(message);
+}
+
+function handleKeyPress(event, callback) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        callback();
+    }
+}
+
+function checkIncomingMessages() {
+    setInterval(() => {
+        getMessages();
+    }, 5000);
 }
