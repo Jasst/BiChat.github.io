@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Другие действия при загрузке страницы
     if (localStorage.getItem('currentLanguage')) {
         state.currentLanguage = localStorage.getItem('currentLanguage');
+        switchLanguage();
     }
 
     // Переключаем язык на сохраненный
