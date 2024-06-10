@@ -10,6 +10,16 @@ function saveState() {
     localStorage.setItem('appState', JSON.stringify(state));
 }
 
+document.addEventListener('DOMContentLoaded', function() {
+    if (localStorage.getItem('appState')) {
+        loadState(); // Загрузка сохраненного состояния
+        // Если требуется отправить сообщение после загрузки чатов
+        sendMessage();
+    }
+
+    // Другие действия при загрузке страницы
+});
+
 function loadState() {
     const storedState = localStorage.getItem('appState');
     if (storedState) {
@@ -294,33 +304,18 @@ function switchLanguage() {
     elementsToTranslate.forEach(element => {
         const translationKey = element.dataset.translate;
         if (translationKey) {
-            element.innerText = selectedTranslations[translationKey];
+            const translatedText = selectedTranslations[translationKey];
+            if (translatedText) {
+                element.innerText = translatedText;
+            }
         }
     });
 
-    
     localStorage.setItem('currentLanguage', state.currentLanguage); // Update stored language
     saveState();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    loadState();
 
-    document.getElementById('create-wallet-button').onclick = createWallet;
-    document.getElementById('login-button').onclick = loginWallet;
-    document.getElementById('send-button').onclick = sendMessage;
-    document.getElementById('language-toggle').onclick = switchLanguage;
-    document.getElementById('toggle-theme-button').onclick = toggleTheme;
-    document.getElementById('show-mnemonic-button').onclick = showMnemonic;
-    document.getElementById('hide-mnemonic-button').onclick = hideMnemonic;
-    document.getElementById('logout-button').onclick = logout;
-
-    document.getElementById('content').addEventListener('keypress', function(event) {
-        handleKeyPress(event, sendMessage);
-    });
-
-    checkIncomingMessages();
-});
 
 function logout() {
     state.mnemonicPhrase = '';
