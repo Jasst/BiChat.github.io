@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
         state.currentLanguage = localStorage.getItem('currentLanguage');
         switchLanguage();
     }
-
+    switchLanguage();
     // Переключаем язык на сохраненный
 
     document.getElementById('create-wallet-button').onclick = createWallet;
