@@ -195,6 +195,7 @@ async function getMessages() {
                 state.activeDialog = firstDialogKey;
                 displayDialog(dialogs[firstDialogKey], recipient);
                 copyRecipientAddress(recipient);
+                saveState();
             }
         } else {
             const [sender, recipient] = state.activeDialog.split('_');
@@ -203,6 +204,7 @@ async function getMessages() {
 
         if (localStorage.getItem('activeDialog')) {
             state.activeDialog = localStorage.getItem('activeDialog');
+            saveState();
         }
     } catch (error) {
         console.error('Error:', error);
@@ -296,8 +298,9 @@ function switchLanguage() {
         }
     });
 
-    saveState();
+    
     localStorage.setItem('currentLanguage', state.currentLanguage); // Update stored language
+    saveState();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
