@@ -280,6 +280,7 @@ function shortenAddressForDisplay(address) {
 
 function copyRecipientAddress(recipient) {
     document.getElementById('recipient').value = recipient;
+    getMessages();
 }
 
 function switchLanguage() {
