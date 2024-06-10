@@ -24,7 +24,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     switchLanguage();
     // Переключаем язык на сохраненный
-
+    if (localStorage.getItem('showMnemonic')) {
+        if (localStorage.getItem('showMnemonic') === 'true') {
+            showMnemonic();
+        } else {
+            hideMnemonic();
+        }
+    }
+    
     document.getElementById('create-wallet-button').onclick = createWallet;
     document.getElementById('login-button').onclick = loginWallet;
     document.getElementById('send-button').onclick = sendMessage;
