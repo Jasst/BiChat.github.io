@@ -342,6 +342,7 @@ function switchLanguage() {
 
 
 function logout() {
+    hideMnemonic();
     state.mnemonicPhrase = '';
     state.userAddress = '';
     state.activeDialog = '';
