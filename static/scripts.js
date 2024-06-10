@@ -304,15 +304,12 @@ function switchLanguage() {
     elementsToTranslate.forEach(element => {
         const translationKey = element.dataset.translate;
         if (translationKey) {
-            const translatedText = selectedTranslations[translationKey];
-            if (translatedText) {
-                element.innerText = translatedText;
-            }
+            element.innerText = selectedTranslations[translationKey];
         }
     });
 
     localStorage.setItem('currentLanguage', state.currentLanguage); // Update stored language
-    saveState();
+    saveState(); // Save state after changing language
 }
 
 
