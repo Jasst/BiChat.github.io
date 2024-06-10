@@ -255,22 +255,27 @@ function displayDialog(messages, recipient) {
     dialogContainer.innerHTML = '';
 
     messages.forEach(message => {
+        const { sender, recipient, content, timestamp } = message;
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
-        if (message.sender === state.userAddress) {
+        if (sender === state.userAddress) {
             messageElement.classList.add('sent');
         } else {
             messageElement.classList.add('received');
         }
-        const timestamp = new Date(message.timestamp * 1000).toLocaleString();
+        const formattedTimestamp = new Date(timestamp * 1000).toLocaleString();
         messageElement.innerHTML = `
-            <div class="message-content">${message.content}</div>
-            <div class="message-sender">From: ${message.sender}</div>
-            <div class="message-recipient">To: ${message.recipient}</div>
-            <div class="message-timestamp">${timestamp}</div>
+            <div class="message-content">${content}</div>
+            <div class="message-sender">From: ${shortenAddressForDisplay(sender)}</div>
+            <div class="message-recipient">To: ${shortenAddressForDisplay(recipient)}</div>
+            <div class="message-timestamp">${formattedTimestamp}</div>
         `;
         dialogContainer.appendChild(messageElement);
     });
+}
+
+function shortenAddressForDisplay(address) {
+    return address.slice(0, 6) + '...' + address.slice(-4);
 }
 
 function copyRecipientAddress(recipient) {
