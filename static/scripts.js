@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (localStorage.getItem('appState')) {
         loadState(); // Загрузка сохраненного состояния
         // Если требуется отправить сообщение после загрузки чатов
-        sendMessage();
+        sendMessage().then(r => {});
     }
 
     // Другие действия при загрузке страницы
@@ -115,7 +115,7 @@ async function createWallet() {
         saveState();
 
         checkIncomingMessages();
-        getMessages();
+        await getMessages();
     } catch (error) {
         console.error('Error:', error);
         showAlert('Error creating wallet');
@@ -147,7 +147,7 @@ async function loginWallet() {
         saveState();
 
         checkIncomingMessages();
-        getMessages();
+        await getMessages();
     } catch (error) {
         console.error('Error:', error);
         showAlert('Error logging in');
@@ -170,15 +170,31 @@ async function sendMessage() {
         });
         const data = await response.json();
 
-        document.getElementById('send-status').innerHTML = data.message || 'Message sent successfully';
+        // Переводы сообщений
+        const translations = {
+            en: 'Message sent successfully',
+            ru: 'Сообщение успешно отправлено'
+        };
+
+        // Показываем сообщение об успешной отправке
+        const sendStatus = document.getElementById('send-status');
+        sendStatus.innerHTML = data.message || translations[state.currentLanguage];
+        sendStatus.style.display = 'block';
+
+        // Скрываем сообщение через 3 секунды
+        setTimeout(() => {
+            sendStatus.style.display = 'none';
+        }, 3000);
+
         document.getElementById('content').value = '';
 
-        getMessages();
+        await getMessages();
     } catch (error) {
         console.error('Error:', error);
         showAlert('Error sending message');
     }
 }
+
 
 async function getMessages() {
     try {
@@ -280,7 +296,7 @@ function shortenAddressForDisplay(address) {
 
 function copyRecipientAddress(recipient) {
     document.getElementById('recipient').value = recipient;
-    getMessages();
+    getMessages().then(r => {});
 }
 
 function switchLanguage() {
@@ -347,7 +363,6 @@ function switchLanguage() {
 }
 
 
-
 function logout() {
     hideMnemonic();
     state.mnemonicPhrase = '';
@@ -365,7 +380,6 @@ function logout() {
 function showMnemonic() {
     // Добавляем сохранение состояния кнопки при ее клике
     localStorage.setItem('showMnemonic', 'true');
-
     
     const walletInfo = document.getElementById('wallet-info');
     walletInfo.style.display = 'block';
@@ -412,7 +426,7 @@ function handleKeyPress(event, callback) {
 function checkIncomingMessages() {
     setInterval(() => {
         try {
-            getMessages();
+            getMessages().then(r => {});
         } catch (error) {
             console.error('Error fetching messages:', error);
         }
