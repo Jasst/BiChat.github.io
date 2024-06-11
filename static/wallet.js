@@ -28,6 +28,13 @@ async function sendMessage() {
     try {
         const recipient = document.getElementById('recipient').value;
         const content = document.getElementById('content').value;
+        const imageInput = document.getElementById('image-input');
+        let imageBase64 = null;
+
+        if (imageInput.files.length > 0) {
+            const imageFile = imageInput.files[0];
+            imageBase64 = await convertFileToBase64(imageFile);
+        }
 
         const response = await fetch(`/send_message?lang=${state.currentLanguage}`, {
             method: 'POST',
@@ -36,6 +43,7 @@ async function sendMessage() {
                 mnemonic_phrase: state.mnemonicPhrase,
                 recipient: recipient,
                 content: content,
+                image: imageBase64
             })
         });
         const data = await response.json();
@@ -54,12 +62,26 @@ async function sendMessage() {
         }, 3000);
 
         document.getElementById('content').value = '';
+        document.getElementById('image-input').value = '';
 
         await getMessages();
     } catch (error) {
         console.error('Error:', error);
         showAlert('Error sending message');
     }
+}
+
+async function convertFileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            resolve(event.target.result);
+        };
+        reader.onerror = function(error) {
+            reject(error);
+        };
+        reader.readAsDataURL(file);
+    });
 }
 
 async function loginWallet() {
@@ -182,7 +204,7 @@ function displayDialog(messages, recipient) {
     dialogContainer.innerHTML = '';
 
     messages.forEach(message => {
-        const { sender, recipient, content, timestamp } = message;
+        const { sender, recipient, content, timestamp, image } = message;
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
         if (sender === state.userAddress) {
@@ -193,6 +215,7 @@ function displayDialog(messages, recipient) {
         const formattedTimestamp = new Date(timestamp * 1000).toLocaleString();
         messageElement.innerHTML = `
             <div class="message-content">${content}</div>
+            ${image ? `<img src="${image}" class="message-image" />` : ''}
             <div class="message-sender">From: ${shortenAddressForDisplay(sender)}</div>
             <div class="message-recipient">To: ${shortenAddressForDisplay(recipient)}</div>
             <div class="message-timestamp">${formattedTimestamp}</div>
@@ -200,6 +223,8 @@ function displayDialog(messages, recipient) {
         dialogContainer.appendChild(messageElement);
     });
 }
+
+
 
 function highlightActiveDialog(activeButton) {
     const dialogTabs = document.getElementById('dialog-tabs').getElementsByTagName('button');
@@ -233,6 +258,8 @@ function checkIncomingMessages() {
         }
     }, 5000); // Проверяем новые сообщения каждые 10 секунд
 }
+
+
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('send-button').addEventListener('click', sendMessage);

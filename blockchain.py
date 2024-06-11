@@ -31,13 +31,15 @@ class Blockchain:
             self.save_chain()
         return block
 
-    def new_transaction(self, sender, recipient, content):
+    def new_transaction(self, sender, recipient, content,image=None):
         with self.lock:
             self.current_transactions.append({
                 'sender': sender,
                 'recipient': recipient,
                 'content': content,
+                'image': image,
                 'timestamp': time.time(),
+
             })
         return self.last_block['index'] + 1
 

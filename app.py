@@ -102,13 +102,16 @@ def send_message():
     phrase = data.get('mnemonic_phrase')
     recipient = data.get('recipient')
     content = data.get('content')
+    image = data.get('image')  # Новое поле для изображения
 
     if not phrase or not recipient or not content:
         return jsonify({'error': gettext(translations[get_locale()]['missing_fields'])}), 400
 
     key = generate_key_from_phrase(phrase)
     encrypted_content = encrypt_message(content)
-    blockchain.new_transaction(key.hex(), recipient, encrypted_content)
+    encrypted_image = encrypt_message(image) if image else None  # Шифрование изображения
+
+    blockchain.new_transaction(key.hex(), recipient, encrypted_content, encrypted_image)
     proof = blockchain.proof_of_work(blockchain.last_block['proof'])
     blockchain.new_block(proof=proof)
 
@@ -129,14 +132,17 @@ def get_messages():
     decrypted_messages = []
     for message in messages:
         decrypted_content = decrypt_message(message['content'])
+        decrypted_image = decrypt_message(message['image']) if message.get('image') else None
         decrypted_messages.append({
             'sender': message['sender'],
             'recipient': message['recipient'],
             'content': decrypted_content,
+            'image': decrypted_image,
             'timestamp': message['timestamp']
         })
 
     return jsonify(decrypted_messages), 200
+
 
 
 @app.route('/chain', methods=['GET'])
