@@ -19,11 +19,10 @@ export async function createWallet() {
 
         saveState();
 
-        checkIncomingMessages();
         await getMessages();
     } catch (error) {
         console.error('Error:', error);
-        alert('Error creating wallet');
+        showAlert('Error creating wallet');
     }
 }
 
@@ -51,10 +50,9 @@ export async function loginWallet() {
 
         saveState();
 
-        checkIncomingMessages();
         await getMessages();
     } catch (error) {
         console.error('Error:', error);
-        alert('Error logging in');
+        showAlert('Error logging in');
     }
 }
