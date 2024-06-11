@@ -35,6 +35,6 @@ export async function sendMessage() {
         await getMessages();
     } catch (error) {
         console.error('Error:', error);
-        alert('Error sending message');
+        showAlert('Error sending message');
     }
 }
