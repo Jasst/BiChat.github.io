@@ -17,3 +17,14 @@ export function loadState() {
         state = { ...state, ...parsedState };
     }
 }
+
+export function clearState() {
+    state = {
+        mnemonicPhrase: '',
+        userAddress: '',
+        currentLanguage: 'en',
+        activeDialog: '',
+        theme: 'light'
+    };
+    saveState();
+}
