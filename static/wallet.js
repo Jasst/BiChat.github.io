@@ -215,7 +215,7 @@ function displayDialog(messages, recipient) {
         const formattedTimestamp = new Date(timestamp * 1000).toLocaleString();
         messageElement.innerHTML = `
             <div class="message-content">${content}</div>
-            ${image ? `<img src="${image}" class="message-image" />` : ''}
+            ${image ? `<img src="${image}" class="message-image"  alt="src"/>` : ''}
             <div class="message-sender">From: ${shortenAddressForDisplay(sender)}</div>
             <div class="message-recipient">To: ${shortenAddressForDisplay(recipient)}</div>
             <div class="message-timestamp">${formattedTimestamp}</div>
@@ -223,8 +223,6 @@ function displayDialog(messages, recipient) {
         dialogContainer.appendChild(messageElement);
     });
 }
-
-
 
 function highlightActiveDialog(activeButton) {
     const dialogTabs = document.getElementById('dialog-tabs').getElementsByTagName('button');
@@ -258,6 +256,36 @@ function checkIncomingMessages() {
         }
     }, 5000); // Проверяем новые сообщения каждые 10 секунд
 }
+
+
+// Открыть модальное окно с увеличенным изображением
+function openModal(src, alt) {
+    // Создаем элементы модального окна
+    const modal = document.createElement('div');
+    modal.classList.add('modal');
+
+    const modalImg = document.createElement('img');
+    modalImg.classList.add('modal-content');
+    modalImg.src = src;
+
+    const captionText = document.createElement('div');
+    captionText.id = 'caption';
+    captionText.innerHTML = alt;
+
+    // Добавляем изображение и текст к модальному окну
+    modal.appendChild(modalImg);
+    modal.appendChild(captionText);
+
+    // Закрываем модальное окно при клике на него
+    modal.onclick = function() {
+        document.body.removeChild(modal);
+    };
+
+    // Добавляем модальное окно в тело документа
+    document.body.appendChild(modal);
+}//
+
+
 
 
 
