@@ -53,17 +53,24 @@
 
   <label for="content" data-translate="content_label">Message:</label>
   <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
+
+
   <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
+        <div class="upload-btn-wrapper">
+        <input type="file" id="image-input" accept="image/*">
+        <button class="btn" data-translate="upload_image_button">Загрузить изображение</button>
+        </div>
+
   <div id="send-status" style="display: none;"></div>
-</div>
+
 
     <div id="send-message-section" style="display:none;">
          <div id="dialog-tabs"></div>
 
       <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
       <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
-         <input type="file" id="image-input" accept="image/*">
-    </div>
+
+
 
     <div id="get-messages-section" style="display:none;">
       <h2 data-translate="get_messages_section">Get Messages</h2>

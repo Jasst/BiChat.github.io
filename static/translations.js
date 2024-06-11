@@ -7,6 +7,7 @@ function switchLanguage() {
         en: {
             address_label: "Address:",
             logout_button: "Logout",
+            upload_image_button: 'Upload Image',
             show_mnemonic_button: "Show Mnemonic Phrase",
             hide_mnemonic_button: "Hide Mnemonic",
             toggle_visibility_button: "Toggle Visibility",
@@ -28,6 +29,7 @@ function switchLanguage() {
         ru: {
             address_label: "Адрес:",
             logout_button: "Выход",
+            upload_image_button: 'Загрузить изображение',
             show_mnemonic_button: "Показать мнемоническую фразу",
             hide_mnemonic_button: "Спрятать мнемоническую фразу",
             toggle_visibility_button: "Разблокировать/заблокировать",

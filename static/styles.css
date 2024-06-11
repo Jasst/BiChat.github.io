@@ -269,10 +269,14 @@ p {
     display: block;
 }
 
+
+
+
 .settings {
-    position: absolute;
-    top: 10px;
-    right: 10px;
+  position: fixed;
+  top: 20px; /* Можете настроить отступ сверху по вашему усмотрению */
+  right: 301px; /* Можете настроить отступ справа по вашему усмотрению */
+  z-index: 1000; /* Устанавливаем высокий уровень z-index, чтобы кнопка была поверх других элементов */
 }
 
 .settings-menu {
@@ -416,11 +420,39 @@ a:hover {
             margin-top: 10px;
             cursor: pointer;
         }
-/* Стили для увеличения изображения при наведении */
-.image-hover-zoom {
-    transition: transform 0.2s; /* Анимация при наведении */
+
+
+/* Стили для обертки кнопки загрузки */
+.upload-btn-wrapper {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
 }
 
-.image-hover-zoom:hover {
-    transform: scale(1.1); /* Увеличение изображения на 10% при наведении */
+/* Стили для самой кнопки */
+.btn {
+  border: 2px solid #3498db;
+  color: #3498db;
+  background-color: transparent;
+  padding: 5px 15px;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
 }
+
+.btn:hover {
+  background-color: #3498db;
+  color: white;
+}
+
+/* Стили для input[type="file"] */
+#image-input {
+  position: absolute;
+  font-size: 100px;
+  opacity: 0;
+  right: 0;
+  top: 0;
+}
+

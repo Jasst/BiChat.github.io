@@ -296,3 +296,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('login-wallet-button').addEventListener('click', loginWallet);
 });
 
+// При изменении значения input[type="file"] изменяем текст кнопки
+document.getElementById('image-input').addEventListener('change', function() {
+  const filename = this.files[0].name;
+  const btnText = document.querySelector('.btn');
+  btnText.textContent = filename;
+});
