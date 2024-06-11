@@ -1,5 +1,6 @@
 import { state, saveState } from './state.js';
 import { getMessages } from './dialogs.js';
+import { checkIncomingMessages } from './incomingMessages.js'; // добавим импорт функции
 
 export async function createWallet() {
     try {
@@ -49,7 +50,7 @@ export async function loginWallet() {
         document.getElementById('logout-button').style.display = 'block';
 
         saveState();
-
+        checkIncomingMessages(); 
         await getMessages();
     } catch (error) {
         console.error('Error:', error);
