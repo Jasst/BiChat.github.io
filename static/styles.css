@@ -131,18 +131,30 @@ p {
 
 
 .message {
-    padding: 25px;
-    border-radius: 14px;
-    margin-bottom: 15px;
-    background-color: rgba(233, 236, 239, 0.9);
+    background-color: rgba(200, 236, 239, 0.9);
     color: #333;
-    position: marker;
     transition: background-color 0.3s;
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    max-width: 70%;
+    word-wrap: break-word;
+    position: relative;
+}
+
+
+
+.message-sender,
+.message-recipient,
+.message-timestamp {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+    display: block;
 }
 
 .message.sent {
     background-color: rgba(212, 237, 218, 0.9);
-
     text-align: right;
     padding: 15px 15px;
     margin-bottom: 10px;
@@ -351,7 +363,7 @@ p {
 }
 
 #dialog-tabs button:hover {
-    background-color: rgba(0, 86, 179, 0.9);
+    background-color: rgba(8, 87, 180, 0.9);
     transform: scale(1.05);
 }
 
@@ -360,19 +372,19 @@ p {
 }
 
 a {
-    color: #007bff;
+    color: #5197e3;
     transition: color 0.3s ease-in-out;
 }
 
 a:hover {
-    color: #0056b3;
+    color: #768998;
 }
 
 #back-to-top {
     position: fixed;
     bottom: 20px;
     right: 20px;
-    background-color: rgba(0, 123, 255, 0.9);
+    background-color: rgba(123, 120, 218, 0.9);
     color: white;
     border: none;
     border-radius: 50%;
@@ -382,10 +394,16 @@ a:hover {
 }
 
 #back-to-top:hover {
-    background-color: rgba(0, 86, 179, 0.9);
+    background-color: rgba(25, 26, 26, 0.9);
 }
 
 #back-to-top:active {
     transform: scale(0.95);
 }
 
+/* Добавляем стили для активного диалога */
+#dialog-tabs button.active {
+    background-color: #83bcfa;
+    color: #ffffff;
+    border-color: #4f5f70;
+}

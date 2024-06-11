@@ -40,18 +40,15 @@ async function sendMessage() {
         });
         const data = await response.json();
 
-        // Переводы сообщений
         const translations = {
             en: 'Message sent successfully',
             ru: 'Сообщение успешно отправлено'
         };
 
-        // Показываем сообщение об успешной отправке
         const sendStatus = document.getElementById('send-status');
         sendStatus.innerHTML = data.message || translations[state.currentLanguage];
         sendStatus.style.display = 'block';
 
-        // Скрываем сообщение через 3 секунды
         setTimeout(() => {
             sendStatus.style.display = 'none';
         }, 3000);
@@ -64,6 +61,7 @@ async function sendMessage() {
         showAlert('Error sending message');
     }
 }
+
 async function loginWallet() {
     try {
         const mnemonic = document.getElementById('mnemonic-login').value;
@@ -80,7 +78,7 @@ async function loginWallet() {
 
         document.getElementById('wallet-section').style.display = 'none';
         document.getElementById('create-wallet-container').style.display = 'none';
-        document.getElementById('login-status').innerHTML = data.message;
+                document.getElementById('login-status').innerHTML = data.message;
         document.getElementById('login-wallet-container').style.display = 'none';
         document.getElementById('send-message-section').style.display = 'block';
         document.getElementById('chat-section').style.display = 'block';
@@ -137,12 +135,17 @@ async function getMessages(recipientAddress) {
                     displayDialog(dialogMessages, recipient);
                     copyRecipientAddress(recipient);
                     saveState();
+                    highlightActiveDialog(tabButton); // Подсветка активного диалога
                 };
                 dialogTabs.appendChild(tabButton);
+
+                // Подсветка активного диалога при инициализации
+                if (dialogKey === state.activeDialog) {
+                    highlightActiveDialog(tabButton);
+                }
             }
         }
 
-        // Проверяем, есть ли переданный адрес получателя и отображаем соответствующий диалог
         if (recipientAddress) {
             const dialogKey = `${state.userAddress}_${recipientAddress}`;
             if (dialogs.hasOwnProperty(dialogKey)) {
@@ -151,7 +154,6 @@ async function getMessages(recipientAddress) {
                 saveState();
             }
         } else if (!state.activeDialog) {
-            // Если нет активного диалога, выбираем первый диалог
             const firstDialogKey = Object.keys(dialogs)[0];
             if (firstDialogKey) {
                 const [sender, recipient] = firstDialogKey.split('_');
@@ -171,7 +173,7 @@ async function getMessages(recipientAddress) {
         }
     } catch (error) {
         console.error('Error:', error);
-        //showAlert('Error fetching messages');
+        showAlert('Error fetching messages');
     }
 }
 
@@ -199,13 +201,20 @@ function displayDialog(messages, recipient) {
     });
 }
 
+function highlightActiveDialog(activeButton) {
+    const dialogTabs = document.getElementById('dialog-tabs').getElementsByTagName('button');
+    for (const button of dialogTabs) {
+        button.classList.remove('active');
+    }
+    activeButton.classList.add('active');
+}
+
 function shortenAddressForDisplay(address) {
     return address.slice(0, 6) + '...' + address.slice(-4);
 }
 
 function copyRecipientAddress(recipient) {
     document.getElementById('recipient').value = recipient;
-    getMessages().then(r => {});
 }
 
 function handleKeyPress(event, callback) {
@@ -216,11 +225,19 @@ function handleKeyPress(event, callback) {
 }
 
 function checkIncomingMessages() {
-    setInterval(() => {
+    setInterval(async () => {
         try {
-            getMessages().then(r => {});
+            await getMessages();
         } catch (error) {
             console.error('Error fetching messages:', error);
         }
-    }, 5000);
+    }, 5000); // Проверяем новые сообщения каждые 10 секунд
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('send-button').addEventListener('click', sendMessage);
+    document.getElementById('content').addEventListener('keypress', (event) => handleKeyPress(event, sendMessage));
+    document.getElementById('create-wallet-button').addEventListener('click', createWallet);
+    document.getElementById('login-wallet-button').addEventListener('click', loginWallet);
+});
+
