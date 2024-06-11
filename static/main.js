@@ -1,8 +1,9 @@
 import { loadState, saveState, state } from './state.js';
 import { createWallet, loginWallet } from './wallet.js';
 import { sendMessage } from './sendMessage.js';
-import { toggleTheme, showMnemonic, hideMnemonic, handleKeyPress, switchLanguage } from './ui.js';
+import { toggleTheme, showMnemonic, hideMnemonic, handleKeyPress, logout } from './ui.js';
 import { getMessages } from './dialogs.js';
+import { switchLanguage } from './language.js';
 
 document.addEventListener('DOMContentLoaded', function() {
     if (localStorage.getItem('appState')) {
@@ -17,10 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('toggle-theme-button').onclick = toggleTheme;
     document.getElementById('show-mnemonic-button').onclick = showMnemonic;
     document.getElementById('hide-mnemonic-button').onclick = hideMnemonic;
-    document.getElementById('logout-button').onclick = () => {
-        localStorage.removeItem('appState');
-        location.reload();
-    };
+    document.getElementById('logout-button').onclick = logout;
 
     document.getElementById('content').addEventListener('keypress', handleKeyPress);
 
