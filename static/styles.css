@@ -461,7 +461,7 @@ a:hover {
     left: 50px;
     right: 50px;
     top: 0;
-    position: absolute;
+    position: -ms-device-fixed;
     font-size: 15px; /* Уменьшение размера текста кнопки */
     padding: 10px 15px; /* Уменьшение отступов кнопки */
     margin-top: 10px; /* Отступ сверху для кнопки */
