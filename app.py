@@ -4,9 +4,7 @@ from mnemonic import Mnemonic
 from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
 from blockchain import Blockchain
-import os
 
-import os
 from cryptography.fernet import Fernet
 
 
@@ -22,6 +20,7 @@ class CryptoManager:
     def decrypt_message(self, encrypted_message):
         decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
         return decrypted_message.decode()
+
 
 # Генерируем случайный ключ key = Fernet.generate_key()
 
@@ -142,7 +141,6 @@ def get_messages():
         })
 
     return jsonify(decrypted_messages), 200
-
 
 
 @app.route('/chain', methods=['GET'])

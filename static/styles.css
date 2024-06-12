@@ -456,3 +456,51 @@ a:hover {
   top: 0;
 }
 
+.save-button {
+    max-width: fit-content;
+    left: 50px;
+    right: 50px;
+    top: 0;
+    position: -ms-device-fixed;
+    font-size: 15px; /* Уменьшение размера текста кнопки */
+    padding: 10px 15px; /* Уменьшение отступов кнопки */
+    margin-top: 10px; /* Отступ сверху для кнопки */
+    background-color: #527eaf; /* Цвет фона кнопки */
+    color: white; /* Цвет текста кнопки */
+    border: none; /* Убираем границу кнопки */
+    border-radius: 6px; /* Скругляем углы кнопки */
+
+}
+
+.save-button:hover {
+    background-color: #0a54a4; /* Цвет кнопки при наведении */
+}
+
+.modal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+.modal-content {
+    margin: auto;
+    display: block;
+    max-width: 80%;
+    max-height: 80%;
+}
+
+#caption {
+    margin-top: 10px;
+    color: #ccc;
+    font-size: 20px;
+    text-align: center;
+}

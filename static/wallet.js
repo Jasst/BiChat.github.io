@@ -59,7 +59,7 @@ async function sendMessage() {
 
         setTimeout(() => {
             sendStatus.style.display = 'none';
-        }, 3000);
+        }, 2500);
 
         document.getElementById('content').value = '';
         document.getElementById('image-input').value = '';
@@ -215,7 +215,7 @@ function displayDialog(messages, recipient) {
         const formattedTimestamp = new Date(timestamp * 1000).toLocaleString();
         messageElement.innerHTML = `
             <div class="message-content">${content}</div>
-            ${image ? `<img src="${image}" class="message-image"  alt="src"/>` : ''}
+            ${image ? `<img src="${image}" class="message-image" alt="src" onclick="openModal('${image}', 'Image from ${shortenAddressForDisplay(sender)}')" />` : ''}
             <div class="message-sender">From: ${shortenAddressForDisplay(sender)}</div>
             <div class="message-recipient">To: ${shortenAddressForDisplay(recipient)}</div>
             <div class="message-timestamp">${formattedTimestamp}</div>
@@ -223,6 +223,7 @@ function displayDialog(messages, recipient) {
         dialogContainer.appendChild(messageElement);
     });
 }
+
 
 function highlightActiveDialog(activeButton) {
     const dialogTabs = document.getElementById('dialog-tabs').getElementsByTagName('button');
@@ -260,6 +261,15 @@ function checkIncomingMessages() {
 
 // Открыть модальное окно с увеличенным изображением
 function openModal(src, alt) {
+    // Получаем текущий язык
+    const currentLanguage = state.currentLanguage;
+
+    // Переводы для кнопки сохранения изображения
+    const translations = {
+        en: 'Save Image',
+        ru: 'Сохранить изображение'
+    };
+
     // Создаем элементы модального окна
     const modal = document.createElement('div');
     modal.classList.add('modal');
@@ -268,12 +278,20 @@ function openModal(src, alt) {
     modalImg.classList.add('modal-content');
     modalImg.src = src;
 
+    const saveButton = document.createElement('button');
+    saveButton.textContent = translations[currentLanguage] || 'Save Image'; // Используем перевод в зависимости от языка
+    saveButton.classList.add('save-button');
+    saveButton.onclick = function() {
+        saveImage(src);
+    };
+
     const captionText = document.createElement('div');
     captionText.id = 'caption';
     captionText.innerHTML = alt;
 
-    // Добавляем изображение и текст к модальному окну
+    // Добавляем изображение, кнопку сохранения и текст к модальному окну
     modal.appendChild(modalImg);
+    modal.appendChild(saveButton);
     modal.appendChild(captionText);
 
     // Закрываем модальное окно при клике на него
@@ -283,7 +301,18 @@ function openModal(src, alt) {
 
     // Добавляем модальное окно в тело документа
     document.body.appendChild(modal);
-}//
+}
+
+function saveImage(src) {
+    // Создаем ссылку для загрузки изображения
+    const link = document.createElement('a');
+    link.href = src;
+    link.download = 'image'; // Устанавливаем имя файла для загрузки
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
 
 
 

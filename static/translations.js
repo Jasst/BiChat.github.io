@@ -24,6 +24,7 @@ function switchLanguage() {
             recipient_label: "Recipient Address:",
             content_label: "Message:",
             send_button: "Send Message",
+            save_image_button: "Save Image",
             get_messages_button: "Get Messages"
         },
         ru: {
@@ -46,7 +47,8 @@ function switchLanguage() {
             recipient_label: "Адрес получателя:",
             content_label: "Сообщение:",
             send_button: "Отправить сообщение",
-            get_messages_button: "Получить сообщения"
+            get_messages_button: "Получить сообщения",
+            save_image_button: "Сохранить изображение"
         }
     };
 
