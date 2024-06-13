@@ -6,6 +6,7 @@ import threading
 import requests
 from mnemonic import Mnemonic
 from blockchain import Blockchain, CryptoManager
+from translations import translations
 
 app = Flask(__name__)
 babel = Babel(app)
@@ -17,16 +18,6 @@ blockchain.load_chain()
 key = Fernet.generate_key()
 crypto_manager = CryptoManager(key)
 peers = set()
-
-translations = {
-    'en': {
-        'wallet_created': 'Wallet created successfully!',
-        'mnemonic_required': 'Mnemonic phrase is required.',
-        'mnemonic_invalid': 'Invalid mnemonic phrase.',
-        'missing_fields': 'Missing required fields.',
-        'message_sent': 'Message sent successfully.'
-    }
-}
 
 def encrypt_message(content):
     return crypto_manager.encrypt_message(content)
@@ -145,35 +136,13 @@ def register_peer():
     return jsonify(list(peers)), 201
 
 @socketio.on('connect')
-def on_connect():
-    emit('blockchain', blockchain.chain)
+def handle_connect():
+    print(f"New connection: {request.sid}")
 
-@socketio.on('new_block')
-def on_new_block(data):
-    block_string = json.dumps(data, sort_keys=True)
-    signature = bytes.fromhex(data['signature'])
-    if blockchain.verify_signature(blockchain.public_key, block_string, signature):
-        blockchain.chain.append(data)
-        blockchain.save_chain()
-    else:
-        print("Invalid block signature")
-
-def sync_with_peers():
-    while True:
-        for peer in peers:
-            try:
-                response = requests.get(f"https://{peer}/chain", verify='cert.pem')
-                if response.status_code == 200:
-                    peer_chain = response.json()['chain']
-                    if len(peer_chain) > len(blockchain.chain):
-                        blockchain.chain = peer_chain
-                        blockchain.save_chain()
-            except Exception as e:
-                print(f"Error syncing with peer {peer}: {e}")
-        time.sleep(10)
-
-threading.Thread(target=sync_with_peers).start()
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f"Disconnected: {request.sid}")
 
 if __name__ == '__main__':
     port = 5000
-    socketio.run(app, host='0.0.0.0', port=port, debug=True, ssl_context=('cert.pem', 'key.pem'))
+    socketio.run(app, host='0.0.0.0', port=port, debug=True)
