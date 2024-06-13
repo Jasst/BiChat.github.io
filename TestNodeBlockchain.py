@@ -8,6 +8,7 @@ from mnemonic import Mnemonic
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature, decode_dss_signature
+from translations import translations
 
 class Blockchain:
     def __init__(self):
