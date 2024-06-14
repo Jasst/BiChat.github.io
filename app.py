@@ -27,16 +27,20 @@ def index():
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
-    phrase = mnemonic.generate(256)
-    address = generate_address(phrase)
-    public_key_pem = crypto_manager.get_public_key_pem()
-    response = {
-        'mnemonic_phrase': phrase,
-        'address': address,
-        'public_key': public_key_pem.decode(),
-        'message': gettext(translations[get_locale()]['wallet_created'])
-    }
-    return jsonify(response), 200
+    try:
+        phrase = mnemonic.generate(256)
+        address = generate_address(phrase)
+        public_key_pem = crypto_manager.get_public_key_pem()
+        response = {
+            'mnemonic_phrase': phrase,
+            'address': address,
+            'public_key': public_key_pem.decode(),
+            'message': gettext(translations[get_locale()]['wallet_created'])
+        }
+        return jsonify(response), 200
+    except Exception as e:
+        print(f"Error creating wallet: {e}")
+        return jsonify({'error': 'Error creating wallet'}), 500
 
 @app.route('/login_wallet', methods=['POST'])
 def login_wallet():
