@@ -17,31 +17,39 @@ blockchain.load_chain()
 key = b'U_Urs-adepKN6SnJt1YI_JasstmeWtyyTNno2UeX_-0='
 crypto_manager = CryptoManager(key)
 
+
 # Функции для работы с блокчейном
 
 def encrypt_message(content):
     return crypto_manager.encrypt_message(content)
 
+
 def decrypt_message(encrypted_content):
     return crypto_manager.decrypt_message(encrypted_content)
+
 
 def logout():
     return jsonify({'message': 'Logged out successfully.'})
 
+
 def get_locale():
     return request.args.get('lang', 'en')
+
 
 def generate_key_from_phrase(phrase):
     return hashlib.sha256(phrase.encode()).digest()
 
+
 def generate_address(phrase):
     return hashlib.sha256(phrase.encode()).hexdigest()
+
 
 # Эндпоинты для Flask приложения
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -53,6 +61,7 @@ def create_wallet():
         'message': gettext(translations[get_locale()]['wallet_created'])
     }
     return jsonify(response), 200
+
 
 @app.route('/login_wallet', methods=['POST'])
 def login_wallet():
@@ -72,6 +81,7 @@ def login_wallet():
         'message': gettext(translations[get_locale()]['wallet_created'])
     }
     return jsonify(response), 200
+
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -93,6 +103,7 @@ def send_message():
     blockchain.new_block(proof=proof)
 
     return jsonify({'message': gettext(translations[get_locale()]['message_sent'])}), 201
+
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
@@ -119,6 +130,7 @@ def get_messages():
 
     return jsonify(decrypted_messages), 200
 
+
 @app.route('/chain', methods=['GET'])
 def full_chain():
     response = {
@@ -126,6 +138,7 @@ def full_chain():
         'length': len(blockchain.chain),
     }
     return jsonify(response), 200
+
 
 # Новые эндпоинты для работы с блокчейном и пирами
 
@@ -139,6 +152,7 @@ def register_peer():
     else:
         return jsonify({'error': 'Missing peer URL in request.'}), 400
 
+
 @app.route('/update_chain', methods=['POST'])
 def update_chain():
     data = request.get_json()
@@ -148,6 +162,7 @@ def update_chain():
         return jsonify({'message': 'Chain updated successfully.'}), 200
     else:
         return jsonify({'error': 'Missing chain data in request.'}), 400
+
 
 if __name__ == '__main__':
     # Публичный URL первого сервера
