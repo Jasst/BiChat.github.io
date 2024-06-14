@@ -1,12 +1,10 @@
 import hashlib
 import json
 import os
-import time
 import threading
-import requests  # Добавлен импорт для работы с HTTP запросами
-
+import time
+import requests
 from cryptography.fernet import Fernet
-from mnemonic import Mnemonic
 
 PEERS = set()  # Множество для хранения URL пиров
 SYNC_INTERVAL = 30  # Интервал синхронизации в секундах
@@ -133,28 +131,17 @@ class Blockchain:
             except requests.exceptions.RequestException as e:
                 print(f"Error notifying peer {peer_url}: {e}")
 
-# Остальной код Flask приложения инициализации остается без изменений
-
-
-
 
 class CryptoManager:
     def __init__(self, key):
         self.key = key
+        self.cipher_suite = Fernet(key)
 
     def encrypt_message(self, message):
-        cipher = Fernet(self.key)
-        encrypted_message = cipher.encrypt(message.encode())
-        return encrypted_message
+        encrypted_message = self.cipher_suite.encrypt(message.encode())
+        return encrypted_message.decode()
 
     def decrypt_message(self, encrypted_message):
-        cipher = Fernet(self.key)
-        decrypted_message = cipher.decrypt(encrypted_message).decode()
-        return decrypted_message
+        decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
+        return decrypted_message.decode()
 
-
-mnemonic = Mnemonic('english')
-blockchain = Blockchain()
-blockchain.load_chain()
-
-# Остальной код вашего приложения, включая Flask-маршруты, HTML-шаблоны и JavaScript-код, остается без изменений
