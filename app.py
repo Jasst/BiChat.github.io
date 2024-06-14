@@ -1,36 +1,20 @@
 import hashlib
-from translations import translations
-from mnemonic import Mnemonic
+import json
 from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
-from blockchain import Blockchain
-
-from cryptography.fernet import Fernet
+from mnemonic import Mnemonic
+from blockchain import Blockchain, CryptoManager
 import requests
-
-class CryptoManager:
-    def __init__(self, key):
-        self.key = key
-        self.cipher_suite = Fernet(key)
-
-    def encrypt_message(self, message):
-        encrypted_message = self.cipher_suite.encrypt(message.encode())
-        return encrypted_message.decode()
-
-    def decrypt_message(self, encrypted_message):
-        decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
-        return decrypted_message.decode()
-
-# Генерируем случайный ключ key = Fernet.generate_key()
-
-key = b'U_Urs-adepKN6SnJt1YI_JasstmeWtyyTNno2UeX_-0='
-crypto_manager = CryptoManager(key)  # Создаем экземпляр CryptoManager с каким-то ключом
 
 app = Flask(__name__)
 babel = Babel(app)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 blockchain.load_chain()
+
+# Создаем экземпляр CryptoManager с каким-то ключом
+key = b'U_Urs-adepKN6SnJt1YI_JasstmeWtyyTNno2UeX_-0='
+crypto_manager = CryptoManager(key)
 
 # Функции для работы с блокчейном
 
