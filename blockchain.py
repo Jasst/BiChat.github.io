@@ -31,7 +31,7 @@ class Blockchain:
             self.save_chain()
         return block
 
-    def new_transaction(self, sender, recipient, content,image=None):
+    def new_transaction(self, sender, recipient, content, image=None):
         with self.lock:
             self.current_transactions.append({
                 'sender': sender,
@@ -82,6 +82,30 @@ class Blockchain:
         if os.path.exists('blockchain.json'):
             with open('blockchain.json', 'r') as f:
                 self.chain = json.load(f)
+
+    def validate_chain(self, peer_chain):
+        # Проверка начального блока (genesis block)
+        if self.hash(peer_chain[0]) != self.hash(self.chain[0]):
+            return False
+
+        # Проверка каждого блока в цепочке
+        for i in range(1, len(peer_chain)):
+            block = peer_chain[i]
+            previous_block = peer_chain[i - 1]
+
+            # Проверка индекса блока
+            if block['index'] != previous_block['index'] + 1:
+                return False
+
+            # Проверка предыдущего хэша блока
+            if block['previous_hash'] != self.hash(previous_block):
+                return False
+
+            # Проверка доказательства работы (proof of work)
+            if not self.valid_proof(previous_block['proof'], block['proof']):
+                return False
+
+        return True
 
 
 class CryptoManager:

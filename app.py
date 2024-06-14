@@ -1,26 +1,13 @@
 import hashlib
+
+import requests
+import json
 from translations import translations
 from mnemonic import Mnemonic
 from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
-from blockchain import Blockchain
-
-from cryptography.fernet import Fernet
-
-
-class CryptoManager:
-    def __init__(self, key):
-        self.key = key
-        self.cipher_suite = Fernet(key)
-
-    def encrypt_message(self, message):
-        encrypted_message = self.cipher_suite.encrypt(message.encode())
-        return encrypted_message.decode()
-
-    def decrypt_message(self, encrypted_message):
-        decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
-        return decrypted_message.decode()
-
+from blockchain import Blockchain, CryptoManager
+from flask_socketio import SocketIO
 
 # Генерируем случайный ключ key = Fernet.generate_key()
 
@@ -32,6 +19,8 @@ babel = Babel(app)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 blockchain.load_chain()
+peers = set()
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 def encrypt_message(content):
@@ -150,6 +139,59 @@ def full_chain():
         'length': len(blockchain.chain),
     }
     return jsonify(response), 200
+
+
+@app.route('/sync_chain', methods=['POST'])
+def sync_chain():
+    try:
+        data = request.get_json()
+        peer_chain = data.get('chain')
+
+        if not peer_chain:
+            return jsonify({'error': 'Неверные данные цепочки'}), 400
+
+        if len(peer_chain) > len(blockchain.chain) and blockchain.validate_chain(peer_chain):
+            blockchain.chain = peer_chain
+            blockchain.save_chain()
+            return jsonify({'message': 'Цепочка успешно синхронизирована'}), 200
+        else:
+            return jsonify(
+                {'message': 'Синхронизация цепочки не удалась. Входящая цепочка не длиннее или не допустима.'}), 400
+
+    except Exception as e:
+        return jsonify({'error': f'Внутренняя ошибка сервера: {str(e)}'}), 500
+
+
+def notify_peers(new_block):
+    for peer in peers:
+        try:
+            url = f"{peer}/new_block"
+            headers = {'Content-Type': 'application/json'}
+            data = json.dumps(new_block)
+            response = requests.post(url, headers=headers, data=data)
+            if response.status_code != 200:
+                print(f"Failed to notify peer {peer}")
+        except Exception as e:
+            print(f"Error notifying peer {peer}: {e}")
+
+
+@app.route('/register_peer', methods=['POST'])
+def register_peer():
+    data = request.get_json()
+    peer = data.get('peer')
+    if peer:
+        peers.add(peer)
+    return jsonify(list(peers)), 201
+
+
+@socketio.on('connect')
+def handle_connect():
+    print(f"New connection: {request.sid}")
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f"Disconnected: {request.sid}")
 
 
 if __name__ == '__main__':
