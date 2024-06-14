@@ -5,6 +5,7 @@ from flask_babel import Babel, gettext
 from mnemonic import Mnemonic
 from blockchain import Blockchain, CryptoManager
 import requests
+from translations import translations
 
 app = Flask(__name__)
 babel = Babel(app)
