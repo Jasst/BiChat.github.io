@@ -1,121 +1,119 @@
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization, hashes
 import hashlib
-import json
-import os
-import time
-import threading
+from flask import Flask, jsonify, request, render_template
+from flask_babel import Babel, gettext
+from mnemonic import Mnemonic
+from blockchain import Blockchain, CryptoManager
 
+app = Flask(__name__)
+babel = Babel(app)
+mnemonic = Mnemonic('english')
+blockchain = Blockchain()
+crypto_manager = CryptoManager()
+blockchain.load_chain()
 
-class Blockchain:
-    def __init__(self):
-        self.chain = []
-        self.current_transactions = []
-        self.lock = threading.Lock()
-        self.data_file = 'blockchain.json'
-        self.load_chain()
-        if len(self.chain) == 0:
-            self.new_block(previous_hash='1', proof=100)
+@babel.localeselector
+def get_locale():
+    return request.args.get('lang', 'en')
 
-    def new_block(self, proof, previous_hash=None):
-        with self.lock:
-            block = {
-                'index': len(self.chain) + 1,
-                'timestamp': time.time(),
-                'transactions': self.current_transactions,
-                'proof': proof,
-                'previous_hash': previous_hash or self.hash(self.chain[-1]),
-            }
-            self.current_transactions = []
-            self.chain.append(block)
-            self.save_chain()
-        return block
+def generate_key_from_phrase(phrase):
+    return hashlib.sha256(phrase.encode()).digest()
 
-    def new_transaction(self, sender, recipient, content, image=None):
-        with self.lock:
-            self.current_transactions.append({
-                'sender': sender,
-                'recipient': recipient,
-                'content': content,
-                'image': image,
-                'timestamp': time.time(),
-            })
-        return self.last_block['index'] + 1
+def generate_address(phrase):
+    return hashlib.sha256(phrase.encode()).hexdigest()
 
-    @property
-    def last_block(self):
-        with self.lock:
-            return self.chain[-1]
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-    @staticmethod
-    def hash(block):
-        block_string = json.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
+@app.route('/create_wallet', methods=['POST'])
+def create_wallet():
+    try:
+        phrase = mnemonic.generate(256)
+        address = generate_address(phrase)
+        public_key_pem = crypto_manager.get_public_key_pem()
+        response = {
+            'mnemonic_phrase': phrase,
+            'address': address,
+            'public_key': public_key_pem.decode(),
+            'message': gettext(translations[get_locale()]['wallet_created'])
+        }
+        return jsonify(response), 200
+    except Exception as e:
+        print(f"Error creating wallet: {e}")
+        return jsonify({'error': 'Error creating wallet'}), 500
 
-    def proof_of_work(self, last_proof):
-        proof = 0
-        while self.valid_proof(last_proof, proof) is False:
-            proof += 1
-        return proof
+@app.route('/login_wallet', methods=['POST'])
+def login_wallet():
+    data = request.get_json()
+    phrase = data.get('mnemonic_phrase')
+    if not phrase:
+        return jsonify({'error': gettext(translations[get_locale()]['mnemonic_required'])}), 400
 
-    @staticmethod
-    def valid_proof(last_proof, proof):
-        guess = f'{last_proof}{proof}'.encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:4] == "0000"
+    # Validate the mnemonic phrase
+    if not mnemonic.check(phrase):
+        return jsonify({'error': gettext(translations[get_locale()]['mnemonic_invalid'])}), 400
 
-    def get_messages(self, key_hex):
-        messages = []
-        with self.lock:
-            for block in self.chain:
-                for transaction in block['transactions']:
-                    if transaction['sender'] == key_hex or transaction['recipient'] == key_hex:
-                        messages.append(transaction)
-        return messages
+    address = generate_address(phrase)
+    response = {
+        'address': address,
+        'message': gettext(translations[get_locale()]['wallet_created'])
+    }
+    return jsonify(response), 200
 
-    def save_chain(self):
-        with open('blockchain.json', 'w') as f:
-            json.dump(self.chain, f, indent=4)
+@app.route('/send_message', methods=['POST'])
+def send_message():
+    data = request.get_json()
+    phrase = data.get('mnemonic_phrase')
+    recipient = data.get('recipient')
+    content = data.get('content')
+    image = data.get('image')  # Новое поле для изображения
+    recipient_public_key = data.get('recipient_public_key').encode()
 
-    def load_chain(self):
-        if os.path.exists('blockchain.json'):
-            with open('blockchain.json', 'r') as f:
-                self.chain = json.load(f)
+    if not phrase or not recipient or not content or not recipient_public_key:
+        return jsonify({'error': gettext(translations[get_locale()]['missing_fields'])}), 400
 
+    encrypted_content = crypto_manager.encrypt_message(recipient_public_key, content)
+    encrypted_image = crypto_manager.encrypt_message(recipient_public_key, image) if image else None  # Шифрование изображения
 
-class CryptoManager:
-    def __init__(self):
-        self.private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
-        self.public_key = self.private_key.public_key()
+    blockchain.new_transaction(generate_key_from_phrase(phrase).hex(), recipient, encrypted_content, encrypted_image)
+    proof = blockchain.proof_of_work(blockchain.last_block['proof'])
+    blockchain.new_block(proof=proof)
 
-    def get_public_key_pem(self):
-        return self.public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
+    return jsonify({'message': gettext(translations[get_locale()]['message_sent'])}), 201
 
-    def encrypt_message(self, public_key_pem, message):
-        public_key = serialization.load_pem_public_key(public_key_pem)
-        encrypted_message = public_key.encrypt(
-            message.encode(),
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
-        )
-        return encrypted_message
+@app.route('/get_messages', methods=['POST'])
+def get_messages():
+    data = request.get_json()
+    phrase = data.get('mnemonic_phrase')
 
-    def decrypt_message(self, encrypted_message):
-        decrypted_message = self.private_key.decrypt(
-            encrypted_message,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
-        )
-        return decrypted_message.decode()
+    if not phrase:
+        return jsonify({'error': 'Missing required field.'}), 400
+
+    key = generate_key_from_phrase(phrase)
+    messages = blockchain.get_messages(key.hex())
+
+    decrypted_messages = []
+    for message in messages:
+        decrypted_content = crypto_manager.decrypt_message(message['content'])
+        decrypted_image = crypto_manager.decrypt_message(message['image']) if message.get('image') else None
+        decrypted_messages.append({
+            'sender': message['sender'],
+            'recipient': message['recipient'],
+            'content': decrypted_content,
+            'image': decrypted_image,
+            'timestamp': message['timestamp']
+        })
+
+    return jsonify(decrypted_messages), 200
+
+@app.route('/chain', methods=['GET'])
+def full_chain():
+    response = {
+        'chain': blockchain.chain,
+        'length': len(blockchain.chain),
+    }
+    return jsonify(response), 200
+
+if __name__ == '__main__':
+    port = 5000
+    app.run(host='0.0.0.0', port=port, debug=True)
