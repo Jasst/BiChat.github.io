@@ -6,7 +6,7 @@ from flask_babel import Babel, gettext
 from blockchain import Blockchain
 
 from cryptography.fernet import Fernet
-
+import requests
 
 class CryptoManager:
     def __init__(self, key):
@@ -21,7 +21,6 @@ class CryptoManager:
         decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
         return decrypted_message.decode()
 
-
 # Генерируем случайный ключ key = Fernet.generate_key()
 
 key = b'U_Urs-adepKN6SnJt1YI_JasstmeWtyyTNno2UeX_-0='
@@ -33,35 +32,31 @@ mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 blockchain.load_chain()
 
+# Функции для работы с блокчейном
 
 def encrypt_message(content):
     return crypto_manager.encrypt_message(content)
 
-
 def decrypt_message(encrypted_content):
     return crypto_manager.decrypt_message(encrypted_content)
-
 
 def logout():
     return jsonify({'message': 'Logged out successfully.'})
 
-
 def get_locale():
     return request.args.get('lang', 'en')
-
 
 def generate_key_from_phrase(phrase):
     return hashlib.sha256(phrase.encode()).digest()
 
-
 def generate_address(phrase):
     return hashlib.sha256(phrase.encode()).hexdigest()
 
+# Эндпоинты для Flask приложения
 
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -73,7 +68,6 @@ def create_wallet():
         'message': gettext(translations[get_locale()]['wallet_created'])
     }
     return jsonify(response), 200
-
 
 @app.route('/login_wallet', methods=['POST'])
 def login_wallet():
@@ -93,7 +87,6 @@ def login_wallet():
         'message': gettext(translations[get_locale()]['wallet_created'])
     }
     return jsonify(response), 200
-
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -115,7 +108,6 @@ def send_message():
     blockchain.new_block(proof=proof)
 
     return jsonify({'message': gettext(translations[get_locale()]['message_sent'])}), 201
-
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
@@ -142,7 +134,6 @@ def get_messages():
 
     return jsonify(decrypted_messages), 200
 
-
 @app.route('/chain', methods=['GET'])
 def full_chain():
     response = {
@@ -151,7 +142,43 @@ def full_chain():
     }
     return jsonify(response), 200
 
+# Новые эндпоинты для работы с блокчейном и пирами
+
+@app.route('/register_peer', methods=['POST'])
+def register_peer():
+    data = request.get_json()
+    peer_url = data.get('peer')
+    if peer_url:
+        blockchain.register_peer(peer_url)
+        return jsonify({'message': f"Peer {peer_url} registered successfully."}), 200
+    else:
+        return jsonify({'error': 'Missing peer URL in request.'}), 400
+
+@app.route('/update_chain', methods=['POST'])
+def update_chain():
+    data = request.get_json()
+    new_chain = data.get('chain')
+    if new_chain:
+        blockchain.replace_chain(new_chain)
+        return jsonify({'message': 'Chain updated successfully.'}), 200
+    else:
+        return jsonify({'error': 'Missing chain data in request.'}), 400
 
 if __name__ == '__main__':
+    # Публичный URL первого сервера
+    server1_url = 'https://jasstme.pythonanywhere.com'
+    # Публичный URL второго сервера
+    server2_url = 'https://eb56-2a03-d000-1505-ad22-dce6-5f86-f134-e5f.ngrok-free.app'
+
+    # Регистрация первого сервера на втором
+    requests.post(f'{server2_url}/register_peer', json={'peer': server1_url})
+    # Регистрация второго сервера на первом
+    requests.post(f'{server1_url}/register_peer', json={'peer': server2_url})
+
+    # Синхронизация цепочки первого сервера со вторым
+    requests.post(f'{server1_url}/update_chain', json={'chain': blockchain.chain})
+    # Синхронизация цепочки второго сервера с первым
+    requests.post(f'{server2_url}/update_chain', json={'chain': blockchain.chain})
+
     port = 5000
     app.run(host='0.0.0.0', port=port, debug=True)
