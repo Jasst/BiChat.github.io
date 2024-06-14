@@ -31,7 +31,7 @@ class Blockchain:
             self.save_chain()
         return block
 
-    def new_transaction(self, sender, recipient, content,image=None):
+    def new_transaction(self, sender, recipient, content, image=None):
         with self.lock:
             self.current_transactions.append({
                 'sender': sender,
@@ -39,7 +39,6 @@ class Blockchain:
                 'content': content,
                 'image': image,
                 'timestamp': time.time(),
-
             })
         return self.last_block['index'] + 1
 
@@ -82,6 +81,44 @@ class Blockchain:
         if os.path.exists('blockchain.json'):
             with open('blockchain.json', 'r') as f:
                 self.chain = json.load(f)
+
+    def is_valid_chain(self, chain):
+        """
+        Проверяет, является ли переданная цепочка валидной.
+        """
+        if not chain:
+            return False
+        
+        previous_block = chain[0]
+        current_index = 1
+        
+        while current_index < len(chain):
+            block = chain[current_index]
+            
+            # Проверяем валидность previous_hash
+            if block['previous_hash'] != self.hash(previous_block):
+                return False
+            
+            # Проверяем валидность proof of work
+            if not self.valid_proof(previous_block['proof'], block['proof']):
+                return False
+            
+            previous_block = block
+            current_index += 1
+        
+        return True
+
+    def replace_chain(self, new_chain):
+        """
+        Заменяет текущую цепочку новой, если она валидная и длиннее текущей.
+        """
+        with self.lock:
+            if len(new_chain) > len(self.chain) and self.is_valid_chain(new_chain):
+                self.chain = new_chain
+                self.save_chain()
+                return True
+        return False
+
 
 
 class CryptoManager:
