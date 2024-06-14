@@ -3,9 +3,13 @@ import json
 import os
 import time
 import threading
+import requests  # Добавлен импорт для работы с HTTP запросами
+
 from cryptography.fernet import Fernet
 from mnemonic import Mnemonic
 
+PEERS = set()  # Множество для хранения URL пиров
+SYNC_INTERVAL = 30  # Интервал синхронизации в секундах
 
 class Blockchain:
     def __init__(self):
@@ -16,6 +20,7 @@ class Blockchain:
         self.load_chain()
         if len(self.chain) == 0:
             self.new_block(previous_hash='1', proof=100)
+        self.sync_periodically()  # Запускаем периодическую синхронизацию
 
     def new_block(self, proof, previous_hash=None):
         with self.lock:
@@ -29,6 +34,7 @@ class Blockchain:
             self.current_transactions = []
             self.chain.append(block)
             self.save_chain()
+            self.notify_peers()  # Уведомляем пиров о новом блоке
         return block
 
     def new_transaction(self, sender, recipient, content, image=None):
@@ -40,6 +46,8 @@ class Blockchain:
                 'image': image,
                 'timestamp': time.time(),
             })
+            self.save_chain()
+            self.notify_peers()  # Уведомляем пиров о новой транзакции
         return self.last_block['index'] + 1
 
     @property
@@ -82,42 +90,51 @@ class Blockchain:
             with open('blockchain.json', 'r') as f:
                 self.chain = json.load(f)
 
-    def is_valid_chain(self, chain):
-        """
-        Проверяет, является ли переданная цепочка валидной.
-        """
-        if not chain:
-            return False
-        
-        previous_block = chain[0]
-        current_index = 1
-        
-        while current_index < len(chain):
-            block = chain[current_index]
-            
-            # Проверяем валидность previous_hash
-            if block['previous_hash'] != self.hash(previous_block):
-                return False
-            
-            # Проверяем валидность proof of work
-            if not self.valid_proof(previous_block['proof'], block['proof']):
-                return False
-            
-            previous_block = block
-            current_index += 1
-        
-        return True
+    def register_peer(self, peer_url):
+        PEERS.add(peer_url)
+
+    def sync_chain(self, peer_url):
+        try:
+            response = requests.get(f'{peer_url}/chain')
+            response.raise_for_status()
+            peer_chain = response.json().get('chain')
+            if peer_chain:
+                if len(peer_chain) > len(self.chain):
+                    self.replace_chain(peer_chain)
+        except requests.exceptions.RequestException as e:
+            print(f"Error syncing chain from {peer_url}: {e}")
+
+    def sync_with_peers(self):
+        for peer_url in PEERS:
+            self.sync_chain(peer_url)
+
+    def sync_periodically(self):
+        threading.Timer(SYNC_INTERVAL, self.sync_periodically).start()
+        self.sync_with_peers()
 
     def replace_chain(self, new_chain):
-        """
-        Заменяет текущую цепочку новой, если она валидная и длиннее текущей.
-        """
-        with self.lock:
-            if len(new_chain) > len(self.chain) and self.is_valid_chain(new_chain):
+        if self.is_valid_chain(new_chain) and len(new_chain) > len(self.chain):
+            with self.lock:
                 self.chain = new_chain
                 self.save_chain()
-                return True
-        return False
+
+    def is_valid_chain(self, chain):
+        for i in range(1, len(chain)):
+            if chain[i]['previous_hash'] != self.hash(chain[i-1]):
+                return False
+            if not self.valid_proof(chain[i-1]['proof'], chain[i]['proof']):
+                return False
+        return True
+
+    def notify_peers(self):
+        for peer_url in PEERS:
+            try:
+                requests.post(f'{peer_url}/update_chain', json={'chain': self.chain})
+            except requests.exceptions.RequestException as e:
+                print(f"Error notifying peer {peer_url}: {e}")
+
+# Остальной код Flask приложения инициализации остается без изменений
+
 
 
 
