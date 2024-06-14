@@ -1,10 +1,10 @@
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization, hashes
 import hashlib
 import json
 import os
 import time
 import threading
+from cryptography.fernet import Fernet
+from mnemonic import Mnemonic
 
 
 class Blockchain:
@@ -31,7 +31,7 @@ class Blockchain:
             self.save_chain()
         return block
 
-    def new_transaction(self, sender, recipient, content, image=None):
+    def new_transaction(self, sender, recipient, content,image=None):
         with self.lock:
             self.current_transactions.append({
                 'sender': sender,
@@ -39,6 +39,7 @@ class Blockchain:
                 'content': content,
                 'image': image,
                 'timestamp': time.time(),
+
             })
         return self.last_block['index'] + 1
 
@@ -84,38 +85,22 @@ class Blockchain:
 
 
 class CryptoManager:
-    def __init__(self):
-        self.private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
-        self.public_key = self.private_key.public_key()
+    def __init__(self, key):
+        self.key = key
 
-    def get_public_key_pem(self):
-        return self.public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-
-    def encrypt_message(self, public_key_pem, message):
-        public_key = serialization.load_pem_public_key(public_key_pem)
-        encrypted_message = public_key.encrypt(
-            message.encode(),
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
-        )
+    def encrypt_message(self, message):
+        cipher = Fernet(self.key)
+        encrypted_message = cipher.encrypt(message.encode())
         return encrypted_message
 
     def decrypt_message(self, encrypted_message):
-        decrypted_message = self.private_key.decrypt(
-            encrypted_message,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
-        )
-        return decrypted_message.decode()
+        cipher = Fernet(self.key)
+        decrypted_message = cipher.decrypt(encrypted_message).decode()
+        return decrypted_message
+
+
+mnemonic = Mnemonic('english')
+blockchain = Blockchain()
+blockchain.load_chain()
+
+# Остальной код вашего приложения, включая Flask-маршруты, HTML-шаблоны и JavaScript-код, остается без изменений
