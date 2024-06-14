@@ -6,14 +6,6 @@ from flask_babel import Babel, gettext
 from blockchain import Blockchain , CriptoManager
 
 from cryptography.fernet import Fernet
-
-
-
-
-    
-
-    
-
 # Генерируем случайный ключ key = Fernet.generate_key()
 
 key = b'U_Urs-adepKN6SnJt1YI_JasstmeWtyyTNno2UeX_-0='
