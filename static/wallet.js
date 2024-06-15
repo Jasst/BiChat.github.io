@@ -36,6 +36,8 @@ function generateQRCode(address) {
     });
 }
 
+
+
 function startQrCodeScanner() {
     document.getElementById('qr-reader').style.display = 'block';
     const qrReader = new Html5Qrcode("qr-reader");
@@ -57,7 +59,7 @@ function startQrCodeScanner() {
         }
     ).catch(err => console.error(`Unable to start scanning, error: ${err}`));
 }
-//
+
 
 
 async function sendMessage() {
