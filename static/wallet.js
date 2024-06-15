@@ -37,7 +37,9 @@ function generateQRCode(address) {
 }
 
 function startQrCodeScanner() {
+    document.getElementById('qr-reader').style.display = 'block';
     const qrReader = new Html5Qrcode("qr-reader");
+
     qrReader.start(
         { facingMode: "environment" },
         {
@@ -55,7 +57,6 @@ function startQrCodeScanner() {
         }
     ).catch(err => console.error(`Unable to start scanning, error: ${err}`));
 }
-
 //
 
 
@@ -348,21 +349,19 @@ function saveImage(src) {
     document.body.removeChild(link);
 }
 
-
-
-
-
-
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('send-button').addEventListener('click', sendMessage);
     document.getElementById('content').addEventListener('keypress', (event) => handleKeyPress(event, sendMessage));
     document.getElementById('create-wallet-button').addEventListener('click', createWallet);
     document.getElementById('login-wallet-button').addEventListener('click', loginWallet);
+
+    document.getElementById('image-input').addEventListener('change', function() {
+        const filename = this.files[0].name;
+        const btnText = document.querySelector('.btn');
+        btnText.textContent = filename;
+    });
 });
 
-// При изменении значения input[type="file"] изменяем текст кнопки
-document.getElementById('image-input').addEventListener('change', function() {
-  const filename = this.files[0].name;
-  const btnText = document.querySelector('.btn');
-  btnText.textContent = filename;
-});
+
+
+
