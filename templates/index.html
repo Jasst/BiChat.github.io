@@ -18,7 +18,7 @@
                 <button id="theme-toggle" onclick="toggleTheme()" data-translate="toggle_theme">Toggle Theme</button>
                 <button id="language-toggle" onclick="switchLanguage()">Switch to Russian</button>
                 <button id="logout-button" onclick="logout()" data-translate="logout_button">Logout</button>
-                <div id="qrcode"></div>
+               
             </div>
         </div>
 
@@ -68,7 +68,8 @@
             <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
             <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
             <button onclick="startQrCodeScanner()">Scan QR Code</button> <!-- Button to start QR code scanner -->
-            <div id="qr-reader" style="width: 300px; height: 300px; display: none;"></div> <!-- QR code scanner container -->
+            <div id="qr-reader" style="width: 300px; height: 300px; display: none;"></div> 
+            <div id="qrcode"></div><!-- QR code scanner container -->
 
             <div id="get-messages-section" style="display:none;">
                 <h2 data-translate="get_messages_section">Get Messages</h2>
