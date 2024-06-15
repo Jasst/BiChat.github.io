@@ -5,7 +5,11 @@ async function createWallet() {
 
         state.mnemonicPhrase = data.mnemonic_phrase;
         state.userAddress = data.address;
-        document.getElementById('wallet-info').innerHTML = `Address: ${data.address}`;
+        document.getElementById('wallet-info').style.display = 'block';
+        document.getElementById('address-content').innerHTML = data.address;
+
+        // Генерация QR-кода
+        generateQRCode(data.address);
 
         document.getElementById('wallet-section').style.display = 'none';
         document.getElementById('mnemonic-login').value = state.mnemonicPhrase;
@@ -23,6 +27,37 @@ async function createWallet() {
         showAlert('Error creating wallet');
     }
 }
+
+function generateQRCode(address) {
+    const qrcodeContainer = document.getElementById('qrcode');
+    qrcodeContainer.innerHTML = ''; // Очистка контейнера
+    QRCode.toCanvas(qrcodeContainer, address, { width: 150, height: 150 }, function (error) {
+        if (error) console.error(error);
+    });
+}
+
+function startQrCodeScanner() {
+    const qrReader = new Html5Qrcode("qr-reader");
+    qrReader.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: 250
+        },
+        (decodedText) => {
+            document.getElementById('recipient').value = decodedText;
+            qrReader.stop().then(ignore => {
+                document.getElementById('qr-reader').style.display = 'none';
+            }).catch(err => console.error(err));
+        },
+        (errorMessage) => {
+            console.warn(`QR code scanning error: ${errorMessage}`);
+        }
+    ).catch(err => console.error(`Unable to start scanning, error: ${err}`));
+}
+
+//
+
 
 async function sendMessage() {
     try {
