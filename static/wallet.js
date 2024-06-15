@@ -1,3 +1,12 @@
+// Глобальный объект состояния (может быть определен где-то в другом месте вашего приложения)
+let state = {
+    currentLanguage: 'en', // Пример языка по умолчанию
+    mnemonicPhrase: '', // Заглушка для мнемонической фразы
+    userAddress: '', // Заглушка для адреса пользователя
+    activeDialog: '' // Заглушка для активного диалога
+};
+
+// Функция для создания кошелька
 async function createWallet() {
     try {
         const response = await fetch(`/create_wallet?lang=${state.currentLanguage}`, { method: 'POST' });
@@ -23,42 +32,54 @@ async function createWallet() {
         checkIncomingMessages();
         await getMessages();
     } catch (error) {
-        console.error('Error:', error);
-        showAlert('Error creating wallet');
+        console.error('Ошибка:', error);
+        showAlert('Ошибка при создании кошелька');
     }
 }
 
+// Функция для генерации QR-кода
 function generateQRCode(address) {
     const qrcodeContainer = document.getElementById('qrcode');
-    qrcodeContainer.innerHTML = ''; // Очистка контейнера
+    qrcodeContainer.innerHTML = ''; // Очистка предыдущего содержимого, если есть
     QRCode.toCanvas(qrcodeContainer, address, { width: 150, height: 150 }, function (error) {
         if (error) console.error(error);
     });
 }
 
+// Функция для входа в кошелек
+async function loginWallet() {
+    try {
+        const mnemonic = document.getElementById('mnemonic-login').value;
 
+        const response = await fetch(`/login_wallet?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mnemonic_phrase: mnemonic })
+        });
+        const data = await response.json();
 
-function startQrCodeScanner() {
-    document.getElementById('qr-reader').style.display = 'block';
-    const qrReader = new Html5Qrcode("qr-reader");
+        state.mnemonicPhrase = mnemonic;
+        state.userAddress = data.address;
 
-    qrReader.start(
-        { facingMode: "environment" },
-        {
-            fps: 10,
-            qrbox: 250
-        },
-        (decodedText) => {
-            document.getElementById('recipient').value = decodedText;
-            qrReader.stop().then(ignore => {
-                document.getElementById('qr-reader').style.display = 'none';
-            }).catch(err => console.error(err));
-        },
-        (errorMessage) => {
-            console.warn(`QR code scanning error: ${errorMessage}`);
-        }
-    ).catch(err => console.error(`Unable to start scanning, error: ${err}`));
+        document.getElementById('wallet-section').style.display = 'none';
+        document.getElementById('create-wallet-container').style.display = 'none';
+        document.getElementById('login-status').innerHTML = data.message;
+        document.getElementById('login-wallet-container').style.display = 'none';
+        document.getElementById('send-message-section').style.display = 'block';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('logout-button').style.display = 'block';
+
+        saveState();
+
+        checkIncomingMessages();
+        await getMessages();
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showAlert('Ошибка входа');
+    }
 }
+
+// Другие функции (toggleSettings, hideMnemonic, showMnemonic, toggleTheme, switchLanguage, logout, handleKeyPress, sendMessage, showAlert, saveState, checkIncomingMessages) могут быть определены в соответствии с логикой и требованиями вашего приложения.
 
 
 
@@ -122,37 +143,7 @@ async function convertFileToBase64(file) {
     });
 }
 
-async function loginWallet() {
-    try {
-        const mnemonic = document.getElementById('mnemonic-login').value;
 
-        const response = await fetch(`/login_wallet?lang=${state.currentLanguage}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mnemonic_phrase: mnemonic })
-        });
-        const data = await response.json();
-
-        state.mnemonicPhrase = mnemonic;
-        state.userAddress = data.address;
-
-        document.getElementById('wallet-section').style.display = 'none';
-        document.getElementById('create-wallet-container').style.display = 'none';
-                document.getElementById('login-status').innerHTML = data.message;
-        document.getElementById('login-wallet-container').style.display = 'none';
-        document.getElementById('send-message-section').style.display = 'block';
-        document.getElementById('chat-section').style.display = 'block';
-        document.getElementById('logout-button').style.display = 'block';
-
-        saveState();
-
-        checkIncomingMessages();
-        await getMessages();
-    } catch (error) {
-        console.error('Error:', error);
-        showAlert('Error logging in');
-    }
-}
 
 async function getMessages(recipientAddress) {
     try {
