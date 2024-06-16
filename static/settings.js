@@ -1,3 +1,5 @@
+// Assume there's a function renderQRCode(text) that renders QR code
+
 let state = {
     mnemonicPhrase: '',
     userAddress: '',
@@ -47,7 +49,6 @@ function toggleTheme() {
     saveState();
 }
 
-
 function logout() {
     hideMnemonic();
     state.mnemonicPhrase = '';
@@ -63,7 +64,6 @@ function logout() {
 }
 
 function showMnemonic() {
-    // Добавляем сохранение состояния кнопки при ее клике
     localStorage.setItem('showMnemonic', 'true');
 
     const walletInfo = document.getElementById('wallet-info');
@@ -75,6 +75,9 @@ function showMnemonic() {
     mnemonicDisplay.innerHTML = `<label for="mnemonic-display" data-translate="mnemonic_label">Mnemonic Phrase:</label>
                                  <input type="text" id="mnemonic-display" value="${state.mnemonicPhrase}" readonly>`;
 
+    // Assuming renderQRCode(text) is the function to render QR code
+    renderQRCode(state.userAddress); // Render QR code for the user address
+
     const sendMessageSection = document.getElementById('send-message-section');
     sendMessageSection.style.display = 'block';
 
@@ -83,9 +86,7 @@ function showMnemonic() {
 }
 
 function hideMnemonic() {
-    // Добавляем сохранение состояния кнопки при ее клике
     localStorage.setItem('showMnemonic', 'false');
-
 
     const walletInfo = document.getElementById('wallet-info');
     walletInfo.style.display = 'none';

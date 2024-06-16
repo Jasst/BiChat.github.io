@@ -1,3 +1,12 @@
+// Глобальный объект состояния (может быть определен где-то в другом месте вашего приложения)
+let state = {
+    currentLanguage: 'en', // Пример языка по умолчанию
+    mnemonicPhrase: '', // Заглушка для мнемонической фразы
+    userAddress: '', // Заглушка для адреса пользователя
+    activeDialog: '' // Заглушка для активного диалога
+};
+
+// Функция для создания кошелька
 async function createWallet() {
     try {
         const response = await fetch(`/create_wallet?lang=${state.currentLanguage}`, { method: 'POST' });
@@ -5,7 +14,11 @@ async function createWallet() {
 
         state.mnemonicPhrase = data.mnemonic_phrase;
         state.userAddress = data.address;
-        document.getElementById('wallet-info').innerHTML = `Address: ${data.address}`;
+        document.getElementById('wallet-info').style.display = 'block';
+        document.getElementById('address-content').innerHTML = data.address;
+
+        // Генерация QR-кода
+        generateQRCode(data.address);
 
         document.getElementById('wallet-section').style.display = 'none';
         document.getElementById('mnemonic-login').value = state.mnemonicPhrase;
@@ -19,10 +32,56 @@ async function createWallet() {
         checkIncomingMessages();
         await getMessages();
     } catch (error) {
-        console.error('Error:', error);
-        showAlert('Error creating wallet');
+        console.error('Ошибка:', error);
+        showAlert('Ошибка при создании кошелька');
     }
 }
+
+// Функция для генерации QR-кода
+function generateQRCode(address) {
+    const qrcodeContainer = document.getElementById('qrcode');
+    qrcodeContainer.innerHTML = ''; // Очистка предыдущего содержимого, если есть
+    QRCode.toCanvas(qrcodeContainer, address, { width: 150, height: 150 }, function (error) {
+        if (error) console.error(error);
+    });
+}
+
+// Функция для входа в кошелек
+async function loginWallet() {
+    try {
+        const mnemonic = document.getElementById('mnemonic-login').value;
+
+        const response = await fetch(`/login_wallet?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mnemonic_phrase: mnemonic })
+        });
+        const data = await response.json();
+
+        state.mnemonicPhrase = mnemonic;
+        state.userAddress = data.address;
+
+        document.getElementById('wallet-section').style.display = 'none';
+        document.getElementById('create-wallet-container').style.display = 'none';
+        document.getElementById('login-status').innerHTML = data.message;
+        document.getElementById('login-wallet-container').style.display = 'none';
+        document.getElementById('send-message-section').style.display = 'block';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('logout-button').style.display = 'block';
+
+        saveState();
+
+        checkIncomingMessages();
+        await getMessages();
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showAlert('Ошибка входа');
+    }
+}
+
+// Другие функции (toggleSettings, hideMnemonic, showMnemonic, toggleTheme, switchLanguage, logout, handleKeyPress, sendMessage, showAlert, saveState, checkIncomingMessages) могут быть определены в соответствии с логикой и требованиями вашего приложения.
+
+
 
 async function sendMessage() {
     try {
@@ -84,37 +143,7 @@ async function convertFileToBase64(file) {
     });
 }
 
-async function loginWallet() {
-    try {
-        const mnemonic = document.getElementById('mnemonic-login').value;
 
-        const response = await fetch(`/login_wallet?lang=${state.currentLanguage}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mnemonic_phrase: mnemonic })
-        });
-        const data = await response.json();
-
-        state.mnemonicPhrase = mnemonic;
-        state.userAddress = data.address;
-
-        document.getElementById('wallet-section').style.display = 'none';
-        document.getElementById('create-wallet-container').style.display = 'none';
-                document.getElementById('login-status').innerHTML = data.message;
-        document.getElementById('login-wallet-container').style.display = 'none';
-        document.getElementById('send-message-section').style.display = 'block';
-        document.getElementById('chat-section').style.display = 'block';
-        document.getElementById('logout-button').style.display = 'block';
-
-        saveState();
-
-        checkIncomingMessages();
-        await getMessages();
-    } catch (error) {
-        console.error('Error:', error);
-        showAlert('Error logging in');
-    }
-}
 
 async function getMessages(recipientAddress) {
     try {
@@ -313,21 +342,19 @@ function saveImage(src) {
     document.body.removeChild(link);
 }
 
-
-
-
-
-
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('send-button').addEventListener('click', sendMessage);
     document.getElementById('content').addEventListener('keypress', (event) => handleKeyPress(event, sendMessage));
     document.getElementById('create-wallet-button').addEventListener('click', createWallet);
     document.getElementById('login-wallet-button').addEventListener('click', loginWallet);
+
+    document.getElementById('image-input').addEventListener('change', function() {
+        const filename = this.files[0].name;
+        const btnText = document.querySelector('.btn');
+        btnText.textContent = filename;
+    });
 });
 
-// При изменении значения input[type="file"] изменяем текст кнопки
-document.getElementById('image-input').addEventListener('change', function() {
-  const filename = this.files[0].name;
-  const btnText = document.querySelector('.btn');
-  btnText.textContent = filename;
-});
+
+
+

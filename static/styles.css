@@ -128,8 +128,6 @@ p {
     background: transparent;
 }
 
-
-
 .message {
     background-color: rgba(200, 236, 239, 0.9);
     color: #333;
@@ -141,8 +139,6 @@ p {
     word-wrap: break-word;
     position: relative;
 }
-
-
 
 .message-sender,
 .message-recipient,
@@ -164,7 +160,6 @@ p {
     align-self: flex-end;
     margin-left: auto; /* Перемещение фона сообщений вправо */
 }
-
 
 .message.received {
     background-color: rgba(209, 236, 241, 0.9);
@@ -200,7 +195,8 @@ p {
     background-color: rgba(85, 85, 85, 0.9);
 }
 
-.dark-theme input, .dark-theme textarea {
+.dark-theme input,
+.dark-theme textarea {
     background-color: rgba(85, 85, 85, 0.9);
     color: #ddd;
     border: 1px solid #444;
@@ -215,7 +211,10 @@ p {
     background-color: rgba(68, 68, 68, 0.9);
 }
 
-.dark-theme h1, .dark-theme h2, .dark-theme label, .dark-theme p {
+.dark-theme h1,
+.dark-theme h2,
+.dark-theme label,
+.dark-theme p {
     color: #ddd;
 }
 
@@ -228,279 +227,54 @@ p {
     color: #aaa;
 }
 
-.message-content {
-    font-size: 18px;
-}
-
-.message-sender {
-    font-size: 15px;
-}
-
-.mnemonic-container:hover {
-    display: -moz-flex;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: pre-wrap;
-    vertical-align: bottom;
-}
-
-.mnemonic-container.visible {
-    overflow: visible;
-    white-space: pre-wrap;
-    background-color: rgba(240, 240, 240, 0.9);
-    border: 1px solid #ccc;
-    padding: 5px;
-    border-radius: 5px;
-    z-index: 0.1;
-    position: relative;
-}
-
-.flex-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.message .message-timestamp {
-    font-size: 0.8em;
-    color: #999;
-    margin-top: 5px;
+/* Стили для QR-кода и информации о кошельке */
+#wallet-info {
     display: block;
-}
-
-
-
-
-.settings {
-  position: fixed;
-  top: 20px; /* Можете настроить отступ сверху по вашему усмотрению */
-  right: 20px; /* Можете настроить отступ справа по вашему усмотрению */
-  z-index: 1000; /* Устанавливаем высокий уровень z-index, чтобы кнопка была поверх других элементов */
-}
-
-.settings-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    background-color: rgba(255, 255, 255, 0.9);
+    margin: 20px 0;
     padding: 10px;
-    border-radius: 10px;
+    border: 1px solid #ccc;
+    background-color: #f9f9f9;
+    border-radius: 5px;
+}
+
+#wallet-info label {
+    font-weight: bold;
+}
+
+#wallet-info span {
+    font-family: monospace;
+    display: block;
+    margin-top: 5px;
+}
+
+#qrcode {
+    width: 150px;
+    height: 150px;
+    display: block;
+    margin: 10px auto;
+}
+
+/* Стили для кнопок в меню настроек */
+.settings-menu {
+    position: absolute;
+    top: 50px;
+    right: 20px;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 5px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    transition: background-color 0.3s, box-shadow 0.3s;
+    display: none;
 }
 
 .settings-menu button {
-    background-color: rgba(0, 123, 255, 0.9);
-    color: white;
-    border: none;
-    border-radius: 7px;
+    display: block;
+    width: 100%;
     padding: 10px;
-    cursor: pointer;
-    transition: background-color 0.3s, transform 0.5s, box-shadow 0.3s;
+    border: none;
+    background: none;
+    text-align: left;
 }
 
 .settings-menu button:hover {
-    background-color: rgba(0, 86, 179, 0.9);
-    transform: scale(1.05);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.settings-menu button:active {
-    transform: scale(0.98);
-}
-
-.dark-theme .settings-menu {
-    background-color: rgba(51, 51, 51, 0.9);
-    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1);
-}
-
-.dark-theme .settings-menu button {
-    background-color: rgba(68, 68, 68, 0.9);
-    color: #ddd;
-}
-
-.dark-theme .settings-menu button:hover {
-    background-color: rgba(85, 85, 85, 0.9);
-}
-
-#address-content {
-    display: -moz-flex;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: pre-wrap;
-    vertical-align: bottom;
-}
-
-#address-content:hover {
-    overflow: visible;
-    white-space: pre-wrap;
-    background-color: rgba(240, 240, 240, 0.9);
-    border: 1px solid #ccc;
-    padding: 5px;
-    border-radius: 5px;
-    z-index: 0.1;
-    position: relative;
-}
-
-#dialog-tabs {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-#dialog-tabs button {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    width: 20%;
-    margin-bottom: 5px;
-    background-color: rgba(0, 123, 255, 0.9);
-    color: white;
-    border: none;
-    border-radius: 5px;
-    padding: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s, transform 0.5s;
-}
-
-#dialog-tabs button:hover {
-    background-color: rgba(8, 87, 180, 0.9);
-    transform: scale(1.05);
-}
-
-#dialog-tabs button:active {
-    transform: scale(0.95);
-}
-
-a {
-    color: #5197e3;
-    transition: color 0.3s ease-in-out;
-}
-
-a:hover {
-    color: #768998;
-}
-
-#back-to-top {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background-color: rgba(123, 120, 218, 0.9);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    padding: 10px;
-    cursor: pointer;
-    transition: background-color 0.3s, transform 0.5s;
-}
-
-#back-to-top:hover {
-    background-color: rgba(25, 26, 26, 0.9);
-}
-
-#back-to-top:active {
-    transform: scale(0.95);
-}
-
-/* Добавляем стили для активного диалога */
-#dialog-tabs button.active {
-    background-color: #83bcfa;
-    color: #ffffff;
-    border-color: #4f5f70;
-}
-
-
-.message-image {
-            max-width: 200px;
-            max-height: 200px;
-            display: block;
-            margin-top: 10px;
-            cursor: pointer;
-        }
-
-
-/* Стили для обертки кнопки загрузки */
-.upload-btn-wrapper {
-  position: relative;
-  overflow: hidden;
-  display: inline-block;
-}
-
-/* Стили для самой кнопки */
-.btn {
-  border: 2px solid #3498db;
-  color: #3498db;
-  background-color: transparent;
-  padding: 5px 15px;
-  border-radius: 7px;
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background-color 0.3s, color 0.3s;
-}
-
-.btn:hover {
-  background-color: #3498db;
-  color: white;
-}
-
-/* Стили для input[type="file"] */
-#image-input {
-  position: absolute;
-  font-size: 100px;
-  opacity: 0;
-  right: 0;
-  top: 0;
-}
-
-.save-button {
-    max-width: fit-content;
-    left: 50px;
-    right: 50px;
-    top: 0;
-    position: -ms-device-fixed;
-    font-size: 15px; /* Уменьшение размера текста кнопки */
-    padding: 10px 15px; /* Уменьшение отступов кнопки */
-    margin-top: 10px; /* Отступ сверху для кнопки */
-    background-color: #527eaf; /* Цвет фона кнопки */
-    color: white; /* Цвет текста кнопки */
-    border: none; /* Убираем границу кнопки */
-    border-radius: 6px; /* Скругляем углы кнопки */
-
-}
-
-.save-button:hover {
-    background-color: #0a54a4; /* Цвет кнопки при наведении */
-}
-
-.modal {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0, 0, 0, 0.8);
-}
-
-.modal-content {
-    margin: auto;
-    display: block;
-    max-width: 80%;
-    max-height: 80%;
-}
-
-#caption {
-    margin-top: 10px;
-    color: #ccc;
-    font-size: 20px;
-    text-align: center;
+    background-color: #f1f1f1;
 }
