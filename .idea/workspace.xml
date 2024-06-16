@@ -5,7 +5,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="Split">
+      <change afterPath="$PROJECT_DIR$/static/qrcode.min.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/static/scripts.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/static/settings.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/static/styles.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/static/translations.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/static/wallet.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socket.py" beforeDir="false" afterPath="$PROJECT_DIR$/Socket.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sync_peers.py" beforeDir="false" afterPath="$PROJECT_DIR$/sync_peers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -181,7 +190,7 @@
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
       <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
@@ -221,14 +230,6 @@
       <workItem from="1718288367464" duration="786000" />
       <workItem from="1718378173687" duration="1303000" />
       <workItem from="1718480032202" duration="541000" />
-    </task>
-    <task id="LOCAL-00011" summary="Vercel">
-      <option name="closed" value="true" />
-      <created>1717113368640</created>
-      <option name="number" value="00011" />
-      <option name="presentableId" value="LOCAL-00011" />
-      <option name="project" value="LOCAL" />
-      <updated>1717113368640</updated>
     </task>
     <task id="LOCAL-00012" summary="Vercel">
       <option name="closed" value="true" />
@@ -614,7 +615,15 @@
       <option name="project" value="LOCAL" />
       <updated>1718379317585</updated>
     </task>
-    <option name="localTasksCounter" value="60" />
+    <task id="LOCAL-00060" summary="Split">
+      <option name="closed" value="true" />
+      <created>1718569980563</created>
+      <option name="number" value="00060" />
+      <option name="presentableId" value="LOCAL-00060" />
+      <option name="project" value="LOCAL" />
+      <updated>1718569980564</updated>
+    </task>
+    <option name="localTasksCounter" value="61" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -640,6 +649,7 @@
     <MESSAGE value="Много задачность окон" />
     <MESSAGE value="Стабильность локализация" />
     <MESSAGE value="Update settings.js" />
+    <MESSAGE value="Merge remote-tracking branch 'origin/Jasst-wallet-qrcode'" />
     <MESSAGE value="Split" />
     <option name="LAST_COMMIT_MESSAGE" value="Split" />
   </component>

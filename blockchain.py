@@ -1,13 +1,11 @@
 import hashlib
 import json
 import os
-import threading
 import time
-import requests
+import threading
 from cryptography.fernet import Fernet
+from mnemonic import Mnemonic
 
-PEERS = set()  # Множество для хранения URL пиров
-SYNC_INTERVAL = 30  # Интервал синхронизации в секундах
 
 class Blockchain:
     def __init__(self):
@@ -18,7 +16,6 @@ class Blockchain:
         self.load_chain()
         if len(self.chain) == 0:
             self.new_block(previous_hash='1', proof=100)
-        self.sync_periodically()  # Запускаем периодическую синхронизацию
 
     def new_block(self, proof, previous_hash=None):
         with self.lock:
@@ -32,10 +29,9 @@ class Blockchain:
             self.current_transactions = []
             self.chain.append(block)
             self.save_chain()
-            self.notify_peers()  # Уведомляем пиров о новом блоке
         return block
 
-    def new_transaction(self, sender, recipient, content, image=None):
+    def new_transaction(self, sender, recipient, content,image=None):
         with self.lock:
             self.current_transactions.append({
                 'sender': sender,
@@ -43,9 +39,8 @@ class Blockchain:
                 'content': content,
                 'image': image,
                 'timestamp': time.time(),
+
             })
-            self.save_chain()
-            self.notify_peers()  # Уведомляем пиров о новой транзакции
         return self.last_block['index'] + 1
 
     @property
@@ -88,60 +83,22 @@ class Blockchain:
             with open('blockchain.json', 'r') as f:
                 self.chain = json.load(f)
 
-    def register_peer(self, peer_url):
-        PEERS.add(peer_url)
-
-    def sync_chain(self, peer_url):
-        try:
-            response = requests.get(f'{peer_url}/chain')
-            response.raise_for_status()
-            peer_chain = response.json().get('chain')
-            if peer_chain:
-                if len(peer_chain) > len(self.chain):
-                    self.replace_chain(peer_chain)
-        except requests.exceptions.RequestException as e:
-            print(f"Error syncing chain from {peer_url}: {e}")
-
-    def sync_with_peers(self):
-        for peer_url in PEERS:
-            self.sync_chain(peer_url)
-
-    def sync_periodically(self):
-        threading.Timer(SYNC_INTERVAL, self.sync_periodically).start()
-        self.sync_with_peers()
-
-    def replace_chain(self, new_chain):
-        if self.is_valid_chain(new_chain) and len(new_chain) > len(self.chain):
-            with self.lock:
-                self.chain = new_chain
-                self.save_chain()
-
-    def is_valid_chain(self, chain):
-        for i in range(1, len(chain)):
-            if chain[i]['previous_hash'] != self.hash(chain[i-1]):
-                return False
-            if not self.valid_proof(chain[i-1]['proof'], chain[i]['proof']):
-                return False
-        return True
-
-    def notify_peers(self):
-        for peer_url in PEERS:
-            try:
-                requests.post(f'{peer_url}/update_chain', json={'chain': self.chain})
-            except requests.exceptions.RequestException as e:
-                print(f"Error notifying peer {peer_url}: {e}")
-
 
 class CryptoManager:
     def __init__(self, key):
         self.key = key
-        self.cipher_suite = Fernet(key)
 
     def encrypt_message(self, message):
-        encrypted_message = self.cipher_suite.encrypt(message.encode())
-        return encrypted_message.decode()
+        cipher = Fernet(self.key)
+        encrypted_message = cipher.encrypt(message.encode())
+        return encrypted_message
 
     def decrypt_message(self, encrypted_message):
-        decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
-        return decrypted_message.decode()
+        cipher = Fernet(self.key)
+        decrypted_message = cipher.decrypt(encrypted_message).decode()
+        return decrypted_message
 
+
+mnemonic = Mnemonic('english')
+blockchain = Blockchain()
+blockchain.load_chain()

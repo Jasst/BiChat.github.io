@@ -3,7 +3,7 @@ import requests
 # Публичный URL первого сервера
 server1_url = 'https://jasstme.pythonanywhere.com'
 # Публичный URL второго сервера
-server2_url = 'https://9cb9-2a03-d000-1690-b7d3-e491-48b2-6fb7-dcf5.ngrok-free.app/'
+server2_url = 'https://eb56-2a03-d000-1505-ad22-dce6-5f86-f134-e5f.ngrok-free.app'
 
 def register_peer(server_url, peer_url):
     try:
