@@ -1,10 +1,23 @@
 
+document.addEventListener('click', function(event) {
+    const settingsMenu = document.getElementById('settings-menu');
+    const settingsToggle = document.getElementById('settings-toggle');
+    if (settingsMenu.style.display === 'block' && !settingsMenu.contains(event.target) && !settingsToggle.contains(event.target)) {
+        settingsMenu.style.display = 'none';
+    }
+});
+
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Автоматический логин при загрузке страницы
+    const savedMnemonic = localStorage.getItem('mnemonicPhrase');
+    if (savedMnemonic) {
+        document.getElementById('mnemonic-login').value = savedMnemonic;
+        loginWallet(); // Автоматический логин с использованием сохраненной мнемонической фразы
+    }
 
     if (localStorage.getItem('appState')) {
         loadState(); // Загрузка сохраненного состояния
-        // Если требуется отправить сообщение после загрузки чатов
-        getMessages();
     }
 
     // Другие действия при загрузке страницы
@@ -13,8 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
         switchLanguage();
     }
     switchLanguage();
-    // Переключаем язык на сохраненный
-    // Показываем или скрываем мнемоническую фразу в зависимости от сохраненного состояния
+
     if (localStorage.getItem('showMnemonic')) {
         if (localStorage.getItem('showMnemonic') === 'true') {
             showMnemonic();
@@ -39,14 +51,11 @@ document.addEventListener('DOMContentLoaded', function() {
     checkIncomingMessages();
 });
 
-document.addEventListener('click', function(event) {
-    const settingsMenu = document.getElementById('settings-menu');
-    const settingsToggle = document.getElementById('settings-toggle');
-    if (settingsMenu.style.display === 'block' && !settingsMenu.contains(event.target) && !settingsToggle.contains(event.target)) {
-        settingsMenu.style.display = 'none';
-    }
+document.getElementById('image-input').addEventListener('change', function() {
+    const filename = this.files[0].name;
+    const btnText = document.querySelector('.btn');
+    btnText.textContent = filename;
 });
-
 
 
 

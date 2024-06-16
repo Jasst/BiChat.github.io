@@ -8,7 +8,6 @@ let state = {
 
 function saveState() {
     localStorage.setItem('appState', JSON.stringify(state));
-    localStorage.setItem('appState', JSON.stringify(state));
     localStorage.setItem('activeDialog', state.activeDialog);
 }
 
@@ -23,9 +22,11 @@ function loadState() {
             document.getElementById('qr-code').style.display = 'block';
             document.getElementById('wallet-section').style.display = 'none';
             document.getElementById('create-wallet-container').style.display = 'none';
+            document.getElementById('login-wallet-container').style.display = 'none';
             document.getElementById('send-message-section').style.display = 'block';
             document.getElementById('chat-section').style.display = 'block';
             document.getElementById('logout-button').style.display = 'block';
+
         }
 
         // Восстанавливаем тему, если она была сохранена как темная
@@ -40,6 +41,7 @@ function loadState() {
             // Здесь можете выполнить дополнительные действия для восстановления активного диалога
         }
     }
+
 }
 
 function toggleSettings() {
@@ -63,21 +65,23 @@ function toggleTheme() {
 
 function logout() {
     hideMnemonic();
-
     // Очищаем состояние при выходе
     state.mnemonicPhrase = '';
     state.userAddress = '';
     state.activeDialog = '';
 
     // Скрываем необходимые элементы интерфейса
+    document.getElementById('mnemonic-login').style.display ='block';
     document.getElementById('qr-code').style.display = 'none';
     document.getElementById('wallet-section').style.display = 'block';
+    document.getElementById('login-wallet-container').style.display = 'block';
     document.getElementById('create-wallet-container').style.display = 'block';
     document.getElementById('send-message-section').style.display = 'none';
     document.getElementById('chat-section').style.display = 'none';
     document.getElementById('logout-button').style.display = 'none';
 
     // Удаляем сохраненные данные из localStorage
+    localStorage.removeItem('mnemonicPhrase');
     localStorage.removeItem('appState');
     localStorage.removeItem('activeDialog');
 }

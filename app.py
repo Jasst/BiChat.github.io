@@ -11,16 +11,15 @@ from cryptography.fernet import Fernet
 from translations import translations
 from blockchain import Blockchain, CryptoManager
 
-
-def generate_key(sender, recipient):
-    shared_secret = sender + recipient
-    return base64.urlsafe_b64encode(hashlib.sha256(shared_secret.encode()).digest()[:32])
-
-
 app = Flask(__name__)
 babel = Babel(app)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
+
+
+def generate_key(sender, recipient):
+    shared_secret = sender + recipient
+    return base64.urlsafe_b64encode(hashlib.sha256(shared_secret.encode()).digest()[:32])
 
 
 def get_locale():

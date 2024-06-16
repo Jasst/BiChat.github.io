@@ -7,13 +7,15 @@ async function createWallet() {
         state.userAddress = data.address;
         document.getElementById('wallet-info').innerHTML = `Address: ${data.address}`;
 
-
         document.getElementById('wallet-section').style.display = 'none';
         document.getElementById('mnemonic-login').value = state.mnemonicPhrase;
         document.getElementById('create-wallet-container').style.display = 'none';
         document.getElementById('send-message-section').style.display = 'block';
         document.getElementById('chat-section').style.display = 'block';
         document.getElementById('logout-button').style.display = 'block';
+
+        // Сохраняем мнемоническую фразу в localStorage
+        localStorage.setItem('mnemonicPhrase', state.mnemonicPhrase);
 
         saveState();
 
@@ -61,7 +63,6 @@ function startQrCodeScanner() {
 }
 
 
-
 async function sendMessage() {
     try {
         const recipient = document.getElementById('recipient').value;
@@ -106,6 +107,8 @@ async function sendMessage() {
     } catch (error) {
         console.error('Error:', error);
         //showAlert('Error sending message');
+        document.getElementById('content').value = '';
+        document.getElementById('image-input').value = '';
     }
 }
 
@@ -138,12 +141,16 @@ async function loginWallet() {
 
         document.getElementById('wallet-section').style.display = 'none';
         document.getElementById('create-wallet-container').style.display = 'none';
-                document.getElementById('login-status').innerHTML = data.message;
+        document.getElementById('login-status').innerHTML = data.message;
         document.getElementById('login-wallet-container').style.display = 'none';
         document.getElementById('send-message-section').style.display = 'block';
         document.getElementById('chat-section').style.display = 'block';
         document.getElementById('logout-button').style.display = 'block';
         generateQRCode(data.address);
+
+        // Сохраняем мнемоническую фразу в localStorage
+        localStorage.setItem('mnemonicPhrase', state.mnemonicPhrase);
+
         saveState();
 
         checkIncomingMessages();
@@ -262,7 +269,6 @@ function displayDialog(messages, recipient) {
     });
 }
 
-
 function highlightActiveDialog(activeButton) {
     const dialogTabs = document.getElementById('dialog-tabs').getElementsByTagName('button');
     for (const button of dialogTabs) {
@@ -353,20 +359,3 @@ function saveImage(src) {
 
 
 
-
-
-
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('send-button').addEventListener('click', sendMessage);
-    document.getElementById('content').addEventListener('keypress', (event) => handleKeyPress(event, sendMessage));
-    document.getElementById('create-wallet-button').addEventListener('click', createWallet);
-    document.getElementById('login-wallet-button').addEventListener('click', loginWallet);
-    document.getElementById('start-scanner').addEventListener('click', startQrCodeScanner);
-});
-
-// При изменении значения input[type="file"] изменяем текст кнопки
-document.getElementById('image-input').addEventListener('change', function() {
-  const filename = this.files[0].name;
-  const btnText = document.querySelector('.btn');
-  btnText.textContent = filename;
-});
