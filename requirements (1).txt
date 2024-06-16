@@ -1,9 +1,0 @@
-Flask==2.1.0
-cryptography
-mnemonic==0.19
-Werkzeug==2.1.0
-Flask-Babel
-pyopenssl
-flask-socketio
-requests
-

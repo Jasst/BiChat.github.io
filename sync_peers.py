@@ -5,6 +5,7 @@ server1_url = 'https://jasstme.pythonanywhere.com'
 # Публичный URL второго сервера
 server2_url = 'https://eb56-2a03-d000-1505-ad22-dce6-5f86-f134-e5f.ngrok-free.app'
 
+
 def register_peer(server_url, peer_url):
     try:
         response = requests.post(f'{server_url}/register_peer', json={'peer': peer_url})
@@ -13,6 +14,7 @@ def register_peer(server_url, peer_url):
     except requests.exceptions.RequestException as e:
         print(f"Error registering peer {peer_url} on {server_url}: {e}")
         print(f"Response content: {response.content}")
+
 
 def sync_chain(target_server_url, source_server_url):
     try:
@@ -28,6 +30,7 @@ def sync_chain(target_server_url, source_server_url):
     except requests.exceptions.RequestException as e:
         print(f"Error syncing chain from {source_server_url} to {target_server_url}: {e}")
         print(f"Response content: {response.content}")
+
 
 # Регистрация первого сервера на втором
 register_peer(server2_url, server1_url)

@@ -31,7 +31,7 @@ class Blockchain:
             self.save_chain()
         return block
 
-    def new_transaction(self, sender, recipient, content,image=None):
+    def new_transaction(self, sender, recipient, content, image=None):
         with self.lock:
             self.current_transactions.append({
                 'sender': sender,
@@ -82,6 +82,8 @@ class Blockchain:
         if os.path.exists('blockchain.json'):
             with open('blockchain.json', 'r') as f:
                 self.chain = json.load(f)
+                data = self.chain
+                print(data)
 
 
 class CryptoManager:
