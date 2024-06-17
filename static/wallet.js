@@ -39,7 +39,6 @@ function generateQRCode(address) {
     });
 }
 
-
 function startQrCodeScanner() {
     document.getElementById('qr-reader').style.display = 'block';
     const qrReader = new Html5Qrcode("qr-reader");
@@ -62,105 +61,6 @@ function startQrCodeScanner() {
     ).catch(err => console.error(`Unable to start scanning, error: ${err}`));
 }
 
-
-async function sendMessage() {
-    try {
-        const recipient = document.getElementById('recipient').value;
-        const content = document.getElementById('content').value;
-        const imageInput = document.getElementById('image-input');
-        let imageBase64 = null;
-
-        if (imageInput.files.length > 0) {
-            const imageFile = imageInput.files[0];
-            imageBase64 = await convertFileToBase64(imageFile);
-        }
-
-        const response = await fetch(`/send_message?lang=${state.currentLanguage}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                mnemonic_phrase: state.mnemonicPhrase,
-                recipient: recipient,
-                content: content,
-                image: imageBase64
-            })
-        });
-        const data = await response.json();
-
-        const translations = {
-            en: 'Message sent successfully',
-            ru: 'Сообщение успешно отправлено'
-        };
-
-        const sendStatus = document.getElementById('send-status');
-        sendStatus.innerHTML = data.message || translations[state.currentLanguage];
-        sendStatus.style.display = 'block';
-
-        setTimeout(() => {
-            sendStatus.style.display = 'none';
-        }, 2500);
-
-        document.getElementById('content').value = '';
-        document.getElementById('image-input').value = '';
-
-        await getMessages();
-    } catch (error) {
-        console.error('Error:', error);
-        //showAlert('Error sending message');
-        document.getElementById('content').value = '';
-        document.getElementById('image-input').value = '';
-    }
-}
-
-async function convertFileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            resolve(event.target.result);
-        };
-        reader.onerror = function(error) {
-            reject(error);
-        };
-        reader.readAsDataURL(file);
-    });
-}
-
-async function loginWallet() {
-    try {
-        const mnemonic = document.getElementById('mnemonic-login').value;
-
-        const response = await fetch(`/login_wallet?lang=${state.currentLanguage}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mnemonic_phrase: mnemonic })
-        });
-        const data = await response.json();
-
-        state.mnemonicPhrase = mnemonic;
-        state.userAddress = data.address;
-
-        document.getElementById('wallet-section').style.display = 'none';
-        document.getElementById('create-wallet-container').style.display = 'none';
-        document.getElementById('login-status').innerHTML = data.message;
-        document.getElementById('login-wallet-container').style.display = 'none';
-        document.getElementById('send-message-section').style.display = 'block';
-        document.getElementById('chat-section').style.display = 'block';
-        document.getElementById('logout-button').style.display = 'block';
-        generateQRCode(data.address);
-
-        // Сохраняем мнемоническую фразу в localStorage
-        localStorage.setItem('mnemonicPhrase', state.mnemonicPhrase);
-
-        saveState();
-
-        checkIncomingMessages();
-        await getMessages();
-    } catch (error) {
-        console.error('Error:', error);
-        showAlert('Error logging in');
-    }
-}
-
 async function getMessages(recipientAddress) {
     try {
         const response = await fetch(`/get_messages?lang=${state.currentLanguage}`, {
@@ -177,7 +77,7 @@ async function getMessages(recipientAddress) {
         dialogContainer.innerHTML = '';
 
         const dialogs = {};
-        data.forEach(message => {
+        data.messages.forEach(message => { // Обращаемся к data.messages
             const sender = message.sender;
             const recipient = message.recipient;
             const [currentAddress, otherAddress] = state.userAddress === sender ? [sender, recipient] : [recipient, sender];
@@ -244,6 +144,107 @@ async function getMessages(recipientAddress) {
     }
 }
 
+async function sendMessage() {
+    try {
+        const recipient = document.getElementById('recipient').value;
+        const content = document.getElementById('content').value;
+        const imageInput = document.getElementById('image-input');
+        const originalImageInputValue = imageInput.value;
+        let imageBase64 = null;
+
+        if (imageInput.files.length > 0) {
+            const imageFile = imageInput.files[0];
+            imageBase64 = await convertFileToBase64(imageFile);
+        }
+
+        const response = await fetch(`/send_message?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mnemonic_phrase: state.mnemonicPhrase,
+                recipient: recipient,
+                content: content,
+                image: imageBase64
+            })
+        });
+        const data = await response.json();
+
+        const translations = {
+            en: 'Message sent successfully',
+            ru: 'Сообщение успешно отправлено'
+        };
+        const sendStatus = document.getElementById('send-status');
+        sendStatus.innerHTML = data.message || translations[state.currentLanguage];
+        sendStatus.style.display = 'block';
+
+        setTimeout(() => {
+            imageInput.value = originalImageInputValue; //
+            sendStatus.style.display = 'none';
+            document.getElementById('content').value = '';
+            imageInput.value = ''; // Очищаем поле загрузки изображения
+        }, 2500);
+
+        document.getElementById('content').value = '';
+        document.getElementById('image-input').value = '';
+
+        await getMessages();
+    } catch (error) {
+        console.error('Error:', error);
+        //showAlert('Error sending message');
+        document.getElementById('content').value = '';
+        document.getElementById('image-input').value = '';
+    }
+}
+
+async function convertFileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            resolve(event.target.result);
+        };
+        reader.onerror = function(error) {
+            reject(error);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function loginWallet() {
+    try {
+        const mnemonic = document.getElementById('mnemonic-login').value;
+
+        const response = await fetch(`/login_wallet?lang=${state.currentLanguage}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mnemonic_phrase: mnemonic })
+        });
+        const data = await response.json();
+
+        state.mnemonicPhrase = mnemonic;
+        state.userAddress = data.address;
+
+        document.getElementById('wallet-section').style.display = 'none';
+        document.getElementById('create-wallet-container').style.display = 'none';
+        document.getElementById('login-status').innerHTML = data.message;
+        document.getElementById('login-wallet-container').style.display = 'none';
+        document.getElementById('send-message-section').style.display = 'block';
+        document.getElementById('chat-section').style.display = 'block';
+        document.getElementById('logout-button').style.display = 'block';
+        generateQRCode(data.address);
+
+        // Сохраняем мнемоническую фразу в localStorage
+        localStorage.setItem('mnemonicPhrase', state.mnemonicPhrase);
+
+        saveState();
+
+        checkIncomingMessages();
+        await getMessages();
+    } catch (error) {
+        console.error('Error:', error);
+        showAlert('Error logging in');
+    }
+}
+
 function displayDialog(messages, recipient) {
     const dialogContainer = document.getElementById('current-dialog');
     dialogContainer.innerHTML = '';
@@ -302,8 +303,6 @@ function checkIncomingMessages() {
     }, 5000); // Проверяем новые сообщения каждые 10 секунд
 }
 
-
-// Открыть модальное окно с увеличенным изображением
 function openModal(src, alt) {
     // Получаем текущий язык
     const currentLanguage = state.currentLanguage;

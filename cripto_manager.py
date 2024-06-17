@@ -1,11 +1,12 @@
-from cryptography.fernet import Fernet
 import base64
+import hashlib
+from cryptography.fernet import Fernet
 
 
 class CryptoManager:
     def __init__(self, key):
-        self.key = base64.urlsafe_b64decode(key)
-        self.cipher = Fernet(key)
+        self.key = key
+        self.cipher = Fernet(self.key)
 
     def encrypt_message(self, message):
         if message is None:

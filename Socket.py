@@ -1,14 +1,16 @@
 import requests
 import json
 
+BASE_URL = 'http://127.0.0.1:5000'  # Замените на URL вашего Flask-сервера
+
 def create_wallet():
-    url = 'https://jasstme.pythonanywhere.com/create_wallet'
+    url = f'{BASE_URL}/create_wallet'
     response = requests.post(url)
     print(response.json())
 
 def login_wallet():
     mnemonic_phrase = input("Введите вашу мнемоническую фразу: ")
-    url = 'https://jasstme.pythonanywhere.com/login_wallet'
+    url = f'{BASE_URL}/login_wallet'
 
     data = {
         'mnemonic_phrase': mnemonic_phrase
@@ -26,7 +28,7 @@ def send_message():
     recipient = input("Введите адрес получателя: ")
     content = input("Введите текст сообщения: ")
 
-    url = 'https://jasstme.pythonanywhere.com/send_message'
+    url = f'{BASE_URL}/send_message'
 
     data = {
         'mnemonic_phrase': mnemonic_phrase,
@@ -43,7 +45,7 @@ def send_message():
 
 def get_messages():
     mnemonic_phrase = input("Введите вашу мнемоническую фразу: ")
-    url = 'https://jasstme.pythonanywhere.com/get_messages'
+    url = f'{BASE_URL}/get_messages'
 
     data = {
         'mnemonic_phrase': mnemonic_phrase

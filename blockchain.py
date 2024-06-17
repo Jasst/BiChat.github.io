@@ -1,41 +1,25 @@
 import sqlite3
 import time
-import json
-import hashlib
 import base64
-from cryptography.fernet import Fernet
+import hashlib
+import json
 
 
 class Blockchain:
-    def __init__(self):
-        self.conn = None
-        self.cursor = None
-        self.connect()
+    def __init__(self, db_path='blockchain.db'):
+        self.db_path = db_path
+        self.initialize_blockchain()
 
-    def connect(self):
-        if not self.conn:
-            self.conn = sqlite3.connect('blockchain.db')
-            self.cursor = self.conn.cursor()
-            self.create_table()
-            self.create_transaction_table()
-            if len(self.get_chain()) == 0:
-                self.new_block(previous_hash='1', proof=100)
+    def initialize_blockchain(self):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            self.create_table(cursor)
+            self.create_transaction_table(cursor)
+            if len(self.get_chain(cursor)) == 0:
+                self.new_block(cursor, previous_hash='1', proof=100)
 
-    def close(self):
-        if self.conn:
-            self.conn.close()
-            self.conn = None
-            self.cursor = None
-
-    def __enter__(self):
-        self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-    def create_table(self):
-        self.cursor.execute('''
+    def create_table(self, cursor):
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS blockchain (
                 block_index INTEGER PRIMARY KEY,
                 timestamp REAL,
@@ -44,10 +28,9 @@ class Blockchain:
                 previous_hash TEXT
             )
         ''')
-        self.conn.commit()
 
-    def create_transaction_table(self):
-        self.cursor.execute('''
+    def create_transaction_table(self, cursor):
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 sender TEXT,
                 recipient TEXT,
@@ -56,30 +39,31 @@ class Blockchain:
                 timestamp REAL
             )
         ''')
-        self.conn.commit()
 
-    def new_block(self, proof, previous_hash=None):
-        block_index = self.last_block['index'] + 1 if self.last_block else 1
-
+    def new_block(self, cursor, proof, previous_hash=None):
+        block_index = self.last_block(cursor)['index'] + 1 if self.last_block(cursor) else 1
+        previous_block = self.last_block(cursor)
         block = {
             'index': block_index,
             'timestamp': time.time(),
             'transactions': [],  # Placeholder for transactions
             'proof': proof,
-            'previous_hash': previous_hash or self.hash(self.last_block),
+            'previous_hash': previous_hash or self.hash_block(previous_block),
         }
-        self.cursor.execute('''
+        cursor.execute('''
             INSERT INTO blockchain (block_index, timestamp, transactions, proof, previous_hash)
             VALUES (?, ?, ?, ?, ?)
         ''', (
             block['index'], block['timestamp'], json.dumps(block['transactions']), block['proof'],
             block['previous_hash']))
-        self.conn.commit()
 
-    @property
-    def last_block(self):
-        self.cursor.execute('SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1')
-        row = self.cursor.fetchone()
+    def hash_block(self, block):
+        block_string = json.dumps(block, sort_keys=True).encode()
+        return hashlib.sha256(block_string).hexdigest()
+
+    def last_block(self, cursor):
+        cursor.execute('SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1')
+        row = cursor.fetchone()
         return {
             'index': row[0],
             'timestamp': row[1],
@@ -88,9 +72,9 @@ class Blockchain:
             'previous_hash': row[4],
         } if row else {}
 
-    def get_chain(self):
-        self.cursor.execute('SELECT * FROM blockchain ORDER BY block_index ASC')
-        rows = self.cursor.fetchall()
+    def get_chain(self, cursor):
+        cursor.execute('SELECT * FROM blockchain ORDER BY block_index ASC')
+        rows = cursor.fetchall()
         return [{
             'index': row[0],
             'timestamp': row[1],
@@ -100,41 +84,41 @@ class Blockchain:
         } for row in rows]
 
     def new_transaction(self, sender, recipient, content, image):
-        transaction = {
-            'sender': sender,
-            'recipient': recipient,
-            'content': content,
-            'image': image,
-            'timestamp': time.time(),
-        }
-        self.cursor.execute('''
-            INSERT INTO transactions (sender, recipient, content, image, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (sender, recipient, content, image, transaction['timestamp']))
-        self.conn.commit()
-
-        return self.last_block['index'] + 1
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            transaction = {
+                'sender': sender,
+                'recipient': recipient,
+                'content': content,
+                'image': image,
+                'timestamp': time.time(),
+            }
+            cursor.execute('''
+                INSERT INTO transactions (sender, recipient, content, image, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (sender, recipient, content, image, transaction['timestamp']))
+            conn.commit()
+            return self.last_block(cursor)['index'] + 1
 
     def get_messages(self, address):
-        self.cursor.execute('''
-            SELECT * FROM transactions
-            WHERE sender = ? OR recipient = ?
-        ''', (address, address))
-        rows = self.cursor.fetchall()
-        messages = []
-        for row in rows:
-            message = {
-                'sender': row[0],
-                'recipient': row[1],
-                'content': row[2],
-                'image': row[3],
-                'timestamp': row[4],
-            }
-            messages.append(message)
-        return messages
-
-    def generate_address(self, phrase):
-        return hashlib.sha256(phrase.encode()).hexdigest()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT * FROM transactions
+                WHERE sender = ? OR recipient = ?
+            ''', (address, address))
+            rows = cursor.fetchall()
+            messages = []
+            for row in rows:
+                message = {
+                    'sender': row[0],
+                    'recipient': row[1],
+                    'content': row[2],
+                    'image': row[3],
+                    'timestamp': row[4],
+                }
+                messages.append(message)
+            return messages
 
     def proof_of_work(self, last_proof):
         proof = 0
@@ -147,8 +131,3 @@ class Blockchain:
         guess = f'{last_proof}{proof}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
         return guess_hash[:4] == "0000"
-
-
-
-
-
