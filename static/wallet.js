@@ -39,7 +39,6 @@ function generateQRCode(address) {
     });
 }
 
-
 function startQrCodeScanner() {
     document.getElementById('qr-reader').style.display = 'block';
     const qrReader = new Html5Qrcode("qr-reader");
@@ -61,7 +60,6 @@ function startQrCodeScanner() {
         }
     ).catch(err => console.error(`Unable to start scanning, error: ${err}`));
 }
-
 
 async function getMessages(recipientAddress) {
     try {
@@ -181,6 +179,8 @@ async function sendMessage() {
 
         setTimeout(() => {
             sendStatus.style.display = 'none';
+            document.getElementById('content').value = '';
+            imageInput.value = ''; // Очищаем поле загрузки изображения
         }, 2500);
 
         document.getElementById('content').value = '';
@@ -194,9 +194,6 @@ async function sendMessage() {
         document.getElementById('image-input').value = '';
     }
 }
-
-
-
 
 async function convertFileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -246,7 +243,6 @@ async function loginWallet() {
         showAlert('Error logging in');
     }
 }
-
 
 function displayDialog(messages, recipient) {
     const dialogContainer = document.getElementById('current-dialog');
@@ -306,8 +302,6 @@ function checkIncomingMessages() {
     }, 5000); // Проверяем новые сообщения каждые 10 секунд
 }
 
-
-// Открыть модальное окно с увеличенным изображением
 function openModal(src, alt) {
     // Получаем текущий язык
     const currentLanguage = state.currentLanguage;

@@ -7,4 +7,6 @@ pyopenssl
 flask-socketio
 request
 pycryptodome
+sqlalchemy
+
 
