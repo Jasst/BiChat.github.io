@@ -149,6 +149,7 @@ async function sendMessage() {
         const recipient = document.getElementById('recipient').value;
         const content = document.getElementById('content').value;
         const imageInput = document.getElementById('image-input');
+        const originalImageInputValue = imageInput.value;
         let imageBase64 = null;
 
         if (imageInput.files.length > 0) {
@@ -172,12 +173,12 @@ async function sendMessage() {
             en: 'Message sent successfully',
             ru: 'Сообщение успешно отправлено'
         };
-
         const sendStatus = document.getElementById('send-status');
         sendStatus.innerHTML = data.message || translations[state.currentLanguage];
         sendStatus.style.display = 'block';
 
         setTimeout(() => {
+            imageInput.value = originalImageInputValue; //
             sendStatus.style.display = 'none';
             document.getElementById('content').value = '';
             imageInput.value = ''; // Очищаем поле загрузки изображения
