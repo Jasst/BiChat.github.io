@@ -1,12 +1,18 @@
 import base64
 import hashlib
 from cryptography.fernet import Fernet
+import base64
 
 
 class CryptoManager:
     def __init__(self, key):
+<<<<<<< HEAD
         self.key = key
         self.cipher = Fernet(self.key)
+=======
+        self.key = base64.urlsafe_b64decode(key)
+        self.cipher = Fernet(key)
+>>>>>>> main
 
     def encrypt_message(self, message):
         if message is None:
@@ -25,4 +31,8 @@ class CryptoManager:
             decrypted_message = self.cipher.decrypt(decoded_encrypted_message)
             return decrypted_message.decode()
         except Exception as e:
+<<<<<<< HEAD
             raise ValueError(f'Decryption failed: {str(e)}')
+=======
+            raise ValueError(f'Decryption failed: {str(e)}')
+>>>>>>> main
