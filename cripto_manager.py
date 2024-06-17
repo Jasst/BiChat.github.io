@@ -1,15 +1,27 @@
 from cryptography.fernet import Fernet
+import base64
 
 
 class CryptoManager:
     def __init__(self, key):
-        self.key = key
-        self.cipher_suite = Fernet(key)
+        self.key = base64.urlsafe_b64decode(key)
+        self.cipher = Fernet(key)
 
     def encrypt_message(self, message):
-        encrypted_message = self.cipher_suite.encrypt(message.encode())
-        return encrypted_message.decode()
+        if message is None:
+            return None
+        try:
+            encrypted_message = self.cipher.encrypt(message.encode())
+            return base64.urlsafe_b64encode(encrypted_message).decode()
+        except Exception as e:
+            raise ValueError(f'Encryption failed: {str(e)}')
 
     def decrypt_message(self, encrypted_message):
-        decrypted_message = self.cipher_suite.decrypt(encrypted_message.encode())
-        return decrypted_message.decode()
+        if encrypted_message is None:
+            return None
+        try:
+            decoded_encrypted_message = base64.urlsafe_b64decode(encrypted_message.encode())
+            decrypted_message = self.cipher.decrypt(decoded_encrypted_message)
+            return decrypted_message.decode()
+        except Exception as e:
+            raise ValueError(f'Decryption failed: {str(e)}')
