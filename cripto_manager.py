@@ -1,15 +1,12 @@
 import base64
+import hashlib
 from cryptography.fernet import Fernet
+
 
 class CryptoManager:
     def __init__(self, key):
-        self.key = self.decode_and_pad_key(key)
+        self.key = key
         self.cipher = Fernet(self.key)
-
-    def decode_and_pad_key(self, key):
-        # Дополним ключ до нужной длины
-        key = key.ljust(44, '=')
-        return base64.urlsafe_b64decode(key)
 
     def encrypt_message(self, message):
         if message is None:

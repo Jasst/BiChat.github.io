@@ -196,6 +196,8 @@ async function sendMessage() {
 }
 
 
+
+
 async function convertFileToBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();

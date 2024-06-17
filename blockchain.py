@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 
+
 class Blockchain:
     def __init__(self, db_path='blockchain.db'):
         self.db_path = db_path
