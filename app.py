@@ -8,13 +8,30 @@ from flask import Flask, jsonify, request, render_template
 from flask_babel import Babel, gettext
 from mnemonic import Mnemonic
 from cryptography.fernet import Fernet
+from blockchain import Blockchain  # Ensure Blockchain class is imported correctly
 from translations import translations
-from blockchain import Blockchain, CryptoManager
+from cripto_manager import CryptoManager, generate_key
 
 app = Flask(__name__)
 babel = Babel(app)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
+
+@app.before_request
+def before_request():
+    g.db = sqlite3.connect('blockchain.db')
+
+
+@app.teardown_request
+def teardown_request(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
 
 def generate_key(sender, recipient):
@@ -74,23 +91,30 @@ def send_message():
     image = data.get('image')
 
     if not phrase or not recipient or not content:
-        return jsonify({'error': gettext(translations[get_locale()]['missing_fields'])}), 400
+        return jsonify(
+            {'error': gettext(translations.get(request.args.get('lang', 'en'), {}).get('missing_fields'))}), 400
 
-    sender = generate_address(phrase)
+    sender = blockchain.generate_address(phrase)
     key = generate_key(sender, recipient)
-    crypto_manager = CryptoManager(key)
+    crypto_manager = CryptoManager(base64.urlsafe_b64encode(key).decode())  # Encode key and decode with CryptoManager
 
     try:
         encrypted_content = crypto_manager.encrypt_message(content)
         encrypted_image = crypto_manager.encrypt_message(image) if image else None
+    except ValueError as ve:
+        logger.error(f'Encryption failed: {ve}')
+        return jsonify({'error': str(ve)}), 500
+
+    try:
+        with blockchain as bc:
+            bc.new_transaction(sender, recipient, encrypted_content, encrypted_image)
+            proof = bc.proof_of_work(bc.last_block['proof'])
+            bc.new_block(proof=proof)
     except Exception as e:
-        return jsonify({'error': f'Encryption failed: {str(e)}'}), 500
+        logger.error(f'Failed to add transaction/block: {e}')
+        return jsonify({'error': 'Failed to add transaction/block'}), 500
 
-    blockchain.new_transaction(sender, recipient, encrypted_content, encrypted_image)
-    proof = blockchain.proof_of_work(blockchain.last_block['proof'])
-    blockchain.new_block(proof=proof)
-
-    return jsonify({'message': gettext(translations[get_locale()]['message_sent'])}), 201
+    return jsonify({'message': gettext(translations.get(request.args.get('lang', 'en'), {}).get('message_sent'))}), 201
 
 
 @app.route('/get_messages', methods=['POST'])
@@ -99,34 +123,25 @@ def get_messages():
     phrase = data.get('mnemonic_phrase')
 
     if not phrase:
-        return jsonify({'error': 'Missing required field.'}), 400
+        return jsonify(
+            {'error': gettext(translations.get(request.args.get('lang', 'en'), {}).get('mnemonic_required'))}), 400
 
-    address = generate_address(phrase)
-    messages = blockchain.get_messages(address)
+    address = blockchain.generate_address(phrase)
+    key = generate_key(address, address)
+    crypto_manager = CryptoManager(base64.urlsafe_b64encode(key).decode())  # Encode key and decode with CryptoManager
 
-    decrypted_messages = []
-    for message in messages:
-        sender = message['sender']
-        recipient = message['recipient']
+    with blockchain as bc:
+        messages = bc.get_messages(address)
 
-        if address == sender or address == recipient:
-            key = generate_key(sender, recipient)
-            crypto_manager = CryptoManager(key)
+    try:
+        for message in messages:
+            message['content'] = crypto_manager.decrypt_message(message['content'])
+            message['image'] = crypto_manager.decrypt_message(message['image']) if message['image'] else None
+    except ValueError as ve:
+        logger.error(f'Decryption failed: {ve}')
+        return jsonify({'error': str(ve)}), 500
 
-            try:
-                decrypted_content = crypto_manager.decrypt_message(message['content'])
-                decrypted_image = crypto_manager.decrypt_message(message['image']) if message.get('image') else None
-                decrypted_messages.append({
-                    'sender': sender,
-                    'recipient': recipient,
-                    'content': decrypted_content,
-                    'image': decrypted_image,
-                    'timestamp': message['timestamp']
-                })
-            except Exception as e:
-                return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
-
-    return jsonify(decrypted_messages), 200
+    return jsonify({'messages': messages}), 200
 
 
 @app.route('/chain', methods=['GET'])
