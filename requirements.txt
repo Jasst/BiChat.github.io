@@ -8,5 +8,6 @@ flask-socketio
 request
 pycryptodome
 sqlalchemy
+python-telegram-bot
 
 
