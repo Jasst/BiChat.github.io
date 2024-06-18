@@ -5,73 +5,66 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title data-translate="title">Blockchain Messenger</title>
-  
   <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet">
 </head>
 
 <body>
   <div class="container">
-    <div class="settings">
-      <button id="settings-toggle" onclick="toggleSettings()" aria-label="Settings">⚙️</button>
-      <div id="settings-menu" class="settings-menu" style="display:none;">
-        <button id="hide-mnemonic-button" onclick="hideMnemonic()" data-translate="hide_mnemonic_button">Hide Mnemonic</button>
-        <button id="show-mnemonic-button" onclick="showMnemonic()" data-translate="show_mnemonic_button">Show Mnemonic Phrase</button>
-        <button id="theme-toggle" onclick="toggleTheme()" data-translate="toggle_theme">Toggle Theme</button>
-        <button id="language-toggle" onclick="switchLanguage()">Switch to Russian</button>
-        <button id="logout-button" onclick="logout()" data-translate="logout_button">Logout</button>
+    <div class="sidebar">
+      <div class="settings">
+        <button id="settings-toggle" onclick="toggleSettings()" aria-label="Settings">⚙️</button>
+        <div id="settings-menu" class="settings-menu" style="display:none;">
+          <button id="hide-mnemonic-button" onclick="hideMnemonic()" data-translate="hide_mnemonic_button">Hide Mnemonic</button>
+          <button id="show-mnemonic-button" onclick="showMnemonic()" data-translate="show_mnemonic_button">Show Mnemonic Phrase</button>
+          <button id="theme-toggle" onclick="toggleTheme()" data-translate="toggle_theme">Toggle Theme</button>
+          <button id="language-toggle" onclick="switchLanguage()">Switch to Russian</button>
+          <button id="logout-button" onclick="logout()" data-translate="logout_button">Logout</button>
+        </div>
+      </div>
+
+      <h1 data-translate="title">Blockchain Messenger</h1>
+      <div id="wallet-info" style="display: none;">
+        <label data-translate="address_label">Address:</label>
+        <span id="address-content"></span>
+      </div>
+
+      <div id="qr-code"></div>
+
+      <div id="mnemonic-display"></div>
+
+      <div id="wallet-section">
+        <h2 data-translate="wallet_section">Create Wallet or Login</h2>
+        <div id="create-wallet-container">
+          <button onclick="createWallet()" data-translate="create_wallet">Create Wallet</button>
+          <p id="wallet-info-msg"></p>
+        </div>
+
+        <div id="login-wallet-container">
+          <label for="mnemonic-login" data-translate="mnemonic_label">Mnemonic Phrase:</label>
+          <input type="text" id="mnemonic-login" onkeypress="handleKeyPress(event, loginWallet)">
+          <button onclick="loginWallet()" data-translate="login_button">Login</button>
+          <p id="login-status"></p>
+        </div>
       </div>
     </div>
 
-    <h1 data-translate="title">Blockchain Messenger</h1>
-    <div id="wallet-info" style="display: none;">
-      <label data-translate="address_label">Address:</label>
-      <span id="address-content"></span>
-    </div>
-
-    <div id="qr-code"></div>
-
-    <div id="mnemonic-display"></div>
-
-    <div id="wallet-section">
-      <h2 data-translate="wallet_section">Create Wallet or Login</h2>
-      <div id="create-wallet-container">
-        <button onclick="createWallet()" data-translate="create_wallet">Create Wallet</button>
-        <p id="wallet-info-msg"></p>
-      </div>
-
-      <div id="login-wallet-container">
-        <label for="mnemonic-login" data-translate="mnemonic_label">Mnemonic Phrase:</label>
-        <input type="text" id="mnemonic-login" onkeypress="handleKeyPress(event, loginWallet)">
-        <button onclick="loginWallet()" data-translate="login_button">Login</button>
-        <p id="login-status"></p>
-      </div>
-    </div>
-
-    <div id="chat-section" style="display:none;">
-      <h2 data-translate="chat_section">Chat</h2>
-      <div id="current-dialog" class="dialog"></div>
-      <div id="dialog-tabs"></div>
-
-      <label for="content" data-translate="content_label">Message:</label>
-      <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
-
-      <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
-      <div class="upload-btn-wrapper">
-        <input type="file" id="image-input" accept="image/*">
-        <button class="btn" data-translate="upload_image_button">Upload Image</button>
-      </div>
-    </div>
-
-    <div id="send-message-section" style="display:none;">
-      <div id="dialog-tabs"></div>
-      
-      <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
-      <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
-
-      <div id="get-messages-section" style="display:none;">
-        <h2 data-translate="get_messages_section">Get Messages</h2>
-        <button onclick="getMessages()" data-translate="get_messages_button">Get Messages</button>
-        <div id="messages-list"></div>
+    <div class="main-content">
+      <div class="chat-section" id="chat-section" style="display:none;">
+        <div class="chat-header">
+          <h2 data-translate="chat_section">Chat</h2>
+        </div>
+        <div id="dialog-tabs" class="dialog-tabs"></div>
+        <div id="current-dialog" class="dialog"></div>
+        <div class="chat-input">
+          <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)" placeholder="Type your message here..."></textarea>
+          <div class="chat-actions">
+            <button onclick="sendMessage()" data-translate="send_button">Send</button>
+            <div class="upload-btn-wrapper">
+              <button class="btn" data-translate="upload_image_button">📷</button>
+              <input type="file" id="image-input" accept="image/*">
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
