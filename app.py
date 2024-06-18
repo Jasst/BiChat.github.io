@@ -10,8 +10,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import os
-import base64
-
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 
 class Blockchain:
     def __init__(self, db_path='blockchain.db'):
@@ -141,7 +141,6 @@ class Blockchain:
         return guess_hash[:4] == "0000"
 
 
-
 def encrypt_message(key, message):
     backend = default_backend()
     iv = os.urandom(16)
@@ -182,6 +181,10 @@ mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 logging.basicConfig(level=logging.DEBUG)
 
+# Инициализация бота
+TOKEN = 'Ваш токен здесь'
+bot = Bot(token=TOKEN)
+dispatcher = Dispatcher(bot, None, use_context=True)
 
 @app.route('/')
 def index():
@@ -289,17 +292,37 @@ def get_messages():
         return jsonify({'error': f'Failed to retrieve messages: {str(e)}'}), 500
 
 
-
 @app.route('/chain', methods=['GET'])
 def full_chain():
-    with blockchain:
-        chain = blockchain.get_chain(blockchain.cursor)
+    with sqlite3.connect(blockchain.db_path) as conn:
+        cursor = conn.cursor()
+        chain = blockchain.get_chain(cursor)
     response = {
         'chain': chain,
         'length': len(chain),
     }
     return jsonify(response), 200
 
+# Добавление обработчиков для Telegram бота
+def start(update, context):
+    update.message.reply_text('Привет! Вы можете использовать этого бота для отправки сообщений и просмотра блокчейна.')
+
+dispatcher.add_handler(CommandHandler('start', start))
+
+def handle_message(update, context):
+    text = update.message.text
+    update.message.reply_text(f'Вы сказали: {text}')
+
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.method == 'POST':
+        update = Update.de_json(request.get_json(force=True), bot)
+        dispatcher.process_update(update)
+        return 'ok', 200
 
 if __name__ == '__main__':
+    # Установите webhook
+    bot.set_webhook(url='https://jasstme.pythonanywhere.com/webhook')
     app.run(host='0.0.0.0', port=5000, debug=True)
