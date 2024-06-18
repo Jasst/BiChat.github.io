@@ -28,10 +28,8 @@
       <span id="address-content"></span>
     </div>
 
-    
-      <div id="qr-code"></div>
+    <div id="qr-code"></div>
 
-    
     <div id="mnemonic-display"></div>
 
     <div id="wallet-section">
@@ -64,21 +62,16 @@
       </div>
     </div>
 
-
-    
     <div id="send-message-section" style="display:none;">
       <div id="dialog-tabs"></div>
       
       <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
-
       <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
-
 
       <div id="get-messages-section" style="display:none;">
         <h2 data-translate="get_messages_section">Get Messages</h2>
         <button onclick="getMessages()" data-translate="get_messages_button">Get Messages</button>
         <div id="messages-list"></div>
-
       </div>
     </div>
   </div>
