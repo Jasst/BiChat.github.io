@@ -185,7 +185,7 @@ blockchain = Blockchain()
 logging.basicConfig(level=logging.DEBUG)
 
 # Telegram Bot Setup
-TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+TOKEN = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
 bot = Bot(token=TOKEN)
 application = Application.builder().token(TOKEN).build()
 
@@ -399,7 +399,7 @@ def run_flask():
 
 def run_telegram_bot():
     async def set_webhook():
-        await bot.set_webhook(url='https://your_ngrok_url/webhook')
+        await bot.set_webhook(url='http://jasstme.pythonanywhere.com/webhook')
     
     async def main():
         application.add_handler(CommandHandler('create', create_wallet_command))
