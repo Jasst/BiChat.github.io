@@ -3,17 +3,15 @@ import time
 import base64
 import hashlib
 import json
-from flask import Flask, jsonify, request, render_template
-from mnemonic import Mnemonic
 import logging
+import os
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from mnemonic import Mnemonic
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
-import os
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
 import asyncio
-import threading
 
 
 class Blockchain:
@@ -179,34 +177,14 @@ def generate_address(phrase):
     return hashlib.sha256(phrase.encode()).hexdigest()
 
 
-app = Flask(__name__)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 logging.basicConfig(level=logging.DEBUG)
 
-# Telegram Bot Setup
-TOKEN = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
+# Инициализация бота
+TOKEN = 'YOUR_BOT_TOKEN'
 bot = Bot(token=TOKEN)
 application = Application.builder().token(TOKEN).build()
-
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-
-@app.route('/create_wallet', methods=['POST'])
-def create_wallet():
-    phrase = mnemonic.generate(256)
-    logging.debug(f'Generated phrase: {phrase}')
-    address = generate_address(phrase)
-    logging.debug(f'Generated address: {address}')
-    response = {
-        'mnemonic_phrase': phrase,
-        'address': address,
-    }
-    return jsonify(response), 200
-
 
 async def create_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phrase = mnemonic.generate(256)
@@ -215,24 +193,6 @@ async def create_wallet_command(update: Update, context: ContextTypes.DEFAULT_TY
     logging.debug(f'Generated address: {address}')
     response = f'Mnemonic Phrase: {phrase}\nAddress: {address}'
     await update.message.reply_text(response)
-
-
-@app.route('/login_wallet', methods=['POST'])
-def login_wallet():
-    data = request.get_json()
-    phrase = data.get('mnemonic_phrase')
-    if not phrase:
-        return jsonify({'error': 'Mnemonic phrase is required'}), 400
-
-    if not mnemonic.check(phrase):
-        return jsonify({'error': 'Invalid mnemonic phrase'}), 400
-
-    address = generate_address(phrase)
-    response = {
-        'address': address,
-    }
-    return jsonify(response), 200
-
 
 async def login_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phrase = context.args[0] if context.args else None
@@ -247,36 +207,6 @@ async def login_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYP
     address = generate_address(phrase)
     response = f'Address: {address}'
     await update.message.reply_text(response)
-
-
-@app.route('/send_message', methods=['POST'])
-def send_message():
-    try:
-        data = request.get_json()
-        phrase = data.get('mnemonic_phrase')
-        recipient = data.get('recipient')
-        content = data.get('content')
-        image = data.get('image')
-
-        if not phrase or not recipient or not content:
-            return jsonify({'error': 'Missing fields'}), 400
-
-        sender = generate_address(phrase)
-        key = generate_key(sender, recipient)
-        encrypted_content = encrypt_message(key, content)
-
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            blockchain.new_transaction(sender, recipient, encrypted_content, image)
-            proof = blockchain.proof_of_work(blockchain.last_block(cursor)['proof'])
-            blockchain.new_block(cursor, proof=proof)
-
-        return jsonify({'message': 'Message sent successfully'}), 200
-
-    except Exception as e:
-        logging.error(f"Failed to send message: {str(e)}")
-        return jsonify({'error': 'Failed to send message'}), 500
-
 
 async def send_message_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -306,28 +236,6 @@ async def send_message_command(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.error(f"Error sending message: {e}")
         await update.message.reply_text('Internal server error')
 
-
-@app.route('/get_messages', methods=['POST'])
-def get_messages():
-    try:
-        data = request.get_json()
-        address = data.get('address')
-
-        if not address:
-            return jsonify({'error': 'Address is required'}), 400
-
-        messages = blockchain.get_messages(address)
-        for message in messages:
-            key = generate_key(message['sender'], message['recipient'])
-            message['content'] = decrypt_message(key, message['content'])
-
-        return jsonify(messages), 200
-
-    except Exception as e:
-        logging.error(f"Error getting messages: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-
 async def get_messages_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         address = context.args[0]
@@ -349,32 +257,6 @@ async def get_messages_command(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.error(f"Error getting messages: {e}")
         await update.message.reply_text('Internal server error')
 
-
-@app.route('/mine', methods=['GET'])
-def mine():
-    try:
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            last_block = blockchain.last_block(cursor)
-            last_proof = last_block['proof']
-            proof = blockchain.proof_of_work(last_proof)
-
-            blockchain.new_block(cursor, proof)
-
-        response = {
-            'message': "New Block Forged",
-            'index': last_block['index'] + 1,
-            'transactions': last_block['transactions'],
-            'proof': proof,
-            'previous_hash': blockchain.hash_block(last_block),
-        }
-        return jsonify(response), 200
-
-    except Exception as e:
-        logging.error(f"Error mining block: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-
 async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         with sqlite3.connect(blockchain.db_path) as conn:
@@ -393,32 +275,10 @@ async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Internal server error')
 
 
-def run_flask():
-    app.run(host='0.0.0.0', port=5000, debug=True)
-
-
-def run_telegram_bot():
-    async def set_webhook():
-        await bot.set_webhook(url='http://jasstme.pythonanywhere.com/webhook')
-    
-    async def main():
-        application.add_handler(CommandHandler('create', create_wallet_command))
-        application.add_handler(CommandHandler('login', login_wallet_command))
-        application.add_handler(CommandHandler('send', send_message_command))
-        application.add_handler(CommandHandler('messages', get_messages_command))
-        application.add_handler(CommandHandler('mine', mine_command))
-        await application.start()
-        await application.updater.start_polling()
-    
-    asyncio.run(main())
-
-
 if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask)
-    telegram_bot_thread = threading.Thread(target=run_telegram_bot)
-
-    flask_thread.start()
-    telegram_bot_thread.start()
-
-    flask_thread.join()
-    telegram_bot_thread.join()
+    application.add_handler(CommandHandler('create', create_wallet_command))
+    application.add_handler(CommandHandler('login', login_wallet_command))
+    application.add_handler(CommandHandler('send', send_message_command))
+    application.add_handler(CommandHandler('messages', get_messages_command))
+    application.add_handler(CommandHandler('mine', mine_command))
+    application.run_polling()
