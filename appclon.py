@@ -206,7 +206,6 @@ def create_wallet():
     }
     return jsonify(response), 200
 
-
 async def create_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phrase = mnemonic.generate(256)
     logging.debug(f'Generated phrase: {phrase}')
@@ -232,7 +231,6 @@ def login_wallet():
     }
     return jsonify(response), 200
 
-
 async def login_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phrase = context.args[0] if context.args else None
     if not phrase:
@@ -247,9 +245,6 @@ async def login_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYP
     response = f'Address: {address}'
     await update.message.reply_text(response)
 
-
-
-# Функция отправки сообщения через API
 @app.route('/send_message', methods=['POST'])
 def send_message():
     try:
@@ -264,145 +259,164 @@ def send_message():
 
         sender = generate_address(phrase)
         key = generate_key(sender, recipient)
+
         encrypted_content = encrypt_message(key, content)
+        encrypted_image = encrypt_message(key, image) if image else ""
 
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
-            blockchain.new_transaction(sender, recipient, encrypted_content, image)
+            blockchain.new_transaction(sender, recipient, encrypted_content, encrypted_image)
             proof = blockchain.proof_of_work(blockchain.last_block(cursor)['proof'])
             blockchain.new_block(cursor, proof=proof)
 
-        return jsonify({'message': 'Message sent successfully'}), 200
+        return jsonify({'message': 'Message sent'}), 201
 
     except Exception as e:
-        logging.error(f"Failed to send message: {str(e)}")
-        return jsonify({'error': 'Failed to send message'}), 500
-
+        app.logger.error(f"Failed to send message: {str(e)}")
+        return jsonify({'error': f'Failed to send message: {str(e)}'}), 500
 
 
 async def send_message_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        message_parts = update.message.text.split()
-        if len(message_parts) < 3:
-            await update.message.reply_text('Usage: /send <recipient> <content>')
+        sender_phrase = context.args[0] if len(context.args) > 0 else None
+        recipient = context.args[1] if len(context.args) > 1 else None
+        content = ' '.join(context.args[2:]) if len(context.args) > 2 else None
+
+        if not sender_phrase or not recipient or not content:
+            await update.message.reply_text('Usage: /send_message <sender_phrase> <recipient> <content>')
             return
 
-        phrase = context.args[0]
-        recipient = context.args[1]
-        content = ' '.join(context.args[2:])
-
-        sender = generate_address(phrase)
+        sender = generate_address(sender_phrase)
         key = generate_key(sender, recipient)
+
         encrypted_content = encrypt_message(key, content)
 
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
-            blockchain.new_transaction(sender, recipient, encrypted_content, None)
+            blockchain.new_transaction(sender, recipient, encrypted_content, "")
             proof = blockchain.proof_of_work(blockchain.last_block(cursor)['proof'])
-            blockchain.new_block(cursor, proof)
+            blockchain.new_block(cursor, proof=proof)
 
-        response = 'Transaction will be added to Block'
-        await update.message.reply_text(response)
+        await update.message.reply_text('Message sent.')
 
     except Exception as e:
-        logging.error(f"Error sending message: {e}")
-        await update.message.reply_text('Internal server error')
-
+        await update.message.reply_text(f'Failed to send message: {str(e)}')
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
     try:
         data = request.get_json()
-        address = data.get('address')
-
-        if not address:
-            return jsonify({'error': 'Address is required'}), 400
+        phrase = data.get('mnemonic_phrase')
+        address = generate_address(phrase)
+        key = generate_key(address, address)
 
         messages = blockchain.get_messages(address)
-        for message in messages:
-            key = generate_key(message['sender'], message['recipient'])
-            message['content'] = decrypt_message(key, message['content'])
+        decrypted_messages = []
 
-        return jsonify(messages), 200
+        for message in messages:
+            decrypted_content = None
+            decrypted_image = None
+            try:
+                decrypted_content = decrypt_message(key, message['content'])
+                if message['image']:
+                    decrypted_image = decrypt_message(key, message['image'])
+            except Exception as e:
+                app.logger.error(f"Failed to decrypt image: {str(e)}")
+                decrypted_image = None
+
+            if decrypted_content is None:
+                decrypted_content = "Failed to decrypt content"
+
+            decrypted_message = message.copy()
+            decrypted_message['content'] = decrypted_content
+            decrypted_message['image'] = decrypted_image
+            decrypted_messages.append(decrypted_message)
+
+        return jsonify({'messages': decrypted_messages}), 200
 
     except Exception as e:
-        logging.error(f"Error getting messages: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        app.logger.error(f"Failed to retrieve messages: {str(e)}")
+        return jsonify({'error': f'Failed to retrieve messages: {str(e)}'}), 500
 
 
 async def get_messages_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        address = context.args[0]
-
-        if not address:
-            await update.message.reply_text('Address is required.')
+        phrase = context.args[0] if context.args else None
+        if not phrase:
+            await update.message.reply_text('Mnemonic phrase is required.')
             return
 
+        address = generate_address(phrase)
+        key = generate_key(address, address)
+
         messages = blockchain.get_messages(address)
-        response = ""
+        decrypted_messages = []
+
         for message in messages:
-            key = generate_key(message['sender'], message['recipient'])
-            decrypted_content = decrypt_message(key, message['content'])
-            response += f"From: {message['sender']}, To: {message['recipient']}, Message: {decrypted_content}\n"
+            decrypted_content = None
+            try:
+                decrypted_content = decrypt_message(key, message['content'])
+            except Exception as e:
+                logging.error(f"Failed to decrypt content: {str(e)}")
+                decrypted_content = "Failed to decrypt content"
 
-        await update.message.reply_text(response)
+            decrypted_message = f"From: {message['sender']}\nTo: {message['recipient']}\nContent: {decrypted_content}\nTimestamp: {message['timestamp']}\n"
+            decrypted_messages.append(decrypted_message)
 
-    except Exception as e:
-        logging.error(f"Error getting messages: {e}")
-        await update.message.reply_text('Internal server error')
-
-
-@app.route('/mine', methods=['GET'])
-def mine():
-    try:
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            last_block = blockchain.last_block(cursor)
-            last_proof = last_block['proof']
-            proof = blockchain.proof_of_work(last_proof)
-
-            blockchain.new_block(cursor, proof)
-
-        response = {
-            'message': "New Block Forged",
-            'index': last_block['index'] + 1,
-            'transactions': last_block['transactions'],
-            'proof': proof,
-            'previous_hash': blockchain.hash_block(last_block),
-        }
-        return jsonify(response), 200
+        await update.message.reply_text('\n'.join(decrypted_messages) if decrypted_messages else 'No messages found.')
 
     except Exception as e:
-        logging.error(f"Error mining block: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        await update.message.reply_text(f'Failed to retrieve messages: {str(e)}')
+
+@app.route('/chain', methods=['GET'])
+def full_chain():
+    with sqlite3.connect(blockchain.db_path) as conn:
+        cursor = conn.cursor()
+        chain = blockchain.get_chain(cursor)
+    response = {
+        'chain': chain,
+        'length': len(chain),
+    }
+    return jsonify(response), 200
 
 
-async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            last_block = blockchain.last_block(cursor)
-            last_proof = last_block['proof']
-            proof = blockchain.proof_of_work(last_proof)
+# Добавление обработчиков для Telegram бота
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        'Привет! Вы можете использовать этого бота для отправки сообщений и просмотра блокчейна.')
 
-            blockchain.new_block(cursor, proof)
 
-        response = f"New Block Forged\nIndex: {last_block['index'] + 1}\nProof: {proof}\nPrevious Hash: {blockchain.hash_block(last_block)}"
-        await update.message.reply_text(response)
+application.add_handler(CommandHandler('start', start))
 
-    except Exception as e:
-        logging.error(f"Error mining block: {e}")
-        await update.message.reply_text('Internal server error')
 
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    await update.message.reply_text(f'Вы сказали: {text}')
+
+
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+# Adding command handlers to the application
+application.add_handler(CommandHandler('create_wallet', create_wallet_command))
+application.add_handler(CommandHandler('login_wallet', login_wallet_command))
+application.add_handler(CommandHandler('send_message', send_message_command))
+application.add_handler(CommandHandler('get_messages', get_messages_command))
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.method == 'POST':
+        update = Update.de_json(request.get_json(force=True), bot)
+        logging.info(f"Received update: {update}")
+        application.update_queue.put(update)
+        return 'ok', 200
+
+logging.basicConfig(level=logging.INFO)
 
 if __name__ == '__main__':
+
     async def set_webhook():
         await bot.set_webhook(url='https://715a-2a03-d000-1581-7056-1d4c-794b-7793-b31c.ngrok-free.app/webhook')
-    application.add_handler(CommandHandler('create', create_wallet_command))
-    application.add_handler(CommandHandler('login', login_wallet_command))
-    application.add_handler(CommandHandler('send', send_message_command))
-    application.add_handler(CommandHandler('messages', get_messages_command))
-    application.add_handler(CommandHandler('mine', mine_command))
-    application.run_polling()
+        # Удалите существующий вебхук, чтобы использовать опрос
     bot.delete_webhook()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = 5000
+    asyncio.run(set_webhook())
+    app.run(host='0.0.0.0', port=port, debug=True)

@@ -9,5 +9,7 @@ request
 pycryptodome
 sqlalchemy
 python-telegram-bot
+asyncio
+Flask[async]
 
 
