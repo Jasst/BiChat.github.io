@@ -394,7 +394,7 @@ async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == '__main__':
     async def set_webhook():
-        await bot.set_webhook(url='https://your-domain.com/webhook')
+        await bot.set_webhook(url='https://715a-2a03-d000-1581-7056-1d4c-794b-7793-b31c.ngrok-free.app/webhook')
     asyncio.run(set_webhook())
     application.add_handler(CommandHandler('create', create_wallet_command))
     application.add_handler(CommandHandler('login', login_wallet_command))
