@@ -276,9 +276,13 @@ async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == '__main__':
+    async def set_webhook():
+        await bot.set_webhook(url='https://715a-2a03-d000-1581-7056-1d4c-794b-7793-b31c.ngrok-free.app/webhook')
     application.add_handler(CommandHandler('create', create_wallet_command))
     application.add_handler(CommandHandler('login', login_wallet_command))
     application.add_handler(CommandHandler('send', send_message_command))
     application.add_handler(CommandHandler('messages', get_messages_command))
     application.add_handler(CommandHandler('mine', mine_command))
     application.run_polling()
+    bot.delete_webhook()
+    app.run(host='0.0.0.0', port=5000, debug=True)
