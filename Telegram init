@@ -11,8 +11,9 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import os
 from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 import asyncio
+import threading
 
 
 class Blockchain:
@@ -183,8 +184,8 @@ mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 logging.basicConfig(level=logging.DEBUG)
 
-# Инициализация бота
-TOKEN = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
+# Telegram Bot Setup
+TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
 bot = Bot(token=TOKEN)
 application = Application.builder().token(TOKEN).build()
 
@@ -392,14 +393,32 @@ async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Internal server error')
 
 
-if __name__ == '__main__':
-    async def set_webhook():
-        await bot.set_webhook(url='https://715a-2a03-d000-1581-7056-1d4c-794b-7793-b31c.ngrok-free.app/webhook')
-    asyncio.run(set_webhook())
-    application.add_handler(CommandHandler('create', create_wallet_command))
-    application.add_handler(CommandHandler('login', login_wallet_command))
-    application.add_handler(CommandHandler('send', send_message_command))
-    application.add_handler(CommandHandler('messages', get_messages_command))
-    application.add_handler(CommandHandler('mine', mine_command))
-    application.run_polling()
+def run_flask():
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+
+def run_telegram_bot():
+    async def set_webhook():
+        await bot.set_webhook(url='https://your_ngrok_url/webhook')
+    
+    async def main():
+        application.add_handler(CommandHandler('create', create_wallet_command))
+        application.add_handler(CommandHandler('login', login_wallet_command))
+        application.add_handler(CommandHandler('send', send_message_command))
+        application.add_handler(CommandHandler('messages', get_messages_command))
+        application.add_handler(CommandHandler('mine', mine_command))
+        await application.start()
+        await application.updater.start_polling()
+    
+    asyncio.run(main())
+
+
+if __name__ == '__main__':
+    flask_thread = threading.Thread(target=run_flask)
+    telegram_bot_thread = threading.Thread(target=run_telegram_bot)
+
+    flask_thread.start()
+    telegram_bot_thread.start()
+
+    flask_thread.join()
+    telegram_bot_thread.join()
