@@ -182,7 +182,7 @@ blockchain = Blockchain()
 logging.basicConfig(level=logging.DEBUG)
 
 # Инициализация бота
-TOKEN = 'YOUR_BOT_TOKEN'
+TOKEN = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
 bot = Bot(token=TOKEN)
 application = Application.builder().token(TOKEN).build()
 
