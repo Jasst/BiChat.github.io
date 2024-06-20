@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 from mnemonic import Mnemonic
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
@@ -91,9 +91,9 @@ async def send_message_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text('Usage: /send <recipient> <content>')
             return
 
-        phrase = context.args[0]
+        phrase = context.args[0]  # This should be context.args[0]
         recipient = context.args[1]
-        content = ' '.join(context.args[2:])
+        content = ' '.join(message_parts[2:])  # Use message_parts here
 
         sender = generate_address(phrase)
         key = generate_key(sender, recipient)
@@ -116,7 +116,7 @@ async def send_message_command(update: Update, context: ContextTypes.DEFAULT_TYP
 async def get_messages_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not context.args:
-            await update.message.reply_text('Address is required.')
+            await update.message.reply_text('Usage: /messages <address>')
             return
 
         address = context.args[0]
@@ -133,15 +133,12 @@ async def get_messages_command(update: Update, context: ContextTypes.DEFAULT_TYP
             response += f"From: {message['sender']}, To: {message['recipient']}, Message: {decrypted_content}\n"
 
         await update.message.reply_text(response)
+
     except IndexError:
-        await update.message.reply_text('Address is required.')
+        await update.message.reply_text('Usage: /messages <address>')
     except Exception as e:
         logging.error(f"Error getting messages: {e}")
         await update.message.reply_text("Internal server error")
-
-    except Exception as e:
-        logging.error(f"Error getting messages: {e}")
-        await update.message.reply_text('Internal server error')
 
 
 async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,7 +169,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('create', create_wallet_command))
     application.add_handler(CommandHandler('login', login_wallet_command))
     application.add_handler(CommandHandler('send', send_message_command))
-    application.add_handler(CommandHandler('messages', get_messages_command))
+    application.add_handler(CommandHandler('get', get_messages_command))
     application.add_handler(CommandHandler('mine', mine_command))
 
     # Получение обновлений без использования оффсета
@@ -180,4 +177,3 @@ if __name__ == '__main__':
     loop.run_until_complete(get_updates())
 
     application.run_polling()
-
