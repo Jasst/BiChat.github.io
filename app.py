@@ -12,134 +12,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 import asyncio
-
-
-class Blockchain:
-    def __init__(self, db_path='blockchain.db'):
-        self.db_path = db_path
-        self.initialize_blockchain()
-
-    def initialize_blockchain(self):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            self.create_table(cursor)
-            self.create_transaction_table(cursor)
-            if len(self.get_chain(cursor)) == 0:
-                self.new_block(cursor, previous_hash='1', proof=100)
-
-    def create_table(self, cursor):
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS blockchain (
-                block_index INTEGER PRIMARY KEY,
-                timestamp REAL,
-                transactions TEXT,
-                proof INTEGER,
-                previous_hash TEXT
-            )
-        ''')
-
-    def create_transaction_table(self, cursor):
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS transactions (
-                sender TEXT,
-                recipient TEXT,
-                content TEXT,
-                image TEXT,
-                timestamp REAL
-            )
-        ''')
-
-    def new_block(self, cursor, proof, previous_hash=None):
-        block_index = self.last_block(cursor)['index'] + 1 if self.last_block(cursor) else 1
-        previous_block = self.last_block(cursor)
-        block = {
-            'index': block_index,
-            'timestamp': time.time(),
-            'transactions': [],  # Placeholder for transactions
-            'proof': proof,
-            'previous_hash': previous_hash or self.hash_block(previous_block),
-        }
-        cursor.execute('''
-            INSERT INTO blockchain (block_index, timestamp, transactions, proof, previous_hash)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (
-            block['index'], block['timestamp'], json.dumps(block['transactions']), block['proof'],
-            block['previous_hash']))
-
-    def hash_block(self, block):
-        block_string = json.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
-
-    def last_block(self, cursor):
-        cursor.execute('SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1')
-        row = cursor.fetchone()
-        return {
-            'index': row[0],
-            'timestamp': row[1],
-            'transactions': json.loads(row[2]),
-            'proof': row[3],
-            'previous_hash': row[4],
-        } if row else {}
-
-    def get_chain(self, cursor):
-        cursor.execute('SELECT * FROM blockchain ORDER BY block_index ASC')
-        rows = cursor.fetchall()
-        return [{
-            'index': row[0],
-            'timestamp': row[1],
-            'transactions': json.loads(row[2]),
-            'proof': row[3],
-            'previous_hash': row[4],
-        } for row in rows]
-
-    def new_transaction(self, sender, recipient, content, image):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            transaction = {
-                'sender': sender,
-                'recipient': recipient,
-                'content': content,
-                'image': image,
-                'timestamp': time.time(),
-            }
-            cursor.execute('''
-                INSERT INTO transactions (sender, recipient, content, image, timestamp)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (sender, recipient, content, image, transaction['timestamp']))
-            conn.commit()
-            return self.last_block(cursor)['index'] + 1
-
-    def get_messages(self, address):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM transactions
-                WHERE sender = ? OR recipient = ?
-            ''', (address, address))
-            rows = cursor.fetchall()
-            messages = []
-            for row in rows:
-                message = {
-                    'sender': row[0],
-                    'recipient': row[1],
-                    'content': row[2],
-                    'image': row[3],
-                    'timestamp': row[4],
-                }
-                messages.append(message)
-            return messages
-
-    def proof_of_work(self, last_proof):
-        proof = 0
-        while self.valid_proof(last_proof, proof) is False:
-            proof += 1
-        return proof
-
-    @staticmethod
-    def valid_proof(last_proof, proof):
-        guess = f'{last_proof}{proof}'.encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:4] == "0000"
+from blockchain import Blockchain
 
 
 def encrypt_message(key, message):
@@ -186,6 +59,7 @@ TOKEN = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
 bot = Bot(token=TOKEN)
 application = Application.builder().token(TOKEN).build()
 
+
 async def create_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phrase = mnemonic.generate(256)
     logging.debug(f'Generated phrase: {phrase}')
@@ -193,6 +67,7 @@ async def create_wallet_command(update: Update, context: ContextTypes.DEFAULT_TY
     logging.debug(f'Generated address: {address}')
     response = f'Mnemonic Phrase: {phrase}\nAddress: {address}'
     await update.message.reply_text(response)
+
 
 async def login_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phrase = context.args[0] if context.args else None
@@ -207,6 +82,7 @@ async def login_wallet_command(update: Update, context: ContextTypes.DEFAULT_TYP
     address = generate_address(phrase)
     response = f'Address: {address}'
     await update.message.reply_text(response)
+
 
 async def send_message_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -236,15 +112,20 @@ async def send_message_command(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.error(f"Error sending message: {e}")
         await update.message.reply_text('Internal server error')
 
+
 async def get_messages_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        address = context.args[0]
-
-        if not address:
+        if not context.args:
             await update.message.reply_text('Address is required.')
             return
 
+        address = context.args[0]
+
         messages = blockchain.get_messages(address)
+        if not messages:
+            await update.message.reply_text('No messages found for this address.')
+            return
+
         response = ""
         for message in messages:
             key = generate_key(message['sender'], message['recipient'])
@@ -252,10 +133,16 @@ async def get_messages_command(update: Update, context: ContextTypes.DEFAULT_TYP
             response += f"From: {message['sender']}, To: {message['recipient']}, Message: {decrypted_content}\n"
 
         await update.message.reply_text(response)
+    except IndexError:
+        await update.message.reply_text('Address is required.')
+    except Exception as e:
+        logging.error(f"Error getting messages: {e}")
+        await update.message.reply_text("Internal server error")
 
     except Exception as e:
         logging.error(f"Error getting messages: {e}")
         await update.message.reply_text('Internal server error')
+
 
 async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -275,14 +162,22 @@ async def mine_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Internal server error')
 
 
+async def get_updates():
+    updates = await bot.get_updates(timeout=10)
+    for update in updates:
+        print(update)
+
+
 if __name__ == '__main__':
-    async def set_webhook():
-        await bot.set_webhook(url='https://715a-2a03-d000-1581-7056-1d4c-794b-7793-b31c.ngrok-free.app/webhook')
     application.add_handler(CommandHandler('create', create_wallet_command))
     application.add_handler(CommandHandler('login', login_wallet_command))
     application.add_handler(CommandHandler('send', send_message_command))
     application.add_handler(CommandHandler('messages', get_messages_command))
     application.add_handler(CommandHandler('mine', mine_command))
+
+    # Получение обновлений без использования оффсета
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(get_updates())
+
     application.run_polling()
-    bot.delete_webhook()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
