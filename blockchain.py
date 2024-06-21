@@ -1,6 +1,6 @@
 import sqlite3
 import time
-import base64
+
 import hashlib
 import json
 
