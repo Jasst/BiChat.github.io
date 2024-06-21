@@ -1,7 +1,7 @@
 import telebot
 import requests
 import logging
-from crypto_manager import encrypt_message, decrypt_message, generate_key
+from crypto_manager import encrypt_message, decrypt_message, generate_key, generate_address
 
 bot_token = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
 logging.basicConfig(level=logging.DEBUG)
@@ -17,12 +17,11 @@ logging.basicConfig(level=logging.DEBUG)
 def main(message):
     bot.send_message(
         message.chat.id,
-        f'Добро пожаловать, {message.from_user.first_name}, в Блокчейн Мессенджер! Перейдите по <a href="https://example.com">этой ссылке</a> для получения дополнительной информации.',
+        f'Добро пожаловать, {message.from_user.first_name}, в Блокчейн Мессенджер! Перейдите по <a href="https://jasstme.pythonanywhere.com">этой ссылке</a> или введи /help для получения дополнительной информации.',
         parse_mode='HTML'
     )
 
 
-# Обработчик команды /help
 @bot.message_handler(commands=['help'])
 def help_command(message):
     help_text = (
@@ -30,8 +29,8 @@ def help_command(message):
         "/start - Начать взаимодействие с ботом\n"
         "/create - Создать новый кошелек\n"
         "/login - Войти в существующий кошелек\n"
-       
-        "/get - Получить количество  сообщений\n"
+        "/send - Отправить сообщение\n"
+        "/get - Получить количество сообщений\n"
         "/view - Просмотреть свой адрес кошелька\n"
         "/view2 - Просмотреть свою мнемоническую фразу (пароль)\n"
         "/help - Показать этот список команд"
@@ -39,7 +38,6 @@ def help_command(message):
     bot.send_message(message.chat.id, help_text)
 
 
-# Обработчик команды /create_wallet
 @bot.message_handler(commands=['create'])
 def create_wallet(message):
     response = requests.post(f'{API_URL}/create_wallet')
@@ -58,7 +56,6 @@ def create_wallet(message):
         bot.send_message(message.chat.id, 'Ошибка при создании кошелька.')
 
 
-# Обработчик команды /login_wallet
 @bot.message_handler(commands=['login'])
 def login_wallet(message):
     msg = bot.send_message(message.chat.id, 'Введите вашу мнемоническую фразу:')
@@ -77,7 +74,6 @@ def process_login(message):
         bot.send_message(message.chat.id, f'Ошибка при входе в кошелек: {response.json()["error"]}')
 
 
-# Обработчик команды /view_address
 @bot.message_handler(commands=['view'])
 def view_address(message):
     if 'address' in global_data:
@@ -86,7 +82,6 @@ def view_address(message):
         bot.send_message(message.chat.id, 'Вы еще не создали кошелек.')
 
 
-# Обработчик команды /view_phrase
 @bot.message_handler(commands=['view2'])
 def view_phrase(message):
     if 'mnemonic_phrase' in global_data:
@@ -95,7 +90,6 @@ def view_phrase(message):
         bot.send_message(message.chat.id, 'Вы еще не создали кошелек.')
 
 
-# Обработчик команды /get_messages
 @bot.message_handler(commands=['get'])
 def get_messages(message):
     if 'mnemonic_phrase' not in global_data:
@@ -128,7 +122,6 @@ def get_messages(message):
                     except Exception as e:
                         all_decrypted_messages.append(f"Failed to decrypt message: {str(e)}")
 
-                # Соединяем все сообщения в одну строку
                 messages_text = "\n\n".join(all_decrypted_messages)
                 bot.send_message(message.chat.id, f"Ваши сообщения:\n\n{messages_text}")
 
@@ -142,7 +135,6 @@ def get_messages(message):
         bot.send_message(message.chat.id, f'Ошибка при получении сообщений: {str(e)}')
 
 
-# Обработчик команды /send_message
 @bot.message_handler(commands=['send'])
 def send_message(message):
     if 'mnemonic_phrase' not in global_data or 'address' not in global_data:
@@ -163,9 +155,11 @@ def process_send_message_recipient(message):
 def process_send_message_content(message):
     content = message.text
     try:
-        encrypted_content = encrypt_message(global_data['mnemonic_phrase'], content)
+        sender = global_data['address']
+        key = generate_key(sender, global_data['recipient'])
+        encrypted_content = encrypt_message(key, content)
         response = requests.post(f'{API_URL}/send_message', json={
-            'sender': global_data['address'],
+            'mnemonic_phrase': global_data['mnemonic_phrase'],
             'recipient': global_data['recipient'],
             'content': encrypted_content
         })
@@ -177,12 +171,10 @@ def process_send_message_content(message):
         bot.send_message(message.chat.id, f'Ошибка при отправке сообщения: {str(e)}')
 
 
-# Обработчик всех текстовых сообщений
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
     bot.send_message(message.chat.id, 'Неизвестная команда. Используйте /help для списка команд.')
 
 
-# Запуск бота
 if __name__ == '__main__':
     bot.polling(none_stop=True)
