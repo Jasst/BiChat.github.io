@@ -1,0 +1,7 @@
+'7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
+
+
+bot = telebot.TeleBot('7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY')
+logging.basicConfig(level=logging.DEBUG)
+
+API_URL = 'https://jasstme.pythonanywhere.com'  # URL вашего Flask-приложения
