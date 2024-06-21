@@ -5,10 +5,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
-      <change afterPath="$PROJECT_DIR$/TOKEN" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/bot.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/bot_script.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_12_06_2024_18_03_[Changes]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_12_06_2024_18_03__Changes_.xml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blockchain.db" beforeDir="false" afterPath="$PROJECT_DIR$/blockchain.db" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -76,35 +78,35 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Flask server.BiChat.github.io.executor": "Run",
-    "Python.Bot 2.executor": "Run",
-    "Python.Qbyte.executor": "Run",
-    "Python.Socket.executor": "Run",
-    "Python.__init__.executor": "Run",
-    "Python.app.executor": "Run",
-    "Python.blockchain.executor": "Run",
-    "Python.bot.executor": "Run",
-    "Python.cripto_manager.executor": "Run",
-    "Python.pythonProject1.executor": "Run",
-    "Python.routes.executor": "Run",
-    "Python.setup.executor": "Run",
-    "Python.sync_peers.executor": "Run",
-    "Python.transactions.executor": "Run",
-    "RunOnceActivity.OpenProjectViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "Jasst-DB2.0+Telegram",
-    "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.remoteExternalTools",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Flask server.BiChat.github.io.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Bot 2.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Qbyte.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Socket.executor&quot;: &quot;Run&quot;,
+    &quot;Python.__init__.executor&quot;: &quot;Run&quot;,
+    &quot;Python.app.executor&quot;: &quot;Run&quot;,
+    &quot;Python.blockchain.executor&quot;: &quot;Run&quot;,
+    &quot;Python.bot.executor&quot;: &quot;Run&quot;,
+    &quot;Python.cripto_manager.executor&quot;: &quot;Run&quot;,
+    &quot;Python.pythonProject1.executor&quot;: &quot;Run&quot;,
+    &quot;Python.routes.executor&quot;: &quot;Run&quot;,
+    &quot;Python.setup.executor&quot;: &quot;Run&quot;,
+    &quot;Python.sync_peers.executor&quot;: &quot;Run&quot;,
+    &quot;Python.transactions.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;Jasst-DB2.0+Telegram&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/Нел/Documents/GitHub/BiChat.github.io&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.remoteExternalTools&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io" />
@@ -311,15 +313,8 @@
       <workItem from="1718480032202" duration="541000" />
       <workItem from="1718653072572" duration="599000" />
       <workItem from="1718913431374" duration="1173000" />
-      <workItem from="1718951728903" duration="4559000" />
-    </task>
-    <task id="LOCAL-00027" summary="Vercel">
-      <option name="closed" value="true" />
-      <created>1717196461404</created>
-      <option name="number" value="00027" />
-      <option name="presentableId" value="LOCAL-00027" />
-      <option name="project" value="LOCAL" />
-      <updated>1717196461404</updated>
+      <workItem from="1718951728903" duration="4921000" />
+      <workItem from="1718957567765" duration="314000" />
     </task>
     <task id="LOCAL-00028" summary="Vercel">
       <option name="closed" value="true" />
@@ -705,7 +700,15 @@
       <option name="project" value="LOCAL" />
       <updated>1718952574532</updated>
     </task>
-    <option name="localTasksCounter" value="76" />
+    <task id="LOCAL-00076" summary="DB">
+      <option name="closed" value="true" />
+      <created>1718956932528</created>
+      <option name="number" value="00076" />
+      <option name="presentableId" value="LOCAL-00076" />
+      <option name="project" value="LOCAL" />
+      <updated>1718956932528</updated>
+    </task>
+    <option name="localTasksCounter" value="77" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -761,7 +764,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/app.py</url>
-          <line>19</line>
+          <line>11</line>
           <option name="timeStamp" value="55" />
         </line-breakpoint>
       </breakpoints>
@@ -769,7 +772,7 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/BiChat_github_io$Socket.coverage" NAME="Socket Coverage Results" MODIFIED="1718628105908" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/BiChat_github_io$BiChat_github_io.coverage" NAME="BiChat.github.io Coverage Results" MODIFIED="1718954350651" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/BiChat_github_io$BiChat_github_io.coverage" NAME="BiChat.github.io Coverage Results" MODIFIED="1718957703634" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/BiChat$pythonProject1.coverage" NAME="pythonProject1 Coverage Results" MODIFIED="1717185157318" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/pythonProject1$setup.coverage" NAME="setup Coverage Results" MODIFIED="1716585344041" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/pythonProject1$app.coverage" NAME="app Coverage Results" MODIFIED="1716658331921" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />

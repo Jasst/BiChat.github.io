@@ -1,28 +1,18 @@
-import threading
-import sqlite3
 from flask import Flask, jsonify, request, render_template
 from mnemonic import Mnemonic
 import logging
 from blockchain import Blockchain
 from cripto_manager import encrypt_message, decrypt_message, generate_key, generate_address
-import telebot
+import sqlite3
 
 app = Flask(__name__)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 logging.basicConfig(level=logging.DEBUG)
-bot = telebot.TeleBot('7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY')
-
-
-@bot.message_handler(commands=['start'])
-def main(message):
-    bot.send_message(message.chat.id, message)
-
 
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -35,7 +25,6 @@ def create_wallet():
         'address': address,
     }
     return jsonify(response), 200
-
 
 @app.route('/login_wallet', methods=['POST'])
 def login_wallet():
@@ -52,7 +41,6 @@ def login_wallet():
         'address': address,
     }
     return jsonify(response), 200
-
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -83,7 +71,6 @@ def send_message():
     except Exception as e:
         app.logger.error(f"Failed to send message: {str(e)}")
         return jsonify({'error': f'Failed to send message: {str(e)}'}), 500
-
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
@@ -124,7 +111,6 @@ def get_messages():
         app.logger.error(f"Failed to retrieve messages: {str(e)}")
         return jsonify({'error': f'Failed to retrieve messages: {str(e)}'}), 500
 
-
 @app.route('/chain', methods=['GET'])
 def full_chain():
     with blockchain:
@@ -135,21 +121,5 @@ def full_chain():
     }
     return jsonify(response), 200
 
-
-def run_flask():
-    app.run(host='0.0.0.0', port=5000, debug=False)
-
-
-def run_telebot():
-    bot.polling(none_stop=True)
-
-
 if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask)
-    telebot_thread = threading.Thread(target=run_telebot)
-
-    flask_thread.start()
-    telebot_thread.start()
-
-    flask_thread.join()
-    telebot_thread.join()
+    app.run()
