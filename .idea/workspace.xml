@@ -6,6 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/TOKEN" beforeDir="false" afterPath="$PROJECT_DIR$/TOKEN" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot_script.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot_script.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -310,15 +311,7 @@
       <workItem from="1718653072572" duration="599000" />
       <workItem from="1718913431374" duration="1173000" />
       <workItem from="1718951728903" duration="4921000" />
-      <workItem from="1718957567765" duration="2699000" />
-    </task>
-    <task id="LOCAL-00029" summary="Vercel">
-      <option name="closed" value="true" />
-      <created>1717256032813</created>
-      <option name="number" value="00029" />
-      <option name="presentableId" value="LOCAL-00029" />
-      <option name="project" value="LOCAL" />
-      <updated>1717256032813</updated>
+      <workItem from="1718957567765" duration="4077000" />
     </task>
     <task id="LOCAL-00030" summary="Vercel">
       <option name="closed" value="true" />
@@ -704,7 +697,15 @@
       <option name="project" value="LOCAL" />
       <updated>1718958136918</updated>
     </task>
-    <option name="localTasksCounter" value="78" />
+    <task id="LOCAL-00078" summary="DB">
+      <option name="closed" value="true" />
+      <created>1718960523070</created>
+      <option name="number" value="00078" />
+      <option name="presentableId" value="LOCAL-00078" />
+      <option name="project" value="LOCAL" />
+      <updated>1718960523070</updated>
+    </task>
+    <option name="localTasksCounter" value="79" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
