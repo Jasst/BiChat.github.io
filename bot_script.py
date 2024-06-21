@@ -31,7 +31,7 @@ def help_command(message):
         "/login - Войти в существующий кошелек\n"
         "/send - Отправить сообщение\n"
         "/get - Получить количество сообщений\n"
-        "/wallet - Просмотреть свой адрес кошелька\n"
+        "/address - Просмотреть свой адрес кошелька\n"
         "/mnemonic - Просмотреть свою мнемоническую фразу (пароль)\n"
         "/help - Показать этот список команд"
     )
@@ -74,7 +74,7 @@ def process_login(message):
         bot.send_message(message.chat.id, f'Ошибка при входе в кошелек: {response.json()["error"]}')
 
 
-@bot.message_handler(commands=['view'])
+@bot.message_handler(commands=['address'])
 def view_address(message):
     if 'address' in global_data:
         bot.send_message(message.chat.id, f'Ваш адрес кошелька: {global_data["address"]}')
@@ -82,7 +82,7 @@ def view_address(message):
         bot.send_message(message.chat.id, 'Вы еще не создали кошелек.')
 
 
-@bot.message_handler(commands=['view2'])
+@bot.message_handler(commands=['mnemonic'])
 def view_phrase(message):
     if 'mnemonic_phrase' in global_data:
         bot.send_message(message.chat.id, f'Ваша мнемоническая фраза (пароль): {global_data["mnemonic_phrase"]}')
