@@ -14,7 +14,6 @@ user_data = {}  # Словарь для хранения данных польз
 bot = telebot.TeleBot(bot_token)
 logging.basicConfig(level=logging.DEBUG)
 
-
 # Декоратор для проверки аутентификации
 def requires_auth(func):
     @wraps(func)
@@ -24,41 +23,30 @@ def requires_auth(func):
             bot.send_message(message.chat.id, 'Для использования этой команды необходимо войти в кошелек.')
             return
         return func(message, *args, **kwargs)
-
     return wrapper
-
 
 @bot.message_handler(commands=['start'])
 def main(message):
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    itembtn = types.KeyboardButton('/help')
-    markup.add(itembtn)
-
     bot.send_message(
         message.chat.id,
-        f'Добро пожаловать, {message.from_user.first_name}, в Блокчейн Мессенджер! Вы можете использовать кнопки ниже или введите /help для получения дополнительной информации.',
-        parse_mode='HTML',
-        reply_markup=markup
+        f'Добро пожаловать, {message.from_user.first_name}, в Блокчейн Мессенджер! Перейдите по <a href="{API_URL}">этой ссылке</a> или введите /help для получения дополнительной информации.',
+        parse_mode='HTML'
     )
-
 
 @bot.message_handler(commands=['help'])
 def help_command(message):
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    itembtns = [
-        types.KeyboardButton('/start'),
-        types.KeyboardButton('/create'),
-        types.KeyboardButton('/login'),
-        types.KeyboardButton('/send'),
-        types.KeyboardButton('/get'),
-        types.KeyboardButton('/address'),
-        types.KeyboardButton('/mnemonic'),
-        types.KeyboardButton('/help')
-    ]
-    markup.add(*itembtns)
-
-    bot.send_message(message.chat.id, "Список доступных команд:", reply_markup=markup)
-
+    help_text = (
+        "Список доступных команд:\n"
+        "/start - Начать взаимодействие с ботом\n"
+        "/create - Создать новый кошелек\n"
+        "/login - Войти в существующий кошелек\n"
+        "/send - Отправить сообщение\n"
+        "/get - Получить количество сообщений\n"
+        "/address - Просмотреть свой адрес кошелька\n"
+        "/mnemonic - Просмотреть свою мнемоническую фразу (пароль)\n"
+        "/help - Показать этот список команд"
+    )
+    bot.send_message(message.chat.id, help_text)
 
 @bot.message_handler(commands=['create'])
 def create_wallet(message):
@@ -76,20 +64,14 @@ def create_wallet(message):
             f'Адрес: {user_data[user_id]["address"]}\n'
             f'Используйте мнемоническую фразу для входа в кошелек.'
         )
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        itembtn = types.KeyboardButton('/login')
-        markup.add(itembtn)
-
-        bot.send_message(message.chat.id, message_text, reply_markup=markup)
+        bot.send_message(message.chat.id, message_text)
     else:
         bot.send_message(message.chat.id, 'Ошибка при создании кошелька.')
-
 
 @bot.message_handler(commands=['login'])
 def login_wallet(message):
     msg = bot.send_message(message.chat.id, 'Введите вашу мнемоническую фразу:')
     bot.register_next_step_handler(msg, process_login)
-
 
 def process_login(message):
     mnemonic_phrase = message.text
@@ -103,9 +85,7 @@ def process_login(message):
         }
         bot.send_message(message.chat.id, f'Вы вошли в кошелек. Ваш адрес: {user_data[user_id]["address"]}')
     else:
-        bot.send_message(message.chat.id,
-                         f'Ошибка при входе в кошелек: {response.json().get("error", "Неизвестная ошибка")}')
-
+        bot.send_message(message.chat.id, f'Ошибка при входе в кошелек: {response.json().get("error", "Неизвестная ошибка")}')
 
 @bot.message_handler(commands=['address'])
 @requires_auth
@@ -113,13 +93,11 @@ def view_address(message):
     user_id = message.from_user.id
     bot.send_message(message.chat.id, f'Ваш адрес кошелька: {user_data[user_id]["address"]}')
 
-
 @bot.message_handler(commands=['mnemonic'])
 @requires_auth
 def view_phrase(message):
     user_id = message.from_user.id
     bot.send_message(message.chat.id, f'Ваша мнемоническая фраза (пароль): {user_data[user_id]["mnemonic_phrase"]}')
-
 
 @bot.message_handler(commands=['get'])
 @requires_auth
@@ -158,12 +136,10 @@ def get_messages(message):
                 bot.send_message(message.chat.id, "У вас нет сообщений.")
 
         else:
-            bot.send_message(message.chat.id,
-                             f'Ошибка при получении сообщений: {response.json().get("error", "Неизвестная ошибка")}')
+            bot.send_message(message.chat.id, f'Ошибка при получении сообщений: {response.json().get("error", "Неизвестная ошибка")}')
 
     except Exception as e:
         bot.send_message(message.chat.id, f'Ошибка при получении сообщений: {str(e)}')
-
 
 @bot.message_handler(commands=['send'])
 @requires_auth
@@ -172,14 +148,12 @@ def send_message(message):
     msg = bot.send_message(message.chat.id, 'Введите адрес получателя:')
     bot.register_next_step_handler(msg, process_send_message_recipient)
 
-
 def process_send_message_recipient(message):
     recipient = message.text
     user_id = message.from_user.id
     user_data[user_id]['recipient'] = recipient
     msg = bot.send_message(message.chat.id, 'Введите текст сообщения:')
     bot.register_next_step_handler(msg, process_send_message_content)
-
 
 def process_send_message_content(message):
     content = message.text
@@ -196,16 +170,14 @@ def process_send_message_content(message):
         if response.status_code == 201:
             bot.send_message(message.chat.id, 'Сообщение успешно отправлено!')
         else:
-            bot.send_message(message.chat.id,
-                             f'Ошибка при отправке сообщения: {response.json().get("error", "Неизвестная ошибка")}')
+            bot.send_message(message.chat.id, f'Ошибка при отправке сообщения: {response.json().get("error", "Неизвестная ошибка")}')
     except Exception as e:
         bot.send_message(message.chat.id, f'Ошибка при отправке сообщения: {str(e)}')
-
 
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
     bot.send_message(message.chat.id, 'Неизвестная команда. Используйте /help для списка команд.')
 
-
 if __name__ == '__main__':
     bot.polling(none_stop=True)
+нельзя в место команд сделать кнопки  ? напиши на русском
