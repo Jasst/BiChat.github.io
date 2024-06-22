@@ -53,11 +53,18 @@ def help_command(message):
         types.KeyboardButton('/get'),
         types.KeyboardButton('/address'),
         types.KeyboardButton('/mnemonic'),
-        types.KeyboardButton('/help')
+        types.KeyboardButton('/exit')  # Добавляем кнопку для выхода
     ]
     markup.add(*itembtns)
 
     bot.send_message(message.chat.id, "Список доступных команд:", reply_markup=markup)
+
+@bot.message_handler(commands=['exit'])
+@requires_auth
+def exit_wallet(message):
+    user_id = message.from_user.id
+    del user_data[user_id]
+    bot.send_message(message.chat.id, 'Вы успешно вышли из кошелька.')
 
 
 @bot.message_handler(commands=['create'])
@@ -77,8 +84,9 @@ def create_wallet(message):
             f'Используйте мнемоническую фразу для входа в кошелек.'
         )
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        itembtn = types.KeyboardButton('/login')
-        markup.add(itembtn)
+        itembtn_login = types.KeyboardButton('/login')
+        itembtn_exit = types.KeyboardButton('/exit')
+        markup.add(itembtn_login, itembtn_exit)  # Добавляем кнопку для входа и выхода
 
         bot.send_message(message.chat.id, message_text, reply_markup=markup)
     else:
