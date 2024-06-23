@@ -60,8 +60,7 @@ def help_command(message):
         "Список доступных команд:\n"
         "/create - Создать новый кошелек\n"
         "/login - Войти в существующий кошелек\n"
-        "/send - Отправить сообщение\n"
-        "/get - Получить сообщения\n"
+        "/get - Проверить сообщения\n"
         "/address - Просмотреть свой адрес кошелька\n"
         "/mnemonic - Просмотреть свою мнемоническую фразу (пароль)\n"
         "/exit - Выйти из кошелька\n"
@@ -69,6 +68,7 @@ def help_command(message):
     )
 
     bot.send_message(message.chat.id, help_text, reply_markup=markup)
+
 
 @bot.message_handler(commands=['exit'])
 @requires_auth
@@ -105,10 +105,9 @@ def create_wallet(message):
         itembtn_mnemonic = types.KeyboardButton('/mnemonic')
         itembtn_address = types.KeyboardButton('/address')
         itembtn_get = types.KeyboardButton('/get')
-        itembtn_send = types.KeyboardButton('/send')
+        itembtn_help = types.KeyboardButton('/help')
         itembtn_exit = types.KeyboardButton('/exit')
-        markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
-
+        markup.add(itembtn_get,  itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
 
         bot.send_message(message.chat.id, message_text, reply_markup=markup)
     else:
@@ -131,14 +130,15 @@ def process_login(message):
             'mnemonic_phrase': mnemonic_phrase,
             'address': data["address"]
         }
+        bot.send_message(message.chat.id, f'Вы вошли в кошелек. Ваш адрес:')
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         itembtn_mnemonic = types.KeyboardButton('/mnemonic')
         itembtn_address = types.KeyboardButton('/address')
         itembtn_get = types.KeyboardButton('/get')
-        itembtn_send = types.KeyboardButton('/send')
+        itembtn_help = types.KeyboardButton('/help')
         itembtn_exit = types.KeyboardButton('/exit')
-        markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
-        bot.send_message(message.chat.id, f'Вы вошли в кошелек. Ваш адрес: {user_data[user_id]["address"]}')
+        markup.add(itembtn_get, itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
+        bot.send_message(message.chat.id, f' {user_data[user_id]["address"]}',reply_markup=markup)
     else:
         bot.send_message(message.chat.id,
                          f'Ошибка при входе в кошелек: {response.json().get("error", "Неизвестная ошибка")}')
@@ -151,11 +151,12 @@ def view_address(message):
     itembtn_mnemonic = types.KeyboardButton('/mnemonic')
     itembtn_address = types.KeyboardButton('/address')
     itembtn_get = types.KeyboardButton('/get')
-    itembtn_send = types.KeyboardButton('/send')
+    itembtn_help = types.KeyboardButton('/help')
     itembtn_exit = types.KeyboardButton('/exit')
-    markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
+    markup.add(itembtn_get, itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
     user_id = message.from_user.id
-    bot.send_message(message.chat.id, f'Ваш адрес кошелька: {user_data[user_id]["address"]}')
+    bot.send_message(message.chat.id, f'Ваш адрес кошелька:')
+    bot.send_message(message.chat.id, f' {user_data[user_id]["address"]}')
 
 
 @bot.message_handler(commands=['mnemonic'])
@@ -166,10 +167,11 @@ def view_phrase(message):
     itembtn_mnemonic = types.KeyboardButton('/mnemonic')
     itembtn_address = types.KeyboardButton('/address')
     itembtn_get = types.KeyboardButton('/get')
-    itembtn_send = types.KeyboardButton('/send')
+    itembtn_help = types.KeyboardButton('/help')
     itembtn_exit = types.KeyboardButton('/exit')
-    markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
-    bot.send_message(message.chat.id, f'Ваша мнемоническая фраза (пароль): {user_data[user_id]["mnemonic_phrase"]}')
+    markup.add(itembtn_get, itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
+    bot.send_message(message.chat.id, f'Ваша мнемоническая фраза (пароль):')
+    bot.send_message(message.chat.id, f'{user_data[user_id]["mnemonic_phrase"]}')
 
 
 @bot.message_handler(commands=['get'])
@@ -180,9 +182,9 @@ def get_messages(message):
     itembtn_mnemonic = types.KeyboardButton('/mnemonic')
     itembtn_address = types.KeyboardButton('/address')
     itembtn_get = types.KeyboardButton('/get')
-    itembtn_send = types.KeyboardButton('/send')
+    itembtn_help = types.KeyboardButton('/help')
     itembtn_exit = types.KeyboardButton('/exit')
-    markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
+    markup.add(itembtn_get, itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
     bot.send_message(message.chat.id, 'Получение сообщений...')
 
     try:
@@ -194,7 +196,7 @@ def get_messages(message):
             num_messages = len(messages)
 
             if num_messages > 0:
-                bot.send_message(message.chat.id, f'Количество сообщений: {num_messages}')
+                bot.send_message(message.chat.id, f'Количество сообщений: {num_messages}', )
                 all_decrypted_messages = []
 
                 for message_data in messages:
@@ -207,7 +209,13 @@ def get_messages(message):
                         decrypted_message = f"От: {sender}\nСодержание: {decrypted_content}"
                         all_decrypted_messages.append(decrypted_message)
                     except Exception as e:
-                        all_decrypted_messages.append(f"Ошибка при расшифровке сообщения: {str(e)}")
+                        all_decrypted_messages.append(f"Угроза безопасности {str(e)}")
+                        bot.send_message(
+                            message.chat.id,
+                            f'{message.from_user.first_name}, перейдите в веб версию чтобы прочитать сообщения: <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a>',
+                            parse_mode='HTML',
+                            reply_markup=markup
+                        )
 
                 messages_text = "\n\n".join(all_decrypted_messages)
                 bot.send_message(message.chat.id, f"Ваши сообщения:\n\n{messages_text}")
@@ -224,9 +232,10 @@ def get_messages(message):
         itembtn_mnemonic = types.KeyboardButton('/mnemonic')
         itembtn_address = types.KeyboardButton('/address')
         itembtn_get = types.KeyboardButton('/get')
-        itembtn_send = types.KeyboardButton('/send')
+        # itembtn_send = types.KeyboardButton('/send')
         itembtn_exit = types.KeyboardButton('/exit')
-        markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
+        itembtn_help = types.KeyboardButton('/help')
+        markup.add(itembtn_mnemonic, itembtn_address, itembtn_get, itembtn_help, itembtn_exit)
         bot.send_message(message.chat.id, f'Ошибка при получении сообщений: {str(e)}')
 
 
@@ -252,11 +261,12 @@ def process_send_message_content(message):
     user_id = message.from_user.id
     try:
         sender = user_data[user_id]['address']
-        key = generate_key(sender, user_data[user_id]['recipient'])
+        recipient = user_data[user_id]['recipient']
+        key = generate_key(sender, recipient)
         encrypted_content = encrypt_message(key, content)
         response = requests.post(f'{API_URL}/send_message', json={
             'mnemonic_phrase': user_data[user_id]['mnemonic_phrase'],
-            'recipient': user_data[user_id]['recipient'],
+            'recipient': recipient,
             'content': encrypted_content
         })
         if response.status_code == 201:

@@ -60,7 +60,6 @@ def send_message():
 
         sender = generate_address(phrase)
         key = generate_key(sender, recipient)
-
         encrypted_content = encrypt_message(key, content)
         encrypted_image = encrypt_message(key, image) if image else ""
 
