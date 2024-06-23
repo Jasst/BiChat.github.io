@@ -31,8 +31,13 @@ def requires_auth(func):
 @bot.message_handler(commands=['start'])
 def main(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    itembtn = types.KeyboardButton('/help')
-    markup.add(itembtn)
+    itembtns = [
+        types.KeyboardButton('/create'),
+        types.KeyboardButton('/login'),
+        types.KeyboardButton('/help'),
+        types.KeyboardButton('/exit')  # Добавляем кнопку для выхода
+    ]
+    markup.add(*itembtns)
 
     bot.send_message(
         message.chat.id,
@@ -46,25 +51,38 @@ def main(message):
 def help_command(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     itembtns = [
-        types.KeyboardButton('/start'),
         types.KeyboardButton('/create'),
         types.KeyboardButton('/login'),
-        types.KeyboardButton('/send'),
-        types.KeyboardButton('/get'),
-        types.KeyboardButton('/address'),
-        types.KeyboardButton('/mnemonic'),
         types.KeyboardButton('/exit')  # Добавляем кнопку для выхода
     ]
     markup.add(*itembtns)
+    help_text = (
+        "Список доступных команд:\n"
+        "/create - Создать новый кошелек\n"
+        "/login - Войти в существующий кошелек\n"
+        "/send - Отправить сообщение\n"
+        "/get - Получить сообщения\n"
+        "/address - Просмотреть свой адрес кошелька\n"
+        "/mnemonic - Просмотреть свою мнемоническую фразу (пароль)\n"
+        "/exit - Выйти из кошелька\n"
+        "/help - Показать этот список команд"
+    )
 
-    bot.send_message(message.chat.id, "Список доступных команд:", reply_markup=markup)
+    bot.send_message(message.chat.id, help_text, reply_markup=markup)
 
 @bot.message_handler(commands=['exit'])
 @requires_auth
 def exit_wallet(message):
     user_id = message.from_user.id
     del user_data[user_id]
-    bot.send_message(message.chat.id, 'Вы успешно вышли из кошелька.')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    itembtn_create = types.KeyboardButton('/create')
+    itembtn_login = types.KeyboardButton('/login')
+    itembtn_help = types.KeyboardButton('/help')
+    markup.add(itembtn_create, itembtn_login, itembtn_help)
+
+    bot.send_message(message.chat.id, 'Вы успешно вышли из кошелька.', reply_markup=markup)
 
 
 @bot.message_handler(commands=['create'])
@@ -84,9 +102,13 @@ def create_wallet(message):
             f'Используйте мнемоническую фразу для входа в кошелек.'
         )
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        itembtn_login = types.KeyboardButton('/login')
+        itembtn_mnemonic = types.KeyboardButton('/mnemonic')
+        itembtn_address = types.KeyboardButton('/address')
+        itembtn_get = types.KeyboardButton('/get')
+        itembtn_send = types.KeyboardButton('/send')
         itembtn_exit = types.KeyboardButton('/exit')
-        markup.add(itembtn_login, itembtn_exit)  # Добавляем кнопку для входа и выхода
+        markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send,
+                   itembtn_exit)  # Добавляем кнопку для входа и выхода
 
         bot.send_message(message.chat.id, message_text, reply_markup=markup)
     else:
@@ -109,6 +131,13 @@ def process_login(message):
             'mnemonic_phrase': mnemonic_phrase,
             'address': data["address"]
         }
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        itembtn_mnemonic = types.KeyboardButton('/mnemonic')
+        itembtn_address = types.KeyboardButton('/address')
+        itembtn_get = types.KeyboardButton('/get')
+        itembtn_send = types.KeyboardButton('/send')
+        itembtn_exit = types.KeyboardButton('/exit')
+        markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
         bot.send_message(message.chat.id, f'Вы вошли в кошелек. Ваш адрес: {user_data[user_id]["address"]}')
     else:
         bot.send_message(message.chat.id,
@@ -118,6 +147,13 @@ def process_login(message):
 @bot.message_handler(commands=['address'])
 @requires_auth
 def view_address(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    itembtn_mnemonic = types.KeyboardButton('/mnemonic')
+    itembtn_address = types.KeyboardButton('/address')
+    itembtn_get = types.KeyboardButton('/get')
+    itembtn_send = types.KeyboardButton('/send')
+    itembtn_exit = types.KeyboardButton('/exit')
+    markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
     user_id = message.from_user.id
     bot.send_message(message.chat.id, f'Ваш адрес кошелька: {user_data[user_id]["address"]}')
 
@@ -126,6 +162,13 @@ def view_address(message):
 @requires_auth
 def view_phrase(message):
     user_id = message.from_user.id
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    itembtn_mnemonic = types.KeyboardButton('/mnemonic')
+    itembtn_address = types.KeyboardButton('/address')
+    itembtn_get = types.KeyboardButton('/get')
+    itembtn_send = types.KeyboardButton('/send')
+    itembtn_exit = types.KeyboardButton('/exit')
+    markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
     bot.send_message(message.chat.id, f'Ваша мнемоническая фраза (пароль): {user_data[user_id]["mnemonic_phrase"]}')
 
 
@@ -133,6 +176,13 @@ def view_phrase(message):
 @requires_auth
 def get_messages(message):
     user_id = message.from_user.id
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    itembtn_mnemonic = types.KeyboardButton('/mnemonic')
+    itembtn_address = types.KeyboardButton('/address')
+    itembtn_get = types.KeyboardButton('/get')
+    itembtn_send = types.KeyboardButton('/send')
+    itembtn_exit = types.KeyboardButton('/exit')
+    markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
     bot.send_message(message.chat.id, 'Получение сообщений...')
 
     try:
@@ -170,6 +220,13 @@ def get_messages(message):
                              f'Ошибка при получении сообщений: {response.json().get("error", "Неизвестная ошибка")}')
 
     except Exception as e:
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        itembtn_mnemonic = types.KeyboardButton('/mnemonic')
+        itembtn_address = types.KeyboardButton('/address')
+        itembtn_get = types.KeyboardButton('/get')
+        itembtn_send = types.KeyboardButton('/send')
+        itembtn_exit = types.KeyboardButton('/exit')
+        markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
         bot.send_message(message.chat.id, f'Ошибка при получении сообщений: {str(e)}')
 
 
@@ -186,6 +243,7 @@ def process_send_message_recipient(message):
     user_id = message.from_user.id
     user_data[user_id]['recipient'] = recipient
     msg = bot.send_message(message.chat.id, 'Введите текст сообщения:')
+
     bot.register_next_step_handler(msg, process_send_message_content)
 
 
@@ -212,6 +270,10 @@ def process_send_message_content(message):
 
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    itembtn_help = types.KeyboardButton('/help')
+    itembtn_exit = types.KeyboardButton('/exit')
+    markup.add(itembtn_help, itembtn_exit)
     bot.send_message(message.chat.id, 'Неизвестная команда. Используйте /help для списка команд.')
 
 
