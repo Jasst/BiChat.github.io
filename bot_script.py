@@ -32,7 +32,10 @@ def requires_auth(func):
 def main(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     itembtn = types.KeyboardButton('/help')
-    markup.add(itembtn)
+    itembtn_create = types.KeyboardButton('/create')
+    itembtn_login = types.KeyboardButton('/login')
+    itembtn_exit = types.KeyboardButton('/exit')
+    markup.add(itembtn,itembtn_login,itembtn_exit ,itembtn_create)
 
     bot.send_message(
         message.chat.id,
@@ -46,13 +49,9 @@ def main(message):
 def help_command(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     itembtns = [
-        types.KeyboardButton('/start'),
+       
         types.KeyboardButton('/create'),
-        types.KeyboardButton('/login'),
-        types.KeyboardButton('/send'),
-        types.KeyboardButton('/get'),
-        types.KeyboardButton('/address'),
-        types.KeyboardButton('/mnemonic'),
+        types.KeyboardButton('/login'),     
         types.KeyboardButton('/exit')  # Добавляем кнопку для выхода
     ]
     markup.add(*itembtns)
@@ -63,12 +62,12 @@ def help_command(message):
 @requires_auth
 def exit_wallet(message):
     user_id = message.from_user.id
-    del user_data[user_id]
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     itembtn_create = types.KeyboardButton('/create')
     itembtn_login = types.KeyboardButton('/login')
     itembtn_exit = types.KeyboardButton('/exit')
-    markup.add(itembtn_login, itembtn_exit,itembtn_create)  # Добавляем кнопку для входа и выхода
+    markup.add(itembtn_login,itembtn_exit ,itembtn_create)  # Добавляем кнопку для входа и выхода
+    del user_data[user_id]    
     bot.send_message(message.chat.id, 'Вы успешно вышли из кошелька.')
 
 
