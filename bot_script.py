@@ -107,8 +107,8 @@ def create_wallet(message):
         itembtn_get = types.KeyboardButton('/get')
         itembtn_send = types.KeyboardButton('/send')
         itembtn_exit = types.KeyboardButton('/exit')
-        markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send,
-                   itembtn_exit)  # Добавляем кнопку для входа и выхода
+        markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
+
 
         bot.send_message(message.chat.id, message_text, reply_markup=markup)
     else:
@@ -137,7 +137,7 @@ def process_login(message):
         itembtn_get = types.KeyboardButton('/get')
         itembtn_send = types.KeyboardButton('/send')
         itembtn_exit = types.KeyboardButton('/exit')
-        markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
+        markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
         bot.send_message(message.chat.id, f'Вы вошли в кошелек. Ваш адрес: {user_data[user_id]["address"]}')
     else:
         bot.send_message(message.chat.id,
@@ -153,7 +153,7 @@ def view_address(message):
     itembtn_get = types.KeyboardButton('/get')
     itembtn_send = types.KeyboardButton('/send')
     itembtn_exit = types.KeyboardButton('/exit')
-    markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
+    markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
     user_id = message.from_user.id
     bot.send_message(message.chat.id, f'Ваш адрес кошелька: {user_data[user_id]["address"]}')
 
@@ -168,7 +168,7 @@ def view_phrase(message):
     itembtn_get = types.KeyboardButton('/get')
     itembtn_send = types.KeyboardButton('/send')
     itembtn_exit = types.KeyboardButton('/exit')
-    markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
+    markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
     bot.send_message(message.chat.id, f'Ваша мнемоническая фраза (пароль): {user_data[user_id]["mnemonic_phrase"]}')
 
 
@@ -182,7 +182,7 @@ def get_messages(message):
     itembtn_get = types.KeyboardButton('/get')
     itembtn_send = types.KeyboardButton('/send')
     itembtn_exit = types.KeyboardButton('/exit')
-    markup.add(itembtn_mnemonic, itembtn_get, itembtn_address, itembtn_send, itembtn_exit)
+    markup.add( itembtn_get, itembtn_send, itembtn_address, itembtn_mnemonic, itembtn_exit)
     bot.send_message(message.chat.id, 'Получение сообщений...')
 
     try:

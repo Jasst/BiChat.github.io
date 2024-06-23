@@ -4,11 +4,14 @@ from bs4 import BeautifulSoup
 from transformers import pipeline
 
 # Настройка предобученной модели трансформера
-model_name = "distilbert-base-uncased"
+model_name = "distilbert-base-cased-distilled-squad"
 nlp = pipeline("question-answering", model=model_name, tokenizer=model_name)
 
-# Функция для асинхронного анализа с использованием модели трансформера
-
+# Функция для анализа с использованием модели трансформера
+async def analyze_with_transformer(prompt):
+    context = "The context should be relevant to the question for the best results."  # Update with a relevant context
+    result = nlp(question=prompt, context=context)
+    return result
 
 # Функция для выполнения поиска в Google и получения результата
 async def search_with_google(prompt):
