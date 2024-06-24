@@ -6,6 +6,8 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Jarvis.py" beforeDir="false" afterPath="$PROJECT_DIR$/Jarvis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot_script.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot_script.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -327,15 +329,7 @@
       <workItem from="1719142878546" duration="1321000" />
       <workItem from="1719150136305" duration="6936000" />
       <workItem from="1719161633183" duration="629000" />
-      <workItem from="1609460100461" duration="108000" />
-    </task>
-    <task id="LOCAL-00040" summary="Окно авторизации адресов">
-      <option name="closed" value="true" />
-      <created>1717532837207</created>
-      <option name="number" value="00040" />
-      <option name="presentableId" value="LOCAL-00040" />
-      <option name="project" value="LOCAL" />
-      <updated>1717532837207</updated>
+      <workItem from="1609460100461" duration="2506000" />
     </task>
     <task id="LOCAL-00041" summary="Окно авторизации адресов">
       <option name="closed" value="true" />
@@ -721,7 +715,15 @@
       <option name="project" value="LOCAL" />
       <updated>1719156711523</updated>
     </task>
-    <option name="localTasksCounter" value="89" />
+    <task id="LOCAL-00089" summary="DB">
+      <option name="closed" value="true" />
+      <created>1719217621904</created>
+      <option name="number" value="00089" />
+      <option name="presentableId" value="LOCAL-00089" />
+      <option name="project" value="LOCAL" />
+      <updated>1719217621904</updated>
+    </task>
+    <option name="localTasksCounter" value="90" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -779,11 +781,6 @@
           <url>file://$PROJECT_DIR$/app.py</url>
           <line>9</line>
           <option name="timeStamp" value="55" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/bot_script.py</url>
-          <line>18</line>
-          <option name="timeStamp" value="57" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
