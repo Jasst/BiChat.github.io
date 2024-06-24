@@ -6,7 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot_script.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot_script.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -326,15 +325,9 @@
       <workItem from="1719072102538" duration="2625000" />
       <workItem from="1719124777985" duration="4673000" />
       <workItem from="1719142878546" duration="1321000" />
-      <workItem from="1719150136305" duration="6080000" />
-    </task>
-    <task id="LOCAL-00039" summary="Окно авторизации адресов">
-      <option name="closed" value="true" />
-      <created>1717453928136</created>
-      <option name="number" value="00039" />
-      <option name="presentableId" value="LOCAL-00039" />
-      <option name="project" value="LOCAL" />
-      <updated>1717453928136</updated>
+      <workItem from="1719150136305" duration="6936000" />
+      <workItem from="1719161633183" duration="629000" />
+      <workItem from="1609460100461" duration="108000" />
     </task>
     <task id="LOCAL-00040" summary="Окно авторизации адресов">
       <option name="closed" value="true" />
@@ -720,7 +713,15 @@
       <option name="project" value="LOCAL" />
       <updated>1719150649800</updated>
     </task>
-    <option name="localTasksCounter" value="88" />
+    <task id="LOCAL-00088" summary="DB">
+      <option name="closed" value="true" />
+      <created>1719156711523</created>
+      <option name="number" value="00088" />
+      <option name="presentableId" value="LOCAL-00088" />
+      <option name="project" value="LOCAL" />
+      <updated>1719156711523</updated>
+    </task>
+    <option name="localTasksCounter" value="89" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
