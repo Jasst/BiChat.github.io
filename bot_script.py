@@ -107,7 +107,7 @@ def create_wallet(message):
         itembtn_get = types.KeyboardButton('/get')
         itembtn_help = types.KeyboardButton('/help')
         itembtn_exit = types.KeyboardButton('/exit')
-        markup.add(itembtn_get,  itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
+        markup.add(itembtn_get, itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
 
         bot.send_message(message.chat.id, message_text, reply_markup=markup)
     else:
@@ -138,7 +138,7 @@ def process_login(message):
         itembtn_help = types.KeyboardButton('/help')
         itembtn_exit = types.KeyboardButton('/exit')
         markup.add(itembtn_get, itembtn_address, itembtn_mnemonic, itembtn_help, itembtn_exit)
-        bot.send_message(message.chat.id, f' {user_data[user_id]["address"]}',reply_markup=markup)
+        bot.send_message(message.chat.id, f' {user_data[user_id]["address"]}', reply_markup=markup)
     else:
         bot.send_message(message.chat.id,
                          f'Ошибка при входе в кошелек: {response.json().get("error", "Неизвестная ошибка")}')
@@ -199,26 +199,31 @@ def get_messages(message):
                 bot.send_message(message.chat.id, f'Количество сообщений: {num_messages}', )
                 all_decrypted_messages = []
 
-                for message_data in messages:
-                    try:
-                        sender = message_data['sender']
-                        recipient = message_data['recipient']
-                        content = message_data['content']
-                        key = generate_key(sender, recipient)
-                        decrypted_content = decrypt_message(key, content)
-                        decrypted_message = f"От: {sender}\nСодержание: {decrypted_content}"
-                        all_decrypted_messages.append(decrypted_message)
-                    except Exception as e:
-                        all_decrypted_messages.append(f"Угроза безопасности {str(e)}")
-                        bot.send_message(
-                            message.chat.id,
-                            f'{message.from_user.first_name}, перейдите в веб версию чтобы прочитать сообщения: <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a>',
-                            parse_mode='HTML',
-                            reply_markup=markup
-                        )
-
-                messages_text = "\n\n".join(all_decrypted_messages)
-                bot.send_message(message.chat.id, f"Ваши сообщения:\n\n{messages_text}")
+                # for message_data in messages:
+                # try:
+                #    sender = message_data['sender']
+                #  recipient = message_data['recipient']
+                # content = message_data['content']
+                # key = generate_key(sender, recipient)
+                # decrypted_content = decrypt_message(key, content)
+                # decrypted_message = f"От: {sender}\nСодержание: {decrypted_content}"
+                # all_decrypted_messages.append(decrypted_message)
+                # except Exception as e:
+                # all_decrypted_messages.append(f"Угроза безопасности {str(e)}")
+                # bot.send_message(
+                #     message.chat.id,
+                #    f'{message.from_user.first_name}, перейдите в веб версию чтобы прочитать сообщения: <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a>',
+                #     parse_mode='HTML',
+                #    reply_markup=markup
+                # )
+                bot.send_message(
+                    message.chat.id,
+                    f'{message.from_user.first_name}, перейдите в веб версию чтобы прочитать сообщения: <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a>',
+                    parse_mode='HTML',
+                    reply_markup=markup
+                )
+                #messages_text = "\n\n".join(all_decrypted_messages)
+                #bot.send_message(message.chat.id, f"Ваши сообщения:\n\n{messages_text}")
 
             else:
                 bot.send_message(message.chat.id, "У вас нет сообщений.")
@@ -252,7 +257,6 @@ def process_send_message_recipient(message):
     user_id = message.from_user.id
     user_data[user_id]['recipient'] = recipient
     msg = bot.send_message(message.chat.id, 'Введите текст сообщения:')
-
     bot.register_next_step_handler(msg, process_send_message_content)
 
 
