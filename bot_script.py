@@ -1,9 +1,9 @@
 import telebot
 import requests
 import logging
-from crypto_manager import encrypt_message, decrypt_message, generate_key
 from functools import wraps
 from telebot import types
+from cryptography.fernet import Fernet
 
 bot_token = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
 logging.basicConfig(level=logging.DEBUG)
@@ -14,12 +14,32 @@ user_data = {}  # Словарь для хранения данных польз
 bot = telebot.TeleBot(bot_token)
 
 
+# Генерация ключа для шифрования
+def generate_key():
+    key = Fernet.generate_key()
+    return key
+
+
+# Шифрование мнемонической фразы
+def encrypt_mnemonic(mnemonic_phrase, key):
+    cipher_suite = Fernet(key)
+    encrypted_phrase = cipher_suite.encrypt(mnemonic_phrase.encode())
+    return encrypted_phrase
+
+
+# Расшифровка мнемонической фразы
+def decrypt_mnemonic(encrypted_phrase, key):
+    cipher_suite = Fernet(key)
+    decrypted_phrase = cipher_suite.decrypt(encrypted_phrase).decode()
+    return decrypted_phrase
+
+
 # Декоратор для проверки аутентификации
 def requires_auth(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
-        if user_id not in user_data or 'mnemonic_phrase' not in user_data[user_id]:
+        if user_id not in user_data or 'encrypted_mnemonic' not in user_data[user_id]:
             bot.send_message(message.chat.id, 'Для использования этой команды необходимо войти в кошелек.')
             return
         return func(message, *args, **kwargs)
@@ -51,7 +71,7 @@ def generate_markup(authenticated=False):
 def main(message):
     bot.send_message(
         message.chat.id,
-        f'Добро пожаловать {message.from_user.first_name},в Блокчейн Мессенджер! Используйте кнопки ниже или /help,Для получения дополнительной информации <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a>',
+        f'Добро пожаловать {message.from_user.first_name}, в Блокчейн Мессенджер! Используйте кнопки ниже или /help для получения дополнительной информации <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a>',
         parse_mode='HTML',
         reply_markup=generate_markup()
     )
@@ -87,15 +107,16 @@ def create_wallet(message):
     if response.status_code == 200:
         data = response.json()
         user_id = message.from_user.id
+        key = generate_key()
+        encrypted_mnemonic = encrypt_mnemonic(data["mnemonic_phrase"], key)
         user_data[user_id] = {
-            'mnemonic_phrase': data["mnemonic_phrase"],
-            'address': data["address"]
+            'encrypted_mnemonic': encrypted_mnemonic,
+            'address': data["address"],
+            'key': key
         }
         message_text = (
             f'🔐 <b>Ваш новый кошелек создан.</b>\n\n'
-            f'🗝️ <b>Мнемоническая фраза:</b> <code>{user_data[user_id]["mnemonic_phrase"]}</code>\n'
-            f'➡️ <i>Скопируйте и сохраните эту фразу в безопасном месте.</i>\n\n'
-            f'📬 <b>Адрес:</b> <code>{user_data[user_id]["address"]}</code>\n'
+            f'📬 <b>Адрес:</b> <code>{data["address"]}</code>\n'
             f'➡️ <i>Скопируйте этот адрес для получения платежей.</i>'
         )
         bot.send_message(message.chat.id, message_text, reply_markup=generate_markup(authenticated=True),
@@ -116,16 +137,20 @@ def process_login(message):
     if response.status_code == 200:
         data = response.json()
         user_id = message.from_user.id
+        key = generate_key()
+        encrypted_mnemonic = encrypt_mnemonic(mnemonic_phrase, key)
         user_data[user_id] = {
-            'mnemonic_phrase': mnemonic_phrase,
-            'address': data["address"]
+            'encrypted_mnemonic': encrypted_mnemonic,
+            'address': data["address"],
+            'key': key
         }
         message_text = (
             f'📬 <b>Ваш адрес кошелька:</b>\n'
-            f'<code>{user_data[user_id]["address"]}</code>\n'
+            f'<code>{data["address"]}</code>\n'
             f'➡️ <i>Скопируйте этот адрес для получения сообщений.</i>'
         )
-        bot.send_message(message.chat.id, message_text, reply_markup=generate_markup(authenticated=True), parse_mode='HTML')
+        bot.send_message(message.chat.id, message_text, reply_markup=generate_markup(authenticated=True),
+                         parse_mode='HTML')
     else:
         bot.send_message(message.chat.id,
                          f'Ошибка при входе в кошелек: {response.json().get("error", "Неизвестная ошибка")}')
@@ -135,9 +160,11 @@ def process_login(message):
 @requires_auth
 def view_phrase(message):
     user_id = message.from_user.id
+    key = user_data[user_id]['key']
+    decrypted_phrase = decrypt_mnemonic(user_data[user_id]['encrypted_mnemonic'], key)
     message_text = (
         f'🗝️ <b>Ваша мнемоническая фраза (пароль):</b>\n'
-        f'<code>{user_data[user_id]["mnemonic_phrase"]}</code>\n'
+        f'<code>{decrypted_phrase}</code>\n'
         f'➡️ <i>Скопируйте и сохраните эту фразу в безопасном месте.</i>'
     )
     bot.send_message(message.chat.id, message_text, parse_mode='HTML', reply_markup=generate_markup(authenticated=True))
@@ -159,10 +186,13 @@ def view_address(message):
 @requires_auth
 def get_messages(message):
     user_id = message.from_user.id
+    key = user_data[user_id]['key']
+    decrypted_phrase = decrypt_mnemonic(user_data[user_id]['encrypted_mnemonic'], key)
     bot.send_message(message.chat.id, 'Получение сообщений...')
     try:
         response = requests.post(f'{API_URL}/get_messages',
-                                 json={'mnemonic_phrase': user_data[user_id]['mnemonic_phrase']})
+                                 json={'mnemonic_phrase': decrypted_phrase})
+        response.raise_for_status()  # Проверяем статус код ответа
         if response.status_code == 200:
             messages = response.json()["messages"]
             if messages:
@@ -178,8 +208,11 @@ def get_messages(message):
             bot.send_message(message.chat.id,
                              f'Ошибка при получении сообщений: {response.json().get("error", "Неизвестная ошибка")}',
                              reply_markup=generate_markup(authenticated=True))
+    except requests.exceptions.RequestException as e:
+        bot.send_message(message.chat.id, f'Ошибка при отправке запроса: {str(e)}',
+                         reply_markup=generate_markup(authenticated=True))
     except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка при получении сообщений: {str(e)}',
+        bot.send_message(message.chat.id, f'Произошла ошибка: {str(e)}',
                          reply_markup=generate_markup(authenticated=True))
 
 
@@ -188,43 +221,10 @@ def get_messages(message):
 def send_message(message):
     bot.send_message(
         message.chat.id,
-        f'{message.from_user.first_name},перейдите <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a> или нажмите кнопку меню для отправки сообщений  ',
+        f'{message.from_user.first_name}, перейдите <a href="https://jasstme.pythonanywhere.com/">https://jasstme.pythonanywhere.com/</a> или нажмите кнопку меню для отправки сообщений  ',
         parse_mode='HTML',
-        reply_markup=generate_markup()
+        reply_markup=generate_markup(authenticated=True)
     )
-
-
-def process_send_message_recipient(message):
-    recipient = message.text
-    user_id = message.from_user.id
-    user_data[user_id]['recipient'] = recipient
-    msg = bot.send_message(message.chat.id, 'Введите текст сообщения:')
-    bot.register_next_step_handler(msg, process_send_message_content)
-
-
-def process_send_message_content(message):
-    content = message.text
-    user_id = message.from_user.id
-    try:
-        sender = user_data[user_id]['mnemonic_phrase']
-        recipient = user_data[user_id]['recipient']
-        key = generate_key(sender, recipient)
-        encrypted_content = encrypt_message(key, content)
-        response = requests.post(f'{API_URL}/send_message', json={
-            'mnemonic_phrase': user_data[user_id]['mnemonic_phrase'],
-            'recipient': recipient,
-            'content': encrypted_content
-        })
-        if response.status_code == 201:
-            bot.send_message(message.chat.id, 'Сообщение успешно отправлено!',
-                             reply_markup=generate_markup(authenticated=True))
-        else:
-            bot.send_message(message.chat.id,
-                             f'Ошибка при отправке сообщения: {response.json().get("error", "Неизвестная ошибка")}',
-                             reply_markup=generate_markup(authenticated=True))
-    except Exception as e:
-        bot.send_message(message.chat.id, f'Ошибка при отправке сообщения: {str(e)}',
-                         reply_markup=generate_markup(authenticated=True))
 
 
 @bot.message_handler(func=lambda message: True)
