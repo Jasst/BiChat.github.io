@@ -4,17 +4,17 @@ import logging
 from blockchain import Blockchain
 from crypto_manager import encrypt_message, decrypt_message, generate_key, generate_address
 import sqlite3
+import subprocess
+import os
 
 app = Flask(__name__)
 mnemonic = Mnemonic('english')
 blockchain = Blockchain()
 logging.basicConfig(level=logging.DEBUG)
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -27,7 +27,6 @@ def create_wallet():
         'address': address,
     }
     return jsonify(response), 200
-
 
 @app.route('/login_wallet', methods=['POST'])
 def login_wallet():
@@ -44,7 +43,6 @@ def login_wallet():
         'address': address,
     }
     return jsonify(response), 200
-
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -74,7 +72,6 @@ def send_message():
     except Exception as e:
         app.logger.error(f"Failed to send message: {str(e)}")
         return jsonify({'error': f'Failed to send message: {str(e)}'}), 500
-
 
 @app.route('/get_messages', methods=['POST'])
 def get_messages():
@@ -115,7 +112,6 @@ def get_messages():
         app.logger.error(f"Failed to retrieve messages: {str(e)}")
         return jsonify({'error': f'Failed to retrieve messages: {str(e)}'}), 500
 
-
 @app.route('/chain', methods=['GET'])
 def full_chain():
     with blockchain:
@@ -126,7 +122,20 @@ def full_chain():
     }
     return jsonify(response), 200
 
-
 if __name__ == '__main__':
+    # Укажите путь к скрипту
+    script_path = os.path.abspath('bot_script.py')
+    logging.debug(f'Script path: {script_path}')
+
+    # Проверка существования файла перед запуском
+    if os.path.exists(script_path):
+        try:
+            subprocess.Popen(['python', script_path])
+            logging.info('bot_script.py started successfully')
+        except Exception as e:
+            logging.error(f"Failed to start bot script: {str(e)}")
+    else:
+        logging.error(f"Script path does not exist: {script_path}")
+
     port = 5000
     app.run(host='0.0.0.0', port=port)
