@@ -6,3 +6,4 @@
 /blockchain.json
 *.pyc
 .vercel
+config.py

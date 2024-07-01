@@ -4,13 +4,12 @@ import logging
 from functools import wraps
 from telebot import types
 from cryptography.fernet import Fernet
+from config import bot, api
 
-bot_token = '7432096347:AAEdv_Of7JgHcDdIfPzBnEz2c_GhtugZTmY'
+bot_token = bot
 logging.basicConfig(level=logging.DEBUG)
-
-API_URL = 'https://jasstme.pythonanywhere.com'
+API_URL = api
 user_data = {}  # Словарь для хранения данных пользователя
-
 bot = telebot.TeleBot(bot_token)
 
 
@@ -40,7 +39,7 @@ def requires_auth(func):
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
         if user_id not in user_data or 'encrypted_mnemonic' not in user_data[user_id]:
-            bot.send_message(message.chat.id, 'Для использования этой команды необходимо войти в кошелек.')
+            bot.send_message(message.chat.id, 'Для использования этой команды необходимо войти в кошелек./help')
             return
         return func(message, *args, **kwargs)
 

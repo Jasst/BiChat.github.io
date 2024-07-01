@@ -5,6 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
+      <change afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot_script.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot_script.py" afterDir="false" />
     </list>
@@ -124,7 +125,7 @@
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat\templates" />
     </key>
   </component>
-  <component name="RunManager" selected="Flask server.BiChat.github.io">
+  <component name="RunManager" selected="Python.bot_script">
     <configuration name="Bot 2" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="BiChat.github.io" />
       <option name="ENV_FILES" value="" />
@@ -281,8 +282,8 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.Jarvis" />
         <item itemvalue="Python.bot_script" />
+        <item itemvalue="Python.Jarvis" />
         <item itemvalue="Python.bot" />
         <item itemvalue="Python.test" />
         <item itemvalue="Python.Bot 2" />
@@ -329,15 +330,9 @@
       <workItem from="1719161633183" duration="629000" />
       <workItem from="1609460100461" duration="5996000" />
       <workItem from="1719228171043" duration="10000" />
-      <workItem from="1719295741071" duration="6440000" />
-    </task>
-    <task id="LOCAL-00044" summary="Много задачность окон">
-      <option name="closed" value="true" />
-      <created>1717865852958</created>
-      <option name="number" value="00044" />
-      <option name="presentableId" value="LOCAL-00044" />
-      <option name="project" value="LOCAL" />
-      <updated>1717865852958</updated>
+      <workItem from="1719295741071" duration="6892000" />
+      <workItem from="1719392667928" duration="30000" />
+      <workItem from="1719854174160" duration="337000" />
     </task>
     <task id="LOCAL-00045" summary="Стабильность локализация">
       <option name="closed" value="true" />
@@ -723,7 +718,15 @@
       <option name="project" value="LOCAL" />
       <updated>1719310003362</updated>
     </task>
-    <option name="localTasksCounter" value="93" />
+    <task id="LOCAL-00093" summary="DB">
+      <option name="closed" value="true" />
+      <created>1719313992658</created>
+      <option name="number" value="00093" />
+      <option name="presentableId" value="LOCAL-00093" />
+      <option name="project" value="LOCAL" />
+      <updated>1719313992658</updated>
+    </task>
+    <option name="localTasksCounter" value="94" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
