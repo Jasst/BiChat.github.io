@@ -5,8 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
+      <change afterPath="$PROJECT_DIR$/Privet.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/static/App.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/TOKEN" beforeDir="false" afterPath="$PROJECT_DIR$/TOKEN" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blockchain.db" beforeDir="false" afterPath="$PROJECT_DIR$/blockchain.db" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,6 +19,7 @@
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
       <list>
+        <option value="JavaScript File" />
         <option value="Python Script" />
       </list>
     </option>
@@ -77,38 +81,39 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Flask server.BiChat.github.io.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Bot 2.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Jarvis.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Qbyte.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Socket.executor&quot;: &quot;Run&quot;,
-    &quot;Python.__init__.executor&quot;: &quot;Run&quot;,
-    &quot;Python.app.executor&quot;: &quot;Run&quot;,
-    &quot;Python.blockchain.executor&quot;: &quot;Run&quot;,
-    &quot;Python.bot.executor&quot;: &quot;Run&quot;,
-    &quot;Python.bot_script.executor&quot;: &quot;Run&quot;,
-    &quot;Python.cripto_manager.executor&quot;: &quot;Run&quot;,
-    &quot;Python.pythonProject1.executor&quot;: &quot;Run&quot;,
-    &quot;Python.routes.executor&quot;: &quot;Run&quot;,
-    &quot;Python.setup.executor&quot;: &quot;Run&quot;,
-    &quot;Python.sync_peers.executor&quot;: &quot;Run&quot;,
-    &quot;Python.transactions.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;Jasst-Telegram-Bot-V3-Css&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/Нел/Documents/GitHub/BiChat.github.io&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.remoteExternalTools&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Flask server.BiChat.github.io.executor": "Run",
+    "Node.js.Privet.js.executor": "Run",
+    "Python.Bot 2.executor": "Run",
+    "Python.Jarvis.executor": "Run",
+    "Python.Qbyte.executor": "Run",
+    "Python.Socket.executor": "Run",
+    "Python.__init__.executor": "Run",
+    "Python.app.executor": "Run",
+    "Python.blockchain.executor": "Run",
+    "Python.bot.executor": "Run",
+    "Python.bot_script.executor": "Run",
+    "Python.cripto_manager.executor": "Run",
+    "Python.pythonProject1.executor": "Run",
+    "Python.routes.executor": "Run",
+    "Python.setup.executor": "Run",
+    "Python.sync_peers.executor": "Run",
+    "Python.transactions.executor": "Run",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "Jasst-Telegram-Bot-V3-Css",
+    "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "run.code.analysis.last.selected.profile": "pProject Default",
+    "settings.editor.selected.configurable": "preferences.remoteExternalTools",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io" />
@@ -124,28 +129,8 @@
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat\templates" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.bot_script">
-    <configuration name="Bot 2" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="BiChat.github.io" />
-      <option name="ENV_FILES" value="" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Bot 2.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
+  <component name="RunManager" selected="Node.js.Privet.js">
+    <configuration name="Privet.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/Privet.js" working-dir="$PROJECT_DIR$">
       <method v="2" />
     </configuration>
     <configuration name="Jarvis" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
@@ -281,11 +266,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Node.js.Privet.js" />
         <item itemvalue="Python.bot_script" />
         <item itemvalue="Python.Jarvis" />
         <item itemvalue="Python.bot" />
         <item itemvalue="Python.test" />
-        <item itemvalue="Python.Bot 2" />
       </list>
     </recent_temporary>
   </component>
@@ -332,15 +317,7 @@
       <workItem from="1719295741071" duration="6892000" />
       <workItem from="1719392667928" duration="30000" />
       <workItem from="1719854174160" duration="1732000" />
-      <workItem from="1720513636923" duration="424000" />
-    </task>
-    <task id="LOCAL-00045" summary="Стабильность локализация">
-      <option name="closed" value="true" />
-      <created>1718129027533</created>
-      <option name="number" value="00045" />
-      <option name="presentableId" value="LOCAL-00045" />
-      <option name="project" value="LOCAL" />
-      <updated>1718129027533</updated>
+      <workItem from="1720513636923" duration="3405000" />
     </task>
     <task id="LOCAL-00046" summary="Split">
       <option name="closed" value="true" />
@@ -726,7 +703,15 @@
       <option name="project" value="LOCAL" />
       <updated>1719313992658</updated>
     </task>
-    <option name="localTasksCounter" value="94" />
+    <task id="LOCAL-00094" summary="DB">
+      <option name="closed" value="true" />
+      <created>1720514127909</created>
+      <option name="number" value="00094" />
+      <option name="presentableId" value="LOCAL-00094" />
+      <option name="project" value="LOCAL" />
+      <updated>1720514127909</updated>
+    </task>
+    <option name="localTasksCounter" value="95" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -779,16 +764,6 @@
           <url>file://$PROJECT_DIR$/blockchain.py</url>
           <line>6</line>
           <option name="timeStamp" value="49" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/app.py</url>
-          <line>11</line>
-          <option name="timeStamp" value="55" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/app.py</url>
-          <line>131</line>
-          <option name="timeStamp" value="56" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/Socket.py</url>
