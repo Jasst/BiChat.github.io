@@ -1,14 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title data-translate="title">Blockchain Messenger</title>
-  
   <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet">
 </head>
-
 <body>
   <div class="container">
     <div class="settings">
@@ -28,10 +25,7 @@
       <span id="address-content"></span>
     </div>
 
-    
-      <div id="qr-code"></div>
-
-    
+    <div id="qr-code"></div>
     <div id="mnemonic-display"></div>
 
     <div id="wallet-section">
@@ -40,7 +34,6 @@
         <button onclick="createWallet()" data-translate="create_wallet">Create Wallet</button>
         <p id="wallet-info-msg"></p>
       </div>
-
       <div id="login-wallet-container">
         <label for="mnemonic-login" data-translate="mnemonic_label">Mnemonic Phrase:</label>
         <input type="text" id="mnemonic-login" onkeypress="handleKeyPress(event, loginWallet)">
@@ -53,10 +46,8 @@
       <h2 data-translate="chat_section">Chat</h2>
       <div id="current-dialog" class="dialog"></div>
       <div id="dialog-tabs"></div>
-
       <label for="content" data-translate="content_label">Message:</label>
       <textarea id="content" onkeypress="handleKeyPress(event, sendMessage)"></textarea>
-
       <button onclick="sendMessage()" data-translate="send_button">Send Message</button>
       <div class="upload-btn-wrapper">
         <input type="file" id="image-input" accept="image/*">
@@ -64,30 +55,22 @@
       </div>
     </div>
 
-
-    
     <div id="send-message-section" style="display:none;">
       <div id="dialog-tabs"></div>
-      
       <label for="recipient" data-translate="recipient_label">Recipient Address:</label>
-
       <input type="text" id="recipient" onkeypress="handleKeyPress(event, sendMessage)">
-
-
       <div id="get-messages-section" style="display:none;">
         <h2 data-translate="get_messages_section">Get Messages</h2>
         <button onclick="getMessages()" data-translate="get_messages_button">Get Messages</button>
         <div id="messages-list"></div>
-
       </div>
     </div>
   </div>
 
-  <script src="{{ url_for('static', filename='qrcode.min.js') }}"></script>
-  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
-  <script src="{{ url_for('static', filename='settings.js') }}"></script>
-  <script src="{{ url_for('static', filename='translations.js') }}"></script>
-  <script src="{{ url_for('static', filename='wallet.js') }}"></script>
+  <script src="{{ url_for('static', filename='qrcode.min.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='scripts.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='settings.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='translations.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='wallet.js') }}" defer></script>
 </body>
-
 </html>
