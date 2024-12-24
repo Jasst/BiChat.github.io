@@ -1,4 +1,3 @@
-
 import threading
 import pickle
 import os
@@ -111,6 +110,7 @@ class SelfAwareAI:
         context_thread.join()
         response_thread.join()
 
+        self.request_feedback()  # Запрос обратной связи после формирования ответа
         return self.final_response
 
     def process_thoughts(self):
@@ -163,6 +163,16 @@ class SelfAwareAI:
         if self.context_queue:
             return f"В прошлый раз вы сказали: '{self.context_queue[-1]}'."
         return ""
+
+    def request_feedback(self):
+        """Запрос обратной связи у пользователя о качестве ответа."""
+        feedback = input("Как вы оцениваете мой ответ? (хорошо/плохо): ")
+        if feedback.lower() == "плохо":
+            self.create_thought("Пользователь не удовлетворен моим ответом.")
+            print("Спасибо за обратную связь! Я постараюсь улучшиться.")
+        elif feedback.lower() == "хорошо":
+            self.create_thought("Пользователь удовлетворен моим ответом.")
+            print("Спасибо! Рад, что смог помочь.")
 
     def run(self):
         """Запуск программы."""
