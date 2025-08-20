@@ -43,13 +43,72 @@ class MessageSchema(Schema):
     recipient = fields.Str(required=True)
     content = fields.Str(required=True)
     image = fields.Str(allow_none=True)
-    message_type = fields.Str(load_default='direct')  # direct, group
+    message_type = fields.Str(load_default='direct')
     group_id = fields.Str(allow_none=True)
 
 
 class GroupSchema(Schema):
     name = fields.Str(required=True)
     members = fields.List(fields.Str(), required=True)
+
+
+class ContactSchema(Schema):
+    address = fields.Str(required=True)
+    name = fields.Str(required=True)
+
+
+# Функции для работы с контактами
+def create_contacts_table():
+    with sqlite3.connect(blockchain.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS contacts (
+                user_address TEXT NOT NULL,
+                contact_address TEXT NOT NULL,
+                contact_name TEXT NOT NULL,
+                created_at REAL,
+                PRIMARY KEY (user_address, contact_address)
+            )
+        ''')
+
+
+def add_contact(user_address, contact_address, contact_name):
+    with sqlite3.connect(blockchain.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO contacts (user_address, contact_address, contact_name, created_at)
+            VALUES (?, ?, ?, ?)
+        ''', (user_address, contact_address, contact_name, time.time()))
+        conn.commit()
+
+
+def get_contacts(user_address):
+    with sqlite3.connect(blockchain.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT contact_address, contact_name, created_at 
+            FROM contacts 
+            WHERE user_address = ?
+            ORDER BY contact_name
+        ''', (user_address,))
+        rows = cursor.fetchall()
+        return [{
+            'address': row[0],
+            'name': row[1],
+            'created_at': row[2]
+        } for row in rows]
+
+
+def get_contact_name(user_address, contact_address):
+    with sqlite3.connect(blockchain.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT contact_name 
+            FROM contacts 
+            WHERE user_address = ? AND contact_address = ?
+        ''', (user_address, contact_address))
+        row = cursor.fetchone()
+        return row[0] if row else None
 
 
 # Функции для работы с группами
@@ -96,7 +155,8 @@ def get_user_groups(address):
         return groups
 
 
-# Инициализация таблицы групп
+# Инициализация таблиц
+create_contacts_table()
 create_group_table()
 
 
@@ -159,11 +219,56 @@ def chat():
     return render_template('chat.html', address=session['address'])
 
 
+@app.route('/contacts')
+def contacts():
+    if 'address' not in session:
+        return redirect(url_for('index'))
+    return render_template('contacts.html', address=session['address'])
+
+
 @app.route('/groups')
 def groups():
     if 'address' not in session:
         return redirect(url_for('index'))
     return render_template('groups.html', address=session['address'])
+
+
+@app.route('/add_contact', methods=['POST'])
+def add_contact_route():
+    if 'address' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    try:
+        data = ContactSchema().load(request.get_json())
+        user_address = session['address']
+        contact_address = data['address']
+        contact_name = data['name']
+
+        # Проверяем, что адрес валидный
+        if len(contact_address) != 64:  # SHA256 hash length
+            return jsonify({'error': 'Invalid address format'}), 400
+
+        add_contact(user_address, contact_address, contact_name)
+        logging.info(f"Contact added: {contact_name} ({contact_address}) for user {user_address}")
+        return jsonify({'message': 'Contact added successfully'}), 201
+    except ValidationError as err:
+        return jsonify({'error': err.messages}), 400
+    except Exception as e:
+        logging.error(f"Add contact error: {e}")
+        return jsonify({'error': 'Failed to add contact'}), 500
+
+
+@app.route('/get_contacts', methods=['GET'])
+def get_contacts_route():
+    if 'address' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    try:
+        contacts = get_contacts(session['address'])
+        return jsonify({'contacts': contacts}), 200
+    except Exception as e:
+        logging.error(f"Get contacts error: {e}")
+        return jsonify({'error': 'Failed to retrieve contacts'}), 500
 
 
 @app.route('/create_group', methods=['POST'])
@@ -294,7 +399,7 @@ def upload_file():
             if file.content_type and file.content_type.startswith('image/'):
                 with open(filepath, "rb") as img_file:
                     encoded_string = base64.b64encode(img_file.read()).decode()
-                return jsonify({'file_url': f"data:{file.content_type};base64,{encoded_string}"}), 200
+                return jsonify({'file_url': f"{file.content_type};base64,{encoded_string}"}), 200
             else:
                 return jsonify({'file_url': f"/uploads/{unique_filename}"}), 200
 
@@ -334,7 +439,7 @@ def get_messages():
                         # Расшифровываем данные для текущего пользователя
                         try:
                             encrypted_data = json.loads(msg['content'])
-                            if address in encrypted_data:
+                            if address in encrypted_:
                                 user_data = encrypted_data[address]
                                 decrypted_content = decrypt_message(generate_key(msg['sender'], address),
                                                                     user_data['content']) or "[Decryption Failed]"
@@ -356,9 +461,15 @@ def get_messages():
                     decrypted_content = decrypt_message(key, msg['content']) or "[Decryption Failed]"
                     decrypted_image = decrypt_message(key, msg['image']) if msg['image'] else None
 
+                # Получаем имена контактов
+                sender_name = get_contact_name(address, msg['sender']) or msg['sender']
+                recipient_name = get_contact_name(address, msg['recipient']) or msg['recipient']
+
                 decrypted_messages.append({
                     'sender': msg['sender'],
+                    'sender_name': sender_name,
                     'recipient': msg['recipient'],
+                    'recipient_name': recipient_name,
                     'content': decrypted_content,
                     'image': decrypted_image,
                     'timestamp': msg['timestamp'],
@@ -368,7 +479,9 @@ def get_messages():
                 logging.warning(f"Decryption failed for message: {e}")
                 decrypted_messages.append({
                     'sender': msg['sender'],
+                    'sender_name': msg['sender'],
                     'recipient': msg['recipient'],
+                    'recipient_name': msg['recipient'],
                     'content': '[Decryption Failed]',
                     'image': None,
                     'timestamp': msg['timestamp'],

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Contacts - WhatsApp Style Messenger</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <div class="whatsapp-container">
+        <!-- Header -->
+        <div class="whatsapp-header">
+            <div class="header-left">
+                <button class="back-btn" onclick="location.href='/chat'">←</button>
+                <h3>Contacts</h3>
+            </div>
+            <div class="header-right">
+                <button class="icon-btn" onclick="showAddContactForm()">+</button>
+            </div>
+        </div>
+
+        <!-- Add Contact Form -->
+        <div class="add-contact-form" id="addContactForm" style="display: none;">
+            <h4>Add New Contact</h4>
+            <input type="text" id="contactName" placeholder="Contact Name" required>
+            <input type="text" id="contactAddress" placeholder="Full Address" required>
+            <div class="form-buttons">
+                <button class="btn-secondary" onclick="hideAddContactForm()">Cancel</button>
+                <button class="btn-primary" onclick="addContact()">Add Contact</button>
+            </div>
+        </div>
+
+        <!-- Contacts List -->
+        <div class="contacts-container">
+            <div class="profile-section">
+                <div class="profile-info">
+                    <div class="avatar">👤</div>
+                    <div>
+                        <p class="my-name">My Account</p>
+                        <p class="my-address" onclick="showFullAddress()">{{ address[:20] }}...</p>
+                    </div>
+                </div>
+                <button class="show-full-btn" onclick="showFullAddress()">Show Full Address</button>
+            </div>
+
+            <div class="contacts-list" id="contactsList">
+                <!-- Contacts will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadContacts() {
+            const response = await fetch('/get_contacts');
+            const data = await response.json();
+
+            if (response.ok) {
+                const contactsList = document.getElementById('contactsList');
+                if (data.contacts.length === 0) {
+                    contactsList.innerHTML = '<div class="no-contacts">No contacts yet</div>';
+                    return;
+                }
+
+                contactsList.innerHTML = data.contacts.map(contact => `
+                    <div class="contact-item" onclick="selectContact('${contact.address}')">
+                        <div class="avatar">👤</div>
+                        <div class="contact-info">
+                            <h4>${contact.name}</h4>
+                            <p class="contact-address">${contact.address.substring(0, 30)}...</p>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                alert('Error loading contacts: ' + data.error);
+            }
+        }
+
+        function showAddContactForm() {
+            document.getElementById('addContactForm').style.display = 'block';
+        }
+
+        function hideAddContactForm() {
+            document.getElementById('addContactForm').style.display = 'none';
+        }
+
+        async function addContact() {
+            const name = document.getElementById('contactName').value;
+            const address = document.getElementById('contactAddress').value;
+
+            if (!name || !address) {
+                alert('Please fill all fields');
+                return;
+            }
+
+            const response = await fetch('/add_contact', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, address: address})
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert('Contact added successfully');
+                hideAddContactForm();
+                loadContacts();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        }
+
+        function selectContact(address) {
+            // Сохраняем выбранного контакта в localStorage
+            localStorage.setItem('selectedContact', address);
+            location.href = '/chat';
+        }
+
+        function showFullAddress() {
+            const fullAddress = '{{ address }}';
+            alert('Your full address:\n\n' + fullAddress);
+        }
+
+        // Загрузка контактов при открытии страницы
+        document.addEventListener('DOMContentLoaded', loadContacts);
+    </script>
+</body>
+</html>

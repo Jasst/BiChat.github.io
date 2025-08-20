@@ -1,62 +1,98 @@
-let lastTimestamp = 0;
-const emojis = ['😀', '😂', '❤️', '😍', '😭', '🔥', '💯', '🎉', '🤔', '👍', '👋', '👌', '🙏', '💪', '👀', '🙌', '👏', '🤝', '👍', '👎'];
+let currentContact = null;
+const emojis = ['😀', '😂', '❤️', '😍', '😭', '🔥', '💯', '🎉', '🤔', '👍', '👋', '👌', '🙏', '💪', '👀', '🙌', '👏', '🤝', '👍', '👎', '🙏', '😊', '🥰', '😎', '🤩', '🥳', '😭', '😡', '🤬', '🤯', '🥶', '😱', '🤠', '🥴', '😈', '👻', '👽', '🤖', '👾', '👐', '🙌', '👏', '🤝', '👍', '👎', '👊', '✊', '🤛', '🤜', '🤞', '✌️', '🤟', '🤘', '👌', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐', '🖖', '👋', '🤙', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁', '👅', '👄', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👨‍🦰', '👨‍🦱', '👨‍🦳', '👨‍🦲', '👩', '👩‍🦰', '👩‍🦱', '👩‍🦳', '👩‍🦲', '🧓', '👴', '👵', '🙍', '🙎', '🙅', '🙆', '💁', '🙋', '🧏', '🙇', '🤦', '🤷', '👮', '🕵', '💂', '🥷', '👷', '🤴', '👸', '👳', '👲', '🧕', '🤵', '👰', '🤰', '🤱', '👼', '🎅', '🤶', '🦸', '🦹', '🧙', '🧚', '🧛', '🧜', '🧝', '🧞', '🧟', '💆', '💇', '🚶', '🧍', '🧎', '🏃', '💃', '🕺', '🕴', '👯', '🧖', '🧗', '🤺', '🏇', '⛷', '🏂', '🏌', '🏄', '🚣', '🏊', '⛹', '🏋', '🚴', '🚵', '🤸', '🤼', '🤽', '🤾', '🤹', '🧘', '🛀', '🛌', '👭', '👫', '👬', '💏', '💑', '👪', '🗣', '👤', '👥', '👣', '🦰', '🦱', '🦳', '🦲'];
 
 function formatTime(timestamp) {
-    return new Date(timestamp * 1000).toLocaleTimeString();
+    const date = new Date(timestamp * 1000);
+    const now = new Date();
+
+    // Если сегодня
+    if (date.toDateString() === now.toDateString()) {
+        return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+
+    // Если вчера
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+        return 'Yesterday ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+
+    // Если эта неделя
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    if (date > weekAgo) {
+        return date.toLocaleDateString([], {weekday: 'short'}) + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+
+    // Иначе полная дата
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 }
 
 function loadMessages() {
     fetch('/get_messages')
         .then(response => response.json())
         .then(data => {
-            const chatArea = document.getElementById('chatArea');
-            chatArea.innerHTML = '';
+            const messagesContainer = document.getElementById('messagesContainer');
+            messagesContainer.innerHTML = '';
 
-            data.messages.forEach(msg => {
+            if (!data.messages || data.messages.length === 0) {
+                messagesContainer.innerHTML = '<div class="no-messages">No messages yet</div>';
+                return;
+            }
+
+            // Фильтруем сообщения для текущего контакта
+            let filteredMessages = data.messages;
+            if (currentContact) {
+                filteredMessages = data.messages.filter(msg =>
+                    (msg.sender === currentContact && msg.recipient === window.myAddress) ||
+                    (msg.sender === window.myAddress && msg.recipient === currentContact)
+                );
+            }
+
+            filteredMessages.forEach(msg => {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'}`;
 
-                let content = `<div>${msg.content}</div>`;
-                if (msg.image && msg.image.startsWith('data:')) {
-                    content += `<img src="${msg.image}" style="max-width: 200px; margin-top: 10px; border-radius: 5px;">`;
+                let content = `<div class="message-content">${msg.content}</div>`;
+                if (msg.image && msg.image.startsWith('')) {
+                    content += `<img src="${msg.image}" style="max-width: 200px; margin-top: 8px; border-radius: 8px;">`;
                 } else if (msg.image) {
-                    content += `<img src="${msg.image}" style="max-width: 200px; margin-top: 10px; border-radius: 5px;">`;
+                    content += `<img src="${msg.image}" style="max-width: 200px; margin-top: 8px; border-radius: 8px;">`;
                 }
 
                 messageDiv.innerHTML = `
                     ${content}
                     <div class="message-meta">
-                        ${msg.is_mine ? 'You' : msg.sender.substring(0, 10) + '...'}
-                        at ${formatTime(msg.timestamp)}
+                        ${formatTime(msg.timestamp)}
                     </div>
                 `;
 
-                chatArea.appendChild(messageDiv);
+                messagesContainer.appendChild(messageDiv);
             });
 
-            chatArea.scrollTop = chatArea.scrollHeight;
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         })
         .catch(error => console.error('Error loading messages:', error));
 }
 
 function sendMessage() {
-    const recipient = document.getElementById('recipient').value;
-    const content = document.getElementById('message').value;
+    const messageInput = document.getElementById('messageInput');
+    const content = messageInput.value.trim();
 
-    if (!recipient || !content) return;
+    if (!content || !currentContact) return;
 
     fetch('/send_message', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            recipient: recipient,
+            recipient: currentContact,
             content: content
         })
     })
     .then(response => response.json())
     .then(data => {
         if (response.ok) {
-            document.getElementById('message').value = '';
+            messageInput.value = '';
             loadMessages();
         } else {
             alert('Error: ' + data.error);
@@ -65,50 +101,46 @@ function sendMessage() {
     .catch(error => console.error('Error sending message:', error));
 }
 
-function showMnemonic() {
-    fetch('/get_mnemonic')
-        .then(response => response.json())
-        .then(data => {
-            if (data.mnemonic) {
-                alert('Your mnemonic phrase:\n\n' + data.mnemonic);
-            }
-        });
+function handleKeyPress(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+    }
+}
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('active');
+}
+
+function toggleEmojiPicker() {
+    const picker = document.getElementById('emojiPicker');
+    if (picker.style.display === 'none' || picker.style.display === '') {
+        showEmojiPicker();
+        picker.style.display = 'flex';
+    } else {
+        picker.style.display = 'none';
+    }
 }
 
 function showEmojiPicker() {
-    const picker = document.createElement('div');
-    picker.className = 'emoji-picker';
-    picker.innerHTML = emojis.map(emoji =>
+    const picker = document.getElementById('emojiPicker');
+    picker.innerHTML = emojis.slice(0, 50).map(emoji =>
         `<button class="emoji-btn" onclick="addEmoji('${emoji}')">${emoji}</button>`
     ).join('');
-
-    document.getElementById('emojiPickerContainer').innerHTML = '';
-    document.getElementById('emojiPickerContainer').appendChild(picker);
 }
 
 function addEmoji(emoji) {
-    const messageInput = document.getElementById('message');
+    const messageInput = document.getElementById('messageInput');
     messageInput.value += emoji;
     messageInput.focus();
 }
 
-function toggleEmojiPicker() {
-    const container = document.getElementById('emojiPickerContainer');
-    if (container.innerHTML.trim() === '') {
-        showEmojiPicker();
-    } else {
-        container.innerHTML = '';
-    }
-}
-
-function uploadFile() {
+function handleFileSelect() {
     const fileInput = document.getElementById('fileInput');
     const file = fileInput.files[0];
 
-    if (!file) {
-        alert('Please select a file first');
-        return;
-    }
+    if (!file) return;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -120,8 +152,7 @@ function uploadFile() {
     .then(response => response.json())
     .then(data => {
         if (response.ok) {
-            // Добавляем ссылку на файл в поле сообщения
-            const messageInput = document.getElementById('message');
+            const messageInput = document.getElementById('messageInput');
             messageInput.value += '\n[File: ' + data.file_url + ']';
         } else {
             alert('Error uploading file: ' + data.error);
@@ -133,11 +164,32 @@ function uploadFile() {
     });
 }
 
-// Auto-refresh messages every 3 seconds
-setInterval(loadMessages, 3000);
+function showMyAddress() {
+    alert('Your address:\n\n' + window.myAddress);
+}
 
-// Initial load
+function showFullAddress() {
+    alert('Your full address:\n\n' + window.myAddress);
+}
+
+// Инициализация
 document.addEventListener('DOMContentLoaded', function() {
+    // Получаем адрес пользователя
+    window.myAddress = '{{ address }}';
+
+    // Загружаем сообщения
     loadMessages();
+
+    // Автообновление каждые 3 секунды
+    setInterval(loadMessages, 3000);
+
+    // Инициализируем emoji picker
     showEmojiPicker();
+
+    // Проверяем, есть ли выбранный контакт в localStorage
+    const savedContact = localStorage.getItem('selectedContact');
+    if (savedContact) {
+        currentContact = savedContact;
+        document.getElementById('current-contact').textContent = savedContact.substring(0, 20) + '...';
+    }
 });

@@ -1,16 +1,16 @@
-# 🔐 Secure Messenger
+# 🟢 WhatsApp Style Secure Messenger
 
-A decentralized, encrypted messaging application built with Flask, Blockchain, and AES encryption.
+A decentralized, encrypted messaging application with WhatsApp-like interface built with Flask, Blockchain, and AES encryption.
 
 ## Features
-- 🔒 End-to-end encryption
+- 🔒 End-to-end encryption (AES-256)
 - 📦 Blockchain-based message storage
 - 🧠 Mnemonic-based wallet system
-- 💬 Real-time chat interface
+- 💬 WhatsApp-style chat interface
+- 👥 Contact management
 - 👥 Group chats
 - 📎 File sharing
 - 😊 Emoji support
-- 🌙 Dark theme
 - 📱 Mobile responsive design
 
 ## Installation

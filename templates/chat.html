@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WhatsApp Style Messenger</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <div class="whatsapp-container">
+        <!-- Header -->
+        <div class="whatsapp-header">
+            <div class="header-left">
+                <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+                <div class="chat-info">
+                    <h3>Chat</h3>
+                    <p id="current-contact">Select a contact</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="icon-btn" onclick="location.href='/contacts'">👥</button>
+                <button class="icon-btn" onclick="location.href='/groups'">👥</button>
+                <button class="icon-btn" onclick="showMyAddress()">👤</button>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>Chats</h3>
+                <button class="close-btn" onclick="toggleSidebar()">×</button>
+            </div>
+            <div class="profile-section">
+                <div class="profile-info">
+                    <div class="avatar">👤</div>
+                    <div>
+                        <p class="my-name">My Account</p>
+                        <p class="my-address" id="my-address-display">{{ address[:10] }}...</p>
+                    </div>
+                </div>
+                <button class="show-full-btn" onclick="showFullAddress()">Show Full Address</button>
+            </div>
+            <div class="search-bar">
+                <input type="text" placeholder="Search chats..." id="search-chats">
+            </div>
+            <div class="chat-list" id="chatList">
+                <!-- Chat items will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="chat-area" id="chatArea">
+            <div class="messages-container" id="messagesContainer">
+                <!-- Messages will be loaded here -->
+            </div>
+
+            <!-- Message Input -->
+            <div class="message-input-area">
+                <div class="input-tools">
+                    <button class="tool-btn" onclick="toggleEmojiPicker()">😀</button>
+                    <button class="tool-btn" onclick="document.getElementById('fileInput').click()">📎</button>
+                    <input type="file" id="fileInput" style="display: none;" accept="image/*" onchange="handleFileSelect()">
+                </div>
+                <div class="emoji-picker" id="emojiPicker"></div>
+                <textarea id="messageInput" placeholder="Type a message" onkeypress="handleKeyPress(event)"></textarea>
+                <button class="send-btn" onclick="sendMessage()">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
