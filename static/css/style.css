@@ -1,0 +1,385 @@
+/* Основные стили */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    transition: background 0.3s ease;
+}
+
+body.dark-theme {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: #ecf0f1;
+}
+
+.container {
+    max-width: 600px;
+    margin: 50px auto;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+body.dark-theme .container {
+    background: #2c3e50;
+    color: #ecf0f1;
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 30px;
+}
+
+body.dark-theme h1 {
+    color: #ecf0f1;
+}
+
+button {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    margin: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s ease;
+}
+
+button:hover {
+    background: #5a67d8;
+}
+
+body.dark-theme button {
+    background: #3498db;
+}
+
+body.dark-theme button:hover {
+    background: #2980b9;
+}
+
+textarea, input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    resize: vertical;
+    background: white;
+    color: #333;
+}
+
+body.dark-theme textarea,
+body.dark-theme input[type="text"] {
+    background: #34495e;
+    color: #ecf0f1;
+    border-color: #7f8c8d;
+}
+
+code {
+    display: block;
+    background: #f4f4f4;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 5px;
+    word-break: break-all;
+    font-family: monospace;
+}
+
+body.dark-theme code {
+    background: #34495e;
+    color: #ecf0f1;
+}
+
+.error {
+    color: #e53e3e;
+    background: #fed7d7;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+}
+
+body.dark-theme .error {
+    background: #e74c3c;
+    color: white;
+}
+
+.success {
+    background: #c6f6d5;
+    padding: 20px;
+    border-radius: 5px;
+    margin: 20px 0;
+}
+
+body.dark-theme .success {
+    background: #27ae60;
+    color: white;
+}
+
+/* Chat Styles */
+.chat-container {
+    max-width: 800px;
+    margin: 20px auto;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+}
+
+body.dark-theme .chat-container {
+    background: #2c3e50;
+}
+
+.header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+body.dark-theme .header {
+    border-color: #7f8c8d;
+}
+
+.user-info {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.chat-area {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background: #f8f9fa;
+}
+
+body.dark-theme .chat-area {
+    background: #34495e;
+}
+
+.message {
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 8px;
+    max-width: 70%;
+    word-wrap: break-word;
+}
+
+.message.sent {
+    background: #667eea;
+    color: white;
+    margin-left: auto;
+}
+
+.message.received {
+    background: #e9ecef;
+    color: #333;
+    margin-right: auto;
+}
+
+body.dark-theme .message.sent {
+    background: #3498db;
+}
+
+body.dark-theme .message.received {
+    background: #7f8c8d;
+    color: #ecf0f1;
+}
+
+.message-meta {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-top: 5px;
+}
+
+.message-form {
+    padding: 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+body.dark-theme .message-form {
+    border-color: #7f8c8d;
+}
+
+/* Emoji picker */
+.emoji-picker {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+}
+
+.emoji-btn {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 5px;
+    cursor: pointer;
+    font-size: 20px;
+    min-width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.dark-theme .emoji-btn {
+    background: #34495e;
+    border-color: #7f8c8d;
+}
+
+/* File upload */
+.file-upload {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.file-upload input[type="file"] {
+    flex: 1;
+}
+
+/* Group chat */
+.group-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.group-item {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    border: 1px solid #ddd;
+}
+
+.group-item:hover {
+    background: #e9ecef;
+}
+
+body.dark-theme .group-item {
+    background: #34495e;
+    color: #ecf0f1;
+    border-color: #7f8c8d;
+}
+
+body.dark-theme .group-item:hover {
+    background: #7f8c8d;
+}
+
+/* Theme toggle */
+.theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(255,255,255,0.2);
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+body.dark-theme .theme-toggle {
+    background: rgba(0,0,0,0.3);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .container {
+        margin: 20px;
+        padding: 15px;
+    }
+
+    .chat-container {
+        margin: 10px;
+        height: 95vh;
+    }
+
+    .header {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+
+    .user-info {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .message {
+        max-width: 85%;
+    }
+
+    .message-form {
+        padding: 15px;
+    }
+
+    textarea, input[type="text"] {
+        font-size: 16px; /* Предотвращает зум на iOS */
+    }
+
+    .theme-toggle {
+        top: 10px;
+        right: 10px;
+        width: 35px;
+        height: 35px;
+        font-size: 18px;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        margin: 10px;
+        padding: 10px;
+    }
+
+    h1 {
+        font-size: 24px;
+    }
+
+    button {
+        padding: 10px 15px;
+        font-size: 14px;
+        margin: 5px;
+    }
+
+    .message {
+        max-width: 90%;
+        padding: 8px;
+    }
+
+    .message-meta {
+        font-size: 10px;
+    }
+
+    .emoji-btn {
+        min-width: 35px;
+        height: 35px;
+        font-size: 18px;
+    }
+}

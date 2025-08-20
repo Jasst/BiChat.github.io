@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Secure Messenger</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Secure Messenger</h1>
+        <div class="welcome">
+            <button onclick="createWallet()">Create New Wallet</button>
+            <button onclick="location.href='/login'">Login with Mnemonic</button>
+        </div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function createWallet() {
+            const response = await fetch('/create_wallet', {method: 'POST'});
+            const data = await response.json();
+
+            if (response.ok) {
+                document.getElementById('result').innerHTML = `
+                    <div class="success">
+                        <h3>Wallet Created!</h3>
+                        <p>Save this mnemonic phrase:</p>
+                        <code>${data.mnemonic_phrase}</code>
+                        <button onclick="location.href='/chat'">Go to Chat</button>
+                    </div>
+                `;
+            } else {
+                document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

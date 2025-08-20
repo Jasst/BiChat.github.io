@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Groups - Secure Messenger</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Groups</h2>
+            <button onclick="showCreateGroupForm()">Create Group</button>
+            <button onclick="location.href='/chat'">Back to Chat</button>
+        </div>
+
+        <div id="groupsList" class="group-list"></div>
+
+        <div id="createGroupForm" style="display: none;">
+            <h3>Create New Group</h3>
+            <input type="text" id="groupName" placeholder="Group Name" required>
+            <textarea id="groupMembers" placeholder="Member addresses (one per line)"></textarea>
+            <button onclick="createGroup()">Create</button>
+            <button onclick="hideCreateGroupForm()">Cancel</button>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function loadGroups() {
+            const response = await fetch('/get_groups');
+            const data = await response.json();
+
+            if (response.ok) {
+                const groupsList = document.getElementById('groupsList');
+                groupsList.innerHTML = data.groups.map(group => `
+                    <div class="group-item" onclick="openGroupChat('${group.id}')">
+                        <h4>${group.name}</h4>
+                        <p>${group.members.length} members</p>
+                        <small>Created: ${new Date(group.created_at * 1000).toLocaleString()}</small>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+            }
+        }
+
+        function showCreateGroupForm() {
+            document.getElementById('createGroupForm').style.display = 'block';
+        }
+
+        function hideCreateGroupForm() {
+            document.getElementById('createGroupForm').style.display = 'none';
+        }
+
+        async function createGroup() {
+            const name = document.getElementById('groupName').value;
+            const membersText = document.getElementById('groupMembers').value;
+            const members = membersText.split('\n').filter(m => m.trim());
+
+            const response = await fetch('/create_group', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, members: members})
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                document.getElementById('result').innerHTML = `<p class="success">${data.message}</p>`;
+                hideCreateGroupForm();
+                loadGroups();
+            } else {
+                document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+            }
+        }
+
+        function openGroupChat(groupId) {
+            // Здесь можно реализовать переход к групповому чату
+            alert('Group chat functionality will be implemented');
+        }
+
+        // Загрузка групп при открытии страницы
+        document.addEventListener('DOMContentLoaded', loadGroups);
+    </script>
+</body>
+</html>

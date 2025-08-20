@@ -1,9 +1,0 @@
-
-*.pyc
-/.idea
-/__pycache__
-*.xml
-/blockchain.json
-*.pyc
-.vercel
-config.py
