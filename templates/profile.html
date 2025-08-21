@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="chat-container">
+    <div class="sidebar">
+        <div class="user-info">
+            <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
+            <button onclick="location.href='/logout'">Logout</button>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/chat" {% if request.endpoint == 'chat' %}class="active"{% endif %}>Chat</a></li>
+                <li><a href="/contacts" {% if request.endpoint == 'contacts' %}class="active"{% endif %}>Contacts</a></li>
+                <li><a href="/groups" {% if request.endpoint == 'groups' %}class="active"{% endif %}>Groups</a></li>
+                <li><a href="/profile" {% if request.endpoint == 'profile' %}class="active"{% endif %}>Profile</a></li>
+            </ul>
+        </nav>
+    </div>
+    <div class="main-content">
+        <h2>Your Profile</h2>
+
+        <!-- Адрес -->
+        <div class="info-item">
+            <label for="address">Your Address:</label>
+            <div class="input-with-copy">
+                <input type="text" id="address" value="{{ address }}" readonly>
+                <button onclick="copyToClipboard('address', 'addressFeedback')">Copy</button>
+                <span id="addressFeedback" class="copy-feedback"></span>
+            </div>
+        </div>
+
+        <!-- Мнемоническая фраза -->
+        <div class="info-item">
+            <label for="mnemonic">Your Mnemonic Phrase (Private Key):</label>
+            <div class="input-with-copy">
+                <!-- Скрытое поле для копирования -->
+                <input type="text" id="mnemonic" value="{{ mnemonic }}" readonly style="display:none;">
+                <!-- Отображаемая часть -->
+                <input type="text" id="mnemonicDisplay" value="{{ mnemonic[:20] }}..." readonly>
+                <button onclick="toggleMnemonicVisibility()">Show</button>
+                <button onclick="copyToClipboard('mnemonic', 'mnemonicFeedback')">Copy</button>
+                <span id="mnemonicFeedback" class="copy-feedback"></span>
+            </div>
+             <p class="security-warning">⚠️ <strong>Warning:</strong> Keep this phrase secret! Anyone with it can access your wallet.</p>
+        </div>
+
+        <!-- "Приватный ключ" (в данном случае совпадает с мнемоникой) -->
+        <div class="info-item">
+            <label for="privateKey">Derived Private Key (SHA256 of Mnemonic):</label>
+            <div class="input-with-copy">
+                 <input type="text" id="privateKey" value="{{ private_key | e }}" readonly>
+                 <button onclick="copyToClipboard('privateKey', 'privateKeyFeedback')">Copy</button>
+                 <span id="privateKeyFeedback" class="copy-feedback"></span>
+            </div>
+            <p class="security-note">Note: This is derived from your mnemonic for demonstration. In a real system, a proper key derivation function would be used.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function copyToClipboard(elementId, feedbackId) {
+        const element = document.getElementById(elementId);
+        const feedback = document.getElementById(feedbackId);
+
+        // Для мнемоники копируем из скрытого поля
+        let textToCopy = element.value;
+        if (elementId === 'mnemonic') {
+             textToCopy = document.getElementById('mnemonic').value;
+        }
+
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            feedback.textContent = 'Copied!';
+            feedback.style.color = 'green';
+            setTimeout(() => { feedback.textContent = ''; }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            feedback.textContent = 'Failed to copy!';
+            feedback.style.color = 'red';
+        });
+    }
+
+    function toggleMnemonicVisibility() {
+        const mnemonicInput = document.getElementById('mnemonic');
+        const displayInput = document.getElementById('mnemonicDisplay');
+        const button = event.target; // Кнопка, которая была нажата
+
+        if (mnemonicInput.style.display === 'none') {
+            // Показать полную фразу
+            mnemonicInput.style.display = 'inline-block';
+            displayInput.style.display = 'none';
+            button.textContent = 'Hide';
+        } else {
+            // Скрыть полную фразу
+            mnemonicInput.style.display = 'none';
+            displayInput.style.display = 'inline-block';
+            button.textContent = 'Show';
+        }
+    }
+</script>
+{% endblock %}

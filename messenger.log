@@ -1,0 +1,702 @@
+2025-08-21 23:14:34,357 INFO root Blockchain initialized
+2025-08-21 23:14:34,433 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.14:5000
+2025-08-21 23:14:34,433 INFO werkzeug [33mPress CTRL+C to quit[0m
+2025-08-21 23:14:34,439 INFO werkzeug  * Restarting with stat
+2025-08-21 23:14:35,012 INFO root Blockchain initialized
+2025-08-21 23:14:35,031 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:14:35,039 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:14:43,972 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:14:43] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:14:44,047 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:14:44] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:14:44,128 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:14:44] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:14:52,413 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:52] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:14:52,426 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:52] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:14:52,533 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:52] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:14:54,247 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:54] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:14:55,555 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:55] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:14:58,193 INFO root Transaction added from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 9
+2025-08-21 23:14:58,315 INFO root New block added: 10
+2025-08-21 23:14:58,319 INFO root Message sent from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:14:58,320 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:58] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:14:58,348 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:58] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:14:58,556 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:14:58] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:01,847 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:01] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:02,133 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:02] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:02,150 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:02] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:05,133 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:05] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:05,163 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:05] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:07,456 INFO root Transaction added from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466, ID: 10
+2025-08-21 23:15:07,553 INFO root New block added: 11
+2025-08-21 23:15:07,566 INFO root Message sent from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:15:07,567 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:07] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:15:07,597 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:07] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:08,134 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:08] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:08,168 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:08] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:10,561 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:10] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:12,140 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:12] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:13,559 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:13] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:15,139 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:15] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:16,559 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:16] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:17,099 INFO root Transaction added from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 11
+2025-08-21 23:15:17,256 INFO root New block added: 12
+2025-08-21 23:15:17,269 INFO root Message sent from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:15:17,269 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:17] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:15:17,303 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:17] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:18,137 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:18] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:20,144 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:20] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:20,160 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:20] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:23,143 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:23] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:23,165 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:23] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:26,130 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:26] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:26,160 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:26] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:29,134 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:29] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:29,164 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:29] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:32,121 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:32] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:32,160 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:32] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:35,134 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:35] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:35,176 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:35] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:38,131 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:38] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:38,161 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:38] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:41,145 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:41] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:41,166 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:41] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:44,132 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:44] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:44,161 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:44] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:47,136 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:47,164 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:50,135 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:50] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:50,177 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:50] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:53,134 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:53] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:53,164 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:53] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:56,133 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:56] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:56,163 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:56] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:15:59,132 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:15:59] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:15:59,162 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:15:59] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:02,130 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:16:02] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:16:02,160 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:02] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:05,130 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:16:05] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:16:05,171 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:05] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:08,142 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:16:08] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:16:08,162 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:08] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:10,121 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:10] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:16:10,135 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:10] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:16:10,155 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:10] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:16:11,134 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:16:11] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:16:12,103 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:12] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:16:12,121 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:12] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:16:12,141 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:12] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:16:14,142 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:16:14] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:16:16,085 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:16] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:16:16,108 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:16] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:16:17,136 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:16:17] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:16:17,327 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:17] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:16:17,345 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:17] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:16:17,365 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:17] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:16:18,076 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:18] "GET /groups HTTP/1.1" 200 -
+2025-08-21 23:16:18,094 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:18] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:16:18,109 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:18] "GET /get_groups HTTP/1.1" 200 -
+2025-08-21 23:16:18,887 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:18] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:16:18,906 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:18] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:16:18,925 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:18] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:16:19,735 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:19] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:16:19,755 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:19] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:16:19,774 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:19] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:16:20,633 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:20] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:22,805 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:22] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:25,804 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:25] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:28,808 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:28] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:32,133 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:32] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:34,803 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:34] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:38,134 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:38] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:41,131 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:41] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:44,131 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:44] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:47,150 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:16:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:16:47,163 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:50,134 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:50] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:53,136 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:53] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:56,132 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:56] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:16:59,136 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:16:59] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:02,140 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:02] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:05,132 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:05] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:08,135 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:08] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:11,129 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:11] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:14,131 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:14] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:17,154 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:17] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:20,133 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:20] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:23,131 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:23] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:26,142 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:26] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:29,135 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:29] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:32,131 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:32] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:35,136 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:35] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:47,132 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:17:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:17:47,133 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:17:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:18:47,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:18:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:18:47,143 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:18:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:19:47,131 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:19:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:19:47,131 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:19:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:20:47,144 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:20:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:20:47,152 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:20:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:21:20,461 INFO werkzeug  * Detected change in 'C:\\Users\\PC\\Documents\\GitHub\\BiChat.github.io\\app.py', reloading
+2025-08-21 23:21:20,561 INFO werkzeug  * Restarting with stat
+2025-08-21 23:21:21,067 INFO root Blockchain initialized
+2025-08-21 23:21:21,106 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:21:21,116 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:21:47,107 ERROR root Get conversation error: no such column: id
+2025-08-21 23:21:47,108 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:21:47] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:21:47,108 ERROR root Get conversation error: no such column: id
+2025-08-21 23:21:47,109 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:21:47] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:21:59,931 INFO root Blockchain initialized
+2025-08-21 23:21:59,971 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.14:5000
+2025-08-21 23:21:59,972 INFO werkzeug [33mPress CTRL+C to quit[0m
+2025-08-21 23:21:59,976 INFO werkzeug  * Restarting with stat
+2025-08-21 23:22:00,417 INFO root Blockchain initialized
+2025-08-21 23:22:00,440 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:22:00,448 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:22:03,377 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:03,378 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:22:03] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:04,768 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:22:04] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:22:04,826 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:22:04] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:22:04,898 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:22:04] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:22:08,443 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:08,444 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:08] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:09,574 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:09] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:22:09,588 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:09] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:22:09,693 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:09] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:22:13,627 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:13,628 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:13] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:15,695 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:15,696 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:15] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:18,695 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:18,696 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:18] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:23,197 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:23,198 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:23] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:24,701 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:24,702 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:24] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:27,704 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:27,705 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:27] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:29,518 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:29] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:22:29,536 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:29] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:22:29,562 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:29] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:22:30,499 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:30,499 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:30] "[35m[1mGET /get_conversation?with=cd3208724d6761e11a8c90f76800dba7493697a912baf1a19edede7c72a53d0b HTTP/1.1[0m" 500 -
+2025-08-21 23:22:32,564 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:32,564 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:32] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:35,566 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:35,566 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:35] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:38,123 INFO root Transaction added from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 12
+2025-08-21 23:22:38,319 INFO root New block added: 13
+2025-08-21 23:22:38,323 INFO root Message sent from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:22:38,323 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:38] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:22:38,333 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:38,334 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:38] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:38,566 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:38,567 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:38] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:41,564 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:41,565 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:41] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:22:42,422 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:42] "GET /groups HTTP/1.1" 200 -
+2025-08-21 23:22:42,441 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:42] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:22:42,461 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:42] "GET /get_groups HTTP/1.1" 200 -
+2025-08-21 23:22:42,923 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:42] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:22:42,943 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:42] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:22:42,964 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:42] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:22:47,138 INFO root Contact deleted: cd3208724d6761e11a8c90f76800dba7493697a912baf1a19edede7c72a53d0b for user ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:22:47,139 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:47] "POST /delete_contact HTTP/1.1" 200 -
+2025-08-21 23:22:50,534 INFO root Contact deleted: d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 for user ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:22:50,534 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:50] "POST /delete_contact HTTP/1.1" 200 -
+2025-08-21 23:22:53,065 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:53] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:22:53,087 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:53] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:22:53,108 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:53] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:22:54,418 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:54,418 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:54] "[35m[1mGET /get_conversation?with=cd3208724d6761e11a8c90f76800dba7493697a912baf1a19edede7c72a53d0b HTTP/1.1[0m" 500 -
+2025-08-21 23:22:56,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:56,117 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:56] "[35m[1mGET /get_conversation?with=cd3208724d6761e11a8c90f76800dba7493697a912baf1a19edede7c72a53d0b HTTP/1.1[0m" 500 -
+2025-08-21 23:22:59,522 INFO root User ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 cleared conversation with d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:22:59,523 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:59] "POST /clear_conversation HTTP/1.1" 200 -
+2025-08-21 23:22:59,525 ERROR root Get conversation error: no such column: id
+2025-08-21 23:22:59,526 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:22:59] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:02,112 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:02,113 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:02] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:03,026 INFO root User ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 cleared conversation with d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:23:03,026 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:03] "POST /clear_conversation HTTP/1.1" 200 -
+2025-08-21 23:23:05,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:05,116 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:05] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:08,108 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:08,109 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:08] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:09,307 INFO root Contact added/updated: d1c05321f7... (d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55) for user ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:23:09,310 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:09] "[35m[1mPOST /add_contact_from_chat HTTP/1.1[0m" 201 -
+2025-08-21 23:23:11,108 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:11,108 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:11] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:13,362 INFO root User ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 cleared conversation with d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:23:13,363 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:13] "POST /clear_conversation HTTP/1.1" 200 -
+2025-08-21 23:23:14,118 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:14,119 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:14] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:14,481 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:14] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:23:14,503 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:14] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:23:14,518 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:14] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:23:16,727 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:16] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:23:16,745 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:16] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:23:18,040 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:18] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:23:18,066 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:18] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:23:18,083 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:18] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:23:19,755 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:19,755 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:19] "[35m[1mGET /get_conversation?with=cd3208724d6761e11a8c90f76800dba7493697a912baf1a19edede7c72a53d0b HTTP/1.1[0m" 500 -
+2025-08-21 23:23:21,090 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:21,090 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:21] "[35m[1mGET /get_conversation?with=cd3208724d6761e11a8c90f76800dba7493697a912baf1a19edede7c72a53d0b HTTP/1.1[0m" 500 -
+2025-08-21 23:23:24,085 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:24,085 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:24] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:27,084 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:27,085 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:27] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:27,486 INFO root Transaction added from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 13
+2025-08-21 23:23:27,860 INFO root New block added: 14
+2025-08-21 23:23:27,868 INFO root Message sent from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:23:27,868 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:27] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:23:27,878 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:27,878 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:27] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:30,084 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:30,084 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:30] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:33,098 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:33,099 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:33] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:36,085 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:36,086 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:36] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:39,104 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:39,105 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:39] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:42,105 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:42,106 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:42] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:45,117 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:45,117 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:45] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:48,117 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:48,124 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:48] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:50,249 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:50,250 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:23:50] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:51,120 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:51,121 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:51] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:51,814 INFO root Contact added/updated: ee2cbee513... (ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466) for user d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:23:51,817 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:23:51] "[35m[1mPOST /add_contact_from_chat HTTP/1.1[0m" 201 -
+2025-08-21 23:23:52,904 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:52,904 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:23:52] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:54,110 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:54,110 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:54] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:55,908 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:55,909 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:23:55] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:57,106 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:57,107 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:23:57] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:23:59,026 ERROR root Get conversation error: no such column: id
+2025-08-21 23:23:59,027 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:23:59] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:00,107 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:00,108 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:00] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:02,107 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:02,107 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:02] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:03,115 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:03,116 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:03] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:05,114 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:05,114 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:05] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:06,115 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:06,116 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:06] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:08,118 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:08,119 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:08] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:09,107 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:09,108 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:09] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:11,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:11,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:11] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:12,113 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:12,113 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:12] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:14,112 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:14,113 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:14] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:15,107 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:15,108 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:15] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:17,117 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:17,118 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:17] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:18,109 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:18,110 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:18] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:20,114 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:20,115 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:20] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:21,111 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:21,111 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:21] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:23,111 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:23,112 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:23] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:24,105 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:24,106 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:24] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:26,118 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:26,118 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:26] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:27,112 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:27,112 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:27] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:29,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:29,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:29] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:30,105 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:30,106 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:30] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:32,109 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:32,110 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:32] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:33,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:33,117 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:33] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:35,115 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:35,115 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:35] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:36,112 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:36,112 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:36] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:38,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:38,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:38] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:41,112 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:41,113 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:41] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:44,115 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:44,116 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:44] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:47,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:47,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:47] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:47,118 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:47,119 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:24:47] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:50,117 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:50,118 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:50] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:53,115 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:53,115 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:53] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:57,440 INFO root Blockchain initialized
+2025-08-21 23:24:57,478 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.14:5000
+2025-08-21 23:24:57,479 INFO werkzeug [33mPress CTRL+C to quit[0m
+2025-08-21 23:24:57,483 INFO werkzeug  * Restarting with stat
+2025-08-21 23:24:58,102 INFO root Blockchain initialized
+2025-08-21 23:24:58,132 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:24:58,142 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:24:58,179 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:58,180 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:58] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:24:59,107 ERROR root Get conversation error: no such column: id
+2025-08-21 23:24:59,108 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:24:59] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:01,898 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:01,899 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:01] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:03,225 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:03] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:25:03,282 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:03] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:25:03,293 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:03] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:25:05,691 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:05,691 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:05] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:06,294 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:06,295 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:06] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:09,307 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:09,308 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:09] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:12,302 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:12,302 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:12] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:15,294 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:15,295 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:15] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:15,917 INFO root Transaction added from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466, ID: 14
+2025-08-21 23:25:15,969 INFO root New block added: 15
+2025-08-21 23:25:15,983 INFO root Message sent from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:25:15,984 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:15] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:25:15,994 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:15,995 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:15] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:18,143 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:18,143 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:18] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:19,110 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:19,111 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:19] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:21,116 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:21,117 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:21] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:22,110 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:22,110 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:22] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:24,106 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:24,106 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:24] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:25,109 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:25,109 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:25] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:27,109 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:27,110 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:27] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:28,103 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:28,104 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:28] "[35m[1mGET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:30,114 ERROR root Get conversation error: no such column: id
+2025-08-21 23:25:30,115 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:30] "[35m[1mGET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1[0m" 500 -
+2025-08-21 23:25:38,738 INFO root New block added: 1
+2025-08-21 23:25:38,738 INFO root Genesis block created
+2025-08-21 23:25:38,752 INFO root Blockchain initialized
+2025-08-21 23:25:38,851 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.14:5000
+2025-08-21 23:25:38,851 INFO werkzeug [33mPress CTRL+C to quit[0m
+2025-08-21 23:25:38,858 INFO werkzeug  * Restarting with stat
+2025-08-21 23:25:39,367 INFO root Blockchain initialized
+2025-08-21 23:25:39,390 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:25:39,398 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:25:39,430 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:39] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:25:39,431 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:39] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:25:40,110 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:40] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:25:42,106 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:42] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:25:43,109 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:43] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:25:44,752 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:44] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:25:44,812 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:44] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:25:44,821 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:44] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:25:45,105 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:45] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:25:48,091 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:48] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:25:48,710 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:48] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:25:48,726 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:48] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:25:48,747 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:48] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:25:54,701 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:54] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:25:54,716 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:25:54] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:25:59,748 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:59] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:25:59,767 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:59] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:25:59,787 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:25:59] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:26:06,218 INFO root Contact added/updated: d1 (d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55) for user ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:26:06,219 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:06] "[35m[1mPOST /add_contact HTTP/1.1[0m" 201 -
+2025-08-21 23:26:06,227 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:06] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:26:19,625 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:19] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:26:19,648 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:19] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:26:19,668 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:19] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:26:28,249 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:28] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:26:28,270 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:28] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:26:29,270 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:29] "GET /groups HTTP/1.1" 200 -
+2025-08-21 23:26:29,290 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:29] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:26:29,308 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:29] "GET /get_groups HTTP/1.1" 200 -
+2025-08-21 23:26:30,104 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:30] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:26:30,124 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:30] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:26:30,142 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:30] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:26:40,753 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:40] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:26:40,776 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:26:40] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:26:46,007 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:46] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:26:46,027 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:46] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:26:46,046 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:46] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:26:55,701 INFO root Contact added/updated: ee (ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466) for user d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:26:55,701 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:55] "[35m[1mPOST /add_contact HTTP/1.1[0m" 201 -
+2025-08-21 23:26:55,709 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:55] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:26:59,382 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:59] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:26:59,401 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:59] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:26:59,421 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:26:59] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:27:01,918 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:01] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:27:01,942 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:01] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:27:01,962 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:01] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:27:11,606 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:11] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:27:11,627 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:11] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:27:11,645 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:11] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:27:13,422 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:13] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:27:13,444 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:13] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:27:14,662 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:14] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:27:14,682 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:14] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:27:14,702 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:14] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:27:20,694 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:20] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:27:20,713 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:20] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:27:20,741 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:20] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:27:21,566 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:21] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:27:21,585 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:21] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:27:21,605 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:21] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:27:22,583 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:22] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:27:22,605 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:22] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:27:22,621 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:27:22] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:38:52,058 INFO root Blockchain initialized
+2025-08-21 23:38:52,094 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.14:5000
+2025-08-21 23:38:52,095 INFO werkzeug [33mPress CTRL+C to quit[0m
+2025-08-21 23:38:52,099 INFO werkzeug  * Restarting with stat
+2025-08-21 23:38:52,542 INFO root Blockchain initialized
+2025-08-21 23:38:52,567 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:38:52,575 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:39:00,145 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:00] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:39:00,206 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:00] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:39:00,265 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:00] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:39:01,722 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:01] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:03,276 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:03] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:06,281 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:06] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:08,841 INFO root User d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 cleared conversation with ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:39:08,842 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:08] "POST /clear_conversation HTTP/1.1" 200 -
+2025-08-21 23:39:09,266 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:09] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:12,266 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:12] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:13,553 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:13] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:39:13,573 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:13] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:39:13,593 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:13] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:39:17,116 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:17] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:39:17,133 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:17] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:39:17,995 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:17] "GET /groups HTTP/1.1" 200 -
+2025-08-21 23:39:18,013 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:18] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:39:18,029 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:18] "GET /get_groups HTTP/1.1" 200 -
+2025-08-21 23:39:18,751 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:18] "GET /contacts HTTP/1.1" 200 -
+2025-08-21 23:39:18,768 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:18] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:39:18,787 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:18] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:39:20,102 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:20] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:39:20,123 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:20] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:39:20,143 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:20] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:39:20,865 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:20] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:22,557 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:22] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:39:22,578 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:22] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:39:22,594 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:22] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:39:26,373 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:26] "GET /profile HTTP/1.1" 200 -
+2025-08-21 23:39:26,391 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:26] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:39:27,936 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:27] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:39:27,956 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:27] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:39:27,975 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:27] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:39:28,986 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:28] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:30,991 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:30] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:33,386 INFO root Transaction added from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 1
+2025-08-21 23:39:33,472 INFO root New block added: 2
+2025-08-21 23:39:33,484 INFO root Message sent from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:39:33,484 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:33] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:39:33,497 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:33] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:33,997 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:33] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:37,113 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:37] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:38,579 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:38] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:40,117 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:40] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:40,603 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:40] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:43,111 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:43] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:43,612 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:43] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:43,637 INFO root Transaction added from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466, ID: 2
+2025-08-21 23:39:43,723 INFO root New block added: 3
+2025-08-21 23:39:43,736 INFO root Message sent from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:39:43,736 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:43] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:39:43,752 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:43] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:46,119 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:46] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:46,613 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:46] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:49,123 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:49] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:49,605 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:49] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:52,115 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:52] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:52,605 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:52] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:55,123 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:55] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:55,608 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:55] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:58,122 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:39:58] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:39:58,612 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:58] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:39:58,761 INFO root Contact added/updated: ee2cbee513... (ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466) for user d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:39:58,761 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:39:58] "[35m[1mPOST /add_contact_from_chat HTTP/1.1[0m" 201 -
+2025-08-21 23:40:01,116 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:01] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:01,608 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:01] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:04,123 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:04] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:04,606 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:04] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:07,137 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:07] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:07,603 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:07] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:10,111 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:10] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:11,058 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:11] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:13,120 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:13] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:14,118 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:14] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:16,118 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:16] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:17,113 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:17] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:19,117 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:19] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:20,124 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:20] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:22,113 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:22] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:23,122 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:23] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:25,122 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:25] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:26,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:26] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:28,126 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:28] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:29,119 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:29] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:31,119 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:31] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:32,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:32] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:34,121 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:34] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:35,110 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:35] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:38,116 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:38] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:41,113 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:41] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:44,127 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:44] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:47,125 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:40:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:40:47,141 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:50,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:50] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:53,111 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:53] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:56,121 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:56] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:40:59,122 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:40:59] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:41:02,120 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:41:02] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:41:05,111 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:41:05] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:41:08,114 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:41:08] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:41:11,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:41:11] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:41:47,148 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:41:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:41:47,152 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:41:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:42:47,110 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:42:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:42:47,113 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:42:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:43:47,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:43:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:43:47,128 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:43:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:44:47,122 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:44:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:44:47,123 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:44:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:45:47,112 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:45:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:45:47,118 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:45:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:46:47,116 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:46:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:46:47,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:46:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:47:47,123 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:47:47] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:47:47,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:47:47] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:47:50,360 INFO werkzeug  * Detected change in 'C:\\Users\\PC\\Documents\\GitHub\\BiChat.github.io\\app.py', reloading
+2025-08-21 23:47:50,693 INFO werkzeug  * Restarting with stat
+2025-08-21 23:47:51,488 INFO root Blockchain initialized
+2025-08-21 23:47:51,510 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:47:51,518 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:48:24,357 INFO root Blockchain initialized
+2025-08-21 23:48:24,411 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.14:5000
+2025-08-21 23:48:24,411 INFO werkzeug [33mPress CTRL+C to quit[0m
+2025-08-21 23:48:24,418 INFO werkzeug  * Restarting with stat
+2025-08-21 23:48:24,985 INFO root Blockchain initialized
+2025-08-21 23:48:25,010 WARNING werkzeug  * Debugger is active!
+2025-08-21 23:48:25,017 INFO werkzeug  * Debugger PIN: 498-725-440
+2025-08-21 23:48:27,958 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:27] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:28,621 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:28] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:29,289 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:29] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:48:29,350 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:29] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:48:29,426 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:29] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:48:30,861 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:30] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:33,115 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:33] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:35,438 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:35] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:36,116 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:36] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:36,524 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:36] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:48:36,544 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:36] "GET /static/style.css HTTP/1.1" 200 -
+2025-08-21 23:48:36,647 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:36] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:48:37,573 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:37] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:39,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:39] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:39,654 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:39] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:42,121 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:42] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:42,376 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:42] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:48:42,657 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:42] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:45,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:45] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:45,659 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:45] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:48,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:48] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:48,666 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:48] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:51,128 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:51] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:51,661 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:51] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:52,762 INFO root Transaction added from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 3
+2025-08-21 23:48:53,046 INFO root New block added: 4
+2025-08-21 23:48:53,057 INFO root Message sent from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:48:53,058 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:53] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:48:53,077 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:53] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:54,125 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:54] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:54,657 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:54] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:48:57,116 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:48:57] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:48:58,836 INFO root Message deleted by ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466, ID: 1
+2025-08-21 23:48:58,836 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:58] "POST /delete_message HTTP/1.1" 200 -
+2025-08-21 23:48:58,848 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:48:58] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:00,118 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:00] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:01,120 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:01] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:02,434 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:02] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:03,037 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:03] "GET /chat HTTP/1.1" 200 -
+2025-08-21 23:49:03,059 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:03] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2025-08-21 23:49:03,078 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:03] "GET /get_conversations HTTP/1.1" 200 -
+2025-08-21 23:49:04,112 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:04] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:04,741 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:04] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:06,089 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:06] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:07,115 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:07] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:08,362 INFO root Message deleted by d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 2
+2025-08-21 23:49:08,362 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:08] "POST /delete_message HTTP/1.1" 200 -
+2025-08-21 23:49:09,090 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:09] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:09,650 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:09] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:12,117 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:12] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:12,485 INFO root Message deleted by ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466, ID: 3
+2025-08-21 23:49:12,486 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:12] "POST /delete_message HTTP/1.1" 200 -
+2025-08-21 23:49:12,655 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:12] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:15,081 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:15] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:16,108 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:16] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:18,080 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:18] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:18,809 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:18] "GET /get_contacts HTTP/1.1" 200 -
+2025-08-21 23:49:19,120 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:19] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:21,078 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:21] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:22,107 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:22] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:24,081 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:24] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:25,120 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:25] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:27,089 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:27] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:28,120 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:28] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:28,813 INFO root Transaction added from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466, ID: 4
+2025-08-21 23:49:29,107 INFO root New block added: 5
+2025-08-21 23:49:29,115 INFO root Message sent from d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 to ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466
+2025-08-21 23:49:29,115 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:29] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:49:29,126 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:29] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:30,086 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:30] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:31,109 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:31] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:33,121 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:33] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:33,662 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:33] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:36,115 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:36] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:36,661 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:36] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:37,250 INFO root Transaction added from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55, ID: 5
+2025-08-21 23:49:37,360 INFO root New block added: 6
+2025-08-21 23:49:37,373 INFO root Message sent from ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 to d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55
+2025-08-21 23:49:37,373 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:37] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2025-08-21 23:49:37,389 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:37] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2025-08-21 23:49:39,114 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:39] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
+2025-08-21 23:49:40,116 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:40] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -

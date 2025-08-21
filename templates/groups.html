@@ -1,86 +1,91 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Groups - Secure Messenger</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h2>Groups</h2>
-            <button onclick="showCreateGroupForm()">Create Group</button>
-            <button onclick="location.href='/chat'">Back to Chat</button>
+{% extends "base.html" %}
+{% block content %}
+<div class="chat-container">
+    <div class="sidebar">
+        <div class="user-info">
+            <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
+            <button onclick="location.href='/logout'">Logout</button>
         </div>
-
-        <div id="groupsList" class="group-list"></div>
-
-        <div id="createGroupForm" style="display: none;">
-            <h3>Create New Group</h3>
-            <input type="text" id="groupName" placeholder="Group Name" required>
-            <textarea id="groupMembers" placeholder="Member addresses (one per line)"></textarea>
-            <button onclick="createGroup()">Create</button>
-            <button onclick="hideCreateGroupForm()">Cancel</button>
-        </div>
-
-        <div id="result"></div>
+        <nav>
+            <ul>
+                <li><a href="/chat" {% if request.endpoint == 'chat' %}class="active"{% endif %}>Chat</a></li>
+                <li><a href="/contacts" {% if request.endpoint == 'contacts' %}class="active"{% endif %}>Contacts</a></li>
+                <li><a href="/groups" {% if request.endpoint == 'groups' %}class="active"{% endif %}>Groups</a></li>
+                <li><a href="/profile" {% if request.endpoint == 'profile' %}class="active"{% endif %}>Profile</a></li>
+            </ul>
+        </nav>
     </div>
+    <div class="main-content">
+        <h2>Groups</h2>
+        <div class="groups-list" id="groupsList">
+            <!-- Groups will be loaded here -->
+        </div>
+        <div class="input-area">
+            <input type="text" id="groupName" placeholder="Group Name">
+            <input type="text" id="groupMembers" placeholder="Member Addresses (comma separated)">
+            <button onclick="createGroup()">Create Group</button>
+        </div>
+    </div>
+</div>
 
-    <script>
-        async function loadGroups() {
+<script>
+    async function loadGroups() {
+        try {
             const response = await fetch('/get_groups');
             const data = await response.json();
-
             if (response.ok) {
-                const groupsList = document.getElementById('groupsList');
-                groupsList.innerHTML = data.groups.map(group => `
-                    <div class="group-item" onclick="openGroupChat('${group.id}')">
-                        <h4>${group.name}</h4>
-                        <p>${group.members.length} members</p>
-                        <small>Created: ${new Date(group.created_at * 1000).toLocaleString()}</small>
-                    </div>
-                `).join('');
+                const container = document.getElementById('groupsList');
+                container.innerHTML = '<ul>';
+                if (data.groups.length === 0) {
+                    container.innerHTML += '<li>No groups found.</li>';
+                } else {
+                    data.groups.forEach(group => {
+                        container.innerHTML += `<li>${group.name} (ID: ${group.id.substring(0, 10)}...)</li>`;
+                    });
+                }
+                container.innerHTML += '</ul>';
             } else {
-                document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+                console.error('Failed to load groups:', data.error);
+                document.getElementById('groupsList').innerHTML = `<p>Error loading groups: ${data.error}</p>`;
             }
+        } catch (error) {
+            console.error('Error loading groups:', error);
+            document.getElementById('groupsList').innerHTML = `<p>Error loading groups.</p>`;
+        }
+    }
+
+    async function createGroup() {
+        const name = document.getElementById('groupName').value;
+        const membersInput = document.getElementById('groupMembers').value;
+        const members = membersInput.split(',').map(m => m.trim()).filter(m => m);
+
+        if (!name || members.length === 0) {
+            alert('Please fill in group name and at least one member.');
+            return;
         }
 
-        function showCreateGroupForm() {
-            document.getElementById('createGroupForm').style.display = 'block';
-        }
-
-        function hideCreateGroupForm() {
-            document.getElementById('createGroupForm').style.display = 'none';
-        }
-
-        async function createGroup() {
-            const name = document.getElementById('groupName').value;
-            const membersText = document.getElementById('groupMembers').value;
-            const members = membersText.split('\n').filter(m => m.trim());
-
+        try {
             const response = await fetch('/create_group', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: name, members: members})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, members })
             });
-
             const data = await response.json();
-
             if (response.ok) {
-                document.getElementById('result').innerHTML = `<p class="success">${data.message}</p>`;
-                hideCreateGroupForm();
-                loadGroups();
+                document.getElementById('groupName').value = '';
+                document.getElementById('groupMembers').value = '';
+                loadGroups(); // Перезагрузить группы
+                alert('Group created successfully.');
             } else {
-                document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+                alert('Error: ' + data.error);
             }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred.');
         }
+    }
 
-        function openGroupChat(groupId) {
-            // Здесь можно реализовать переход к групповому чату
-            alert('Group chat functionality will be implemented');
-        }
-
-        // Загрузка групп при открытии страницы
-        document.addEventListener('DOMContentLoaded', loadGroups);
-    </script>
-</body>
-</html>
+    // Загрузка групп при открытии страницы
+    loadGroups();
+</script>
+{% endblock %}

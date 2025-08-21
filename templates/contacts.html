@@ -1,126 +1,151 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Contacts - WhatsApp Style Messenger</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
-    <div class="whatsapp-container">
-        <!-- Header -->
-        <div class="whatsapp-header">
-            <div class="header-left">
-                <button class="back-btn" onclick="location.href='/chat'">←</button>
-                <h3>Contacts</h3>
-            </div>
-            <div class="header-right">
-                <button class="icon-btn" onclick="showAddContactForm()">+</button>
-            </div>
+{% extends "base.html" %}
+{% block content %}
+<div class="chat-container">
+    <div class="sidebar">
+        <div class="user-info">
+            <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
+            <button onclick="location.href='/logout'">Logout</button>
         </div>
-
-        <!-- Add Contact Form -->
-        <div class="add-contact-form" id="addContactForm" style="display: none;">
-            <h4>Add New Contact</h4>
-            <input type="text" id="contactName" placeholder="Contact Name" required>
-            <input type="text" id="contactAddress" placeholder="Full Address" required>
-            <div class="form-buttons">
-                <button class="btn-secondary" onclick="hideAddContactForm()">Cancel</button>
-                <button class="btn-primary" onclick="addContact()">Add Contact</button>
-            </div>
+        <nav>
+            <ul>
+                <li><a href="/chat">Chat</a></li>
+                <li><a href="/contacts" class="active">Contacts</a></li>
+                <li><a href="/groups">Groups</a></li>
+                <li><a href="/profile">Profile</a></li>
+            </ul>
+        </nav>
+    </div>
+    <div class="main-content">
+        <h2>Contacts</h2>
+        <div class="contacts-list" id="contactsList">
+            <!-- Contacts will be loaded here -->
+            <p id="noContactsMessage">Loading contacts...</p>
         </div>
-
-        <!-- Contacts List -->
-        <div class="contacts-container">
-            <div class="profile-section">
-                <div class="profile-info">
-                    <div class="avatar">👤</div>
-                    <div>
-                        <p class="my-name">My Account</p>
-                        <p class="my-address" onclick="showFullAddress()">{{ address[:20] }}...</p>
-                    </div>
-                </div>
-                <button class="show-full-btn" onclick="showFullAddress()">Show Full Address</button>
-            </div>
-
-            <div class="contacts-list" id="contactsList">
-                <!-- Contacts will be loaded here -->
-            </div>
+        <div class="input-area">
+            <input type="text" id="contactName" placeholder="Contact Name">
+            <input type="text" id="contactAddress" placeholder="Contact Address">
+            <button onclick="addContact()">Add Contact</button>
         </div>
     </div>
+</div>
 
-    <script>
-        async function loadContacts() {
+<script>
+    async function loadContacts() {
+        try {
             const response = await fetch('/get_contacts');
             const data = await response.json();
-
             if (response.ok) {
-                const contactsList = document.getElementById('contactsList');
+                const container = document.getElementById('contactsList');
+                const noContactsMsg = document.getElementById('noContactsMessage');
+                container.innerHTML = '';
                 if (data.contacts.length === 0) {
-                    contactsList.innerHTML = '<div class="no-contacts">No contacts yet</div>';
-                    return;
+                    noContactsMsg.style.display = 'block';
+                    noContactsMsg.textContent = 'No contacts found. Add one!';
+                } else {
+                    noContactsMsg.style.display = 'none';
+                    const ul = document.createElement('ul');
+                    data.contacts.forEach(contact => {
+                        const li = document.createElement('li');
+                        li.className = 'contact-item';
+                        li.innerHTML = `
+                            <span class="contact-info">${contact.name} (${contact.address.substring(0, 10)}...)</span>
+                            <button class="delete-btn" onclick="deleteContact('${contact.address}', this)">Delete</button>
+                        `;
+                        ul.appendChild(li);
+                    });
+                    container.appendChild(ul);
                 }
-
-                contactsList.innerHTML = data.contacts.map(contact => `
-                    <div class="contact-item" onclick="selectContact('${contact.address}')">
-                        <div class="avatar">👤</div>
-                        <div class="contact-info">
-                            <h4>${contact.name}</h4>
-                            <p class="contact-address">${contact.address.substring(0, 30)}...</p>
-                        </div>
-                    </div>
-                `).join('');
             } else {
-                alert('Error loading contacts: ' + data.error);
+                console.error('Failed to load contacts:', data.error);
+                document.getElementById('contactsList').innerHTML = `<p class="error">Error loading contacts: ${data.error}</p>`;
             }
+        } catch (error) {
+            console.error('Error loading contacts:', error);
+            document.getElementById('contactsList').innerHTML = `<p class="error">Error loading contacts.</p>`;
+        }
+    }
+
+    async function addContact() {
+        const name = document.getElementById('contactName').value.trim();
+        const address = document.getElementById('contactAddress').value.trim();
+
+        if (!name || !address) {
+            alert('Please fill in both name and address.');
+            return;
         }
 
-        function showAddContactForm() {
-            document.getElementById('addContactForm').style.display = 'block';
+        if (address.length !== 64) {
+            alert('Invalid address format. Address must be 64 characters long.');
+            return;
         }
 
-        function hideAddContactForm() {
-            document.getElementById('addContactForm').style.display = 'none';
-        }
-
-        async function addContact() {
-            const name = document.getElementById('contactName').value;
-            const address = document.getElementById('contactAddress').value;
-
-            if (!name || !address) {
-                alert('Please fill all fields');
-                return;
-            }
-
+        try {
             const response = await fetch('/add_contact', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: name, address: address})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, address })
             });
-
             const data = await response.json();
-
             if (response.ok) {
-                alert('Contact added successfully');
-                hideAddContactForm();
-                loadContacts();
+                document.getElementById('contactName').value = '';
+                document.getElementById('contactAddress').value = '';
+                loadContacts(); // Перезагрузить контакты
+                alert('Contact added successfully.');
             } else {
                 alert('Error: ' + data.error);
             }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while adding the contact.');
+        }
+    }
+
+    async function deleteContact(address, buttonElement) {
+        if (!confirm("Are you sure you want to delete this contact?")) {
+            return; // Отмена, если пользователь нажал "Отмена"
         }
 
-        function selectContact(address) {
-            // Сохраняем выбранного контакта в localStorage
-            localStorage.setItem('selectedContact', address);
-            location.href = '/chat';
-        }
+        try {
+            // Отключаем кнопку, чтобы избежать повторных кликов
+            buttonElement.disabled = true;
+            buttonElement.textContent = 'Deleting...';
 
-        function showFullAddress() {
-            const fullAddress = '{{ address }}';
-            alert('Your full address:\n\n' + fullAddress);
+            const response = await fetch('/delete_contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                // Удаляем элемент списка из DOM
+                buttonElement.closest('li').remove();
+                // Проверяем, остались ли контакты
+                const contactItems = document.querySelectorAll('.contact-item');
+                if (contactItems.length === 0) {
+                    document.getElementById('noContactsMessage').style.display = 'block';
+                    document.getElementById('noContactsMessage').textContent = 'No contacts found. Add one!';
+                }
+                alert('Contact deleted successfully.');
+            } else if (response.status === 404) {
+                alert('Contact not found.');
+                // Удаляем элемент списка из DOM, даже если не найден на сервере
+                buttonElement.closest('li').remove();
+            } else {
+                alert('Error: ' + data.error);
+                // Включаем кнопку обратно в случае ошибки
+                buttonElement.disabled = false;
+                buttonElement.textContent = 'Delete';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while deleting the contact.');
+            // Включаем кнопку обратно в случае ошибки сети
+            buttonElement.disabled = false;
+            buttonElement.textContent = 'Delete';
         }
+    }
 
-        // Загрузка контактов при открытии страницы
-        document.addEventListener('DOMContentLoaded', loadContacts);
-    </script>
-</body>
-</html>
+    // Загрузка контактов при открытии страницы
+    document.addEventListener('DOMContentLoaded', loadContacts);
+</script>
+{% endblock %}

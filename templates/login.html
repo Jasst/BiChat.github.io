@@ -1,39 +1,35 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Login - Secure Messenger</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h1>Login to Messenger</h1>
-        <form id="loginForm">
-            <textarea id="mnemonic" placeholder="Enter your mnemonic phrase" required></textarea>
-            <button type="submit">Login</button>
-        </form>
-        <div id="result"></div>
-        <p><a href="/">← Back to Home</a></p>
-    </div>
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-container">
+    <h1>Login</h1>
+    <form id="loginForm">
+        <textarea id="mnemonic" placeholder="Enter your mnemonic phrase" required></textarea>
+        <button type="submit">Login</button>
+    </form>
+    <a href="/">Back to Home</a>
+</div>
 
-    <script>
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const mnemonic = document.getElementById('mnemonic').value;
+<script>
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const mnemonic = document.getElementById('mnemonic').value;
 
+        try {
             const response = await fetch('/login', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({mnemonic_phrase: mnemonic})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mnemonic_phrase: mnemonic })
             });
-
             const data = await response.json();
-
             if (response.ok) {
                 location.href = '/chat';
             } else {
-                document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+                alert('Error: ' + data.error);
             }
-        });
-    </script>
-</body>
-</html>
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred.');
+        }
+    });
+</script>
+{% endblock %}

@@ -1,37 +1,26 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Secure Messenger</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h1>🔒 Secure Messenger</h1>
-        <div class="welcome">
-            <button onclick="createWallet()">Create New Wallet</button>
-            <button onclick="location.href='/login'">Login with Mnemonic</button>
-        </div>
-        <div id="result"></div>
-    </div>
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-container">
+    <h1>Dark Messenger</h1>
+    <button onclick="location.href='/login'">Login</button>
+    <button onclick="createWallet()">Create Wallet</button>
+</div>
 
-    <script>
-        async function createWallet() {
-            const response = await fetch('/create_wallet', {method: 'POST'});
+<script>
+    async function createWallet() {
+        try {
+            const response = await fetch('/create_wallet', { method: 'POST' });
             const data = await response.json();
-
             if (response.ok) {
-                document.getElementById('result').innerHTML = `
-                    <div class="success">
-                        <h3>Wallet Created!</h3>
-                        <p>Save this mnemonic phrase:</p>
-                        <code>${data.mnemonic_phrase}</code>
-                        <button onclick="location.href='/chat'">Go to Chat</button>
-                    </div>
-                `;
+                alert('Wallet created! Your mnemonic phrase: ' + data.mnemonic_phrase);
+                location.href = '/chat';
             } else {
-                document.getElementById('result').innerHTML = `<p class="error">${data.error}</p>`;
+                alert('Error: ' + data.error);
             }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred.');
         }
-    </script>
-</body>
-</html>
+    }
+</script>
+{% endblock %}
