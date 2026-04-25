@@ -17,7 +17,7 @@ from flask import Flask, jsonify, request, render_template, session, redirect, u
 from mnemonic import Mnemonic
 from marshmallow import Schema, fields, ValidationError
 from werkzeug.utils import secure_filename
-
+from crypto_manager import encrypt_message, decrypt_message, generate_key,generate_address
 # === Конфигурация ===
 DATABASE_PATH = 'blockchain.db'
 UPLOAD_FOLDER = 'uploads'
@@ -32,61 +32,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s %(name)s %(message)s'
 )
-
-
-# === Криптографические функции ===
-def encrypt_message(key: bytes, message: str) -> str:
-    """Шифрует сообщение с использованием AES-256-CBC."""
-    if not message:
-        return ""
-    try:
-        backend = default_backend()
-        iv = os.urandom(16)
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
-        encryptor = cipher.encryptor()
-        padder = padding.PKCS7(algorithms.AES.block_size).padder()
-        padded_data = padder.update(message.encode('utf-8')) + padder.finalize()
-        encrypted = encryptor.update(padded_data) + encryptor.finalize()
-        return base64.b64encode(iv + encrypted).decode()
-    except Exception as e:
-        logging.error(f"Encryption error: {e}")
-        raise
-
-
-def decrypt_message(key: bytes, encrypted_message: str) -> str:
-    """Расшифровывает сообщение с использованием AES-256-CBC."""
-    if not encrypted_message:
-        return ""
-    try:
-        backend = default_backend()
-        raw_data = base64.b64decode(encrypted_message.encode())
-        iv = raw_data[:16]
-        ciphertext = raw_data[16:]
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
-        decryptor = cipher.decryptor()
-        padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
-        unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
-        plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
-        return plaintext.decode('utf-8')
-    except Exception as e:
-        logging.warning(f"Decryption error: {e}")
-        return "[Decryption Failed]"
-
-
-def generate_key(sender: str, recipient: str) -> bytes:
-    """Генерирует ключ для шифрования на основе адресов отправителя и получателя."""
-    shared_secret = ''.join(sorted([sender, recipient]))
-    key = hashlib.sha256(shared_secret.encode()).digest()
-    # --- Временная отладка ---
-    if not isinstance(key, bytes):
-        logging.critical(f"CRITICAL: generate_key is about to return NON-BYTES: {type(key)}, value: {key}")
-    # ------------------------
-    return key
-
-
-def generate_address(phrase: str) -> str:
-    """Генерирует адрес кошелька из мнемонической фразы."""
-    return hashlib.sha256(phrase.encode()).hexdigest()
 
 
 # === Работа с контактами ===
@@ -535,11 +480,6 @@ def get_user_groups(address: str) -> List[Dict[str, Any]]:
         return groups
 
 
-# === Инициализация таблиц ===
-# ИСПРАВЛЕНО: Эти вызовы были перемещены внутрь Blockchain.initialize_blockchain()
-# и теперь передают DATABASE_PATH. Они больше не нужны здесь.
-# create_contacts_table(DATABASE_PATH) # <-- Удалено или закомментировано
-# create_group_table(DATABASE_PATH)    # <-- Удалено или закомментировано
 
 # === Маршруты ===
 @app.route('/')

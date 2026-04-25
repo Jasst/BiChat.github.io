@@ -828,3 +828,145 @@
 2026-04-25 23:14:35,028 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:35] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
 2026-04-25 23:14:35,046 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:35] "GET /get_conversations HTTP/1.1" 200 -
 2026-04-25 23:14:37,391 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:37] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:19:13,785 INFO root Blockchain initialized
+2026-04-25 23:19:13,832 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.31.189:5000
+2026-04-25 23:19:13,833 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-04-25 23:19:13,837 INFO werkzeug  * Restarting with stat
+2026-04-25 23:19:14,426 INFO root Blockchain initialized
+2026-04-25 23:19:14,488 WARNING werkzeug  * Debugger is active!
+2026-04-25 23:19:14,502 INFO werkzeug  * Debugger PIN: 113-464-905
+2026-04-25 23:19:20,924 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:19:20] "[32mGET / HTTP/1.1[0m" 302 -
+2026-04-25 23:19:20,956 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:19:20] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:19:21,022 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:19:21] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:19:21,041 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:19:21] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:19:34,406 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:34] "[32mGET /chat HTTP/1.1[0m" 302 -
+2026-04-25 23:19:34,412 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:34] "GET / HTTP/1.1" 200 -
+2026-04-25 23:19:34,479 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:34] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-25 23:19:36,190 INFO root New wallet created: 5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b
+2026-04-25 23:19:36,190 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:36] "[35m[1mPOST /create_wallet HTTP/1.1[0m" 201 -
+2026-04-25 23:19:37,130 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:37] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:19:38,838 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:38] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:19:43,510 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:43] "GET /contacts HTTP/1.1" 200 -
+2026-04-25 23:19:45,074 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:45] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:19:45,496 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:45] "GET /contacts HTTP/1.1" 200 -
+2026-04-25 23:19:45,526 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:45] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:19:46,098 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:46] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:19:50,336 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:50] "GET /contacts HTTP/1.1" 200 -
+2026-04-25 23:19:50,370 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:50] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:19:50,970 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:50] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:19:51,004 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:51] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:19:51,496 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:51] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:19:51,527 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:51] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:19:52,411 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:52] "GET /contacts HTTP/1.1" 200 -
+2026-04-25 23:19:52,444 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:52] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:19:53,053 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:53] "GET /groups HTTP/1.1" 200 -
+2026-04-25 23:19:53,086 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:53] "GET /get_groups HTTP/1.1" 200 -
+2026-04-25 23:19:53,586 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:53] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:19:54,610 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:54] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:19:56,360 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:56] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:19:58,468 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:58] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:19:58,505 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:58] "GET /static/style.css HTTP/1.1" 200 -
+2026-04-25 23:19:59,068 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:19:59] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-25 23:20:00,456 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:00] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:20:00,483 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:00] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:20:00,503 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:00] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:20:02,200 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:02] "GET /contacts HTTP/1.1" 200 -
+2026-04-25 23:20:02,229 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:02] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:20:02,243 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:02] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:20:03,536 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:03] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:20:03,563 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:03] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:20:04,778 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:04] "GET /contacts HTTP/1.1" 200 -
+2026-04-25 23:20:04,800 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:04] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:20:04,818 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:04] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:20:05,985 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:05] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:20:06,012 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:06] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:20:06,025 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:06] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:20:09,167 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:09] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:20:14,429 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:14] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:20:14,456 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:14] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:20:15,311 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:15] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-25 23:20:20,176 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:20] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:21,027 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:21] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:24,037 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:24] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:26,385 INFO root Transaction added from 5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b to cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68, ID: 6
+2026-04-25 23:20:26,558 INFO root New block added: 7
+2026-04-25 23:20:26,570 INFO root Message sent from 5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b to cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68
+2026-04-25 23:20:26,571 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:26] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2026-04-25 23:20:26,584 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:26] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:27,032 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:27] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:29,772 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:29] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:20:29,790 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:29] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:20:29,809 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:29] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:20:30,367 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:30] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:30,496 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:30] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:32,818 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:32] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:33,365 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:33] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:35,815 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:35] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:36,369 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:36] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:38,699 INFO root Transaction added from cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 to 5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b, ID: 7
+2026-04-25 23:20:38,802 INFO root New block added: 8
+2026-04-25 23:20:38,816 INFO root Message sent from cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 to 5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b
+2026-04-25 23:20:38,816 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:38] "[35m[1mPOST /send_message HTTP/1.1[0m" 201 -
+2026-04-25 23:20:38,825 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:38] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:38,834 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:38] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:39,376 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:39] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:41,823 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:41] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:42,375 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:42] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:45,046 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:45] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:45,373 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:45] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:48,041 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:48] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:48,379 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:48] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:51,031 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:51] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:51,378 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:51] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:54,041 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:54] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:54,370 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:54] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:20:57,043 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:20:57] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:20:57,378 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:20:57] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:00,036 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:00] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:00,369 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:00] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:03,032 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:03] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:03,368 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:03] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:06,043 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:06] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:06,370 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:06] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:09,047 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:09] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:09,380 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:09] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:12,047 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:12] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:12,372 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:12] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:15,037 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:15] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:15,378 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:15] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:18,048 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:18] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:18,374 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:18] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:21,046 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:21] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:21,377 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:21] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:24,046 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:24] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:24,372 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:24] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:27,042 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:27] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:27,376 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:27] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:30,046 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:30] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:30,378 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:30] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:33,041 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:33] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:33,366 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:33] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:36,034 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:36] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:36,376 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:36] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:39,031 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:39] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:39,367 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:39] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:42,035 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:42] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:42,366 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:42] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:45,039 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:45] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:48,062 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:48] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:48,370 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:21:48] "GET /get_conversation?with=5b18cbd57af12fdb49637a722eac5fbff4f4b44955f40ff8ee6d9c3548f3457b HTTP/1.1" 200 -
+2026-04-25 23:21:51,030 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:51] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:54,029 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:54] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:21:57,046 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:21:57] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:00,030 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:00] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:03,039 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:03] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:06,039 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:06] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:09,038 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:09] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:12,033 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:12] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:15,048 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:15] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:18,047 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:18] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:21,039 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:21] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -
+2026-04-25 23:22:24,371 INFO werkzeug 192.168.31.189 - - [25/Apr/2026 23:22:24] "GET /get_conversation?with=cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68 HTTP/1.1" 200 -

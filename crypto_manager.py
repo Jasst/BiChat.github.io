@@ -7,7 +7,9 @@ import base64
 import logging
 
 
+# === Криптографические функции ===
 def encrypt_message(key: bytes, message: str) -> str:
+    """Шифрует сообщение с использованием AES-256-CBC."""
     if not message:
         return ""
     try:
@@ -15,10 +17,8 @@ def encrypt_message(key: bytes, message: str) -> str:
         iv = os.urandom(16)
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
         encryptor = cipher.encryptor()
-
         padder = padding.PKCS7(algorithms.AES.block_size).padder()
         padded_data = padder.update(message.encode('utf-8')) + padder.finalize()
-
         encrypted = encryptor.update(padded_data) + encryptor.finalize()
         return base64.b64encode(iv + encrypted).decode()
     except Exception as e:
@@ -27,6 +27,7 @@ def encrypt_message(key: bytes, message: str) -> str:
 
 
 def decrypt_message(key: bytes, encrypted_message: str) -> str:
+    """Расшифровывает сообщение с использованием AES-256-CBC."""
     if not encrypted_message:
         return ""
     try:
@@ -34,14 +35,11 @@ def decrypt_message(key: bytes, encrypted_message: str) -> str:
         raw_data = base64.b64decode(encrypted_message.encode())
         iv = raw_data[:16]
         ciphertext = raw_data[16:]
-
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
         decryptor = cipher.decryptor()
-
         padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
         unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
         plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
-
         return plaintext.decode('utf-8')
     except Exception as e:
         logging.warning(f"Decryption error: {e}")
@@ -49,9 +47,16 @@ def decrypt_message(key: bytes, encrypted_message: str) -> str:
 
 
 def generate_key(sender: str, recipient: str) -> bytes:
+    """Генерирует ключ для шифрования на основе адресов отправителя и получателя."""
     shared_secret = ''.join(sorted([sender, recipient]))
-    return hashlib.sha256(shared_secret.encode()).digest()
+    key = hashlib.sha256(shared_secret.encode()).digest()
+    # --- Временная отладка ---
+    if not isinstance(key, bytes):
+        logging.critical(f"CRITICAL: generate_key is about to return NON-BYTES: {type(key)}, value: {key}")
+    # ------------------------
+    return key
 
 
 def generate_address(phrase: str) -> str:
+    """Генерирует адрес кошелька из мнемонической фразы."""
     return hashlib.sha256(phrase.encode()).hexdigest()
