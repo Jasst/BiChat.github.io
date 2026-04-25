@@ -5,19 +5,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
-      <change afterPath="$PROJECT_DIR$/static/style.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/base.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/profile.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/blockchain.db" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/css/dark.css" beforeDir="false" afterPath="$PROJECT_DIR$/static/dark.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/css/style.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/blockchain.db" beforeDir="false" afterPath="$PROJECT_DIR$/blockchain.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/messenger.log" beforeDir="false" afterPath="$PROJECT_DIR$/messenger.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/static/style.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/contacts.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/contacts.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/groups.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/groups.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/login.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/login.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/profile.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/profile.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -136,14 +132,14 @@
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat\templates" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\templates" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger\static" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.app">
+  <component name="RunManager">
     <configuration name="Privet.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/Privet.js" working-dir="$PROJECT_DIR$">
       <method v="2" />
     </configuration>

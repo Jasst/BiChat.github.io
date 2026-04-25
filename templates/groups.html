@@ -6,19 +6,21 @@
             <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
             <button onclick="location.href='/logout'">Logout</button>
         </div>
-        <nav>
-            <ul>
-                <li><a href="/chat" {% if request.endpoint == 'chat' %}class="active"{% endif %}>Chat</a></li>
-                <li><a href="/contacts" {% if request.endpoint == 'contacts' %}class="active"{% endif %}>Contacts</a></li>
-                <li><a href="/groups" {% if request.endpoint == 'groups' %}class="active"{% endif %}>Groups</a></li>
-                <li><a href="/profile" {% if request.endpoint == 'profile' %}class="active"{% endif %}>Profile</a></li>
-            </ul>
-        </nav>
+
+        <!-- Навигация в виде вкладок -->
+        <div class="tabs">
+            <div class="tab" onclick="location.href='/chat'">Chat</div>
+            <div class="tab" onclick="location.href='/contacts'">Contacts</div>
+            <div class="tab active" onclick="location.href='/groups'">Groups</div>
+            <div class="tab" onclick="location.href='/profile'">Profile</div>
+        </div>
     </div>
+
     <div class="main-content">
         <h2>Groups</h2>
         <div class="groups-list" id="groupsList">
             <!-- Groups will be loaded here -->
+            <p>Loading groups...</p>
         </div>
         <div class="input-area">
             <input type="text" id="groupName" placeholder="Group Name">
@@ -35,27 +37,33 @@
             const data = await response.json();
             if (response.ok) {
                 const container = document.getElementById('groupsList');
-                container.innerHTML = '<ul>';
+                container.innerHTML = '';
                 if (data.groups.length === 0) {
-                    container.innerHTML += '<li>No groups found.</li>';
+                    container.innerHTML = '<p>No groups found.</p>';
                 } else {
+                    const ul = document.createElement('ul');
                     data.groups.forEach(group => {
-                        container.innerHTML += `<li>${group.name} (ID: ${group.id.substring(0, 10)}...)</li>`;
+                        const li = document.createElement('li');
+                        li.className = 'group-item';
+                        li.innerHTML = `
+                            <span class="group-info">${group.name} (ID: ${group.id.substring(0, 10)}...)</span>
+                        `;
+                        ul.appendChild(li);
                     });
+                    container.appendChild(ul);
                 }
-                container.innerHTML += '</ul>';
             } else {
                 console.error('Failed to load groups:', data.error);
-                document.getElementById('groupsList').innerHTML = `<p>Error loading groups: ${data.error}</p>`;
+                document.getElementById('groupsList').innerHTML = `<p class="error">Error loading groups: ${data.error}</p>`;
             }
         } catch (error) {
             console.error('Error loading groups:', error);
-            document.getElementById('groupsList').innerHTML = `<p>Error loading groups.</p>`;
+            document.getElementById('groupsList').innerHTML = `<p class="error">Error loading groups.</p>`;
         }
     }
 
     async function createGroup() {
-        const name = document.getElementById('groupName').value;
+        const name = document.getElementById('groupName').value.trim();
         const membersInput = document.getElementById('groupMembers').value;
         const members = membersInput.split(',').map(m => m.trim()).filter(m => m);
 
@@ -86,6 +94,6 @@
     }
 
     // Загрузка групп при открытии страницы
-    loadGroups();
+    document.addEventListener('DOMContentLoaded', loadGroups);
 </script>
 {% endblock %}

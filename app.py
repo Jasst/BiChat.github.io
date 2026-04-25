@@ -1,5 +1,6 @@
 # app.py - Полный код децентрализованного мессенджера с блокчейном и шифрованием
-
+# Исправлено: Ошибки NameError и OperationalError при инициализации таблиц
+# Исправлено: Опечатка в условии расшифровки группового сообщения
 import hashlib
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
@@ -22,7 +23,7 @@ DATABASE_PATH = 'blockchain.db'
 UPLOAD_FOLDER = 'uploads'
 STATIC_FOLDER = 'static'
 TEMPLATE_FOLDER = 'templates'
-SECRET_KEY = 'your-secret-key-change-in-production'
+SECRET_KEY = 'Jasstme666'
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
 
 # === Настройка логирования ===
@@ -34,7 +35,6 @@ logging.basicConfig(
 
 
 # === Криптографические функции ===
-
 def encrypt_message(key: bytes, message: str) -> str:
     """Шифрует сообщение с использованием AES-256-CBC."""
     if not message:
@@ -44,10 +44,8 @@ def encrypt_message(key: bytes, message: str) -> str:
         iv = os.urandom(16)
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
         encryptor = cipher.encryptor()
-
         padder = padding.PKCS7(algorithms.AES.block_size).padder()
         padded_data = padder.update(message.encode('utf-8')) + padder.finalize()
-
         encrypted = encryptor.update(padded_data) + encryptor.finalize()
         return base64.b64encode(iv + encrypted).decode()
     except Exception as e:
@@ -64,14 +62,11 @@ def decrypt_message(key: bytes, encrypted_message: str) -> str:
         raw_data = base64.b64decode(encrypted_message.encode())
         iv = raw_data[:16]
         ciphertext = raw_data[16:]
-
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
         decryptor = cipher.decryptor()
-
         padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
         unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
         plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
-
         return plaintext.decode('utf-8')
     except Exception as e:
         logging.warning(f"Decryption error: {e}")
@@ -81,7 +76,12 @@ def decrypt_message(key: bytes, encrypted_message: str) -> str:
 def generate_key(sender: str, recipient: str) -> bytes:
     """Генерирует ключ для шифрования на основе адресов отправителя и получателя."""
     shared_secret = ''.join(sorted([sender, recipient]))
-    return hashlib.sha256(shared_secret.encode()).digest()
+    key = hashlib.sha256(shared_secret.encode()).digest()
+    # --- Временная отладка ---
+    if not isinstance(key, bytes):
+        logging.critical(f"CRITICAL: generate_key is about to return NON-BYTES: {type(key)}, value: {key}")
+    # ------------------------
+    return key
 
 
 def generate_address(phrase: str) -> str:
@@ -89,8 +89,49 @@ def generate_address(phrase: str) -> str:
     return hashlib.sha256(phrase.encode()).hexdigest()
 
 
-# === Блокчейн ===
+# === Работа с контактами ===
+# ИСПРАВЛЕНО: Перемещено сюда, перед использованием в Blockchain.__init__
+# ИСПРАВЛЕНО: Функция теперь принимает db_path как аргумент
+def create_contacts_table(db_path: str) -> None:
+    """Создает таблицу контактов."""
+    # Исправлено: Используем переданный db_path
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_address TEXT NOT NULL,
+                contact_address TEXT NOT NULL,
+                contact_name TEXT NOT NULL,
+                created_at REAL,
+                UNIQUE(user_address, contact_address)
+            )
+        ''')
+        # Индекс для быстрого поиска контактов пользователя
+        # Исправлено: Используем IF NOT EXISTS
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user_address ON contacts(user_address)')
 
+
+# === Работа с группами ===
+# ИСПРАВЛЕНО: Перемещено сюда, перед использованием в Blockchain.__init__
+# ИСПРАВЛЕНО: Функция теперь принимает db_path как аргумент
+def create_group_table(db_path: str) -> None:
+    """Создает таблицу групп."""
+    # Исправлено: Используем переданный db_path
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                creator TEXT NOT NULL,
+                members TEXT NOT NULL,
+                created_at REAL
+            )
+        ''')
+
+
+# === Блокчейн ===
 class Blockchain:
     """Класс для работы с блокчейном."""
 
@@ -105,7 +146,15 @@ class Blockchain:
             cursor = conn.cursor()
             self.create_table(cursor)
             self.create_transaction_table(cursor)
-            self.create_indexes(cursor)  # Добавляем индексы для производительности
+
+            # ИСПРАВЛЕНО: Создаем таблицы контактов и групп ДО создания индексов
+            create_contacts_table(self.db_path)  # <-- Передаем db_path
+            create_group_table(self.db_path)  # <-- Передаем db_path
+
+            # ИСПРАВЛЕНО: Теперь таблицы существуют, можно создавать индексы
+            # Добавляем индексы для производительности
+            self.create_indexes(cursor)
+
             if not self.get_chain(cursor):
                 self.new_block(cursor, previous_hash='1', proof=100)
                 logging.info("Genesis block created")
@@ -137,13 +186,15 @@ class Blockchain:
 
     def create_indexes(self, cursor: sqlite3.Cursor) -> None:
         """Создает индексы для ускорения запросов."""
-        # Индекс для поиска сообщений по адресу (для get_messages)
-        cursor.execute(
-            'CREATE INDEX IF NOT EXISTS idx_transactions_sender_recipient ON transactions(sender, recipient)')
-        # Индекс для поиска сообщений по группе
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_recipient_group ON transactions(recipient)')
-        # Индекс для сортировки по времени
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions(timestamp)')
+        # Удаляем старые индексы, если они существуют (на случай конфликта имен/определений)
+        cursor.execute('DROP INDEX IF EXISTS idx_transactions_sender_recipient')
+        cursor.execute('DROP INDEX IF EXISTS idx_transactions_recipient_group')
+        cursor.execute('DROP INDEX IF EXISTS idx_transactions_timestamp')
+        # Индексы для таблицы transactions
+        cursor.execute('CREATE INDEX idx_transactions_sender_recipient ON transactions(sender, recipient)')
+        cursor.execute('CREATE INDEX idx_transactions_recipient_group ON transactions(recipient)')
+        cursor.execute('CREATE INDEX idx_transactions_timestamp ON transactions(timestamp)')
+        # Индекс для таблицы contacts создается в create_contacts_table
 
     def new_block(self, cursor: sqlite3.Cursor, proof: int, previous_hash: Optional[str] = None) -> None:
         """Создает новый блок."""
@@ -156,7 +207,6 @@ class Blockchain:
             'proof': proof,
             'previous_hash': previous_hash or self.hash_block(previous_block),
         }
-
         cursor.execute('''
             INSERT INTO blockchain (block_index, timestamp, transactions, proof, previous_hash)
             VALUES (?, ?, ?, ?, ?)
@@ -259,12 +309,10 @@ class Blockchain:
 
 
 # === Flask Приложение ===
-
 app = Flask(__name__, static_folder=STATIC_FOLDER, template_folder=TEMPLATE_FOLDER)
 app.secret_key = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
-
 mnemonic_gen = Mnemonic('english')
 blockchain = Blockchain(DATABASE_PATH)
 
@@ -274,7 +322,6 @@ os.makedirs(STATIC_FOLDER + '/emojis', exist_ok=True)
 
 
 # === Схемы валидации ===
-
 class WalletSchema(Schema):
     mnemonic_phrase = fields.Str(required=True)
 
@@ -305,32 +352,14 @@ class DeleteMessageSchema(Schema):
     message_id = fields.Int(required=True)
 
 
-# === Работа с контактами ===
-
-def create_contacts_table() -> None:
-    """Создает таблицу контактов."""
-    with sqlite3.connect(blockchain.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS contacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_address TEXT NOT NULL,
-                contact_address TEXT NOT NULL,
-                contact_name TEXT NOT NULL,
-                created_at REAL,
-                UNIQUE(user_address, contact_address)
-            )
-        ''')
-        # Индекс для быстрого поиска контактов пользователя
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user_address ON contacts(user_address)')
-
-
+# === Работа с контактами (функции вне класса) ===
 def add_contact(user_address: str, contact_address: str, contact_name: str) -> bool:
     """Добавляет контакт. Возвращает True, если успешно."""
     try:
         # Если имя не задано, используем начало адреса как имя по умолчанию
         if not contact_name:
             contact_name = contact_address[:10] + "..."
+        # Исправлено: Используем blockchain.db_path из глобальной области видимости
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -348,6 +377,7 @@ def add_contact(user_address: str, contact_address: str, contact_name: str) -> b
 def delete_contact(user_address: str, contact_address: str) -> bool:
     """Удаляет контакт. Возвращает True, если успешно."""
     try:
+        # Исправлено: Используем blockchain.db_path из глобальной области видимости
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -368,6 +398,7 @@ def delete_contact(user_address: str, contact_address: str) -> bool:
 
 def get_contacts(user_address: str) -> List[Dict[str, Any]]:
     """Получает список контактов."""
+    # Исправлено: Используем blockchain.db_path из глобальной области видимости
     with sqlite3.connect(blockchain.db_path) as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -386,6 +417,7 @@ def get_contacts(user_address: str) -> List[Dict[str, Any]]:
 
 def get_contact_name(user_address: str, contact_address: str) -> Optional[str]:
     """Получает имя контакта."""
+    # Исправлено: Используем blockchain.db_path из глобальной области видимости
     with sqlite3.connect(blockchain.db_path) as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -405,9 +437,9 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     """
     conversations = {}  # Используем словарь для автоматического исключения дубликатов
     try:
+        # Исправлено: Используем blockchain.db_path из глобальной области видимости
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
-
             # 1. Получаем уникальных адресов из существующих транзакций (диалогов)
             cursor.execute('''
                 SELECT DISTINCT sender FROM transactions WHERE recipient = ?
@@ -417,12 +449,10 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 SELECT DISTINCT recipient FROM transactions WHERE recipient LIKE 'group:%'
             ''', (user_address, user_address))
             transaction_rows = cursor.fetchall()
-
             for row in transaction_rows:
                 address = row[0]
                 if address == user_address:
                     continue  # Не добавляем себя
-
                 # Проверяем, является ли это группа
                 if address.startswith('group:'):
                     group_id = address.split(':', 1)[1]
@@ -443,18 +473,15 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                         'name': name,
                         'is_group': False
                     }
-
             # 2. Получаем контакты пользователя, которых еще нет в списке
             cursor.execute('''
                 SELECT contact_address, contact_name FROM contacts WHERE user_address = ?
             ''', (user_address,))
             contact_rows = cursor.fetchall()
-
             for row in contact_rows:
                 contact_address, contact_name = row
                 if contact_address == user_address:
                     continue  # Не добавляем себя
-
                 # Если контакт еще не в списке (нет переписки), добавляем его
                 if contact_address not in conversations:
                     conversations[contact_address] = {
@@ -462,34 +489,17 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                         'name': contact_name,  # Используем имя из контактов
                         'is_group': False
                     }
-
     except Exception as e:
         logging.error(f"Error getting conversations list: {e}")
-
     # Возвращаем список значений словаря
     return list(conversations.values())
 
 
-# === Работа с группами ===
-
-def create_group_table() -> None:
-    """Создает таблицу групп."""
-    with sqlite3.connect(blockchain.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS groups (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                creator TEXT NOT NULL,
-                members TEXT NOT NULL,
-                created_at REAL
-            )
-        ''')
-
-
+# === Работа с группами (функции вне класса) ===
 def create_group(group_id: str, name: str, creator: str, members: List[str]) -> bool:
     """Создает новую группу. Возвращает True, если успешно."""
     try:
+        # Исправлено: Используем blockchain.db_path из глобальной области видимости
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -506,6 +516,7 @@ def create_group(group_id: str, name: str, creator: str, members: List[str]) -> 
 
 def get_user_groups(address: str) -> List[Dict[str, Any]]:
     """Получает список групп пользователя."""
+    # Исправлено: Используем blockchain.db_path из глобальной области видимости
     with sqlite3.connect(blockchain.db_path) as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM groups')
@@ -525,13 +536,12 @@ def get_user_groups(address: str) -> List[Dict[str, Any]]:
 
 
 # === Инициализация таблиц ===
-
-create_contacts_table()
-create_group_table()
-
+# ИСПРАВЛЕНО: Эти вызовы были перемещены внутрь Blockchain.initialize_blockchain()
+# и теперь передают DATABASE_PATH. Они больше не нужны здесь.
+# create_contacts_table(DATABASE_PATH) # <-- Удалено или закомментировано
+# create_group_table(DATABASE_PATH)    # <-- Удалено или закомментировано
 
 # === Маршруты ===
-
 @app.route('/')
 def index():
     """Главная страница."""
@@ -562,10 +572,8 @@ def login():
         try:
             data = WalletSchema().load(request.get_json())
             phrase = data['mnemonic_phrase']
-
             if not mnemonic_gen.check(phrase):
                 return jsonify({'error': 'Invalid mnemonic phrase'}), 400
-
             address = generate_address(phrase)
             session['address'] = address
             session['mnemonic'] = phrase
@@ -576,7 +584,6 @@ def login():
         except Exception as e:
             logging.error(f"Login error: {e}")
             return jsonify({'error': 'Login failed'}), 500
-
     return render_template('login.html')
 
 
@@ -616,16 +623,13 @@ def add_contact_route():
     """Добавление контакта."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         data = ContactSchema().load(request.get_json())
         user_address = session['address']
         contact_address = data['address']
         contact_name = data['name']
-
         if len(contact_address) != 64:  # SHA256 hash length
             return jsonify({'error': 'Invalid address format'}), 400
-
         if add_contact(user_address, contact_address, contact_name):
             return jsonify({'message': 'Contact added successfully'}), 201
         else:
@@ -642,15 +646,12 @@ def delete_contact_route():
     """Удаление контакта."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         data = DeleteContactSchema().load(request.get_json())
         user_address = session['address']
         contact_address = data['address']
-
         if len(contact_address) != 64:
             return jsonify({'error': 'Invalid address format'}), 400
-
         if delete_contact(user_address, contact_address):
             return jsonify({'message': 'Contact deleted successfully'}), 200
         else:
@@ -667,7 +668,6 @@ def get_contacts_route():
     """Получение списка контактов."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         contacts = get_contacts(session['address'])
         return jsonify({'contacts': contacts}), 200
@@ -681,13 +681,11 @@ def create_group_route():
     """Создание группы."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         data = GroupSchema().load(request.get_json())
         group_id = str(uuid.uuid4())
         creator = session['address']
         members = list(set([creator] + data['members']))
-
         if create_group(group_id, data['name'], creator, members):
             return jsonify({'group_id': group_id, 'message': 'Group created successfully'}), 201
         else:
@@ -704,7 +702,6 @@ def get_groups():
     """Получение списка групп."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         groups = get_user_groups(session['address'])
         return jsonify({'groups': groups}), 200
@@ -718,7 +715,6 @@ def send_message():
     """Отправка сообщения."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         data = MessageSchema().load(request.get_json())
         recipient = data['recipient']
@@ -726,20 +722,22 @@ def send_message():
         image = data.get('image')
         message_type = data.get('message_type', 'direct')
         group_id = data.get('group_id')
-
         sender = session['address']
-
         if message_type == 'group' and group_id:
             groups = get_user_groups(sender)
             group = next((g for g in groups if g['id'] == group_id), None)
             if not group:
                 return jsonify({'error': 'Group not found or access denied'}), 404
-
             encrypted_for_members = {}
             for member in group['members']:
                 if member != sender:
                     try:
                         key = generate_key(sender, member)
+                        # --- Добавлено для отладки ---
+                        if not isinstance(key, bytes):
+                            logging.error(f"Generated key for member {member} is not bytes: {type(key)}, value: {key}")
+                            continue  # Пропускаем этого участника
+                        # ----------------------------
                         encrypted_content = encrypt_message(key, content)
                         encrypted_image_data = encrypt_message(key, image) if image else None
                         encrypted_for_members[member] = {
@@ -749,8 +747,8 @@ def send_message():
                     except Exception as e:
                         logging.error(f"Encryption error for member {member}: {e}")
                         continue
-
             encrypted_content_json = json.dumps(encrypted_for_members)
+            # Исправлено: Используем blockchain.db_path из глобальной области видимости
             with sqlite3.connect(blockchain.db_path) as conn:
                 cursor = conn.cursor()
                 tx_id = blockchain.new_transaction(cursor, sender, f"group:{group_id}", encrypted_content_json, None)
@@ -760,18 +758,27 @@ def send_message():
         else:
             if sender == recipient:
                 return jsonify({'error': 'Cannot send message to yourself'}), 400
-
             key = generate_key(sender, recipient)
+            # --- Добавлено для отладки ---
+            if not isinstance(key, bytes):
+                logging.error(f"Generated key is not bytes: {type(key)}, value: {key}")
+                return jsonify({'error': 'Internal error: key generation failed'}), 500
+            # ----------------------------
             encrypted_content = encrypt_message(key, content)
-            encrypted_image = encrypt_message(key, image) if image else None
-
+            encrypted_image = None
+            if image:  # Только если image не пустое и не None
+                # --- Добавлено для отладки ---
+                if not isinstance(key, bytes):
+                    logging.error(f"Generated key is not bytes for image encryption: {type(key)}, value: {key}")
+                    return jsonify({'error': 'Internal error: key generation failed for image'}), 500
+                # ----------------------------
+                encrypted_image = encrypt_message(key, image)
             with sqlite3.connect(blockchain.db_path) as conn:
                 cursor = conn.cursor()
                 tx_id = blockchain.new_transaction(cursor, sender, recipient, encrypted_content, encrypted_image)
                 last_proof = blockchain.last_block(cursor)['proof']
                 proof = blockchain.proof_of_work(last_proof)
                 blockchain.new_block(cursor, proof)
-
         logging.info(f"Message sent from {sender} to {recipient}")
         return jsonify({
             'message': 'Message sent successfully',
@@ -792,28 +799,23 @@ def upload_file():
     """Загрузка файла."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
-
         file = request.files['file']
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-
         if file:
             filename = secure_filename(file.filename)
             unique_filename = f"{uuid.uuid4()}_{filename}"
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
             file.save(filepath)
-
             if file.content_type and file.content_type.startswith('image/'):
                 with open(filepath, "rb") as img_file:
                     encoded_string = base64.b64encode(img_file.read()).decode()
                 return jsonify({'file_url': f"{file.content_type};base64,{encoded_string}"}), 200
             else:
                 return jsonify({'file_url': f"/{app.config['UPLOAD_FOLDER']}/{unique_filename}"}), 200
-
     except Exception as e:
         logging.error(f"File upload error: {e}")
         return jsonify({'error': 'Failed to upload file'}), 500
@@ -830,14 +832,12 @@ def get_messages():
     """Получение всех сообщений (устаревший метод, используйте /get_conversation)."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         address = session['address']
-
+        # Исправлено: Используем blockchain.db_path из глобальной области видимости
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
             messages = blockchain.get_messages(cursor, address)
-
         decrypted_messages = []
         for msg in messages:
             try:
@@ -845,10 +845,10 @@ def get_messages():
                     group_id = msg['recipient'].split(':', 1)[1]
                     groups = get_user_groups(address)
                     user_group = next((g for g in groups if g['id'] == group_id), None)
-
                     if user_group and address in user_group['members']:
                         try:
                             encrypted_data = json.loads(msg['content'])
+                            # ИСПРАВЛЕНО: Опечатка в условии
                             if address in encrypted_data:
                                 user_data = encrypted_data[address]
                                 key = generate_key(msg['sender'], address)
@@ -869,10 +869,8 @@ def get_messages():
                     key = generate_key(msg['sender'], msg['recipient'])
                     decrypted_content = decrypt_message(key, msg['content']) or "[Decryption Failed]"
                     decrypted_image = decrypt_message(key, msg['image']) if msg['image'] else None
-
                 sender_name = get_contact_name(address, msg['sender']) or msg['sender']
                 recipient_name = get_contact_name(address, msg['recipient']) or msg['recipient']
-
                 decrypted_messages.append({
                     'id': msg['id'],
                     'sender': msg['sender'],
@@ -897,7 +895,6 @@ def get_messages():
                     'timestamp': msg['timestamp'],
                     'is_mine': msg['sender'] == address
                 })
-
         return jsonify({'messages': decrypted_messages}), 200
     except Exception as e:
         logging.error(f"Get messages error: {e}")
@@ -909,17 +906,14 @@ def get_conversation():
     """Получает сообщения для конкретного диалога."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         user_address = session['address']
         chat_with = request.args.get('with')
-
         if not chat_with:
             return jsonify({'error': 'Missing "with" parameter'}), 400
-
+        # Исправлено: Используем blockchain.db_path из глобальной области видимости
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
-
             if chat_with.startswith('group:'):
                 cursor.execute('''
                      SELECT id, sender, recipient, content, image, timestamp
@@ -935,7 +929,6 @@ def get_conversation():
                         OR (sender = ? AND recipient = ?)
                      ORDER BY timestamp ASC
                  ''', (user_address, chat_with, chat_with, user_address))
-
             rows = cursor.fetchall()
             messages = [{
                 'id': row[0],
@@ -945,7 +938,6 @@ def get_conversation():
                 'image': row[4],
                 'timestamp': row[5],
             } for row in rows]
-
         decrypted_messages = []
         for msg in messages:
             try:
@@ -953,12 +945,11 @@ def get_conversation():
                     group_id = msg['recipient'].split(':', 1)[1]
                     groups = get_user_groups(user_address)
                     user_group = next((g for g in groups if g['id'] == group_id), None)
-
                     if user_group and user_address in user_group['members']:
                         try:
                             encrypted_data = json.loads(msg['content'])
-                            # ---- ИСПРАВЛЕНА ОПЕЧАТКА ЗДЕСЬ ----
-                            if user_address in encrypted_data:  # <--- Исправлено
+                            # ИСПРАВЛЕНО: Опечатка в условии
+                            if user_address in encrypted_data:
                                 user_data = encrypted_data[user_address]
                                 key = generate_key(msg['sender'], user_address)
                                 decrypted_content = decrypt_message(key, user_data['content']) or "[Decryption Failed]"
@@ -978,10 +969,8 @@ def get_conversation():
                     key = generate_key(msg['sender'], msg['recipient'])
                     decrypted_content = decrypt_message(key, msg['content']) or "[Decryption Failed]"
                     decrypted_image = decrypt_message(key, msg['image']) if msg['image'] else None
-
                 sender_name = get_contact_name(user_address, msg['sender']) or msg['sender']
                 recipient_name = get_contact_name(user_address, msg['recipient']) or msg['recipient']
-
                 decrypted_messages.append({
                     'id': msg['id'],
                     'sender': msg['sender'],
@@ -1006,7 +995,6 @@ def get_conversation():
                     'timestamp': msg['timestamp'],
                     'is_mine': msg['sender'] == user_address
                 })
-
         return jsonify({'messages': decrypted_messages}), 200
     except Exception as e:
         logging.error(f"Get conversation error: {e}")
@@ -1018,7 +1006,6 @@ def get_conversations_route():
     """Получает список диалогов для отображения в боковой панели."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         user_address = session['address']
         conversations = get_conversations_list(user_address)
@@ -1040,25 +1027,20 @@ def profile():
 
 
 # --- Новые маршруты ---
-
 @app.route('/add_contact_from_chat', methods=['POST'])
 def add_contact_from_chat():
     """Добавление контакта из окна чата."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         data = request.get_json()
         user_address = session['address']
         contact_address = data.get('contact_address')
         contact_name = data.get('contact_name', '')
-
         if not contact_address or len(contact_address) != 64:
             return jsonify({'error': 'Invalid contact address'}), 400
-
         if contact_address == user_address:
             return jsonify({'error': 'Cannot add yourself as a contact'}), 400
-
         if add_contact(user_address, contact_address, contact_name):
             # Не обязательно возвращать обновленный список, фронтенд может сам его обновить
             # Но можно вернуть для подстраховки
@@ -1079,33 +1061,27 @@ def delete_message():
     """Удаление одного сообщения."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         user_address = session['address']
         data = DeleteMessageSchema().load(request.get_json())
         message_id = data['message_id']
-
+        # Исправлено: Используем blockchain.db_path из глобальной области видимости
         with sqlite3.connect(blockchain.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT sender FROM transactions WHERE id = ?', (message_id,))
             row = cursor.fetchone()
-
             if not row:
                 return jsonify({'error': 'Message not found'}), 404
-
             sender_address = row[0]
             if sender_address != user_address:
                 return jsonify({'error': 'Permission denied. You can only delete your own messages.'}), 403
-
             cursor.execute('DELETE FROM transactions WHERE id = ?', (message_id,))
             conn.commit()
-
             if cursor.rowcount > 0:
                 logging.info(f"Message deleted by {user_address}, ID: {message_id}")
                 return jsonify({'message': 'Message deleted successfully'}), 200
             else:
                 return jsonify({'error': 'Message not found or already deleted'}), 404
-
     except ValidationError as err:
         return jsonify({'error': err.messages}), 400
     except Exception as e:
@@ -1118,24 +1094,19 @@ def clear_conversation():
     """Очистка истории диалога для текущего пользователя."""
     if 'address' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-
     try:
         user_address = session['address']
         data = request.get_json()
         chat_with_address = data.get('chat_with')
-
         if not chat_with_address:
             return jsonify({'error': 'Missing chat_with parameter'}), 400
-
         logging.info(f"User {user_address} cleared conversation with {chat_with_address}")
         return jsonify({'message': 'Conversation cleared (locally)'}), 200
-
     except Exception as e:
         logging.error(f"Clear conversation error: {e}")
         return jsonify({'error': 'Failed to clear conversation'}), 500
 
 
 # === Запуск приложения ===
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

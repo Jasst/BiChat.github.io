@@ -700,3 +700,131 @@
 2025-08-21 23:49:37,389 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:37] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
 2025-08-21 23:49:39,114 INFO werkzeug 192.168.0.14 - - [21/Aug/2025 23:49:39] "GET /get_conversation?with=ee2cbee513fb0b1cf0dacaf887c7a6971a165c3651c746ac99d7c9d265bbd466 HTTP/1.1" 200 -
 2025-08-21 23:49:40,116 INFO werkzeug 127.0.0.1 - - [21/Aug/2025 23:49:40] "GET /get_conversation?with=d1c05321f7f18cc5b084fc6019cd7e09f497d49a3681527d87e69b585cbd3a55 HTTP/1.1" 200 -
+2026-04-25 23:08:57,476 INFO root Blockchain initialized
+2026-04-25 23:08:57,524 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.31.189:5000
+2026-04-25 23:08:57,524 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-04-25 23:08:57,529 INFO werkzeug  * Restarting with stat
+2026-04-25 23:08:58,004 INFO root Blockchain initialized
+2026-04-25 23:08:58,032 WARNING werkzeug  * Debugger is active!
+2026-04-25 23:08:58,040 INFO werkzeug  * Debugger PIN: 113-464-905
+2026-04-25 23:09:01,398 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:01] "[32mGET / HTTP/1.1[0m" 302 -
+2026-04-25 23:09:01,420 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:01] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:09:01,496 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:01] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:09:01,504 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:01] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:09:03,583 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:03] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:09:30,059 INFO root Blockchain initialized
+2026-04-25 23:09:30,111 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.31.189:5000
+2026-04-25 23:09:30,111 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-04-25 23:09:30,117 INFO werkzeug  * Restarting with stat
+2026-04-25 23:09:30,679 INFO root Blockchain initialized
+2026-04-25 23:09:30,707 WARNING werkzeug  * Debugger is active!
+2026-04-25 23:09:30,716 INFO werkzeug  * Debugger PIN: 113-464-905
+2026-04-25 23:09:36,379 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:36] "GET / HTTP/1.1" 200 -
+2026-04-25 23:09:36,467 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:36] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:09:38,193 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:38] "GET / HTTP/1.1" 200 -
+2026-04-25 23:09:38,217 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:38] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:09:40,791 INFO root New wallet created: 5b6d6948938262d8d76db3d371e1921092e3041b34718abe140546da763ffe15
+2026-04-25 23:09:40,792 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:40] "[35m[1mPOST /create_wallet HTTP/1.1[0m" 201 -
+2026-04-25 23:09:41,763 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:41] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:09:41,793 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:41] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:09:41,832 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:41] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:09:43,024 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:09:43] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:09:55,752 INFO root Blockchain initialized
+2026-04-25 23:09:55,827 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.31.189:5000
+2026-04-25 23:09:55,827 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-04-25 23:09:55,834 INFO werkzeug  * Restarting with stat
+2026-04-25 23:09:56,409 INFO root Blockchain initialized
+2026-04-25 23:09:56,458 WARNING werkzeug  * Debugger is active!
+2026-04-25 23:09:56,467 INFO werkzeug  * Debugger PIN: 113-464-905
+2026-04-25 23:10:03,566 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:03] "[32mGET / HTTP/1.1[0m" 302 -
+2026-04-25 23:10:03,589 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:03] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:10:03,663 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:03] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:10:03,677 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:03] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:10:08,463 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:08] "[32mGET /logout HTTP/1.1[0m" 302 -
+2026-04-25 23:10:08,471 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:08] "GET / HTTP/1.1" 200 -
+2026-04-25 23:10:08,504 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:08] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:10:09,918 INFO root New wallet created: cefdb8e328cd6eba1a701dee8dd6baee9ea6d05a823699fdf845c9da70bcba68
+2026-04-25 23:10:09,919 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:09] "[35m[1mPOST /create_wallet HTTP/1.1[0m" 201 -
+2026-04-25 23:10:10,829 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:10] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:10:10,861 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:10] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:10:10,874 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:10] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:10:11,712 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:11] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:10:17,633 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:17] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:10:17,671 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:17] "GET /static/style.css HTTP/1.1" 200 -
+2026-04-25 23:10:17,685 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:17] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:10:17,689 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:17] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-25 23:10:18,301 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:18] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:10:18,339 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:18] "GET /static/style.css HTTP/1.1" 200 -
+2026-04-25 23:10:18,352 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:18] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:10:18,354 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:18] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-25 23:10:21,781 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:21] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:10:21,817 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:21] "GET /static/style.css HTTP/1.1" 200 -
+2026-04-25 23:10:21,834 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:21] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:10:21,836 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:21] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-25 23:10:23,239 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:10:23] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:11:25,732 INFO root Blockchain initialized
+2026-04-25 23:11:25,787 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.31.189:5000
+2026-04-25 23:11:25,787 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-04-25 23:11:25,793 INFO werkzeug  * Restarting with stat
+2026-04-25 23:11:26,274 INFO root Blockchain initialized
+2026-04-25 23:11:26,308 WARNING werkzeug  * Debugger is active!
+2026-04-25 23:11:26,316 INFO werkzeug  * Debugger PIN: 113-464-905
+2026-04-25 23:11:32,310 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:32] "[32mGET / HTTP/1.1[0m" 302 -
+2026-04-25 23:11:32,349 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:32] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:11:32,416 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:32] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:11:36,381 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:36] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:11:37,680 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:37] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:11:41,521 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:41] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:11:41,554 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:41] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:11:41,571 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:41] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:11:44,494 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:44] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:11:44,519 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:44] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:11:46,351 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:46] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:11:46,380 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:46] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:11:46,808 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:46] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:11:46,839 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:46] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:11:46,859 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:46] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:11:47,153 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:47] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:11:47,182 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:47] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:11:47,201 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:47] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:11:47,944 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:47] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:11:47,971 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:47] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:11:47,991 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:11:47] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:14:24,524 INFO root Blockchain initialized
+2026-04-25 23:14:24,571 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.31.189:5000
+2026-04-25 23:14:24,571 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-04-25 23:14:24,576 INFO werkzeug  * Restarting with stat
+2026-04-25 23:14:25,065 INFO root Blockchain initialized
+2026-04-25 23:14:25,107 WARNING werkzeug  * Debugger is active!
+2026-04-25 23:14:25,115 INFO werkzeug  * Debugger PIN: 113-464-905
+2026-04-25 23:14:28,968 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:28] "[32mGET / HTTP/1.1[0m" 302 -
+2026-04-25 23:14:28,998 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:28] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:14:29,078 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:29] "GET /static/style.css HTTP/1.1" 200 -
+2026-04-25 23:14:29,104 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:29] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:14:32,225 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:32] "GET /contacts HTTP/1.1" 200 -
+2026-04-25 23:14:32,255 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:32] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:14:32,282 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:32] "GET /get_contacts HTTP/1.1" 200 -
+2026-04-25 23:14:33,275 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:33] "GET /groups HTTP/1.1" 200 -
+2026-04-25 23:14:33,303 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:33] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:14:33,315 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:33] "GET /get_groups HTTP/1.1" 200 -
+2026-04-25 23:14:33,887 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:33] "GET /profile HTTP/1.1" 200 -
+2026-04-25 23:14:33,912 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:33] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:14:34,991 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:34] "GET /chat HTTP/1.1" 200 -
+2026-04-25 23:14:35,028 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:35] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+2026-04-25 23:14:35,046 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:35] "GET /get_conversations HTTP/1.1" 200 -
+2026-04-25 23:14:37,391 INFO werkzeug 127.0.0.1 - - [25/Apr/2026 23:14:37] "GET /get_contacts HTTP/1.1" 200 -
