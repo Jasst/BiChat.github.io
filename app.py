@@ -1,111 +1,217 @@
-# app.py - Полный код децентрализованного мессенджера с блокчейном и шифрованием
-# Исправлено: Ошибки NameError и OperationalError при инициализации таблиц
-# Исправлено: Опечатка в условии расшифровки группового сообщения
+# app.py - Оптимизированный децентрализованный мессенджер
+# Версия: 2.1 (с кэшированием, оптимизацией БД и PoW)
+
 import hashlib
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.backends import default_backend
 import os
 import base64
 import logging
+import logging.handlers
 import sqlite3
 import time
 import json
 import uuid
-from typing import List, Dict, Any, Optional
+import threading
+from functools import lru_cache, wraps
+from contextlib import contextmanager
+from typing import List, Dict, Any, Optional, Callable
+
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, send_from_directory
 from mnemonic import Mnemonic
-from marshmallow import Schema, fields, ValidationError
+from marshmallow import Schema, fields, ValidationError, post_load
 from werkzeug.utils import secure_filename
-from crypto_manager import encrypt_message, decrypt_message, generate_key,generate_address
-# === Конфигурация ===
+
+from crypto_manager import (
+    encrypt_message,
+    decrypt_message,
+    generate_key,
+    generate_address,
+    clear_key_cache,
+    get_cache_info
+)
+
+# === Конфигурация производительности ===
+CONFIG = {
+    'POW_DIFFICULTY': 3,  # Сложность PoW: 3 = "000" (быстро), 4 = "0000" (медленно)
+    'POW_MAX_ITERATIONS': 50000,  # Макс. итераций PoW для защиты от зависания
+    'CACHE_SIZE_KEYS': 128,  # Кэш ключей шифрования
+    'CACHE_SIZE_GROUPS': 32,  # Кэш групп пользователя
+    'CACHE_SIZE_CONTACTS': 64,  # Кэш имён контактов
+    'DB_TIMEOUT': 30.0,  # Таймаут блокировки БД (сек)
+    'SESSION_LIFETIME': 3600,  # Время жизни сессии (сек)
+    'LOG_MAX_BYTES': 10 * 1024 * 1204,  # 10 MB
+    'LOG_BACKUP_COUNT': 5,  # Количество архивных логов
+}
+
+# === Пути и настройки ===
 DATABASE_PATH = 'blockchain.db'
 UPLOAD_FOLDER = 'uploads'
 STATIC_FOLDER = 'static'
 TEMPLATE_FOLDER = 'templates'
-SECRET_KEY = 'Jasstme666'
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
-
-# === Настройка логирования ===
-logging.basicConfig(
-    filename='messenger.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(name)s %(message)s'
-)
+SECRET_KEY = os.getenv('SECRET_KEY', 'CHANGE_THIS_IN_PRODUCTION_Jasstme666')
+MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max upload
 
 
-# === Работа с контактами ===
-# ИСПРАВЛЕНО: Перемещено сюда, перед использованием в Blockchain.__init__
-# ИСПРАВЛЕНО: Функция теперь принимает db_path как аргумент
-def create_contacts_table(db_path: str) -> None:
-    """Создает таблицу контактов."""
-    # Исправлено: Используем переданный db_path
-    with sqlite3.connect(db_path) as conn:
+# === Настройка логирования с ротацией ===
+def setup_logging():
+    """Настраивает логирование с ротацией файлов."""
+    # Создаём хендлер с ротацией
+    file_handler = logging.handlers.RotatingFileHandler(
+        'messenger.log',
+        maxBytes=CONFIG['LOG_MAX_BYTES'],
+        backupCount=CONFIG['LOG_BACKUP_COUNT'],
+        encoding='utf-8',
+        delay=True
+    )
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s [%(name)s:%(lineno)d] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    ))
+
+    # Консольный хендлер для разработки
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+    # Базовая конфигурация
+    log_level = logging.INFO if os.getenv('FLASK_ENV') != 'production' else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        handlers=[file_handler] + ([console_handler] if os.getenv('FLASK_ENV') != 'production' else [])
+    )
+
+    # Снижаем шум от сторонних библиотек
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    logging.getLogger('sqlite3').setLevel(logging.ERROR)
+    logging.getLogger('cryptography').setLevel(logging.WARNING)
+
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+
+# === Утилиты БД ===
+@contextmanager
+def get_db_cursor(db_path: str):
+    """
+    Контекстный менеджер для безопасной работы с БД.
+    Автоматически коммитит/откатывает транзакции и закрывает соединение.
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(
+            db_path,
+            timeout=CONFIG['DB_TIMEOUT'],
+            check_same_thread=False,
+            detect_types=sqlite3.PARSE_DECLTYPES
+        )
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS contacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_address TEXT NOT NULL,
-                contact_address TEXT NOT NULL,
-                contact_name TEXT NOT NULL,
-                created_at REAL,
-                UNIQUE(user_address, contact_address)
-            )
-        ''')
-        # Индекс для быстрого поиска контактов пользователя
-        # Исправлено: Используем IF NOT EXISTS
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user_address ON contacts(user_address)')
+        yield cursor
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Database error: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 
-# === Работа с группами ===
-# ИСПРАВЛЕНО: Перемещено сюда, перед использованием в Blockchain.__init__
-# ИСПРАВЛЕНО: Функция теперь принимает db_path как аргумент
-def create_group_table(db_path: str) -> None:
-    """Создает таблицу групп."""
-    # Исправлено: Используем переданный db_path
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS groups (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                creator TEXT NOT NULL,
-                members TEXT NOT NULL,
-                created_at REAL
-            )
-        ''')
+# === Кэширующие декораторы ===
+def timed_cache(duration: int):
+    """
+    Декоратор для кэширования результата функции на заданное время (в секундах).
+    """
+
+    def decorator(func: Callable) -> Callable:
+        cache: Dict[str, tuple] = {}
+        lock = threading.Lock()
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            key = f"{func.__name__}:{args}:{kwargs}"
+            now = time.time()
+
+            with lock:
+                if key in cache:
+                    result, timestamp = cache[key]
+                    if now - timestamp < duration:
+                        return result
+
+            result = func(*args, **kwargs)
+
+            with lock:
+                # Очистка устаревших записей
+                expired = [k for k, (_, t) in cache.items() if now - t >= duration]
+                for k in expired:
+                    del cache[k]
+                cache[key] = (result, now)
+
+            return result
+
+        wrapper.cache_clear = lambda: cache.clear()
+        return wrapper
+
+    return decorator
 
 
-# === Блокчейн ===
+# === Создание таблиц БД ===
+def create_contacts_table(cursor: sqlite3.Cursor) -> None:
+    """Создаёт таблицу контактов (вызывать внутри транзакции)."""
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_address TEXT NOT NULL,
+            contact_address TEXT NOT NULL,
+            contact_name TEXT NOT NULL,
+            created_at REAL,
+            UNIQUE(user_address, contact_address)
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_address)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_pair ON contacts(user_address, contact_address)')
+
+
+def create_group_table(cursor: sqlite3.Cursor) -> None:
+    """Создаёт таблицу групп (вызывать внутри транзакции)."""
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            creator TEXT NOT NULL,
+            members TEXT NOT NULL,
+            created_at REAL
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_groups_creator ON groups(creator)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_groups_members ON groups(members)')
+
+
+# === Класс Блокчейн ===
 class Blockchain:
-    """Класс для работы с блокчейном."""
+    """Класс для работы с локальным блокчейном на SQLite."""
 
     def __init__(self, db_path: str = DATABASE_PATH):
         self.db_path = db_path
+        self._init_lock = threading.Lock()
         self.initialize_blockchain()
-        logging.info("Blockchain initialized")
+        logger.info("Blockchain initialized")
 
     def initialize_blockchain(self) -> None:
-        """Инициализирует блокчейн, создает таблицы и генезис-блок."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            self.create_table(cursor)
-            self.create_transaction_table(cursor)
+        """Инициализирует БД: создаёт таблицы, индексы и генезис-блок."""
+        with self._init_lock:
+            with get_db_cursor(self.db_path) as cursor:
+                self._create_tables(cursor)
+                self._create_indexes(cursor)
 
-            # ИСПРАВЛЕНО: Создаем таблицы контактов и групп ДО создания индексов
-            create_contacts_table(self.db_path)  # <-- Передаем db_path
-            create_group_table(self.db_path)  # <-- Передаем db_path
+                # Создаём генезис-блок если цепочка пуста
+                if not self._get_chain_raw(cursor):
+                    self._new_block_raw(cursor, previous_hash='1', proof=100)
+                    logger.info("Genesis block created")
 
-            # ИСПРАВЛЕНО: Теперь таблицы существуют, можно создавать индексы
-            # Добавляем индексы для производительности
-            self.create_indexes(cursor)
-
-            if not self.get_chain(cursor):
-                self.new_block(cursor, previous_hash='1', proof=100)
-                logging.info("Genesis block created")
-
-    def create_table(self, cursor: sqlite3.Cursor) -> None:
-        """Создает таблицу блокчейна."""
+    def _create_tables(self, cursor: sqlite3.Cursor) -> None:
+        """Создаёт все необходимые таблицы."""
+        # Таблица блоков
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS blockchain (
                 block_index INTEGER PRIMARY KEY,
@@ -116,8 +222,7 @@ class Blockchain:
             )
         ''')
 
-    def create_transaction_table(self, cursor: sqlite3.Cursor) -> None:
-        """Создает таблицу транзакций."""
+        # Таблица транзакций
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,362 +234,394 @@ class Blockchain:
             )
         ''')
 
-    def create_indexes(self, cursor: sqlite3.Cursor) -> None:
-        """Создает индексы для ускорения запросов."""
-        # Удаляем старые индексы, если они существуют (на случай конфликта имен/определений)
-        cursor.execute('DROP INDEX IF EXISTS idx_transactions_sender_recipient')
-        cursor.execute('DROP INDEX IF EXISTS idx_transactions_recipient_group')
-        cursor.execute('DROP INDEX IF EXISTS idx_transactions_timestamp')
-        # Индексы для таблицы transactions
-        cursor.execute('CREATE INDEX idx_transactions_sender_recipient ON transactions(sender, recipient)')
-        cursor.execute('CREATE INDEX idx_transactions_recipient_group ON transactions(recipient)')
-        cursor.execute('CREATE INDEX idx_transactions_timestamp ON transactions(timestamp)')
-        # Индекс для таблицы contacts создается в create_contacts_table
+        # Таблицы контактов и групп
+        create_contacts_table(cursor)
+        create_group_table(cursor)
 
-    def new_block(self, cursor: sqlite3.Cursor, proof: int, previous_hash: Optional[str] = None) -> None:
-        """Создает новый блок."""
-        block_index = self.last_block(cursor).get('index', 0) + 1
-        previous_block = self.last_block(cursor)
+    def _create_indexes(self, cursor: sqlite3.Cursor) -> None:
+        """Создаёт индексы для ускорения запросов."""
+        indexes = [
+            'CREATE INDEX IF NOT EXISTS idx_tx_sender ON transactions(sender)',
+            'CREATE INDEX IF NOT EXISTS idx_tx_recipient ON transactions(recipient)',
+            'CREATE INDEX IF NOT EXISTS idx_tx_timestamp ON transactions(timestamp)',
+            'CREATE INDEX IF NOT EXISTS idx_tx_sender_recipient ON transactions(sender, recipient)',
+        ]
+        for sql in indexes:
+            cursor.execute(sql)
+
+    def _new_block_raw(self, cursor: sqlite3.Cursor, proof: int, previous_hash: Optional[str] = None) -> None:
+        """Создаёт новый блок (внутренний метод, без логирования)."""
+        last = self._last_block_raw(cursor)
+        block_index = last.get('index', 0) + 1
+
         block = {
             'index': block_index,
             'timestamp': time.time(),
-            'transactions': [],  # Transactions will be stored in DB
+            'transactions': [],
             'proof': proof,
-            'previous_hash': previous_hash or self.hash_block(previous_block),
+            'previous_hash': previous_hash or self._hash_block(last),
         }
+
         cursor.execute('''
             INSERT INTO blockchain (block_index, timestamp, transactions, proof, previous_hash)
             VALUES (?, ?, ?, ?, ?)
         ''', (
-            block['index'],
-            block['timestamp'],
+            block['index'], block['timestamp'],
             json.dumps(block['transactions']),
-            block['proof'],
-            block['previous_hash']
+            block['proof'], block['previous_hash']
         ))
-        logging.info(f"New block added: {block['index']}")
 
-    def hash_block(self, block: Dict[str, Any]) -> str:
-        """Хэширует блок."""
+    def _hash_block(self, block: Dict[str, Any]) -> str:
+        """Вычисляет SHA256-хэш блока."""
+        if not block:
+            return '0' * 64
         block_string = json.dumps(block, sort_keys=True).encode()
         return hashlib.sha256(block_string).hexdigest()
 
-    def last_block(self, cursor: sqlite3.Cursor) -> Dict[str, Any]:
-        """Возвращает последний блок."""
+    def _last_block_raw(self, cursor: sqlite3.Cursor) -> Dict[str, Any]:
+        """Возвращает последний блок как dict (внутренний метод)."""
         cursor.execute('SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1')
         row = cursor.fetchone()
         if row:
             return {
-                'index': row[0],
-                'timestamp': row[1],
+                'index': row[0], 'timestamp': row[1],
                 'transactions': json.loads(row[2]),
-                'proof': row[3],
-                'previous_hash': row[4],
+                'proof': row[3], 'previous_hash': row[4],
             }
         return {}
 
-    def get_chain(self, cursor: sqlite3.Cursor) -> List[Dict[str, Any]]:
-        """Возвращает всю цепочку блоков."""
+    def _get_chain_raw(self, cursor: sqlite3.Cursor) -> List[Dict[str, Any]]:
+        """Возвращает всю цепочку блоков (внутренний метод)."""
         cursor.execute('SELECT * FROM blockchain ORDER BY block_index ASC')
-        rows = cursor.fetchall()
         return [{
-            'index': row[0],
-            'timestamp': row[1],
-            'transactions': json.loads(row[2]),
-            'proof': row[3],
-            'previous_hash': row[4],
-        } for row in rows]
+            'index': r[0], 'timestamp': r[1],
+            'transactions': json.loads(r[2]),
+            'proof': r[3], 'previous_hash': r[4],
+        } for r in cursor.fetchall()]
 
-    def new_transaction(self, cursor: sqlite3.Cursor, sender: str, recipient: str, content: str,
-                        image: Optional[str]) -> int:
-        """Создает новую транзакцию."""
-        transaction = {
-            'sender': sender,
-            'recipient': recipient,
-            'content': content,
-            'image': image,
-            'timestamp': time.time(),
-        }
+    def new_transaction(self, cursor: sqlite3.Cursor, sender: str, recipient: str,
+                        content: str, image: Optional[str]) -> int:
+        """Создаёт новую транзакцию и возвращает её ID."""
         cursor.execute('''
             INSERT INTO transactions (sender, recipient, content, image, timestamp)
             VALUES (?, ?, ?, ?, ?)
-        ''', (
-            transaction['sender'],
-            transaction['recipient'],
-            transaction['content'],
-            transaction['image'],
-            transaction['timestamp']
-        ))
+        ''', (sender, recipient, content, image, time.time()))
         tx_id = cursor.lastrowid
-        logging.info(f"Transaction added from {sender} to {recipient}, ID: {tx_id}")
-        return tx_id  # Возвращаем ID транзакции
+        logger.debug(f"Transaction #{tx_id}: {sender} -> {recipient}")
+        return tx_id
 
     def get_messages(self, cursor: sqlite3.Cursor, address: str) -> List[Dict[str, Any]]:
-        """Получает сообщения для конкретного адреса."""
+        """Получает все сообщения для адреса (для обратной совместимости)."""
         cursor.execute('''
             SELECT id, sender, recipient, content, image, timestamp
             FROM transactions
             WHERE sender = ? OR recipient = ? OR recipient LIKE 'group:%'
             ORDER BY timestamp ASC
         ''', (address, address))
-        rows = cursor.fetchall()
+
         return [{
-            'id': row[0],
-            'sender': row[1],
-            'recipient': row[2],
-            'content': row[3],
-            'image': row[4],
-            'timestamp': row[5],
-        } for row in rows]
+            'id': r[0], 'sender': r[1], 'recipient': r[2],
+            'content': r[3], 'image': r[4], 'timestamp': r[5],
+        } for r in cursor.fetchall()]
 
     def proof_of_work(self, last_proof: int) -> int:
-        """Алгоритм доказательства работы."""
+        """Оптимизированный PoW с настраиваемой сложностью."""
         proof = 0
-        while not self.valid_proof(last_proof, proof):
+        difficulty = CONFIG['POW_DIFFICULTY']
+        target = "0" * difficulty
+        max_iter = CONFIG['POW_MAX_ITERATIONS']
+
+        while proof < max_iter:
+            guess = f'{last_proof}{proof}'.encode()
+            if hashlib.sha256(guess).hexdigest()[:difficulty] == target:
+                logger.debug(f"PoW solved: {proof} iterations")
+                return proof
             proof += 1
-        logging.debug(f"Proof of work found: {proof}")
-        return proof
+
+        logger.warning(f"PoW failed after {max_iter} iterations")
+        return proof  # Fallback
 
     @staticmethod
     def valid_proof(last_proof: int, proof: int) -> bool:
-        """Проверяет правильность доказательства работы."""
+        """Проверка PoW (для совместимости, использует CONFIG)."""
+        difficulty = CONFIG['POW_DIFFICULTY']
         guess = f'{last_proof}{proof}'.encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:4] == "0000"
+        return hashlib.sha256(guess).hexdigest()[:difficulty] == "0" * difficulty
 
 
-# === Flask Приложение ===
+# === Flask приложение ===
 app = Flask(__name__, static_folder=STATIC_FOLDER, template_folder=TEMPLATE_FOLDER)
-app.secret_key = SECRET_KEY
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config.update(
+    SECRET_KEY=SECRET_KEY,
+    UPLOAD_FOLDER=UPLOAD_FOLDER,
+    MAX_CONTENT_LENGTH=MAX_CONTENT_LENGTH,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=CONFIG['SESSION_LIFETIME'],
+)
+
+# Глобальные объекты
 mnemonic_gen = Mnemonic('english')
 blockchain = Blockchain(DATABASE_PATH)
 
-# Создаем папки если их нет
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(STATIC_FOLDER + '/emojis', exist_ok=True)
+# Создаём папки
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(os.path.join(STATIC_FOLDER, 'emojis'), exist_ok=True)
 
 
-# === Схемы валидации ===
+# === Схемы валидации (Marshmallow) ===
 class WalletSchema(Schema):
-    mnemonic_phrase = fields.Str(required=True)
+    mnemonic_phrase = fields.Str(required=True, load_only=True)
+
+    @post_load
+    def strip(self, data, **kwargs):
+        data['mnemonic_phrase'] = data['mnemonic_phrase'].strip()
+        return data
 
 
 class MessageSchema(Schema):
     recipient = fields.Str(required=True)
-    content = fields.Str(required=True)
+    content = fields.Str(required=True, allow_none=False)
     image = fields.Str(allow_none=True)
-    message_type = fields.Str(load_default='direct')
+    message_type = fields.Str(load_default='direct', validate=lambda x: x in ('direct', 'group'))
     group_id = fields.Str(allow_none=True)
 
 
 class GroupSchema(Schema):
-    name = fields.Str(required=True)
-    members = fields.List(fields.Str(), required=True)
+    name = fields.Str(required=True, validate=lambda x: 1 <= len(x) <= 100)
+    members = fields.List(fields.Str(), required=True, validate=lambda x: 1 <= len(x) <= 50)
 
 
 class ContactSchema(Schema):
-    address = fields.Str(required=True)
-    name = fields.Str(required=True)
+    address = fields.Str(required=True, validate=lambda x: len(x) == 64)
+    name = fields.Str(required=True, validate=lambda x: 1 <= len(x) <= 50)
 
 
 class DeleteContactSchema(Schema):
-    address = fields.Str(required=True)
+    address = fields.Str(required=True, validate=lambda x: len(x) == 64)
 
 
 class DeleteMessageSchema(Schema):
-    message_id = fields.Int(required=True)
+    message_id = fields.Int(required=True, validate=lambda x: x > 0)
 
 
-# === Работа с контактами (функции вне класса) ===
-def add_contact(user_address: str, contact_address: str, contact_name: str) -> bool:
-    """Добавляет контакт. Возвращает True, если успешно."""
-    try:
-        # Если имя не задано, используем начало адреса как имя по умолчанию
-        if not contact_name:
-            contact_name = contact_address[:10] + "..."
-        # Исправлено: Используем blockchain.db_path из глобальной области видимости
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO contacts (user_address, contact_address, contact_name, created_at)
-                VALUES (?, ?, ?, ?)
-            ''', (user_address, contact_address, contact_name, time.time()))
-            conn.commit()
-            logging.info(f"Contact added/updated: {contact_name} ({contact_address}) for user {user_address}")
-            return True
-    except Exception as e:
-        logging.error(f"Add contact error: {e}")
-        return False
-
-
-def delete_contact(user_address: str, contact_address: str) -> bool:
-    """Удаляет контакт. Возвращает True, если успешно."""
-    try:
-        # Исправлено: Используем blockchain.db_path из глобальной области видимости
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                DELETE FROM contacts WHERE user_address = ? AND contact_address = ?
-            ''', (user_address, contact_address))
-            conn.commit()
-            deleted_rows = cursor.rowcount
-            if deleted_rows > 0:
-                logging.info(f"Contact deleted: {contact_address} for user {user_address}")
-                return True
-            else:
-                logging.info(f"No contact found to delete: {contact_address} for user {user_address}")
-                return False
-    except Exception as e:
-        logging.error(f"Delete contact error: {e}")
-        return False
-
-
-def get_contacts(user_address: str) -> List[Dict[str, Any]]:
-    """Получает список контактов."""
-    # Исправлено: Используем blockchain.db_path из глобальной области видимости
-    with sqlite3.connect(blockchain.db_path) as conn:
-        cursor = conn.cursor()
+# === Кэшируемые функции работы с данными ===
+@timed_cache(duration=300)  # 5 минут
+@lru_cache(maxsize=CONFIG['CACHE_SIZE_CONTACTS'])
+def get_contact_name_cached(user_address: str, contact_address: str) -> Optional[str]:
+    """Кэшированное получение имени контакта."""
+    with get_db_cursor(blockchain.db_path) as cursor:
         cursor.execute('''
-            SELECT contact_address, contact_name, created_at 
-            FROM contacts 
-            WHERE user_address = ?
-            ORDER BY contact_name
-        ''', (user_address,))
-        rows = cursor.fetchall()
-        return [{
-            'address': row[0],
-            'name': row[1],
-            'created_at': row[2]
-        } for row in rows]
-
-
-def get_contact_name(user_address: str, contact_address: str) -> Optional[str]:
-    """Получает имя контакта."""
-    # Исправлено: Используем blockchain.db_path из глобальной области видимости
-    with sqlite3.connect(blockchain.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT contact_name 
-            FROM contacts 
+            SELECT contact_name FROM contacts 
             WHERE user_address = ? AND contact_address = ?
         ''', (user_address, contact_address))
         row = cursor.fetchone()
         return row[0] if row else None
 
 
-def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
-    """
-    Получает список уникальных адресов, с которыми есть переписка (входящие/исходящие)
-    ИЛИ которые находятся в контактах пользователя.
-    Включает прямых контактов и группы.
-    """
-    conversations = {}  # Используем словарь для автоматического исключения дубликатов
-    try:
-        # Исправлено: Используем blockchain.db_path из глобальной области видимости
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            # 1. Получаем уникальных адресов из существующих транзакций (диалогов)
-            cursor.execute('''
-                SELECT DISTINCT sender FROM transactions WHERE recipient = ?
-                UNION
-                SELECT DISTINCT recipient FROM transactions WHERE sender = ? AND recipient NOT LIKE 'group:%'
-                UNION
-                SELECT DISTINCT recipient FROM transactions WHERE recipient LIKE 'group:%'
-            ''', (user_address, user_address))
-            transaction_rows = cursor.fetchall()
-            for row in transaction_rows:
-                address = row[0]
-                if address == user_address:
-                    continue  # Не добавляем себя
-                # Проверяем, является ли это группа
-                if address.startswith('group:'):
-                    group_id = address.split(':', 1)[1]
-                    groups = get_user_groups(user_address)
-                    group_info = next((g for g in groups if g['id'] == group_id), None)
-                    if group_info:
-                        # Это группа, в которой мы состоим
-                        conversations[address] = {
-                            'address': address,
-                            'name': group_info['name'],
-                            'is_group': True
-                        }
-                else:
-                    # Это личный контакт с перепиской
-                    name = get_contact_name(user_address, address) or address[:10] + "..."
-                    conversations[address] = {
-                        'address': address,
-                        'name': name,
-                        'is_group': False
-                    }
-            # 2. Получаем контакты пользователя, которых еще нет в списке
-            cursor.execute('''
-                SELECT contact_address, contact_name FROM contacts WHERE user_address = ?
-            ''', (user_address,))
-            contact_rows = cursor.fetchall()
-            for row in contact_rows:
-                contact_address, contact_name = row
-                if contact_address == user_address:
-                    continue  # Не добавляем себя
-                # Если контакт еще не в списке (нет переписки), добавляем его
-                if contact_address not in conversations:
-                    conversations[contact_address] = {
-                        'address': contact_address,
-                        'name': contact_name,  # Используем имя из контактов
-                        'is_group': False
-                    }
-    except Exception as e:
-        logging.error(f"Error getting conversations list: {e}")
-    # Возвращаем список значений словаря
-    return list(conversations.values())
-
-
-# === Работа с группами (функции вне класса) ===
-def create_group(group_id: str, name: str, creator: str, members: List[str]) -> bool:
-    """Создает новую группу. Возвращает True, если успешно."""
-    try:
-        # Исправлено: Используем blockchain.db_path из глобальной области видимости
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO groups (id, name, creator, members, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (group_id, name, creator, json.dumps(members), time.time()))
-            conn.commit()
-            logging.info(f"Group created: {group_id} by {creator}")
-            return True
-    except Exception as e:
-        logging.error(f"Group creation error: {e}")
-        return False
-
-
-def get_user_groups(address: str) -> List[Dict[str, Any]]:
-    """Получает список групп пользователя."""
-    # Исправлено: Используем blockchain.db_path из глобальной области видимости
-    with sqlite3.connect(blockchain.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM groups')
-        rows = cursor.fetchall()
+@timed_cache(duration=300)
+def get_user_groups_cached(address: str) -> List[Dict[str, Any]]:
+    """Кэшированное получение групп пользователя."""
+    with get_db_cursor(blockchain.db_path) as cursor:
+        cursor.execute('SELECT id, name, creator, members, created_at FROM groups')
         groups = []
-        for row in rows:
+        for row in cursor.fetchall():
             members = json.loads(row[3])
             if address in members:
                 groups.append({
-                    'id': row[0],
-                    'name': row[1],
-                    'creator': row[2],
-                    'members': members,
-                    'created_at': row[4]
+                    'id': row[0], 'name': row[1], 'creator': row[2],
+                    'members': members, 'created_at': row[4]
                 })
         return groups
 
 
+# === Функции работы с контактами ===
+def add_contact(user_address: str, contact_address: str, contact_name: str) -> bool:
+    """Добавляет или обновляет контакт."""
+    if not contact_name:
+        contact_name = contact_address[:10] + "..."
 
-# === Маршруты ===
+    try:
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute('''
+                INSERT OR REPLACE INTO contacts 
+                (user_address, contact_address, contact_name, created_at)
+                VALUES (?, ?, ?, ?)
+            ''', (user_address, contact_address, contact_name, time.time()))
+
+        # Инвалидируем кэш
+        get_contact_name_cached.cache_clear()
+        logger.info(f"Contact: {contact_name} ({contact_address[:10]}...)")
+        return True
+    except Exception as e:
+        logger.error(f"Add contact error: {e}")
+        return False
+
+
+def delete_contact(user_address: str, contact_address: str) -> bool:
+    """Удаляет контакт."""
+    try:
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute('''
+                DELETE FROM contacts 
+                WHERE user_address = ? AND contact_address = ?
+            ''', (user_address, contact_address))
+            deleted = cursor.rowcount > 0
+
+        if deleted:
+            get_contact_name_cached.cache_clear()
+            logger.info(f"Contact deleted: {contact_address[:10]}...")
+        return deleted
+    except Exception as e:
+        logger.error(f"Delete contact error: {e}")
+        return False
+
+
+def get_contacts(user_address: str) -> List[Dict[str, Any]]:
+    """Получает список контактов пользователя."""
+    with get_db_cursor(blockchain.db_path) as cursor:
+        cursor.execute('''
+            SELECT contact_address, contact_name, created_at 
+            FROM contacts 
+            WHERE user_address = ? 
+            ORDER BY contact_name COLLATE NOCASE
+        ''', (user_address,))
+
+        return [{
+            'address': row[0], 'name': row[1], 'created_at': row[2]
+        } for row in cursor.fetchall()]
+
+
+# === Утилита расшифровки сообщений ===
+def decrypt_message_safe(key: bytes, encrypted_data: Optional[str],
+                         fallback: str = "[Decryption Failed]") -> Optional[str]:
+    """Безопасная расшифровка с обработкой всех ошибок."""
+    if not encrypted_data:
+        return None
+    try:
+        result = decrypt_message(key, encrypted_data)
+        return result if result else fallback
+    except Exception as e:
+        logger.warning(f"Decryption failed: {e}")
+        return fallback
+
+
+def process_message_decryption(msg: Dict, user_address: str) -> Dict:
+    """
+    Универсальная функция расшифровки сообщения (личного или группового).
+    Возвращает сообщение с расшифрованным content/image.
+    """
+    result = msg.copy()
+
+    try:
+        # === Групповое сообщение ===
+        if msg['recipient'].startswith('group:'):
+            group_id = msg['recipient'].split(':', 1)[1]
+            groups = get_user_groups_cached(user_address)
+            user_group = next((g for g in groups if g['id'] == group_id), None)
+
+            if not user_group or user_address not in user_group['members']:
+                result.update({'content': "[No access]", 'image': None})
+                return result
+
+            try:
+                encrypted_data = json.loads(msg['content'])
+                if user_address not in encrypted_data:  # ← здесь тоже было encrypted_ без двоеточия
+                    result.update({'content': "[No data]", 'image': None})
+                    return result
+
+                user_data = encrypted_data[user_address]
+                key = generate_key(msg['sender'], user_address)
+
+                result['content'] = decrypt_message_safe(key, user_data['content'])
+                result['image'] = decrypt_message_safe(key, user_data.get('image'))
+
+            except json.JSONDecodeError:
+                result.update({'content': "[Invalid JSON]", 'image': None})
+
+        # === Личное сообщение ===
+        else:
+            key = generate_key(msg['sender'], msg['recipient'])
+            result['content'] = decrypt_message_safe(key, msg['content'])
+            result['image'] = decrypt_message_safe(key, msg['image'])
+
+    except Exception as e:
+        logger.error(f"Message processing error: {e}")
+        result.update({'content': '[Error]', 'image': None})
+
+    return result
+
+# === Список диалогов (оптимизированный) ===
+def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
+    """
+    Получает список диалогов с кэшированием и оптимизированными запросами.
+    Включает личные чаты и группы.
+    """
+    conversations = {}
+
+    try:
+        with get_db_cursor(blockchain.db_path) as cursor:
+            # Запрос 1: Партнёры по переписке
+            cursor.execute('''
+                SELECT DISTINCT 
+                    CASE WHEN sender = ? THEN recipient ELSE sender END as partner
+                FROM transactions 
+                WHERE sender = ? OR recipient = ?
+            ''', (user_address, user_address, user_address))
+
+            for row in cursor.fetchall():
+                partner = row[0]
+                if partner == user_address:
+                    continue
+
+                if partner.startswith('group:'):
+                    # Обработка группы
+                    group_id = partner.split(':', 1)[1]
+                    groups = get_user_groups_cached(user_address)
+                    group = next((g for g in groups if g['id'] == group_id), None)
+                    if group:
+                        conversations[partner] = {
+                            'address': partner, 'name': group['name'], 'is_group': True
+                        }
+                else:
+                    # Личный контакт
+                    name = get_contact_name_cached(user_address, partner) or partner[:10] + "..."
+                    conversations[partner] = {
+                        'address': partner, 'name': name, 'is_group': False
+                    }
+
+            # Запрос 2: Контакты без переписки
+            cursor.execute('''
+                SELECT contact_address, contact_name 
+                FROM contacts 
+                WHERE user_address = ?
+            ''', (user_address,))
+
+            for contact_addr, contact_name in cursor.fetchall():
+                if contact_addr == user_address or contact_addr in conversations:
+                    continue
+                conversations[contact_addr] = {
+                    'address': contact_addr, 'name': contact_name, 'is_group': False
+                }
+
+    except Exception as e:
+        logger.error(f"Get conversations error: {e}")
+
+    return list(conversations.values())
+
+
+# === Маршруты: Аутентификация ===
+@app.before_request
+def log_request():
+    """Логирование запросов (только в debug)."""
+    if app.debug:
+        logger.debug(f"{request.method} {request.path}")
+
+
 @app.route('/')
 def index():
-    """Главная страница."""
+    """Главная: редирект в чат если авторизован."""
     if 'address' in session:
         return redirect(url_for('chat'))
     return render_template('index.html')
@@ -496,44 +633,58 @@ def create_wallet():
     try:
         phrase = mnemonic_gen.generate(256)
         address = generate_address(phrase)
+
         session['address'] = address
         session['mnemonic'] = phrase
-        logging.info(f"New wallet created: {address}")
+        session.permanent = True
+
+        logger.info(f"Wallet created: {address[:16]}...")
         return jsonify({'mnemonic_phrase': phrase, 'address': address}), 201
+
     except Exception as e:
-        logging.error(f"Wallet creation error: {e}")
-        return jsonify({'error': 'Failed to create wallet'}), 500
+        logger.error(f"Create wallet error: {e}")
+        return jsonify({'error': 'Wallet creation failed'}), 500
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Вход в систему."""
+    """Вход по мнемонической фразе."""
     if request.method == 'POST':
         try:
             data = WalletSchema().load(request.get_json())
-            phrase = data['mnemonic_phrase']
+            phrase = data['mnemonic_phrase'].strip()
+
             if not mnemonic_gen.check(phrase):
                 return jsonify({'error': 'Invalid mnemonic phrase'}), 400
+
             address = generate_address(phrase)
             session['address'] = address
             session['mnemonic'] = phrase
-            logging.info(f"User logged in: {address}")
+            session.permanent = True
+
+            logger.info(f"Login: {address[:16]}...")
             return jsonify({'address': address}), 200
+
         except ValidationError as err:
             return jsonify({'error': err.messages}), 400
         except Exception as e:
-            logging.error(f"Login error: {e}")
+            logger.error(f"Login error: {e}")
             return jsonify({'error': 'Login failed'}), 500
+
     return render_template('login.html')
 
 
 @app.route('/logout')
 def logout():
-    """Выход из системы."""
+    """Выход: очистка сессии и кэшей."""
+    clear_key_cache()
+    get_contact_name_cached.cache_clear()
+    get_user_groups_cached.cache_clear()
     session.clear()
     return redirect(url_for('index'))
 
 
+# === Маршруты: Страницы ===
 @app.route('/chat')
 def chat():
     """Страница чата."""
@@ -551,502 +702,401 @@ def contacts():
 
 
 @app.route('/groups')
-def groups():
+def groups_page():
     """Страница групп."""
     if 'address' not in session:
         return redirect(url_for('index'))
     return render_template('groups.html', address=session['address'])
 
 
+@app.route('/profile')
+def profile():
+    """Страница профиля."""
+    if 'address' not in session:
+        return redirect(url_for('index'))
+    return render_template(
+        'profile.html',
+        address=session.get('address'),
+        mnemonic=session.get('mnemonic'),
+        cache_stats=get_cache_info() if app.debug else None
+    )
+
+
+# === Маршруты: Контакты ===
 @app.route('/add_contact', methods=['POST'])
 def add_contact_route():
-    """Добавление контакта."""
+    """API: Добавление контакта."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = ContactSchema().load(request.get_json())
-        user_address = session['address']
-        contact_address = data['address']
-        contact_name = data['name']
-        if len(contact_address) != 64:  # SHA256 hash length
-            return jsonify({'error': 'Invalid address format'}), 400
-        if add_contact(user_address, contact_address, contact_name):
-            return jsonify({'message': 'Contact added successfully'}), 201
-        else:
-            return jsonify({'error': 'Failed to add contact'}), 500
+        user_addr = session['address']
+
+        if add_contact(user_addr, data['address'], data['name']):
+            return jsonify({'message': 'Contact added'}), 201
+        return jsonify({'error': 'Failed to add'}), 500
+
     except ValidationError as err:
         return jsonify({'error': err.messages}), 400
     except Exception as e:
-        logging.error(f"Add contact route error: {e}")
-        return jsonify({'error': 'Failed to add contact'}), 500
+        logger.error(f"Add contact API error: {e}")
+        return jsonify({'error': 'Server error'}), 500
 
 
 @app.route('/delete_contact', methods=['POST'])
 def delete_contact_route():
-    """Удаление контакта."""
+    """API: Удаление контакта."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = DeleteContactSchema().load(request.get_json())
-        user_address = session['address']
-        contact_address = data['address']
-        if len(contact_address) != 64:
-            return jsonify({'error': 'Invalid address format'}), 400
-        if delete_contact(user_address, contact_address):
-            return jsonify({'message': 'Contact deleted successfully'}), 200
-        else:
-            return jsonify({'error': 'Contact not found or failed to delete'}), 404
+        if delete_contact(session['address'], data['address']):
+            return jsonify({'message': 'Contact deleted'}), 200
+        return jsonify({'error': 'Not found'}), 404
+
     except ValidationError as err:
         return jsonify({'error': err.messages}), 400
     except Exception as e:
-        logging.error(f"Delete contact route error: {e}")
-        return jsonify({'error': 'Failed to delete contact'}), 500
+        logger.error(f"Delete contact API error: {e}")
+        return jsonify({'error': 'Server error'}), 500
 
 
 @app.route('/get_contacts', methods=['GET'])
 def get_contacts_route():
-    """Получение списка контактов."""
+    """API: Список контактов."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         contacts = get_contacts(session['address'])
         return jsonify({'contacts': contacts}), 200
     except Exception as e:
-        logging.error(f"Get contacts error: {e}")
-        return jsonify({'error': 'Failed to retrieve contacts'}), 500
+        logger.error(f"Get contacts API error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
+# === Маршруты: Группы ===
 @app.route('/create_group', methods=['POST'])
 def create_group_route():
-    """Создание группы."""
+    """API: Создание группы."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = GroupSchema().load(request.get_json())
-        group_id = str(uuid.uuid4())
         creator = session['address']
-        members = list(set([creator] + data['members']))
-        if create_group(group_id, data['name'], creator, members):
-            return jsonify({'group_id': group_id, 'message': 'Group created successfully'}), 201
-        else:
-            return jsonify({'error': 'Failed to create group'}), 500
+        group_id = str(uuid.uuid4())
+        members = list(set([creator] + data['members']))  # Уникальные + создатель
+
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute('''
+                INSERT INTO groups (id, name, creator, members, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (group_id, data['name'], creator, json.dumps(members), time.time()))
+
+        # Инвалидируем кэш групп для всех участников
+        get_user_groups_cached.cache_clear()
+
+        logger.info(f"Group created: {group_id[:8]}... by {creator[:16]}...")
+        return jsonify({'group_id': group_id, 'message': 'Group created'}), 201
+
     except ValidationError as err:
         return jsonify({'error': err.messages}), 400
     except Exception as e:
-        logging.error(f"Group creation route error: {e}")
-        return jsonify({'error': 'Failed to create group'}), 500
+        logger.error(f"Create group error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
 @app.route('/get_groups', methods=['GET'])
-def get_groups():
-    """Получение списка групп."""
+def get_groups_route():
+    """API: Список групп пользователя."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        groups = get_user_groups(session['address'])
+        groups = get_user_groups_cached(session['address'])
         return jsonify({'groups': groups}), 200
     except Exception as e:
-        logging.error(f"Get groups error: {e}")
-        return jsonify({'error': 'Failed to retrieve groups'}), 500
+        logger.error(f"Get groups error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
+# === Маршруты: Сообщения ===
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    """Отправка сообщения."""
+    """API: Отправка сообщения (личного или группового)."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = MessageSchema().load(request.get_json())
+        sender = session['address']
         recipient = data['recipient']
         content = data['content']
         image = data.get('image')
-        message_type = data.get('message_type', 'direct')
+        msg_type = data.get('message_type', 'direct')
         group_id = data.get('group_id')
-        sender = session['address']
-        if message_type == 'group' and group_id:
-            groups = get_user_groups(sender)
+
+        # === Групповое сообщение ===
+        if msg_type == 'group' and group_id:
+            groups = get_user_groups_cached(sender)
             group = next((g for g in groups if g['id'] == group_id), None)
+
             if not group:
-                return jsonify({'error': 'Group not found or access denied'}), 404
-            encrypted_for_members = {}
+                return jsonify({'error': 'Group not found'}), 404
+
+            # Шифруем для каждого участника
+            encrypted_map = {}
             for member in group['members']:
-                if member != sender:
-                    try:
-                        key = generate_key(sender, member)
-                        # --- Добавлено для отладки ---
-                        if not isinstance(key, bytes):
-                            logging.error(f"Generated key for member {member} is not bytes: {type(key)}, value: {key}")
-                            continue  # Пропускаем этого участника
-                        # ----------------------------
-                        encrypted_content = encrypt_message(key, content)
-                        encrypted_image_data = encrypt_message(key, image) if image else None
-                        encrypted_for_members[member] = {
-                            'content': encrypted_content,
-                            'image': encrypted_image_data
-                        }
-                    except Exception as e:
-                        logging.error(f"Encryption error for member {member}: {e}")
-                        continue
-            encrypted_content_json = json.dumps(encrypted_for_members)
-            # Исправлено: Используем blockchain.db_path из глобальной области видимости
-            with sqlite3.connect(blockchain.db_path) as conn:
-                cursor = conn.cursor()
-                tx_id = blockchain.new_transaction(cursor, sender, f"group:{group_id}", encrypted_content_json, None)
-                last_proof = blockchain.last_block(cursor)['proof']
+                if member == sender:
+                    continue
+                try:
+                    key = generate_key(sender, member)  # Использует кэш!
+                    encrypted_map[member] = {
+                        'content': encrypt_message(key, content),
+                        'image': encrypt_message(key, image) if image else None
+                    }
+                except Exception as e:
+                    logger.warning(f"Encrypt for {member[:10]}... failed: {e}")
+                    continue
+
+            if not encrypted_map:
+                return jsonify({'error': 'Encryption failed'}), 500
+
+            # Одна транзакция на всё групповое сообщение
+            with get_db_cursor(blockchain.db_path) as cursor:
+                tx_id = blockchain.new_transaction(
+                    cursor, sender, f"group:{group_id}",
+                    json.dumps(encrypted_map), None
+                )
+                last_proof = blockchain._last_block_raw(cursor)['proof']
                 proof = blockchain.proof_of_work(last_proof)
-                blockchain.new_block(cursor, proof)
+                blockchain._new_block_raw(cursor, proof)
+
+        # === Личное сообщение ===
         else:
             if sender == recipient:
-                return jsonify({'error': 'Cannot send message to yourself'}), 400
+                return jsonify({'error': 'Cannot message yourself'}), 400
+
             key = generate_key(sender, recipient)
-            # --- Добавлено для отладки ---
-            if not isinstance(key, bytes):
-                logging.error(f"Generated key is not bytes: {type(key)}, value: {key}")
-                return jsonify({'error': 'Internal error: key generation failed'}), 500
-            # ----------------------------
-            encrypted_content = encrypt_message(key, content)
-            encrypted_image = None
-            if image:  # Только если image не пустое и не None
-                # --- Добавлено для отладки ---
-                if not isinstance(key, bytes):
-                    logging.error(f"Generated key is not bytes for image encryption: {type(key)}, value: {key}")
-                    return jsonify({'error': 'Internal error: key generation failed for image'}), 500
-                # ----------------------------
-                encrypted_image = encrypt_message(key, image)
-            with sqlite3.connect(blockchain.db_path) as conn:
-                cursor = conn.cursor()
-                tx_id = blockchain.new_transaction(cursor, sender, recipient, encrypted_content, encrypted_image)
-                last_proof = blockchain.last_block(cursor)['proof']
+            enc_content = encrypt_message(key, content)
+            enc_image = encrypt_message(key, image) if image else None
+
+            with get_db_cursor(blockchain.db_path) as cursor:
+                tx_id = blockchain.new_transaction(cursor, sender, recipient, enc_content, enc_image)
+                last_proof = blockchain._last_block_raw(cursor)['proof']
                 proof = blockchain.proof_of_work(last_proof)
-                blockchain.new_block(cursor, proof)
-        logging.info(f"Message sent from {sender} to {recipient}")
+                blockchain._new_block_raw(cursor, proof)
+
+        logger.info(f"Message sent: {sender[:16]}... -> {recipient[:16]}...")
         return jsonify({
-            'message': 'Message sent successfully',
-            'tx_id': tx_id,
-            'recipient': recipient,
-            'message_type': message_type,
-            'group_id': group_id
+            'message': 'Sent', 'tx_id': tx_id,
+            'recipient': recipient, 'type': msg_type, 'group_id': group_id
         }), 201
+
     except ValidationError as err:
         return jsonify({'error': err.messages}), 400
     except Exception as e:
-        logging.error(f"Send message error: {e}")
-        return jsonify({'error': 'Failed to send message'}), 500
-
-
-@app.route('/upload_file', methods=['POST'])
-def upload_file():
-    """Загрузка файла."""
-    if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        if file:
-            filename = secure_filename(file.filename)
-            unique_filename = f"{uuid.uuid4()}_{filename}"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-            file.save(filepath)
-            if file.content_type and file.content_type.startswith('image/'):
-                with open(filepath, "rb") as img_file:
-                    encoded_string = base64.b64encode(img_file.read()).decode()
-                return jsonify({'file_url': f"{file.content_type};base64,{encoded_string}"}), 200
-            else:
-                return jsonify({'file_url': f"/{app.config['UPLOAD_FOLDER']}/{unique_filename}"}), 200
-    except Exception as e:
-        logging.error(f"File upload error: {e}")
-        return jsonify({'error': 'Failed to upload file'}), 500
-
-
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    """Отправка загруженного файла."""
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-
-@app.route('/get_messages', methods=['GET'])  # Оставляем для совместимости или других нужд
-def get_messages():
-    """Получение всех сообщений (устаревший метод, используйте /get_conversation)."""
-    if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
-    try:
-        address = session['address']
-        # Исправлено: Используем blockchain.db_path из глобальной области видимости
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            messages = blockchain.get_messages(cursor, address)
-        decrypted_messages = []
-        for msg in messages:
-            try:
-                if msg['recipient'].startswith('group:'):
-                    group_id = msg['recipient'].split(':', 1)[1]
-                    groups = get_user_groups(address)
-                    user_group = next((g for g in groups if g['id'] == group_id), None)
-                    if user_group and address in user_group['members']:
-                        try:
-                            encrypted_data = json.loads(msg['content'])
-                            # ИСПРАВЛЕНО: Опечатка в условии
-                            if address in encrypted_data:
-                                user_data = encrypted_data[address]
-                                key = generate_key(msg['sender'], address)
-                                decrypted_content = decrypt_message(key, user_data['content']) or "[Decryption Failed]"
-                                decrypted_image = decrypt_message(key, user_data['image']) if user_data.get(
-                                    'image') else None
-                            else:
-                                decrypted_content = "[Group message - no data for you]"
-                                decrypted_image = None
-                        except Exception as e:
-                            logging.error(f"Group message decryption error: {e}")
-                            decrypted_content = "[Group message - decryption failed]"
-                            decrypted_image = None
-                    else:
-                        decrypted_content = "[Group message - no access]"
-                        decrypted_image = None
-                else:
-                    key = generate_key(msg['sender'], msg['recipient'])
-                    decrypted_content = decrypt_message(key, msg['content']) or "[Decryption Failed]"
-                    decrypted_image = decrypt_message(key, msg['image']) if msg['image'] else None
-                sender_name = get_contact_name(address, msg['sender']) or msg['sender']
-                recipient_name = get_contact_name(address, msg['recipient']) or msg['recipient']
-                decrypted_messages.append({
-                    'id': msg['id'],
-                    'sender': msg['sender'],
-                    'sender_name': sender_name,
-                    'recipient': msg['recipient'],
-                    'recipient_name': recipient_name,
-                    'content': decrypted_content,
-                    'image': decrypted_image,
-                    'timestamp': msg['timestamp'],
-                    'is_mine': msg['sender'] == address
-                })
-            except Exception as e:
-                logging.warning(f"Decryption failed for message: {e}")
-                decrypted_messages.append({
-                    'id': msg['id'],
-                    'sender': msg['sender'],
-                    'sender_name': msg['sender'],
-                    'recipient': msg['recipient'],
-                    'recipient_name': msg['recipient'],
-                    'content': '[Decryption Failed]',
-                    'image': None,
-                    'timestamp': msg['timestamp'],
-                    'is_mine': msg['sender'] == address
-                })
-        return jsonify({'messages': decrypted_messages}), 200
-    except Exception as e:
-        logging.error(f"Get messages error: {e}")
-        return jsonify({'error': 'Failed to retrieve messages'}), 500
+        logger.error(f"Send message error: {e}")
+        return jsonify({'error': 'Failed to send'}), 500
 
 
 @app.route('/get_conversation', methods=['GET'])
 def get_conversation():
-    """Получает сообщения для конкретного диалога."""
+    """API: Получение сообщений конкретного диалога."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        user_address = session['address']
+        user_addr = session['address']
         chat_with = request.args.get('with')
+
         if not chat_with:
-            return jsonify({'error': 'Missing "with" parameter'}), 400
-        # Исправлено: Используем blockchain.db_path из глобальной области видимости
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
+            return jsonify({'error': 'Missing "with" param'}), 400
+
+        with get_db_cursor(blockchain.db_path) as cursor:
             if chat_with.startswith('group:'):
                 cursor.execute('''
-                     SELECT id, sender, recipient, content, image, timestamp
-                     FROM transactions
-                     WHERE recipient = ?
-                     ORDER BY timestamp ASC
-                 ''', (chat_with,))
+                    SELECT id, sender, recipient, content, image, timestamp
+                    FROM transactions WHERE recipient = ?
+                    ORDER BY timestamp ASC
+                ''', (chat_with,))
             else:
                 cursor.execute('''
-                     SELECT id, sender, recipient, content, image, timestamp
-                     FROM transactions
-                     WHERE (sender = ? AND recipient = ?) 
-                        OR (sender = ? AND recipient = ?)
-                     ORDER BY timestamp ASC
-                 ''', (user_address, chat_with, chat_with, user_address))
-            rows = cursor.fetchall()
+                    SELECT id, sender, recipient, content, image, timestamp
+                    FROM transactions 
+                    WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
+                    ORDER BY timestamp ASC
+                ''', (user_addr, chat_with, chat_with, user_addr))
+
             messages = [{
-                'id': row[0],
-                'sender': row[1],
-                'recipient': row[2],
-                'content': row[3],
-                'image': row[4],
-                'timestamp': row[5],
-            } for row in rows]
-        decrypted_messages = []
+                'id': r[0], 'sender': r[1], 'recipient': r[2],
+                'content': r[3], 'image': r[4], 'timestamp': r[5],
+            } for r in cursor.fetchall()]
+
+        # Расшифровываем через универсальную функцию
+        decrypted = []
         for msg in messages:
-            try:
-                if msg['recipient'].startswith('group:'):
-                    group_id = msg['recipient'].split(':', 1)[1]
-                    groups = get_user_groups(user_address)
-                    user_group = next((g for g in groups if g['id'] == group_id), None)
-                    if user_group and user_address in user_group['members']:
-                        try:
-                            encrypted_data = json.loads(msg['content'])
-                            # ИСПРАВЛЕНО: Опечатка в условии
-                            if user_address in encrypted_data:
-                                user_data = encrypted_data[user_address]
-                                key = generate_key(msg['sender'], user_address)
-                                decrypted_content = decrypt_message(key, user_data['content']) or "[Decryption Failed]"
-                                decrypted_image = decrypt_message(key, user_data['image']) if user_data.get(
-                                    'image') else None
-                            else:
-                                decrypted_content = "[Group message - no data for you]"
-                                decrypted_image = None
-                        except Exception as e:
-                            logging.error(f"Group message decryption error: {e}")
-                            decrypted_content = "[Group message - decryption failed]"
-                            decrypted_image = None
-                    else:
-                        decrypted_content = "[Group message - no access]"
-                        decrypted_image = None
-                else:
-                    key = generate_key(msg['sender'], msg['recipient'])
-                    decrypted_content = decrypt_message(key, msg['content']) or "[Decryption Failed]"
-                    decrypted_image = decrypt_message(key, msg['image']) if msg['image'] else None
-                sender_name = get_contact_name(user_address, msg['sender']) or msg['sender']
-                recipient_name = get_contact_name(user_address, msg['recipient']) or msg['recipient']
-                decrypted_messages.append({
-                    'id': msg['id'],
-                    'sender': msg['sender'],
-                    'sender_name': sender_name,
-                    'recipient': msg['recipient'],
-                    'recipient_name': recipient_name,
-                    'content': decrypted_content,
-                    'image': decrypted_image,
-                    'timestamp': msg['timestamp'],
-                    'is_mine': msg['sender'] == user_address
-                })
-            except Exception as e:
-                logging.warning(f"Decryption failed for message: {e}")
-                decrypted_messages.append({
-                    'id': msg['id'],
-                    'sender': msg['sender'],
-                    'sender_name': msg['sender'],
-                    'recipient': msg['recipient'],
-                    'recipient_name': msg['recipient'],
-                    'content': '[Decryption Failed]',
-                    'image': None,
-                    'timestamp': msg['timestamp'],
-                    'is_mine': msg['sender'] == user_address
-                })
-        return jsonify({'messages': decrypted_messages}), 200
+            dec = process_message_decryption(msg, user_addr)
+            dec['sender_name'] = get_contact_name_cached(user_addr, msg['sender']) or msg['sender']
+            dec['recipient_name'] = get_contact_name_cached(user_addr, msg['recipient']) or msg['recipient']
+            dec['is_mine'] = msg['sender'] == user_addr
+            decrypted.append(dec)
+
+        return jsonify({'messages': decrypted}), 200
+
     except Exception as e:
-        logging.error(f"Get conversation error: {e}")
-        return jsonify({'error': 'Failed to retrieve conversation'}), 500
+        logger.error(f"Get conversation error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
 @app.route('/get_conversations', methods=['GET'])
 def get_conversations_route():
-    """Получает список диалогов для отображения в боковой панели."""
+    """API: Список диалогов для боковой панели."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        user_address = session['address']
-        conversations = get_conversations_list(user_address)
-        return jsonify({'conversations': conversations}), 200
+        convos = get_conversations_list(session['address'])
+        return jsonify({'conversations': convos}), 200
     except Exception as e:
-        logging.error(f"Get conversations error: {e}")
-        return jsonify({'error': 'Failed to retrieve conversations'}), 500
+        logger.error(f"Get conversations error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
-@app.route('/profile')
-def profile():
-    """Страница профиля пользователя."""
+# === Маршруты: Файлы ===
+@app.route('/upload_file', methods=['POST'])
+def upload_file():
+    """API: Загрузка файла (возвращает base64 для изображений)."""
     if 'address' not in session:
-        return redirect(url_for('index'))
-    address = session.get('address')
-    mnemonic = session.get('mnemonic')
-    private_key_hex = mnemonic
-    return render_template('profile.html', address=address, mnemonic=mnemonic, private_key=private_key_hex)
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Empty filename'}), 400
+
+        filename = secure_filename(file.filename)
+        unique_name = f"{uuid.uuid4().hex}_{filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, unique_name)
+        file.save(filepath)
+
+        # Для изображений возвращаем base64 прямо
+        if file.content_type and file.content_type.startswith('image/'):
+            with open(filepath, 'rb') as f:
+                b64 = base64.b64encode(f.read()).decode()
+            os.remove(filepath)  # Не храним дубликаты
+            return jsonify({'file_url': f"{file.content_type};base64,{b64}"}), 200
+
+        return jsonify({'file_url': f"/uploads/{unique_name}"}), 200
+
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        return jsonify({'error': 'Upload failed'}), 500
 
 
-# --- Новые маршруты ---
+@app.route('/uploads/<filename>')
+def serve_upload(filename):
+    """Раздача загруженных файлов."""
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+# === Маршруты: Управление ===
 @app.route('/add_contact_from_chat', methods=['POST'])
 def add_contact_from_chat():
-    """Добавление контакта из окна чата."""
+    """API: Быстрое добавление контакта из чата."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = request.get_json()
-        user_address = session['address']
-        contact_address = data.get('contact_address')
-        contact_name = data.get('contact_name', '')
-        if not contact_address or len(contact_address) != 64:
-            return jsonify({'error': 'Invalid contact address'}), 400
-        if contact_address == user_address:
-            return jsonify({'error': 'Cannot add yourself as a contact'}), 400
-        if add_contact(user_address, contact_address, contact_name):
-            # Не обязательно возвращать обновленный список, фронтенд может сам его обновить
-            # Но можно вернуть для подстраховки
-            # updated_contacts = get_contacts(user_address)
-            return jsonify({
-                'message': 'Contact added successfully',
-                # 'contacts': updated_contacts
-            }), 201
-        else:
-            return jsonify({'error': 'Failed to add contact'}), 500
+        contact_addr = data.get('contact_address', '').strip()
+        contact_name = data.get('contact_name', '').strip()
+
+        if len(contact_addr) != 64 or contact_addr == session['address']:
+            return jsonify({'error': 'Invalid address'}), 400
+
+        if add_contact(session['address'], contact_addr, contact_name):
+            return jsonify({'message': 'Added'}), 201
+        return jsonify({'error': 'Failed'}), 500
+
     except Exception as e:
-        logging.error(f"Add contact from chat error: {e}")
-        return jsonify({'error': 'Failed to add contact'}), 500
+        logger.error(f"Quick add contact error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
 @app.route('/delete_message', methods=['POST'])
 def delete_message():
-    """Удаление одного сообщения."""
+    """API: Удаление своего сообщения."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        user_address = session['address']
         data = DeleteMessageSchema().load(request.get_json())
-        message_id = data['message_id']
-        # Исправлено: Используем blockchain.db_path из глобальной области видимости
-        with sqlite3.connect(blockchain.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT sender FROM transactions WHERE id = ?', (message_id,))
+        user_addr = session['address']
+
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute('SELECT sender FROM transactions WHERE id = ?', (data['message_id'],))
             row = cursor.fetchone()
-            if not row:
-                return jsonify({'error': 'Message not found'}), 404
-            sender_address = row[0]
-            if sender_address != user_address:
-                return jsonify({'error': 'Permission denied. You can only delete your own messages.'}), 403
-            cursor.execute('DELETE FROM transactions WHERE id = ?', (message_id,))
-            conn.commit()
-            if cursor.rowcount > 0:
-                logging.info(f"Message deleted by {user_address}, ID: {message_id}")
-                return jsonify({'message': 'Message deleted successfully'}), 200
-            else:
-                return jsonify({'error': 'Message not found or already deleted'}), 404
+
+            if not row or row[0] != user_addr:
+                return jsonify({'error': 'Not found or permission denied'}), 403 / 404
+
+            cursor.execute('DELETE FROM transactions WHERE id = ?', (data['message_id'],))
+
+        logger.info(f"Message #{data['message_id']} deleted by {user_addr[:16]}...")
+        return jsonify({'message': 'Deleted'}), 200
+
     except ValidationError as err:
         return jsonify({'error': err.messages}), 400
     except Exception as e:
-        logging.error(f"Delete message error: {e}")
-        return jsonify({'error': 'Failed to delete message'}), 500
+        logger.error(f"Delete message error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
 @app.route('/clear_conversation', methods=['POST'])
 def clear_conversation():
-    """Очистка истории диалога для текущего пользователя."""
+    """API: Очистка истории (локальная, не удаляет из блокчейна)."""
     if 'address' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        user_address = session['address']
-        data = request.get_json()
-        chat_with_address = data.get('chat_with')
-        if not chat_with_address:
-            return jsonify({'error': 'Missing chat_with parameter'}), 400
-        logging.info(f"User {user_address} cleared conversation with {chat_with_address}")
-        return jsonify({'message': 'Conversation cleared (locally)'}), 200
+        chat_with = request.get_json().get('chat_with')
+        if not chat_with:
+            return jsonify({'error': 'Missing param'}), 400
+
+        # В реальной децентрализованной системе это очищает только локальный кэш
+        logger.info(f"Conversation cleared (local): {session['address'][:16]}... <-> {chat_with[:16]}...")
+        return jsonify({'message': 'Cleared (local)'}), 200
+
     except Exception as e:
-        logging.error(f"Clear conversation error: {e}")
-        return jsonify({'error': 'Failed to clear conversation'}), 500
+        logger.error(f"Clear conversation error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 
-# === Запуск приложения ===
+# === Обработчики ошибок ===
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    logger.error(f"Internal error: {e}")
+    return jsonify({'error': 'Server error'}), 500
+
+
+@app.errorhandler(413)
+def file_too_large(e):
+    return jsonify({'error': 'File too large (max 16MB)'}), 413
+
+
+# === Запуск ===
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Для разработки
+    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
