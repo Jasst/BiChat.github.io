@@ -3,7 +3,7 @@
 <div class="chat-container">
     <div class="sidebar">
         <div class="user-info">
-            <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
+            <p>Your Address: <span id="userAddress">{{ address[:10] if address else 'Unknown' }}...</span></p>
             <button onclick="location.href='/logout'">Logout</button>
         </div>
 
@@ -23,7 +23,7 @@
         <div class="info-item">
             <label for="address">Your Address:</label>
             <div class="input-with-copy">
-                <input type="text" id="address" value="{{ address }}" readonly>
+                <input type="text" id="address" value="{{ address if address else '' }}" readonly>
                 <button onclick="copyToClipboard('address', 'addressFeedback')">Copy</button>
                 <span id="addressFeedback" class="copy-feedback"></span>
             </div>
@@ -56,16 +56,46 @@
         <div class="info-item">
             <label for="mnemonic">Your Mnemonic Phrase (Private Key):</label>
             <div class="input-with-copy">
-                <!-- Скрытое поле для копирования -->
-                <input type="text" id="mnemonic" value="{{ mnemonic }}" readonly style="display:none;">
-                <!-- Отображаемая часть -->
-                <input type="text" id="mnemonicDisplay" value="{{ mnemonic[:20] }}..." readonly>
-                <button onclick="toggleMnemonicVisibility()" id="toggleMnemonicBtn">Show</button>
-                <button onclick="copyToClipboard('mnemonic', 'mnemonicFeedback')">Copy</button>
+                <!-- 🔧 ИСПРАВЛЕНО: безопасная проверка на undefined -->
+                <input type="text" id="mnemonic"
+                       value="{{ mnemonic if mnemonic else '' }}"
+                       readonly style="display:none;">
+
+                <!-- 🔧 ИСПРАВЛЕНО: показываем маскированное значение, если мнемоника не передана -->
+                <input type="password" id="mnemonicDisplay"
+                       value="{{ (mnemonic[:20] + '...') if mnemonic else '••••••••••••••••••••' }}"
+                       readonly>
+
+                <button onclick="toggleMnemonicVisibility()" id="toggleMnemonicBtn">
+                    {{ 'Hide' if mnemonic else 'Show' }}
+                </button>
+                <button onclick="copyToClipboard('mnemonic', 'mnemonicFeedback')"
+                        {{ 'disabled' if not mnemonic else '' }}>
+                    Copy
+                </button>
                 <span id="mnemonicFeedback" class="copy-feedback"></span>
             </div>
-            <p class="security-warning">⚠️ <strong>Warning:</strong> Keep this phrase secret! Anyone with it can access your wallet.</p>
+            <p class="security-warning">
+                ⚠️ <strong>Warning:</strong> Keep this phrase secret!
+                {% if not mnemonic %}
+                <br>🔐 For security, your mnemonic is not displayed here.
+                Use the "Export Mnemonic" feature with re-authentication.
+                {% else %}
+                Anyone with it can access your wallet.
+                {% endif %}
+            </p>
         </div>
+
+        <!-- 🔧 ДОБАВЛЕНО: Кнопка безопасного экспорта мнемоники -->
+        {% if not mnemonic %}
+        <div class="info-item">
+            <label>Export Mnemonic (Secure):</label>
+           <button onclick="exportMnemonicSecure()" class="btn-warning" style="padding: 10px 20px;">
+              🔐  Show Mnemonic
+           </button>
+            <p class="help-text">Simple confirmation required</p>
+        </div>
+        {% endif %}
 
         <!-- Дополнительная информация -->
         <div class="info-item">
@@ -73,29 +103,23 @@
             <div class="security-info">
                 <p><strong>Wallet Status:</strong> <span class="status-active">Active</span></p>
                 <p><strong>Network:</strong> Mainnet</p>
+                {% if not mnemonic %}
+                <p><strong>Mnemonic Display:</strong> <span style="color: #ff9800;">Hidden (Secure Mode)</span></p>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
 <style>
-.status-active {
-    color: #00c853;
-    font-weight: bold;
-}
-
+.status-active { color: #00c853; font-weight: bold; }
 .security-info {
     background-color: #2c2c2c;
     padding: 15px;
     border-radius: 4px;
     border-left: 3px solid #bb86fc;
 }
-
-.security-info p {
-    margin: 8px 0;
-    font-size: 14px;
-}
-
+.security-info p { margin: 8px 0; font-size: 14px; }
 .qr-container {
     text-align: center;
     background-color: white;
@@ -104,14 +128,7 @@
     display: inline-block;
     margin: 10px 0;
 }
-
-.qr-note {
-    margin-top: 10px;
-    font-size: 12px;
-    color: #aaa;
-}
-
-/* Стили для кнопок QR-кода */
+.qr-note { margin-top: 10px; font-size: 12px; color: #aaa; }
 .qr-actions {
     margin-top: 15px;
     display: flex;
@@ -119,7 +136,6 @@
     justify-content: center;
     flex-wrap: wrap;
 }
-
 .qr-action-btn {
     padding: 8px 16px;
     border: none;
@@ -130,319 +146,300 @@
     transition: all 0.2s ease;
     min-width: 100px;
 }
+.download-btn { background-color: #4CAF50; color: white; }
+.download-btn:hover { background-color: #45a049; }
+.share-btn { background-color: #2196F3; color: white; }
+.share-btn:hover { background-color: #1976D2; }
+.modal-btn { background-color: #FF9800; color: white; }
+.modal-btn:hover { background-color: #F57C00; }
+.qr-feedback { margin-top: 10px; font-size: 12px; font-weight: bold; }
 
-.download-btn {
-    background-color: #4CAF50;
-    color: white;
+/* Modal styles */
+.qr-modal-overlay, .mnemonic-modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.9); z-index: 10000;
+    display: flex; justify-content: center; align-items: center;
 }
-
-.download-btn:hover {
-    background-color: #45a049;
-}
-
-.share-btn {
-    background-color: #2196F3;
-    color: white;
-}
-
-.share-btn:hover {
-    background-color: #1976D2;
-}
-
-.modal-btn {
-    background-color: #FF9800;
-    color: white;
-}
-
-.modal-btn:hover {
-    background-color: #F57C00;
-}
-
-.qr-feedback {
-    margin-top: 10px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-/* Стили для модального окна QR-кода */
-.qr-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.9);
-    z-index: 10000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
 .qr-modal-content {
-    background-color: white;
-    padding: 30px;
-    border-radius: 12px;
-    text-align: center;
-    position: relative;
-    max-width: 90%;
-    max-height: 90%;
+    background-color: white; padding: 30px; border-radius: 12px;
+    text-align: center; position: relative; max-width: 90%; max-height: 90%;
 }
-
-.qr-modal-large {
-    margin: 20px 0;
-}
-
+.qr-modal-large { margin: 20px 0; }
 .qr-modal-close {
-    position: absolute;
-    top: 10px;
-    right: 15px;
-    background: none;
-    border: none;
-    font-size: 24px;
-    cursor: pointer;
-    color: #666;
-    padding: 5px;
-    line-height: 1;
+    position: absolute; top: 10px; right: 15px;
+    background: none; border: none; font-size: 24px;
+    cursor: pointer; color: #666; padding: 5px; line-height: 1;
 }
-
-.qr-modal-close:hover {
-    color: #000;
-}
-
-.qr-modal-actions {
-    margin-top: 20px;
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-    flex-wrap: wrap;
-}
-
-/* Стили для модального окна мнемоники */
-.mnemonic-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.8);
-    z-index: 10000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
+.qr-modal-close:hover { color: #000; }
+.qr-modal-actions { margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 .mnemonic-modal-content {
-    background-color: #1e1e1e;
-    padding: 30px;
-    border-radius: 8px;
-    border: 1px solid #333;
-    max-width: 90%;
-    width: 500px;
-    text-align: center;
-    position: relative;
+    background-color: #1e1e1e; padding: 30px; border-radius: 8px;
+    border: 1px solid #333; max-width: 90%; width: 500px;
+    text-align: center; position: relative;
 }
-
 .mnemonic-display {
-    background-color: #2c2c2c;
-    padding: 20px;
-    border-radius: 4px;
-    margin: 20px 0;
-    border: 1px solid #444;
-    word-break: break-all;
-    font-family: monospace;
-    font-size: 16px;
-    color: #e0e0e0;
+    background-color: #2c2c2c; padding: 20px; border-radius: 4px;
+    margin: 20px 0; border: 1px solid #444; word-break: break-all;
+    font-family: monospace; font-size: 16px; color: #e0e0e0;
 }
-
-.security-warning-modal {
-    color: #cf6679;
-    font-weight: bold;
-    margin: 15px 0;
-}
-
+.security-warning-modal { color: #cf6679; font-weight: bold; margin: 15px 0; }
 .modal-button {
-    padding: 12px 24px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    margin: 10px 5px;
-    border: none;
+    padding: 12px 24px; border-radius: 4px; cursor: pointer;
+    font-weight: bold; margin: 10px 5px; border: none;
 }
-
-.copy-button {
-    background-color: #bb86fc;
-    color: #121212;
+.copy-button { background-color: #bb86fc; color: #121212; }
+.close-button { background-color: #333; color: #e0e0e0; }
+.modal-copy-feedback { margin-top: 10px; color: green; }
+.help-text { font-size: 12px; color: #888; margin: 5px 0 0; }
+.btn-warning {
+    background-color: #ff9800; color: white; border: none;
+    border-radius: 4px; cursor: pointer; font-weight: 500;
 }
-
-.close-button {
-    background-color: #333;
-    color: #e0e0e0;
-}
-
-.modal-copy-feedback {
-    margin-top: 10px;
-    color: green;
-}
+.btn-warning:hover { background-color: #f57c00; }
+.btn-warning:disabled { background-color: #666; cursor: not-allowed; }
 
 @media (max-width: 600px) {
-    .qr-actions {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .qr-action-btn {
-        width: 120px;
-    }
+    .qr-actions { flex-direction: column; align-items: center; }
+    .qr-action-btn { width: 120px; }
 }
 </style>
 
 <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
 <script>
     let qrCodeInstance;
+    // 🔧 Глобальная переменная для хранения мнемоники (если получена через безопасный экспорт)
+    let secureMnemonic = null;
 
     // Генерация QR-кода при загрузке страницы
     document.addEventListener('DOMContentLoaded', function() {
-        const address = "{{ address }}";
+        const address = "{{ address if address else '' }}";
         const qrcodeDiv = document.getElementById('qrcode');
-        qrcodeDiv.innerHTML = ''; // Очищаем перед генерацией
 
-        qrCodeInstance = new QRCode(qrcodeDiv, {
-            text: address,
-            width: 128,
-            height: 128,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
-        });
+        if (address && address !== 'None' && qrcodeDiv) {
+            qrcodeDiv.innerHTML = '';
+            qrCodeInstance = new QRCode(qrcodeDiv, {
+                text: address,
+                width: 128,
+                height: 128,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
     });
 
     function copyToClipboard(elementId, feedbackId) {
         const element = document.getElementById(elementId);
         const feedback = document.getElementById(feedbackId);
 
-        // Для мнемоники копируем из скрытого поля
+        if (!element || !element.value || element.value.includes('•••')) {
+            if (feedback) {
+                feedback.textContent = 'Nothing to copy!';
+                feedback.style.color = 'orange';
+                setTimeout(() => { if (feedback) feedback.textContent = ''; }, 2000);
+            }
+            return;
+        }
+
         let textToCopy = element.value;
-        if (elementId === 'mnemonic') {
-            textToCopy = document.getElementById('mnemonic').value;
+        if (elementId === 'mnemonic' && secureMnemonic) {
+            textToCopy = secureMnemonic;
         }
 
         navigator.clipboard.writeText(textToCopy).then(() => {
-            feedback.textContent = 'Copied!';
-            feedback.style.color = 'green';
-            setTimeout(() => { feedback.textContent = ''; }, 2000);
+            if (feedback) {
+                feedback.textContent = 'Copied!';
+                feedback.style.color = 'green';
+                setTimeout(() => { if (feedback) feedback.textContent = ''; }, 2000);
+            }
         }).catch(err => {
             console.error('Failed to copy: ', err);
-            feedback.textContent = 'Failed to copy!';
-            feedback.style.color = 'red';
+            if (feedback) {
+                feedback.textContent = 'Failed!';
+                feedback.style.color = 'red';
+            }
         });
     }
 
-    // Функция для скачивания QR-кода
+    // 🔧 НОВАЯ ФУНКЦИЯ: Безопасный экспорт мнемоники с ре-аутентификацией
+    // 🔧 УПРОЩЁННАЯ ВЕРСИЯ: подтверждение через "капчу"
+async function exportMnemonicSecure() {
+    // Показываем простое модальное окно подтверждения
+    const modal = document.createElement('div');
+    modal.className = 'mnemonic-modal-overlay';
+    modal.innerHTML = `
+        <div class="mnemonic-modal-content" style="max-width:400px">
+            <h3 style="margin-top:0;color:#bb86fc">🔐 Confirm Export</h3>
+            <p style="color:#e0e0e0;margin:15px 0">
+                To export your mnemonic phrase, please confirm:
+            </p>
+            <input type="text" id="confirmInput"
+                   placeholder="Type: I CONFIRM or YES"
+                   style="width:100%;padding:10px;margin:10px 0;border:1px solid #444;border-radius:4px;background:#2c2c2c;color:#e0e0e0">
+            <p style="color:#888;font-size:12px">
+                ⚠️ This ensures you intentionally want to view sensitive data.
+            </p>
+            <div style="display:flex;gap:10px;justify-content:center;margin-top:20px">
+                <button onclick="submitConfirm()" class="modal-button copy-button">Confirm</button>
+                <button onclick="closeConfirmModal()" class="modal-button close-button">Cancel</button>
+            </div>
+            <div id="confirmError" style="color:#cf6679;margin-top:10px;font-size:13px"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Фокус на поле ввода
+    setTimeout(() => document.getElementById('confirmInput')?.focus(), 100);
+
+    // Обработчик нажатия Enter
+    document.getElementById('confirmInput')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') submitConfirm();
+    });
+
+    // Глобальная функция для отправки подтверждения
+    window.submitConfirm = async function() {
+        const input = document.getElementById('confirmInput');
+        const error = document.getElementById('confirmError');
+        const value = input?.value?.trim()?.toUpperCase();
+
+        if (!value || !['I CONFIRM', 'ПОДТВЕРЖДАЮ', 'CONFIRM', 'YES'].includes(value)) {
+            if (error) error.textContent = 'Please type "I CONFIRM" exactly';
+            input?.focus();
+            return;
+        }
+
+        try {
+            // Показываем индикатор загрузки
+            if (error) {
+                error.textContent = 'Verifying...';
+                error.style.color = '#bb86fc';
+            }
+
+            const response = await fetch('/api/export_mnemonic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirmation: value })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // ✅ Успех — показываем мнемонику
+                secureMnemonic = result.mnemonic;
+
+                // Обновляем интерфейс
+                const mnemonicInput = document.getElementById('mnemonic');
+                const displayInput = document.getElementById('mnemonicDisplay');
+                const toggleBtn = document.getElementById('toggleMnemonicBtn');
+
+                if (mnemonicInput) mnemonicInput.value = secureMnemonic;
+                if (displayInput) {
+                    displayInput.value = secureMnemonic;
+                    displayInput.type = 'text';
+                }
+                if (toggleBtn) {
+                    toggleBtn.textContent = 'Hide';
+                    toggleBtn.disabled = false;
+                }
+
+                // Показываем в модальном окне
+                showMnemonicInModal(secureMnemonic);
+
+                // 🔒 Авто-очистка через 30 секунд
+                setTimeout(() => {
+                    secureMnemonic = null;
+                    if (mnemonicInput) mnemonicInput.value = '';
+                    if (displayInput) {
+                        displayInput.value = '••••••••••••••••••••';
+                        displayInput.type = 'password';
+                    }
+                    if (toggleBtn) toggleBtn.textContent = 'Show';
+                    alert('🧹 Mnemonic cleared from memory for security');
+                }, 30000);
+
+            } else {
+                if (error) {
+                    error.textContent = result.error || 'Confirmation failed';
+                    error.style.color = '#cf6679';
+                }
+            }
+        } catch (e) {
+            console.error('Export error:', e);
+            if (error) {
+                error.textContent = 'Network error: ' + e.message;
+                error.style.color = '#cf6679';
+            }
+        }
+    };
+
+    // Глобальная функция закрытия
+    window.closeConfirmModal = function() {
+        if (modal) modal.remove();
+        delete window.submitConfirm;
+        delete window.closeConfirmModal;
+    };
+
+    // Закрытие по клику вне окна
+    modal.onclick = function(e) {
+        if (e.target === modal) closeConfirmModal();
+    };
+}
+
+    // === QR Code Functions ===
     function downloadQRCode() {
         try {
             const qrCanvas = document.querySelector('#qrcode canvas');
-            if (!qrCanvas) {
-                showQRFeedback('QR code not ready. Please wait.', 'error');
-                return;
-            }
-
+            if (!qrCanvas) { showQRFeedback('QR not ready', 'error'); return; }
             const link = document.createElement('a');
-            link.download = `wallet-address-qr-${Date.now()}.png`;
+            link.download = `wallet-qr-${Date.now()}.png`;
             link.href = qrCanvas.toDataURL();
             link.click();
-
-            showQRFeedback('QR code downloaded!', 'success');
-        } catch (error) {
-            console.error('Error downloading QR code:', error);
-            showQRFeedback('Download failed', 'error');
-        }
+            showQRFeedback('Downloaded!', 'success');
+        } catch (e) { showQRFeedback('Download failed', 'error'); }
     }
 
-    // Функция для отправки QR-кода
     async function shareQRCode() {
         try {
-            const qrCanvas = document.querySelector('#qrcode canvas');
-            if (!qrCanvas) {
-                showQRFeedback('QR code not ready. Please wait.', 'error');
-                return;
-            }
-
-            // Проверяем, поддерживает ли браузер Web Share API
-            if (navigator.share && navigator.canShare) {
-                // Конвертируем canvas в blob
-                qrCanvas.toBlob(async (blob) => {
-                    try {
-                        const file = new File([blob], 'wallet-qr-code.png', { type: 'image/png' });
-
-                        if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({
-                                title: 'My Wallet Address',
-                                text: 'Here is my wallet address QR code',
-                                files: [file]
-                            });
-                            showQRFeedback('QR code shared!', 'success');
-                        } else {
-                            // Fallback к обычной ссылке
-                            await navigator.share({
-                                title: 'My Wallet Address',
-                                text: `My wallet address: {{ address }}`,
-                                url: window.location.href
-                            });
-                            showQRFeedback('Address shared!', 'success');
-                        }
-                    } catch (error) {
-                        if (error.name !== 'AbortError') {
-                            console.error('Error sharing:', error);
-                            showQRFeedback('Sharing failed', 'error');
-                        }
-                    }
-                }, 'image/png');
+            const address = "{{ address if address else '' }}";
+            if (navigator.share) {
+                await navigator.share({
+                    title: 'My Wallet Address',
+                    text: `Address: ${address}`,
+                    url: window.location.href
+                });
+                showQRFeedback('Shared!', 'success');
             } else {
-                // Fallback: копируем адрес в буфер обмена
-                await navigator.clipboard.writeText("{{ address }}");
-                showQRFeedback('Address copied to clipboard!', 'success');
+                await navigator.clipboard.writeText(address);
+                showQRFeedback('Address copied!', 'success');
             }
-        } catch (error) {
-            console.error('Error sharing QR code:', error);
-            showQRFeedback('Sharing not supported', 'error');
+        } catch (e) {
+            if (e.name !== 'AbortError') showQRFeedback('Share failed', 'error');
         }
     }
 
-    // Функция для открытия QR-кода в модальном окне
     function openQRModal() {
         const qrCanvas = document.querySelector('#qrcode canvas');
-        if (!qrCanvas) {
-            showQRFeedback('QR code not ready. Please wait.', 'error');
-            return;
-        }
+        if (!qrCanvas) { showQRFeedback('QR not ready', 'error'); return; }
 
         const modal = document.createElement('div');
         modal.id = 'qrModal';
         modal.className = 'qr-modal-overlay';
         modal.onclick = closeQRModal;
-
-        const qrDataUrl = qrCanvas.toDataURL();
-
         modal.innerHTML = `
             <div class="qr-modal-content" onclick="event.stopPropagation()">
                 <button onclick="closeQRModal()" class="qr-modal-close">&times;</button>
-                <h2 style="margin-top: 0; color: #333;">My Wallet Address</h2>
+                <h2 style="margin-top:0;color:#333">My Wallet Address</h2>
                 <div class="qr-modal-large">
-                    <img src="${qrDataUrl}" alt="Wallet Address QR Code" style="max-width: 300px; max-height: 300px;">
+                    <img src="${qrCanvas.toDataURL()}" alt="QR" style="max-width:300px;max-height:300px">
                 </div>
-                <p style="color: #666; margin: 10px 0; word-break: break-all; font-family: monospace; font-size: 12px;">
-                    {{ address }}
+                <p style="color:#666;margin:10px 0;word-break:break-all;font-family:monospace;font-size:12px">
+                    {{ address if address else '' }}
                 </p>
                 <div class="qr-modal-actions">
-                    <button onclick="downloadQRFromModal()" class="qr-action-btn download-btn">
-                        📥 Download
-                    </button>
-                    <button onclick="shareQRFromModal()" class="qr-action-btn share-btn">
-                        📤 Share
-                    </button>
-                    <button onclick="copyAddressFromModal()" class="qr-action-btn modal-btn">
-                        📋 Copy Address
-                    </button>
+                    <button onclick="downloadQRFromModal()" class="qr-action-btn download-btn">📥 Download</button>
+                    <button onclick="shareQRFromModal()" class="qr-action-btn share-btn">📤 Share</button>
+                    <button onclick="copyAddressFromModal()" class="qr-action-btn modal-btn">📋 Copy</button>
                 </div>
                 <div id="modalQRFeedback" class="qr-feedback"></div>
             </div>
@@ -452,117 +449,83 @@
 
     function closeQRModal() {
         const modal = document.getElementById('qrModal');
-        if (modal) {
-            modal.remove();
-        }
+        if (modal) modal.remove();
     }
 
     function downloadQRFromModal() {
         const img = document.querySelector('#qrModal img');
         if (img) {
             const link = document.createElement('a');
-            link.download = `wallet-address-qr-${Date.now()}.png`;
+            link.download = `wallet-qr-${Date.now()}.png`;
             link.href = img.src;
             link.click();
-
             showModalQRFeedback('Downloaded!', 'success');
         }
     }
 
     async function shareQRFromModal() {
         try {
-            const img = document.querySelector('#qrModal img');
-            if (!img) return;
-
-            // Создаем canvas из изображения для получения blob
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            ctx.drawImage(img, 0, 0);
-
-            canvas.toBlob(async (blob) => {
-                try {
-                    if (navigator.share && navigator.canShare) {
-                        const file = new File([blob], 'wallet-qr-code.png', { type: 'image/png' });
-
-                        if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({
-                                title: 'My Wallet Address',
-                                text: 'Here is my wallet address QR code',
-                                files: [file]
-                            });
-                            showModalQRFeedback('Shared!', 'success');
-                        } else {
-                            await navigator.share({
-                                title: 'My Wallet Address',
-                                text: `My wallet address: {{ address }}`,
-                                url: window.location.href
-                            });
-                            showModalQRFeedback('Address shared!', 'success');
-                        }
-                    } else {
-                        await navigator.clipboard.writeText("{{ address }}");
-                        showModalQRFeedback('Address copied!', 'success');
-                    }
-                } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        console.error('Error sharing:', error);
-                        showModalQRFeedback('Sharing failed', 'error');
-                    }
-                }
-            }, 'image/png');
-        } catch (error) {
-            console.error('Error sharing from modal:', error);
-            showModalQRFeedback('Sharing failed', 'error');
+            const address = "{{ address if address else '' }}";
+            if (navigator.share) {
+                await navigator.share({
+                    title: 'My Wallet Address',
+                    text: `Address: ${address}`,
+                    url: window.location.href
+                });
+                showModalQRFeedback('Shared!', 'success');
+            } else {
+                await navigator.clipboard.writeText(address);
+                showModalQRFeedback('Copied!', 'success');
+            }
+        } catch (e) {
+            if (e.name !== 'AbortError') showModalQRFeedback('Failed', 'error');
         }
     }
 
     async function copyAddressFromModal() {
         try {
-            await navigator.clipboard.writeText("{{ address }}");
-            showModalQRFeedback('Address copied!', 'success');
-        } catch (error) {
-            console.error('Error copying address:', error);
-            showModalQRFeedback('Copy failed', 'error');
+            await navigator.clipboard.writeText("{{ address if address else '' }}");
+            showModalQRFeedback('Copied!', 'success');
+        } catch (e) { showModalQRFeedback('Failed', 'error'); }
+    }
+
+    function showQRFeedback(msg, type) {
+        const fb = document.getElementById('qrActionFeedback');
+        if (fb) {
+            fb.textContent = msg;
+            fb.style.color = type === 'success' ? 'green' : 'red';
+            setTimeout(() => { if (fb) fb.textContent = ''; }, 3000);
         }
     }
 
-    function showQRFeedback(message, type) {
-        const feedback = document.getElementById('qrActionFeedback');
-        feedback.textContent = message;
-        feedback.style.color = type === 'success' ? 'green' : 'red';
-        setTimeout(() => { feedback.textContent = ''; }, 3000);
-    }
-
-    function showModalQRFeedback(message, type) {
-        const feedback = document.getElementById('modalQRFeedback');
-        if (feedback) {
-            feedback.textContent = message;
-            feedback.style.color = type === 'success' ? 'green' : 'red';
-            setTimeout(() => {
-                if (feedback) feedback.textContent = '';
-            }, 3000);
+    function showModalQRFeedback(msg, type) {
+        const fb = document.getElementById('modalQRFeedback');
+        if (fb) {
+            fb.textContent = msg;
+            fb.style.color = type === 'success' ? 'green' : 'red';
+            setTimeout(() => { if (fb) fb.textContent = ''; }, 3000);
         }
     }
 
-    // Существующие функции для мнемоники
+    // === Mnemonic Modal Functions ===
     function showSecurityWarning(callback) {
         const warning = document.createElement('div');
         warning.id = 'mnemonicWarning';
         warning.innerHTML = `
             <div class="mnemonic-modal-overlay" onclick="closeSecurityWarning()">
                 <div class="mnemonic-modal-content" onclick="event.stopPropagation()">
-                    <h3 style="margin-top: 0; color: #bb86fc;">⚠️ SECURITY WARNING</h3>
-                    <p style="color: #e0e0e0;">Never share your mnemonic phrase with anyone!</p>
-                    <p style="color: #e0e0e0;">Make sure no one is watching your screen.</p>
-                    <button onclick="closeSecurityWarningAndShowMnemonic()" class="modal-button copy-button" style="margin-top: 20px;">
-                        I Understand - Show Mnemonic
+                    <h3 style="margin-top:0;color:#bb86fc">⚠️ SECURITY WARNING</h3>
+                    <p style="color:#e0e0e0">Never share your mnemonic phrase with anyone!</p>
+                    <p style="color:#e0e0e0">Make sure no one is watching your screen.</p>
+                    <p style="color:#ff9800;font-size:13px;margin:15px 0">
+                        ${!secureMnemonic ? '🔐 Mnemonic not loaded. Use "Export" button first.' : ''}
+                    </p>
+                    <button onclick="${secureMnemonic ? 'closeSecurityWarningAndShowMnemonic()' : 'closeSecurityWarning(); alert(\'Please export mnemonic first\')'}"
+                            class="modal-button copy-button" style="margin-top:20px"
+                            ${!secureMnemonic ? 'disabled' : ''}>
+                        ${secureMnemonic ? 'I Understand - Show Mnemonic' : 'Export Mnemonic First'}
                     </button>
-                    <button onclick="closeSecurityWarning()" class="modal-button close-button">
-                        Cancel
-                    </button>
+                    <button onclick="closeSecurityWarning()" class="modal-button close-button">Cancel</button>
                 </div>
             </div>
         `;
@@ -570,80 +533,89 @@
     }
 
     function closeSecurityWarning() {
-        const warning = document.getElementById('mnemonicWarning');
-        if (warning) {
-            warning.remove();
-        }
+        const w = document.getElementById('mnemonicWarning');
+        if (w) w.remove();
     }
 
     function closeSecurityWarningAndShowMnemonic() {
         closeSecurityWarning();
-        showMnemonicInModal();
+        if (secureMnemonic) {
+            showMnemonicInModal(secureMnemonic);
+        }
     }
 
-    function showMnemonicInModal() {
-        const mnemonic = document.getElementById('mnemonic').value;
+    function showMnemonicInModal(mnemonicValue) {
+        const mnemonic = mnemonicValue || document.getElementById('mnemonic')?.value || '';
+        if (!mnemonic || mnemonic.includes('•••')) {
+            alert('🔐 Mnemonic not available. Please export it first using the secure button.');
+            return;
+        }
+
         const modal = document.createElement('div');
         modal.id = 'mnemonicModal';
         modal.className = 'mnemonic-modal-overlay';
         modal.onclick = closeMnemonicModal;
-
         modal.innerHTML = `
             <div class="mnemonic-modal-content" onclick="event.stopPropagation()">
-                <h2 style="margin-top: 0; color: #bb86fc;">Mnemonic Phrase</h2>
+                <h2 style="margin-top:0;color:#bb86fc">Mnemonic Phrase</h2>
                 <div class="mnemonic-display">${mnemonic}</div>
                 <p class="security-warning-modal">⚠️ NEVER SHARE THIS WITH ANYONE!</p>
-                <button onclick="copyMnemonicFromModal()" class="modal-button copy-button">
+                <button onclick="copyMnemonicFromModal('${mnemonic}')" class="modal-button copy-button">
                     Copy to Clipboard
                 </button>
-                <button onclick="closeMnemonicModal()" class="modal-button close-button">
-                    Close
-                </button>
+                <button onclick="closeMnemonicModal()" class="modal-button close-button">Close</button>
                 <div id="modalCopyFeedback" class="modal-copy-feedback"></div>
+                <p style="color:#888;font-size:11px;margin-top:15px">
+                    🔒 Auto-clear in 60 seconds for security
+                </p>
             </div>
         `;
         document.body.appendChild(modal);
     }
 
-    function copyMnemonicFromModal() {
-        const mnemonic = document.getElementById('mnemonic').value;
-        navigator.clipboard.writeText(mnemonic).then(() => {
-            const feedback = document.getElementById('modalCopyFeedback');
-            if (feedback) {
-                feedback.textContent = 'Mnemonic copied to clipboard!';
-                setTimeout(() => {
-                    if (feedback) feedback.textContent = '';
-                }, 2000);
+    function copyMnemonicFromModal(mnemonicValue) {
+        navigator.clipboard.writeText(mnemonicValue).then(() => {
+            const fb = document.getElementById('modalCopyFeedback');
+            if (fb) {
+                fb.textContent = '✓ Copied! Clear clipboard after use.';
+                setTimeout(() => { if (fb) fb.textContent = ''; }, 3000);
             }
         }).catch(err => {
-            console.error('Failed to copy: ', err);
-            const feedback = document.getElementById('modalCopyFeedback');
-            if (feedback) {
-                feedback.textContent = 'Failed to copy!';
-                feedback.style.color = 'red';
+            console.error('Copy failed:', err);
+            const fb = document.getElementById('modalCopyFeedback');
+            if (fb) {
+                fb.textContent = '✗ Failed to copy';
+                fb.style.color = 'red';
             }
         });
     }
 
     function closeMnemonicModal() {
         const modal = document.getElementById('mnemonicModal');
-        if (modal) {
-            modal.remove();
-        }
+        if (modal) modal.remove();
     }
 
     function toggleMnemonicVisibility() {
-        const button = document.getElementById('toggleMnemonicBtn');
+        const btn = document.getElementById('toggleMnemonicBtn');
+        const display = document.getElementById('mnemonicDisplay');
 
-        if (button.textContent === 'Show') {
-            showSecurityWarning();
+        if (!secureMnemonic && display.value.includes('•••')) {
+            alert('🔐 Mnemonic is hidden for security.\n\nClick "Export with Re-authentication" to load it.');
+            return;
+        }
+
+        if (display.type === 'password' || display.value.includes('•••')) {
+            display.value = secureMnemonic || document.getElementById('mnemonic')?.value || '';
+            display.type = 'text';
+            btn.textContent = 'Hide';
         } else {
-            closeMnemonicModal();
-            button.textContent = 'Show';
+            display.value = '••••••••••••••••••••';
+            display.type = 'password';
+            btn.textContent = 'Show';
         }
     }
 
-    // Обработчик для закрытия модальных окон клавишей ESC
+    // Закрытие модальных окон по ESC
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
             closeMnemonicModal();

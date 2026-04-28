@@ -1,141 +1,100 @@
 #!/usr/bin/env python3
-"""
-Диагностика группового чата — показывает ВСЕ детали шифрования/расшифровки
-"""
-import os
+"""🔧 Тест криптографии: проверка ECDH + AES-GCM"""
 import sys
-import json
-import sqlite3
-import hashlib
 
-# Добавляем путь к проекту
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, '.')
 
 from crypto_manager import (
-    generate_symmetric_key,
-    encrypt_message,
-    decrypt_message,
-    generate_address
+    generate_address, get_public_key_b64,
+    encrypt_hybrid, decrypt_hybrid,
+    generate_symmetric_key, encrypt_message_aead, decrypt_message_aead
 )
 
-# === Тестовые данные — ЗАМЕНИТЕ НА СВОИ ===
-MNEMONIC_ALICE = "ваша_фраза_алисы_12_слов_для_теста_только"
-MNEMONIC_BOB = "ваша_фраза_боба_12_слов_для_теста_только"
-ADDR_ALICE = generate_address(MNEMONIC_ALICE)
-ADDR_BOB = generate_address(MNEMONIC_BOB)
-GROUP_ID = "test_group_123456"  # любой идентификатор
+# Тестовые мнемоники (НЕ ИСПОЛЬЗУЙТЕ В ПРОДАКШЕНЕ!)
+MNEM_A = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+MNEM_B = "legal winner thank year wave sausage worth useful legal winner thank yellow"
 
-print("=== 🔬 ДИАГНОСТИКА ГРУППОВОГО ЧАТА ===\n")
-print(f"👤 Alice address: {ADDR_ALICE[:16]}...")
-print(f"👤 Bob address:   {ADDR_BOB[:16]}...")
-print(f"👥 Group ID:      {GROUP_ID}\n")
 
-# === Тест 1: Генерация ключей ===
-print("🔑 Тест 1: Генерация ключей")
-key_alice_to_bob = generate_symmetric_key(ADDR_ALICE, ADDR_BOB, MNEMONIC_ALICE)
-key_bob_to_alice = generate_symmetric_key(ADDR_ALICE, ADDR_BOB, MNEMONIC_BOB)
-key_alice_to_alice = generate_symmetric_key(ADDR_ALICE, ADDR_ALICE, MNEMONIC_ALICE)
+def test_direct_encryption():
+    print("🔐 Тест: Прямое шифрование AES-GCM")
+    key = b'0' * 32  # Тестовый ключ
+    msg = "Hello, World! 🎉"
 
-print(f"   Alice→Bob (mnem Alice): {key_alice_to_bob.hex()[:32]}")
-print(f"   Alice→Bob (mnem Bob):   {key_bob_to_alice.hex()[:32]}")
-print(f"   Alice→Alice:            {key_alice_to_alice.hex()[:32]}")
-print(f"   ✅ Ключи совпадают: {key_alice_to_bob == key_bob_to_alice}\n")
+    enc = encrypt_message_aead(key, msg)
+    dec = decrypt_message_aead(key, enc)
 
-# === Тест 2: Шифрование и расшифровка ===
-print("🔐 Тест 2: Шифрование/расшифровка")
-original_text = "Привет из группового чата! 🔐"
-print(f"   Исходный текст: '{original_text}'")
+    print(f"  Original: {msg}")
+    print(f"  Encrypted: {enc[:50]}...")
+    print(f"  Decrypted: {dec}")
+    print(f"  ✅ PASS" if dec == msg else f"  ❌ FAIL")
+    return dec == msg
 
-# Алиса шифрует для Боба
-encrypted = encrypt_message(key_alice_to_bob, original_text)
-print(f"   Зашифровано (base64): {encrypted[:50]}...")
 
-# Боб расшифровывает
-decrypted = decrypt_message(key_bob_to_alice, encrypted)
-print(f"   Расшифровано: '{decrypted}'")
-print(f"   ✅ Текст совпадает: {decrypted == original_text}\n")
+def test_hybrid():
+    print("\n🔐 Тест: Гибридное шифрование (ECDH + AES-GCM)")
 
-# === Тест 3: Структура encrypted_map (как в БД) ===
-print("📦 Тест 3: Структура сообщения (как сохраняется в БД)")
-encrypted_map = {
-    ADDR_ALICE: {
-        'content': encrypt_message(generate_symmetric_key(ADDR_ALICE, ADDR_ALICE, MNEMONIC_ALICE), original_text),
-        'image': None
-    },
-    ADDR_BOB: {
-        'content': encrypt_message(generate_symmetric_key(ADDR_ALICE, ADDR_BOB, MNEMONIC_ALICE), original_text),
-        'image': None
-    }
-}
-json_payload = json.dumps(encrypted_map)
-print(f"   JSON payload (первые 200 симв.): {json_payload[:200]}...")
+    addr_a = generate_address(MNEM_A)  # Alice
+    addr_b = generate_address(MNEM_B)  # Bob
+    pubkey_b = get_public_key_b64(MNEM_B)
 
-# === Тест 4: Имитация расшифровки Бобом ===
-print("\n🔍 Тест 4: Имитация расшифровки Бобом (как в process_message_decryption)")
-loaded = json.loads(json_payload)
-print(f"   Загруженные ключи в encrypted_data: {list(loaded.keys())}")
-print(f"   Адрес Боба есть в ключах: {ADDR_BOB in loaded}")
+    print(f"  Alice address: {addr_a[:16]}...")
+    print(f"  Bob address:   {addr_b[:16]}...")
 
-if ADDR_BOB in loaded:
-    bob_data = loaded[ADDR_BOB]
-    key_for_bob = generate_symmetric_key(ADDR_ALICE, ADDR_BOB, MNEMONIC_BOB)
-    result = decrypt_message(key_for_bob, bob_data.get('content'))
-    print(f"   Ключ Боба (hex): {key_for_bob.hex()[:32]}")
-    print(f"   Результат расшифровки: '{result}'")
-    print(f"   ✅ Успех: {result == original_text}")
-else:
-    print("   ❌ Адрес Боба НЕ найден в encrypted_data!")
+    # 🔐 Alice шифрует для Bob:
+    # peer_public_key_b64 = публичный ключ получателя (Bob)
+    # peer_address = адрес получателя (Bob)
+    payload = encrypt_hybrid(MNEM_A, pubkey_b, addr_b, "Secret message 🤫")
 
-# === Тест 5: Проверка БД (если есть) ===
-print("\n🗄️  Тест 5: Проверка blockchain.db")
-if os.path.exists('blockchain.db'):
-    try:
-        conn = sqlite3.connect('blockchain.db')
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    # 🔓 Bob расшифровывает:
+    # peer_public_key_b64 = публичный ключ отправителя (Alice)
+    # peer_address = адрес отправителя (Alice) ← ЭТО БЫЛО НЕПРАВИЛЬНО!
+    pubkey_a = get_public_key_b64(MNEM_A)
+    result = decrypt_hybrid(MNEM_B, pubkey_a, addr_a, payload)  # addr_a = Alice = отправитель ✅
 
-        # Ищем групповые сообщения
-        cursor.execute("""
-            SELECT id, sender, recipient, content, metadata 
-            FROM transactions 
-            WHERE recipient LIKE 'group:%' 
-            ORDER BY timestamp DESC LIMIT 3
-        """)
-        rows = cursor.fetchall()
+    print(f"  Decrypted content: {result['content']}")
+    print(f"  ✅ PASS" if result['content'] == "Secret message 🤫" else f"  ❌ FAIL")
+    return result['content'] == "Secret message 🤫"
 
-        if rows:
-            print(f"   Найдено групповых сообщений: {len(rows)}")
-            for i, row in enumerate(rows, 1):
-                print(f"\n   📨 Сообщение #{i}:")
-                print(f"      ID: {row['id']}")
-                print(f"      Отправитель: {row['sender'][:16]}...")
-                print(f"      Получатель: {row['recipient']}")
 
-                # Пробуем распарсить content
-                try:
-                    content_data = json.loads(row['content']) if isinstance(row['content'], str) else row['content']
-                    print(
-                        f"      Ключи в content: {list(content_data.keys()) if isinstance(content_data, dict) else 'NOT DICT'}")
+def test_group_key():
+    print("\n🔐 Тест: Групповой симметричный ключ")
 
-                    # Проверяем, есть ли адрес Боба
-                    if isinstance(content_data, dict) and ADDR_BOB in content_data:
-                        print(f"      ✅ Адрес Боба найден в сообщении")
-                        bob_enc = content_data[ADDR_BOB].get('content', '')
-                        print(f"      Зашифрованный контент (превью): {bob_enc[:40]}...")
-                    else:
-                        print(f"      ❌ Адрес Боба НЕ найден в сообщении")
+    addr_a = generate_address(MNEM_A)
+    addr_b = generate_address(MNEM_B)
 
-                except Exception as e:
-                    print(f"      ❌ Ошибка парсинга content: {e}")
+    # 🔧 Ключ должен быть одинаковым независимо от того, чья мнемоника используется
+    key_ab = generate_symmetric_key(addr_a, addr_b, MNEM_A)
+    key_ba = generate_symmetric_key(addr_b, addr_a, MNEM_B)
+
+    print(f"  Key A->B: {key_ab[:8].hex()}...")
+    print(f"  Key B->A: {key_ba[:8].hex()}...")
+
+    if key_ab == key_ba:
+        print(f"  ✅ PASS: Keys match")
+        # Дополнительно: проверим шифрование/расшифровку
+        msg = "Group secret"
+        aad = addr_a.encode()  # Alice отправляет
+        enc = encrypt_message_aead(key_ab, msg, associated_data=aad)
+        dec = decrypt_message_aead(key_ba, enc, associated_data=aad)
+        if dec == msg:
+            print(f"  ✅ PASS: Round-trip encryption works")
+            return True
         else:
-            print("   ⚪ Нет групповых сообщений в БД")
+            print(f"  ❌ FAIL: Decryption mismatch")
+            return False
+    else:
+        print(f"  ❌ FAIL: Keys don't match")
+        return False
 
-        conn.close()
-    except Exception as e:
-        print(f"   ❌ Ошибка чтения БД: {e}")
-else:
-    print("   ⚪ Файл blockchain.db не найден")
 
-print("\n=== ✅ Диагностика завершена ===")
-print("\n📋 Если где-то видите ❌ — это и есть проблема.")
-print("📤 Скопируйте вывод и пришлите мне — я точно скажу, что исправить.")
+if __name__ == '__main__':
+    print("🧪 Crypto Manager Tests\n" + "=" * 50)
+
+    results = [
+        test_direct_encryption(),
+        test_hybrid(),
+        test_group_key()
+    ]
+
+    print(f"\n{'=' * 50}\nРезультат: {sum(results)}/3 тестов пройдено")
+    sys.exit(0 if all(results) else 1)

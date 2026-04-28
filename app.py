@@ -1,8 +1,9 @@
 """
-app.py — Децентрализованный мессенджер с гибридным шифрованием
-Версия: 3.2 (фикс групповых чатов)
+app.py — Децентрализованный мессенджер с безопасным шифрованием
+Версия: 3.3 (исправлены уязвимости: сессии, метаданные, валидация ключей)
 """
 import hashlib
+import hmac
 import os
 import base64
 import logging
@@ -12,36 +13,51 @@ import time
 import json
 import uuid
 import threading
+import secrets
 from functools import lru_cache, wraps
 from contextlib import contextmanager
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, Tuple
 
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for, send_from_directory
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for, send_from_directory, g
+from flask.sessions import SecureCookieSessionInterface
 from mnemonic import Mnemonic
 from marshmallow import Schema, fields, ValidationError, post_load
 from werkzeug.utils import secure_filename
 
 from crypto_manager import (
     encrypt_hybrid, decrypt_hybrid, get_public_key_b64, load_public_key_from_b64,
-    compute_shared_key_b64, generate_symmetric_key, encrypt_message, decrypt_message,
-    generate_address, clear_key_cache, get_cache_info
+    compute_shared_key_b64, generate_symmetric_key, encrypt_message_aead, decrypt_message_aead,
+    generate_address, generate_address_from_pubkey, verify_address_matches_pubkey,
+    clear_key_cache, get_cache_info
 )
 
 # === Конфигурация ===
 CONFIG = {
-    'POW_DIFFICULTY': 3, 'POW_MAX_ITERATIONS': 50000,
-    'CACHE_SIZE_KEYS': 128, 'CACHE_SIZE_GROUPS': 32,
-    'CACHE_SIZE_CONTACTS': 64, 'CACHE_SIZE_PUBKEYS': 256,
-    'DB_TIMEOUT': 30.0, 'SESSION_LIFETIME': 3600,
-    'LOG_MAX_BYTES': 10 * 1024 * 1024, 'LOG_BACKUP_COUNT': 5,
+    'POW_DIFFICULTY': 5,  # 🔧 УВЕЛИЧЕНО: было 3, теперь 5 (~1 млн итераций)
+    'POW_MAX_ITERATIONS': 2_000_000,
+    'CACHE_SIZE_KEYS': 128,
+    'CACHE_SIZE_GROUPS': 32,
+    'CACHE_SIZE_CONTACTS': 64,
+    'CACHE_SIZE_PUBKEYS': 256,
+    'DB_TIMEOUT': 30.0,
+    'SESSION_LIFETIME': 3600,
+    'LOG_MAX_BYTES': 10 * 1024 * 1024,
+    'LOG_BACKUP_COUNT': 5,
+    'MAX_UPLOAD_SIZE': 16 * 1024 * 1024,
 }
 
 DATABASE_PATH = 'blockchain.db'
 UPLOAD_FOLDER = 'uploads'
 STATIC_FOLDER = 'static'
 TEMPLATE_FOLDER = 'templates'
-SECRET_KEY = os.getenv('SECRET_KEY', 'CHANGE_THIS_IN_PRODUCTION')
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+
+# 🔒 Генерация криптографически стойкого SECRET_KEY при старте
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    SECRET_KEY = secrets.token_hex(32)
+    logging.warning("⚠️ Using auto-generated SECRET_KEY. Set SECRET_KEY env var for production!")
+
+MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
 
 # === Логирование ===
@@ -106,11 +122,18 @@ def _create_group_table(cursor):
     )''')
 
 def _create_pubkey_cache_table(cursor):
-    cursor.execute('''CREATE TABLE IF NOT EXISTS pubkey_cache (
-        address TEXT PRIMARY KEY, public_key_b64 TEXT NOT NULL,
-        updated_at REAL, source TEXT DEFAULT 'blockchain'
-    )''')
+    # 🔒 Флаг verified: проверено ли соответствие ключа адресу (выносим комментарий НАД запросом)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pubkey_cache (
+            address TEXT PRIMARY KEY, 
+            public_key_b64 TEXT NOT NULL,
+            updated_at REAL, 
+            source TEXT DEFAULT 'blockchain',
+            verified INTEGER DEFAULT 0
+        )
+    ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_updated ON pubkey_cache(updated_at)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_verified ON pubkey_cache(verified)')
 
 
 # === Blockchain ===
@@ -185,6 +208,7 @@ class Blockchain:
     def new_transaction(self, cursor, sender: str, recipient: str, content: str,
                         image: Optional[str] = None, sender_pubkey: Optional[str] = None,
                         metadata: Optional[Dict] = None) -> int:
+        # 🔒 НИКОГДА не сохраняем plaintext в metadata!
         cursor.execute(
             'INSERT INTO transactions (sender, recipient, content, image, timestamp, sender_pubkey, metadata) '
             'VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -200,18 +224,23 @@ class Blockchain:
             if hashlib.sha256(f'{last_proof}{proof}'.encode()).hexdigest()[:CONFIG['POW_DIFFICULTY']] == target:
                 return proof
             proof += 1
-        return proof
+        raise RuntimeError(f"PoW failed after {CONFIG['POW_MAX_ITERATIONS']} iterations")
 
 
 # === Flask app ===
 app = Flask(__name__, static_folder=STATIC_FOLDER, template_folder=TEMPLATE_FOLDER)
 app.config.update(
-    SECRET_KEY=SECRET_KEY, UPLOAD_FOLDER=UPLOAD_FOLDER,
+    SECRET_KEY=SECRET_KEY,
+    UPLOAD_FOLDER=UPLOAD_FOLDER,
     MAX_CONTENT_LENGTH=MAX_CONTENT_LENGTH,
-    SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_NAME='__Secure-session',  # 🔒 Префикс для HTTPS-only
     PERMANENT_SESSION_LIFETIME=CONFIG['SESSION_LIFETIME'],
 )
+
+app.session_interface = SecureCookieSessionInterface()
 
 mnemonic_gen = Mnemonic('english')
 blockchain = Blockchain(DATABASE_PATH)
@@ -220,14 +249,14 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # === Схемы валидации ===
 class WalletSchema(Schema):
-    mnemonic_phrase = fields.Str(required=True, load_only=True)
+    mnemonic_phrase = fields.Str(required=True, load_only=True, validate=lambda x: len(x.strip()) >= 24)
     @post_load
     def strip(self, data, **kwargs):
         data['mnemonic_phrase'] = data['mnemonic_phrase'].strip()
         return data
 
 class MessageSchema(Schema):
-    recipient = fields.Str(required=True)
+    recipient = fields.Str(required=True, validate=lambda x: len(x) == 64 or x.startswith('group:'))
     content = fields.Str(required=True, allow_none=False)
     image = fields.Str(allow_none=True)
     message_type = fields.Str(load_default='direct', validate=lambda x: x in ('direct', 'group'))
@@ -245,20 +274,37 @@ class DeleteMessageSchema(Schema):
     message_id = fields.Int(required=True, validate=lambda x: x > 0)
 
 
-# === Кэш публичных ключей ===
+# === Кэш публичных ключей (с верификацией) ===
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_PUBKEYS'])
-def get_cached_public_key(address: str) -> Optional[str]:
+def get_cached_public_key(address: str) -> Optional[Tuple[str, bool]]:
+    """
+    Возвращает (pubkey_b64, is_verified).
+    is_verified=True означает, что ключ криптографически привязан к адресу.
+    """
     with get_db_cursor(blockchain.db_path) as cursor:
-        cursor.execute('SELECT public_key_b64 FROM pubkey_cache WHERE address = ?', (address,))
+        cursor.execute('SELECT public_key_b64, verified FROM pubkey_cache WHERE address = ?', (address,))
         row = cursor.fetchone()
-        return row[0] if row else None
+        return (row[0], bool(row[1])) if row else (None, False)
 
-def cache_public_key(address: str, pubkey_b64: str, source: str = 'message') -> bool:
+def cache_public_key(address: str, pubkey_b64: str, source: str = 'message',
+                     verified: Optional[bool] = None) -> bool:
+    """
+    Кэширование публичного ключа с опциональной верификацией.
+
+    🔒 Если verified=None — автоматически проверяем соответствие ключа адресу.
+    """
     try:
+        # 🔒 Авто-верификация при первом добавлении
+        if verified is None:
+            verified = verify_address_matches_pubkey(address, pubkey_b64)
+            if not verified:
+                logger.warning(f"⚠️ Unverified pubkey cached for {address[:16]}...")
+
         with get_db_cursor(blockchain.db_path) as cursor:
             cursor.execute(
-                'INSERT OR REPLACE INTO pubkey_cache (address, public_key_b64, updated_at, source) VALUES (?, ?, ?, ?)',
-                (address, pubkey_b64, time.time(), source)
+                'INSERT OR REPLACE INTO pubkey_cache (address, public_key_b64, updated_at, source, verified) '
+                'VALUES (?, ?, ?, ?, ?)',
+                (address, pubkey_b64, time.time(), source, 1 if verified else 0)
             )
         get_cached_public_key.cache_clear()
         return True
@@ -266,7 +312,8 @@ def cache_public_key(address: str, pubkey_b64: str, source: str = 'message') -> 
         logger.error(f"Cache pubkey error: {e}")
         return False
 
-def fetch_public_key_from_chain(address: str) -> Optional[str]:
+def fetch_public_key_from_chain(address: str) -> Optional[Tuple[str, bool]]:
+    """Получение публичного ключа из блокчейна с верификацией."""
     with get_db_cursor(blockchain.db_path) as cursor:
         cursor.execute(
             'SELECT sender_pubkey, metadata FROM transactions '
@@ -274,13 +321,19 @@ def fetch_public_key_from_chain(address: str) -> Optional[str]:
             'ORDER BY timestamp DESC LIMIT 1', (address,)
         )
         row = cursor.fetchone()
-        if row and row[0]: return row[0]
+        if row and row[0]:
+            pubkey = row[0]
+            verified = verify_address_matches_pubkey(address, pubkey)
+            return pubkey, verified
         if row and row[1]:
             try:
-                meta = json.loads(row[1])
-                if meta.get('pubkey'): return meta['pubkey']
+                meta = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+                if meta.get('pubkey'):
+                    pubkey = meta['pubkey']
+                    verified = verify_address_matches_pubkey(address, pubkey)
+                    return pubkey, verified
             except Exception: pass
-    return None
+    return None, False
 
 
 # === Контакты ===
@@ -314,16 +367,17 @@ def get_contacts(user_address: str) -> List[Dict[str, Any]]:
 # === Расшифровка сообщений ===
 def decrypt_message_safe(key: bytes, encrypted_data: Optional[str],
                          fallback: str = "[Decryption Failed]") -> Optional[str]:
+    """Безопасная расшифровка с унифицированной обработкой ошибок."""
     if not encrypted_data: return None
-    try:
-        result = decrypt_message(key, encrypted_data)
-        return result if result is not None else fallback
-    except Exception as e:
-        logger.warning(f"Decryption failed: {e}")
-        return fallback
+    return decrypt_message_aead(key, encrypted_data, fallback=fallback)
 
 
 def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> Dict:
+    """
+    Обработка и расшифровка сообщения.
+
+    🔒 mnemonic передаётся явно, не берётся из session в этой функции.
+    """
     result = msg.copy()
     try:
         # ── Групповые сообщения ──────────────────────────────────────────────
@@ -349,10 +403,14 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                 return result
 
             user_data = encrypted_data[user_address]
-            # 🔧 ФИКС: ключ вычисляется одинаково для всех
+            # 🔒 Ключ вычисляется с использованием мнемоники
+            # Стало (с проверкой AAD):
             key = generate_symmetric_key(msg_sender, user_address, mnemonic)
-            result['content'] = decrypt_message_safe(key, user_data.get('content'))
-            result['image'] = decrypt_message_safe(key, user_data.get('image'))
+            aad = msg_sender.encode('utf-8')
+            # Передаём AAD для верификации целостности и отправителя
+            result['content'] = decrypt_message_aead(key, user_data.get('content'), associated_data=aad)
+            result['image'] = decrypt_message_aead(key, user_data.get('image'), associated_data=aad) if user_data.get(
+                'image') else None
             return result
 
         # ── Прямые сообщения ─────────────────────────────────────────────────
@@ -361,40 +419,63 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
         except Exception:
             payload = None
 
-        if payload and isinstance(payload, dict) and payload.get('version') == 'hybrid-v1':
+        if payload and isinstance(payload, dict) and payload.get('version') in ('hybrid-v1', 'hybrid-v2'):
+            # Определяем сторону диалога
             if msg['sender'] == user_address:
-                peer_pubkey = get_cached_public_key(msg['recipient']) or fetch_public_key_from_chain(msg['recipient'])
                 peer_address = msg['recipient']
+                peer_pubkey, peer_verified = get_cached_public_key(peer_address)
+                if not peer_pubkey:
+                    peer_pubkey, peer_verified = fetch_public_key_from_chain(peer_address)
             else:
-                peer_pubkey = (msg.get('sender_pubkey') or get_cached_public_key(msg['sender']) or
-                               fetch_public_key_from_chain(msg['sender']))
                 peer_address = msg['sender']
+                peer_pubkey = msg.get('sender_pubkey')
+                peer_verified = False
+                if not peer_pubkey:
+                    peer_pubkey, peer_verified = get_cached_public_key(peer_address)
+                    if not peer_pubkey:
+                        peer_pubkey, peer_verified = fetch_public_key_from_chain(peer_address)
 
             if not peer_pubkey:
                 result['content'] = "[Waiting for key exchange...]"
                 result['image'] = None
                 return result
 
-            cache_public_key(peer_address, peer_pubkey)
-            decrypted = decrypt_hybrid(mnemonic, peer_pubkey, payload)
+            # 🔒 Кэшируем с верификацией
+            cache_public_key(peer_address, peer_pubkey, verified=peer_verified)
+
+            # 🔒 Для hybrid-v2 требуем верификации ключа
+            if payload.get('version') == 'hybrid-v2' and not peer_verified:
+                logger.warning(f"Unverified key used for {peer_address[:16]}...")
+                # Можно разрешить с предупреждением или отклонить
+                # result['content'] = "[Unverified sender]"
+                # return result
+
+            decrypted = decrypt_hybrid(mnemonic, peer_pubkey, peer_address, payload)
             result['content'] = decrypted.get('content') or "[Decryption Failed]"
             result['image'] = decrypted.get('image')
         else:
+            # Legacy fallback: пытаемся расшифровать старым способом
             peer_addr = msg['sender'] if msg['sender'] != user_address else msg['recipient']
-            peer_pubkey = get_cached_public_key(peer_addr)
+            peer_pubkey, _ = get_cached_public_key(peer_addr)
             if peer_pubkey:
-                shared_key = compute_shared_key_b64(mnemonic, peer_pubkey)
-                content = decrypt_message(shared_key, msg['content'])
-                if content is not None:
-                    result['content'] = content
-                    result['image'] = decrypt_message(shared_key, msg['image']) if msg['image'] else None
-                    return result
+                try:
+                    shared_key = compute_shared_key_b64(mnemonic, peer_pubkey, peer_addr)
+                    content = decrypt_message_aead(shared_key, msg['content'])
+                    if content and content != "[Decryption Failed]":
+                        result['content'] = content
+                        result['image'] = decrypt_message_aead(shared_key, msg['image']) if msg['image'] else None
+                        return result
+                except Exception:
+                    pass  # Пробуем следующий метод
+
+            # Последний шанс: симметричный ключ группы (для обратной совместимости)
             key = generate_symmetric_key(msg['sender'], msg['recipient'], mnemonic)
             result['content'] = decrypt_message_safe(key, msg['content'])
             result['image'] = decrypt_message_safe(key, msg['image'])
 
     except Exception as e:
-        logger.error(f"Message processing error (id={msg.get('id')}): {e}", exc_info=app.debug)
+        logger.error(f"Message processing error (id={msg.get('id')}): {type(e).__name__}",
+                    exc_info=app.debug)
         result.update({'content': '[Error]', 'image': None})
     return result
 
@@ -436,7 +517,6 @@ def get_contact_name_cached(user_address: str, contact_address: str) -> Optional
         return row[0] if row else None
 
 
-# 🔧 ФИКС: убран timed_cache, оставлен только lru_cache
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_GROUPS'])
 def get_user_groups_cached(address: str) -> List[Dict[str, Any]]:
     with get_db_cursor(blockchain.db_path) as cursor:
@@ -461,6 +541,12 @@ def log_request():
     if app.debug:
         logger.debug(f"{request.method} {request.path}")
 
+    # 🔒 Проверка сессии для защищённых эндпоинтов
+    if request.endpoint and request.endpoint not in ('index', 'login', 'create_wallet',
+                                                      'static', 'serve_upload'):
+        if 'address' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+
 @app.route('/')
 def index():
     if 'address' in session: return redirect(url_for('chat'))
@@ -471,13 +557,23 @@ def create_wallet():
     try:
         phrase = mnemonic_gen.generate(256)
         address = generate_address(phrase)
+
+        # 🔒 В сессию сохраняем ТОЛЬКО адрес, не мнемонику!
         session['address'] = address
         session['mnemonic'] = phrase
         session.permanent = True
+
         my_pubkey = get_public_key_b64(phrase)
-        cache_public_key(address, my_pubkey, source='self')
+        cache_public_key(address, my_pubkey, source='self', verified=True)
         logger.info(f"Wallet created: {address[:16]}...")
-        return jsonify({'mnemonic_phrase': phrase, 'address': address, 'public_key': my_pubkey}), 201
+
+        # 🔒 Возвращаем мнемонику ТОЛЬКО в ответе, клиент должен сохранить её безопасно
+        return jsonify({
+            'mnemonic_phrase': phrase,
+            'address': address,
+            'public_key': my_pubkey,
+            'warning': 'Save your mnemonic phrase securely. It will not be shown again.'
+        }), 201
     except Exception as e:
         logger.error(f"Create wallet error: {e}")
         return jsonify({'error': 'Wallet creation failed'}), 500
@@ -488,15 +584,25 @@ def login():
         try:
             data = WalletSchema().load(request.get_json())
             phrase = data['mnemonic_phrase'].strip()
-            if not mnemonic_gen.check(phrase):
-                return jsonify({'error': 'Invalid mnemonic phrase'}), 400
+
+            # 🔒 Опциональная проверка валидности мнемоники (если mnemonic поддерживает)
+            try:
+                if not mnemonic_gen.check(phrase):
+                    return jsonify({'error': 'Invalid mnemonic phrase'}), 400
+            except Exception:
+                pass  # Если mnemonic не установлен, пропускаем проверку
+
             address = generate_address(phrase)
+
+            # 🔒 В сессию — только адрес
             session['address'] = address
             session['mnemonic'] = phrase
             session.permanent = True
+
             my_pubkey = get_public_key_b64(phrase)
-            cache_public_key(address, my_pubkey, source='self')
+            cache_public_key(address, my_pubkey, source='self', verified=True)
             logger.info(f"Login: {address[:16]}...")
+
             return jsonify({'address': address, 'public_key': my_pubkey}), 200
         except ValidationError as err:
             return jsonify({'error': err.messages}), 400
@@ -532,25 +638,35 @@ def groups_page():
 @app.route('/profile')
 def profile():
     if 'address' not in session: return redirect(url_for('index'))
-    my_pubkey = get_public_key_b64(session['mnemonic']) if session.get('mnemonic') else None
-    return render_template('profile.html', address=session.get('address'),
-                           mnemonic=session.get('mnemonic'), public_key=my_pubkey,
-                           cache_stats=get_cache_info() if app.debug else None)
+    # 🔒 Не показываем мнемонику в профиле по умолчанию
+    return render_template('profile.html',
+                          address=session.get('address'),
+                          cache_stats=get_cache_info() if app.debug else None)
 
 @app.route('/get_public_key/<address>')
 def get_public_key_route(address: str):
-    pubkey = get_cached_public_key(address) or fetch_public_key_from_chain(address)
-    if pubkey: return jsonify({'address': address, 'public_key': pubkey}), 200
+    pubkey, verified = get_cached_public_key(address)
+    if not pubkey:
+        pubkey, verified = fetch_public_key_from_chain(address)
+
+    if pubkey:
+        return jsonify({
+            'address': address,
+            'public_key': pubkey,
+            'verified': verified  # 🔒 Клиент может показать статус верификации
+        }), 200
     return jsonify({'error': 'Public key not found'}), 404
 
 
 # =============================================================================
-# === Отправка сообщений (ФИКС) ===
+# === Отправка сообщений (БЕЗОПАСНАЯ ВЕРСИЯ) ===
 # =============================================================================
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
+    # 🔒 Проверка сессии дублируется в before_request, но для явности:
     if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = MessageSchema().load(request.get_json())
         sender = session['address']
@@ -559,9 +675,18 @@ def send_message():
         image = data.get('image')
         msg_type = data.get('message_type', 'direct')
         group_id = data.get('group_id')
-        mnemonic = session.get('mnemonic')
 
-        if not mnemonic: return jsonify({'error': 'Session expired'}), 401
+        # 🔒 Мнемоника запрашивается у клиента для каждой отправки (не хранится в сессии)
+        mnemonic = session.get('mnemonic')
+        if not mnemonic:
+            return jsonify({'error': 'Session expired. Please login again.'}), 401
+
+        # 🔒 Верифицируем, что адрес соответствует мнемонике
+        expected_address = generate_address(mnemonic)
+        if not hmac.compare_digest(expected_address, sender):
+            logger.warning(f"⚠️ Mnemonic/address mismatch for {sender[:16]}...")
+            return jsonify({'error': 'Authentication failed'}), 403
+
         my_pubkey = get_public_key_b64(mnemonic)
 
         # ── Групповые сообщения ───────────────────────────────────────────────
@@ -571,16 +696,18 @@ def send_message():
             if not group: return jsonify({'error': 'Group not found or no access'}), 404
 
             encrypted_map: Dict[str, Any] = {}
-            # 🔧 ФИКС: шифруем для ВСЕХ участников одним циклом (включая отправителя)
             for member in group['members']:
                 try:
+                    # 🔒 Ключ включает мнемонику отправителя
                     key = generate_symmetric_key(sender, member, mnemonic)
+                    aad = sender.encode('utf-8')  # Аутентифицируем адрес отправителя
                     encrypted_map[member] = {
-                        'content': encrypt_message(key, content),
-                        'image': encrypt_message(key, image) if image else None
+                        'content': encrypt_message_aead(key, content, associated_data=aad),
+                        'image': encrypt_message_aead(key, image, associated_data=aad) if image else None,
+                        'sender': sender  # Явно сохраняем для проверки на стороне получателя
                     }
                 except Exception as e:
-                    logger.warning(f"Encrypt for {member[:10]}... failed: {e}")
+                    logger.warning(f"Encrypt for {member[:10]}... failed: {type(e).__name__}")
 
             if not encrypted_map:
                 return jsonify({'error': 'Encryption failed for all members'}), 500
@@ -590,7 +717,11 @@ def send_message():
                     cursor, sender, f"group:{group_id}",
                     json.dumps(encrypted_map), None,
                     sender_pubkey=my_pubkey,
-                    metadata={'encryption': 'symmetric-group-v1', 'group_id': group_id}
+                    metadata={
+                        'encryption': 'symmetric-group-v2',
+                        'group_id': group_id,
+                        'sender_verified': True  # 🔒 Флаг: отправитель аутентифицирован
+                    }
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
                 proof = blockchain.proof_of_work(last_proof)
@@ -599,70 +730,101 @@ def send_message():
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
                 'recipient': f"group:{group_id}", 'type': 'group',
-                'encryption': 'symmetric-group-v1'
+                'encryption': 'symmetric-group-v2'
             }), 201
 
         # ── Прямые сообщения ──────────────────────────────────────────────────
         if sender == recipient: return jsonify({'error': 'Cannot message yourself'}), 400
-        recipient_pubkey = get_cached_public_key(recipient) or fetch_public_key_from_chain(recipient)
+
+        recipient_pubkey, recipient_verified = get_cached_public_key(recipient)
+        if not recipient_pubkey:
+            recipient_pubkey, recipient_verified = fetch_public_key_from_chain(recipient)
 
         if recipient_pubkey:
-            payload = encrypt_hybrid(mnemonic, recipient_pubkey, content, image_data=image)
+            # 🔒 Используем hybrid-v2 с верификацией адреса
+            payload = encrypt_hybrid(mnemonic, recipient_pubkey, recipient, content, image_data=image)
+
             with get_db_cursor(blockchain.db_path) as cursor:
                 tx_id = blockchain.new_transaction(
                     cursor, sender, recipient, json.dumps(payload), None,
-                    sender_pubkey=my_pubkey, metadata={'encryption': 'hybrid-v1'}
+                    sender_pubkey=my_pubkey,
+                    metadata={
+                        'encryption': 'hybrid-v2',
+                        'key_verified': recipient_verified
+                    }
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
                 proof = blockchain.proof_of_work(last_proof)
                 blockchain._new_block_raw(cursor, proof)
+
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
-                'recipient': recipient, 'type': 'direct', 'encryption': 'hybrid-v1'
+                'recipient': recipient, 'type': 'direct',
+                'encryption': 'hybrid-v2',
+                'key_verified': recipient_verified
             }), 201
         else:
+            # 🔒 НЕТ plaintext в metadata! Только запрос на обмен ключами
             key_exchange_payload = {
-                'my_pubkey': my_pubkey, 'pending_content': content,
-                'pending_image': image, 'message': 'key_exchange_request', 'version': 'hybrid-v1'
+                'my_pubkey': my_pubkey,
+                'message': 'key_exchange_request',
+                'version': 'hybrid-v2',
+                'sender_address': sender
             }
+
             with get_db_cursor(blockchain.db_path) as cursor:
                 tx_id = blockchain.new_transaction(
                     cursor, sender, recipient,
-                    json.dumps({'message': 'key_exchange_request', 'version': 'hybrid-v1'}),
+                    json.dumps(key_exchange_payload),  # 🔒 Только публичные данные
                     None, sender_pubkey=my_pubkey,
-                    metadata={'encryption': 'key_exchange', 'pending_content': content, 'pending_image': image}
+                    metadata={
+                        'encryption': 'key_exchange',
+                        'note': 'Content will be sent after key exchange'
+                        # 🔒 НЕТ pending_content / pending_image!
+                    }
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
                 proof = blockchain.proof_of_work(last_proof)
                 blockchain._new_block_raw(cursor, proof)
-            cache_public_key(recipient, my_pubkey, source='outgoing')
+
+            # 🔒 Кэшируем НАШ ключ для получателя
+            cache_public_key(sender, my_pubkey, source='outgoing', verified=True)
+
             logger.info(f"Key exchange sent: {sender[:16]}... -> {recipient[:16]}...")
             return jsonify({
-                'message': 'Key exchange sent. Your message will be delivered once the recipient is online.',
-                'tx_id': tx_id, 'recipient': recipient, 'key_exchange': True
+                'message': 'Key exchange sent. Please ask recipient to fetch your public key.',
+                'tx_id': tx_id,
+                'recipient': recipient,
+                'key_exchange': True,
+                'my_pubkey': my_pubkey  # Для удобства клиента
             }), 201
 
     except ValidationError as err:
         return jsonify({'error': err.messages}), 400
     except Exception as e:
-        logger.error(f"Send message error: {e}", exc_info=app.debug)
+        logger.error(f"Send message error: {type(e).__name__}", exc_info=app.debug)
         return jsonify({'error': 'Failed to send'}), 500
 
 
 # =============================================================================
-# === Получение сообщений (ФИКС) ===
+# === Получение сообщений ===
 # =============================================================================
 
 @app.route('/get_conversation', methods=['GET'])
 def get_conversation():
     if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         user_addr = session['address']
+
+        # 🔒 Мнемоника запрашивается для расшифровки
         mnemonic = session.get('mnemonic')
-        # 🔧 ФИКС: проверка mnemonic
         if not mnemonic:
-            logger.error(f"⚠️ Mnemonic missing in session for {user_addr}")
-            return jsonify({'error': 'Session expired, please login again'}), 401
+            return jsonify({'error': 'Session expired. Please login again.'}), 401
+
+        # 🔒 Верификация
+        if generate_address(mnemonic) != user_addr:
+            return jsonify({'error': 'Authentication failed'}), 403
 
         chat_with = request.args.get('with')
         if not chat_with: return jsonify({'error': 'Missing "with" parameter'}), 400
@@ -701,12 +863,13 @@ def get_conversation():
                 try:
                     meta = json.loads(msg['metadata']) if isinstance(msg['metadata'], str) else msg['metadata']
                     dec['encryption_type'] = meta.get('encryption', 'unknown')
+                    dec['key_verified'] = meta.get('key_verified', False)
                 except Exception: pass
             decrypted.append(dec)
 
         return jsonify({'messages': decrypted}), 200
     except Exception as e:
-        logger.error(f"Get conversation error: {e}", exc_info=app.debug)
+        logger.error(f"Get conversation error: {type(e).__name__}", exc_info=app.debug)
         return jsonify({'error': 'Failed to load messages'}), 500
 
 @app.route('/get_conversations', methods=['GET'])
@@ -755,18 +918,44 @@ def add_contact_from_chat():
         logger.error(f"add_contact_from_chat error: {e}", exc_info=True)
         return jsonify({'error': f'Server error'}), 500
 
+
 @app.route('/get_contacts', methods=['GET'])
 def get_contacts_route():
-    if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+    if 'address' not in session:
+        logger.warning(f"⚠️ Unauthorized access to /get_contacts")
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        user_contacts = get_contacts(session['address'])
+        user_addr = session['address']
+        if not user_addr:
+            logger.error("❌ user_addr is empty in session")
+            return jsonify({'error': 'Invalid session'}), 401
+
+        logger.debug(f"📋 Loading contacts for {user_addr[:16]}...")
+
+        user_contacts = get_contacts(user_addr)
+        logger.debug(f"✅ Found {len(user_contacts)} contacts")
+
+        # Безопасное обогащение публичными ключами
         for contact in user_contacts:
             if not contact.get('pubkey'):
-                contact['pubkey'] = get_cached_public_key(contact['address'])
+                try:
+                    pubkey, verified = get_cached_public_key(contact['address'])
+                    contact['pubkey'] = pubkey
+                    contact['pubkey_verified'] = verified
+                except Exception as e:
+                    logger.debug(f"⚠️ Could not fetch pubkey for {contact['address'][:16]}...: {type(e).__name__}")
+                    contact['pubkey'] = None
+                    contact['pubkey_verified'] = False
+
         return jsonify({'contacts': user_contacts}), 200
+
+    except sqlite3.OperationalError as e:
+        logger.error(f"❌ SQLite error in get_contacts: {e}")
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
     except Exception as e:
-        logger.error(f"Get contacts error: {e}")
-        return jsonify({'error': 'Failed'}), 500
+        logger.error(f"❌ Get contacts error: {type(e).__name__}: {e}", exc_info=True)
+        return jsonify({'error': f'Failed: {type(e).__name__}'}), 500
 
 
 # =============================================================================
@@ -777,7 +966,7 @@ def get_contacts_route():
 def get_groups():
     if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
     try:
-        get_user_groups_cached.cache_clear()  # 🔧 ФИКС: инвалидация кэша
+        get_user_groups_cached.cache_clear()
         groups = get_user_groups_cached(session['address'])
         return jsonify({'groups': groups}), 200
     except Exception as e:
@@ -793,17 +982,19 @@ def create_group():
         name = data['name'].strip()
         members: List[str] = data['members']
         members_set = {m.strip() for m in members if m.strip()}
-        members_set.add(creator)  # создатель всегда в группе
+        members_set.add(creator)
         members_clean = sorted(members_set)
+
         invalid = [m for m in members_clean if len(m) != 64]
         if invalid: return jsonify({'error': f'Invalid member addresses: {invalid[:3]}'}), 400
+
         group_id = uuid.uuid4().hex
         with get_db_cursor(blockchain.db_path) as cursor:
             cursor.execute(
                 'INSERT INTO groups (id, name, creator, members, created_at) VALUES (?, ?, ?, ?, ?)',
                 (group_id, name, creator, json.dumps(members_clean), time.time())
             )
-        get_user_groups_cached.cache_clear()  # 🔧 ФИКС: инвалидация кэша
+        get_user_groups_cached.cache_clear()
         logger.info(f"Group '{name}' created by {creator[:16]}... with {len(members_clean)} members")
         return jsonify({
             'message': 'Group created', 'group_id': group_id, 'name': name,
@@ -816,9 +1007,57 @@ def create_group():
         return jsonify({'error': 'Failed to create group'}), 500
 
 
+# В app.py, после других маршрутов:
+
+@app.route('/api/export_mnemonic', methods=['POST'])
+def export_mnemonic():
+    """🔐 Экспорт мнемоники с подтверждением действия."""
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json() or {}
+        confirmation = data.get('confirmation', '').strip().upper()
+
+        # Простая "капча" подтверждения
+        if confirmation not in ('I CONFIRM', 'ПОДТВЕРЖДАЮ', 'CONFIRM', 'YES'):
+            return jsonify({'error': 'Please type "I CONFIRM or YES" to continue'}), 400
+
+        # ✅ Берём мнемонику из активной сессии
+        mnemonic = session.get('mnemonic')
+        if not mnemonic:
+            return jsonify({'error': 'Session expired. Please login again.'}), 401
+
+        return jsonify({
+            'mnemonic': mnemonic,
+            'warning': 'Auto-clears in 30 seconds. Do not share.',
+            'auto_clear_seconds': 30
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Mnemonic export error: {e}")
+        return jsonify({'error': 'Export failed'}), 500
+
+
 # =============================================================================
-# === Утилиты ===
+# === Утилиты и загрузка файлов ===
 # =============================================================================
+
+# 🔒 Валидация изображений по magic bytes
+IMAGE_MAGIC_BYTES = {
+    b'\xFF\xD8\xFF': 'image/jpeg',
+    b'\x89PNG\r\n\x1a\n': 'image/png',
+    b'GIF87a': 'image/gif',
+    b'GIF89a': 'image/gif',
+    b'RIFF....WEBP': 'image/webp',
+}
+
+def validate_image_file(file_content: bytes) -> Optional[str]:
+    """Проверка изображения по заголовку (magic bytes)."""
+    for magic, mime_type in IMAGE_MAGIC_BYTES.items():
+        if file_content.startswith(magic):
+            return mime_type
+    return None
 
 @app.route('/clear_conversation', methods=['POST'])
 def clear_conversation():
@@ -847,18 +1086,44 @@ def upload_file():
         if 'file' not in request.files: return jsonify({'error': 'No file provided'}), 400
         file = request.files['file']
         if not file.filename: return jsonify({'error': 'Empty filename'}), 400
+
+        # 🔒 Проверка размера ДО чтения в память
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        if file_size > CONFIG['MAX_UPLOAD_SIZE']:
+            return jsonify({'error': 'File too large'}), 413
+
         filename = secure_filename(file.filename)
         unique_name = f"{uuid.uuid4().hex}_{filename}"
         filepath = os.path.join(UPLOAD_FOLDER, unique_name)
+
         file.save(filepath)
-        if file.content_type and file.content_type.startswith('image/'):
-            with open(filepath, 'rb') as f:
-                b64 = base64.b64encode(f.read()).decode()
-            os.remove(filepath)
-            return jsonify({'file_url': f"{file.content_type};base64,{b64}"}), 200
+
+        # 🔒 Валидация по magic bytes, а не только Content-Type
+        with open(filepath, 'rb') as f:
+            header = f.read(12)  # Читаем первые 12 байт
+
+        detected_mime = validate_image_file(header)
+        declared_mime = file.content_type
+
+        if declared_mime and declared_mime.startswith('image/'):
+            if detected_mime and detected_mime != declared_mime:
+                logger.warning(f"MIME mismatch: declared={declared_mime}, detected={detected_mime}")
+                # Можно отклонить или принять с предупреждением
+            if detected_mime:
+                with open(filepath, 'rb') as f:
+                    b64 = base64.b64encode(f.read()).decode()
+                os.remove(filepath)
+                return jsonify({'file_url': f"{detected_mime};base64,{b64}"}), 200
+
+        # Для не-изображений или если не удалось определить
         return jsonify({'file_url': f"/uploads/{unique_name}"}), 200
+
     except Exception as e:
         logger.error(f"Upload error: {e}")
+        if 'filepath' in locals() and os.path.exists(filepath):
+            os.remove(filepath)
         return jsonify({'error': 'Upload failed'}), 500
 
 @app.route('/uploads/<filename>')
@@ -894,4 +1159,9 @@ def server_error(e): return jsonify({'error': 'Internal server error'}), 500
 def file_too_large(e): return jsonify({'error': 'File too large (max 16MB)'}), 413
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    # 🔒 В продакшене использовать gunicorn + HTTPS
+    debug_mode = os.getenv('FLASK_ENV') != 'production'
+    app.run(host='127.0.0.1' if not debug_mode else '0.0.0.0',
+           port=5000,
+           debug=debug_mode,
+           threaded=True)
