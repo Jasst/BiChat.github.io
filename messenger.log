@@ -261,3 +261,9 @@ RuntimeError: PoW failed after 2000000 iterations
 2026-04-29 01:13:22 WARNING [crypto_manager:310] ⚠️ Address mismatch: payload=b9b8ad09121ffe91..., expected=4e9aea29e058284a...
 2026-04-29 01:13:29 INFO [__main__:974] Group '314' created by b9b8ad09121ffe91... with 2 members
 2026-04-29 01:15:16 INFO [__main__:974] Group '32' created by 4e9aea29e058284a... with 2 members
+2026-04-29 01:49:26 INFO [__main__:145] Blockchain initialized
+2026-04-29 01:49:26 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-29 01:50:34 INFO [__main__:145] Blockchain initialized
+2026-04-29 01:50:34 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-29 01:52:01 INFO [__main__:145] Blockchain initialized
+2026-04-29 01:52:01 WARNING [werkzeug:187]  * Debugger is active!
