@@ -1,6 +1,5 @@
 # crypto_manager.py
 # Оптимизированный модуль шифрования с кэшированием ключей
-# Версия: 2.2 (Безопасная деривация через HKDF + мнемонику)
 
 import hashlib
 import base64
@@ -10,44 +9,28 @@ from functools import lru_cache
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes
 from typing import Optional
 
 # === Конфигурация ===
 CACHE_SIZE = 128  # Размер кэша для ключей
 
+
 # === Кэшированная генерация ключа ===
 @lru_cache(maxsize=CACHE_SIZE)
-def _generate_key_secure(combined: str, mnemonic: str) -> bytes:
-    """
-    Внутренняя функция с кэшированием.
-    Использует HKDF для криптографически стойкой деривации ключа.
-    Без мнемоники ключ невозможно воспроизвести.
-    """
-    # Преобразуем мнемонику в начальное зерно
-    seed = hashlib.sha256(mnemonic.encode('utf-8')).digest()
-    
-    kdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=b'messenger-v2-secure-salt',
-        info=combined.encode('utf-8'),  # Уникальный info для пары адресов
-        backend=default_backend()
-    )
-    return kdf.derive(seed)
+def _generate_key_hashed(combined: str) -> bytes:
+    """Внутренняя функция для кэширования хэша ключа."""
+    return hashlib.sha256(combined.encode()).digest()[:32]
 
-def generate_key(sender: str, recipient: str, mnemonic_phrase: str) -> bytes:
+
+def generate_key(sender: str, recipient: str) -> bytes:
     """
-    Генерирует общий ключ шифрования на основе адресов И мнемонической фразы.
-    ⚠️ Обязательно передавайте session['mnemonic'] из app.py!
+    Генерирует общий ключ шифрования на основе адресов отправителя и получателя.
+    Использует LRU-кэш для ускорения повторных вызовов.
     """
-    if not mnemonic_phrase or not isinstance(mnemonic_phrase, str):
-        raise ValueError("mnemonic_phrase is required for secure key generation")
-        
     # Сортируем адреса для симметричности: key(A,B) == key(B,A)
     combined = ''.join(sorted([sender.strip(), recipient.strip()]))
-    return _generate_key_secure(combined, mnemonic_phrase)
+    return _generate_key_hashed(combined)
+
 
 def generate_address(mnemonic: str) -> str:
     """Генерирует адрес кошелька из мнемонической фразы (SHA256)."""
@@ -55,10 +38,17 @@ def generate_address(mnemonic: str) -> str:
         raise ValueError("Mnemonic phrase cannot be empty")
     return hashlib.sha256(mnemonic.encode('utf-8')).hexdigest()
 
+
 def encrypt_message(key: bytes, plaintext: str) -> str:
     """
     Шифрует сообщение алгоритмом AES-256-CBC.
-    Сохранён формат IV + ciphertext для обратной совместимости с существующей БД.
+
+    Args:
+        key: 32-байтный ключ шифрования
+        plaintext: Исходный текст сообщения
+
+    Returns:
+        Base64-строка с зашифрованными данными (IV + ciphertext)
     """
     if not plaintext:
         return ""
@@ -67,24 +57,38 @@ def encrypt_message(key: bytes, plaintext: str) -> str:
         raise ValueError(f"Invalid key: expected 32 bytes, got {type(key)}")
 
     try:
+        # Генерируем случайный IV для каждого сообщения
         iv = os.urandom(16)
+
+        # Создаём шифр
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
         encryptor = cipher.encryptor()
 
+        # Дополняем данные до кратности 16 байт (PKCS7)
         padder = padding.PKCS7(128).padder()
         padded_data = padder.update(plaintext.encode('utf-8')) + padder.finalize()
 
+        # Шифруем
         ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+
+        # Возвращаем IV + ciphertext в base64
         return base64.b64encode(iv + ciphertext).decode('ascii')
 
     except Exception as e:
         logging.error(f"Encryption error: {e}")
         raise
 
+
 def decrypt_message(key: bytes, encrypted_data: Optional[str]) -> Optional[str]:
     """
     Расшифровывает сообщение алгоритмом AES-256-CBC.
-    Возвращает None при ошибке или неверном ключе.
+
+    Args:
+        key: 32-байтный ключ шифрования
+        encrypted_data: Base64-строка с зашифрованными данными
+
+    Returns:
+        Расшифрованный текст или None при ошибке
     """
     if not encrypted_data:
         return None
@@ -93,17 +97,23 @@ def decrypt_message(key: bytes, encrypted_data: Optional[str]) -> Optional[str]:
         raise ValueError(f"Invalid key: expected 32 bytes, got {type(key)}")
 
     try:
+        # Декодируем base64
         data = base64.b64decode(encrypted_data)
+
         if len(data) < 16:
             raise ValueError("Encrypted data too short")
 
+        # Извлекаем IV и ciphertext
         iv, ciphertext = data[:16], data[16:]
 
+        # Создаём шифр для расшифровки
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
         decryptor = cipher.decryptor()
 
+        # Расшифровываем
         padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
 
+        # Убираем паддинг
         unpadder = padding.PKCS7(128).unpadder()
         plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
 
@@ -113,13 +123,15 @@ def decrypt_message(key: bytes, encrypted_data: Optional[str]) -> Optional[str]:
         logging.warning(f"Decryption failed: {e}")
         return None
 
+
 def clear_key_cache():
     """Очищает кэш сгенерированных ключей (вызывать при выходе из системы)."""
-    _generate_key_secure.cache_clear()
+    _generate_key_hashed.cache_clear()
+
 
 def get_cache_info() -> dict:
     """Возвращает статистику кэша ключей (для отладки)."""
-    cache = _generate_key_secure.cache_info()
+    cache = _generate_key_hashed.cache_info()
     return {
         'hits': cache.hits,
         'misses': cache.misses,
@@ -127,4 +139,3 @@ def get_cache_info() -> dict:
         'maxsize': cache.maxsize,
         'hit_rate': cache.hits / (cache.hits + cache.misses) * 100 if (cache.hits + cache.misses) > 0 else 0
     }
-
