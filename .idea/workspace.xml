@@ -5,16 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
-      <change afterPath="$PROJECT_DIR$/app2work.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/blockchain.db" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app2work.py" beforeDir="false" afterPath="$PROJECT_DIR$/Trash/app2work.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/blockchain.py" beforeDir="false" afterPath="$PROJECT_DIR$/Trash/blockchain.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/crypto_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/crypto_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crypto_manager_work.py" beforeDir="false" afterPath="$PROJECT_DIR$/Trash/crypto_manager_work.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/messenger.log" beforeDir="false" afterPath="$PROJECT_DIR$/messenger.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/app.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/passenger_wsgi.py" beforeDir="false" afterPath="$PROJECT_DIR$/Trash/passenger_wsgi.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/contacts.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/contacts.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/crypto_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/crypto_manager_work.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/groups.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/groups.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -108,6 +109,7 @@
     "Python.routes.executor": "Run",
     "Python.setup.executor": "Run",
     "Python.sync_peers.executor": "Run",
+    "Python.test.executor": "Run",
     "Python.transactions.executor": "Run",
     "RunOnceActivity.OpenProjectViewOnStart": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -133,11 +135,11 @@
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat\templates" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\Trash" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\templates" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger\static" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger" />
     </key>
   </component>
   <component name="RunManager">
@@ -204,7 +206,7 @@
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="C:\Users\PC\Documents\GitHub\BiChat.github.io\app2work.py" />
+      <option name="SCRIPT_NAME" value="C:\Users\PC\Documents\GitHub\BiChat.github.io\Trash\app2work.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -791,18 +793,18 @@
           <option name="timeStamp" value="42" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/crypto_manager_work.py</url>
+          <url>file://$PROJECT_DIR$/Trash/crypto_manager_work.py</url>
           <line>3</line>
           <option name="timeStamp" value="57" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/crypto_manager_work.py</url>
+          <url>file://$PROJECT_DIR$/Trash/crypto_manager_work.py</url>
           <line>119</line>
           <option name="timeStamp" value="58" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/crypto_manager.py</url>
-          <line>187</line>
+          <line>163</line>
           <option name="timeStamp" value="61" />
         </line-breakpoint>
       </breakpoints>

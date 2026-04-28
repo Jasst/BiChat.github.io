@@ -7,7 +7,6 @@
             <button onclick="location.href='/logout'">Logout</button>
         </div>
 
-        <!-- Навигация в виде вкладок -->
         <div class="tabs">
             <div class="tab" onclick="location.href='/chat'">Chat</div>
             <div class="tab" onclick="location.href='/contacts'">Contacts</div>
@@ -16,84 +15,829 @@
         </div>
     </div>
 
-    <div class="main-content">
-        <h2>Groups</h2>
-        <div class="groups-list" id="groupsList">
-            <!-- Groups will be loaded here -->
-            <p>Loading groups...</p>
+    <div class="main-content groups-page">
+
+        <!-- Шапка -->
+        <div class="groups-header">
+            <h2>Groups</h2>
+            <button class="btn-primary" onclick="openCreateModal()">+ New Group</button>
         </div>
-        <div class="input-area">
-            <input type="text" id="groupName" placeholder="Group Name">
-            <input type="text" id="groupMembers" placeholder="Member Addresses (comma separated)">
-            <button onclick="createGroup()">Create Group</button>
+
+        <!-- Список групп -->
+        <div id="groupsList" class="groups-list">
+            <p class="loading-text">Loading groups...</p>
         </div>
     </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════
+     МОДАЛЬНОЕ ОКНО: Создать группу
+═══════════════════════════════════════════════ -->
+<div id="createGroupModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Create New Group</h3>
+            <span class="close" onclick="closeCreateModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+
+            <!-- Название группы -->
+            <div class="form-group">
+                <label>Group Name</label>
+                <input type="text" id="groupName" placeholder="e.g. Team Alpha" maxlength="100">
+            </div>
+
+            <!-- Выбор участников из контактов -->
+            <div class="form-group">
+                <label>Add from Contacts</label>
+                <div id="contactsCheckboxList" class="contacts-checkbox-list">
+                    <p class="hint-text">Loading contacts...</p>
+                </div>
+            </div>
+
+            <!-- Ввод адреса вручную -->
+            <div class="form-group">
+                <label>Or Add Address Manually</label>
+                <div class="address-input-row">
+                    <input type="text" id="manualAddress" placeholder="64-char hex address">
+                    <button class="btn-secondary" onclick="addManualAddress()">Add</button>
+                </div>
+            </div>
+
+            <!-- Список добавленных участников -->
+            <div class="form-group" id="selectedMembersSection" style="display:none;">
+                <label>Selected Members (<span id="memberCount">0</span>)</label>
+                <div id="selectedMembersList" class="selected-members-list"></div>
+            </div>
+
+            <div id="createGroupError" class="error-text" style="display:none;"></div>
+
+            <button class="btn-primary btn-full" onclick="submitCreateGroup()">
+                Create Group
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     МОДАЛЬНОЕ ОКНО: Детали группы
+═══════════════════════════════════════════════ -->
+<div id="groupDetailModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="detailGroupName">Group Details</h3>
+            <span class="close" onclick="closeDetailModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="detail-row">
+                <span class="detail-label">Group ID</span>
+                <span id="detailGroupId" class="detail-value mono"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Created by</span>
+                <span id="detailCreator" class="detail-value mono"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Created at</span>
+                <span id="detailCreatedAt" class="detail-value"></span>
+            </div>
+            <div class="form-group">
+                <label>Members (<span id="detailMemberCount">0</span>)</label>
+                <div id="detailMembersList" class="members-list-detail"></div>
+            </div>
+            <button class="btn-primary btn-full" onclick="openGroupChat()">
+                💬 Open Group Chat
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ── Страница групп ── */
+.groups-page {
+    padding: 24px 28px;
+    overflow-y: auto;
+}
+
+.groups-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.groups-header h2 {
+    margin: 0;
+    font-size: 22px;
+    color: #fff;
+}
+
+/* ── Карточки групп ── */
+.groups-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.group-card {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 18px;
+    transition: border-color 0.2s, transform 0.15s;
+}
+
+.group-card:hover {
+    border-color: #bb86fc;
+    transform: translateY(-2px);
+}
+
+.group-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.group-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #bb86fc, #3700b3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #fff;
+    flex-shrink: 0;
+    margin-right: 12px;
+}
+
+.group-title-block {
+    flex: 1;
+    min-width: 0;
+}
+
+.group-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+}
+
+.group-id-short {
+    font-size: 11px;
+    color: #666;
+    font-family: monospace;
+}
+
+.group-meta {
+    font-size: 13px;
+    color: #aaa;
+    margin-bottom: 6px;
+}
+
+.group-meta span {
+    color: #bb86fc;
+    font-weight: 500;
+}
+
+.group-creator-badge {
+    display: inline-block;
+    font-size: 10px;
+    background: #3700b3;
+    color: #bb86fc;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.group-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+/* ── Кнопки ── */
+.btn-primary {
+    background: #bb86fc;
+    color: #121212;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+.btn-primary:hover { background: #9965e8; }
+
+.btn-secondary {
+    background: transparent;
+    color: #bb86fc;
+    border: 1px solid #bb86fc;
+    padding: 9px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+.btn-secondary:hover { background: rgba(187, 134, 252, 0.1); }
+
+.btn-danger {
+    background: transparent;
+    color: #cf6679;
+    border: 1px solid #cf6679;
+    padding: 9px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+.btn-danger:hover { background: rgba(207, 102, 121, 0.1); }
+
+.btn-full { width: 100%; margin-top: 12px; padding: 11px; }
+
+/* ── Модальные окна ── */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85);
+    overflow-y: auto;
+}
+
+.modal-content {
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 520px;
+    margin: 40px auto;
+    color: #fff;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid #333;
+}
+
+.modal-header h3 { margin: 0; font-size: 17px; }
+
+.close {
+    font-size: 24px;
+    cursor: pointer;
+    color: #aaa;
+    line-height: 1;
+}
+.close:hover { color: #fff; }
+
+.modal-body { padding: 20px 22px; }
+
+/* ── Форма ── */
+.form-group { margin-bottom: 18px; }
+
+.form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 8px;
+}
+
+.form-group input[type="text"] {
+    width: 100%;
+    background: #2c2c2c;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: #fff;
+    font-size: 14px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+.form-group input[type="text"]:focus {
+    outline: none;
+    border-color: #bb86fc;
+}
+
+.address-input-row {
+    display: flex;
+    gap: 8px;
+}
+.address-input-row input { flex: 1; }
+
+/* ── Список контактов с чекбоксами ── */
+.contacts-checkbox-list {
+    max-height: 160px;
+    overflow-y: auto;
+    background: #2c2c2c;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 6px;
+}
+
+.contact-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.contact-checkbox-item:hover { background: #383838; }
+
+.contact-checkbox-item input[type="checkbox"] {
+    accent-color: #bb86fc;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.contact-checkbox-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.contact-checkbox-name {
+    font-size: 14px;
+    color: #fff;
+    font-weight: 500;
+}
+
+.contact-checkbox-addr {
+    font-size: 11px;
+    color: #777;
+    font-family: monospace;
+}
+
+/* ── Выбранные участники ── */
+.selected-members-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+    background: #2c2c2c;
+    border: 1px solid #444;
+    border-radius: 6px;
+    min-height: 40px;
+}
+
+.member-tag {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #3700b3;
+    color: #bb86fc;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.member-tag button {
+    background: none;
+    border: none;
+    color: #bb86fc;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.7;
+}
+.member-tag button:hover { opacity: 1; }
+
+/* ── Детали группы ── */
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 10px 0;
+    border-bottom: 1px solid #333;
+    gap: 12px;
+}
+
+.detail-label {
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.detail-value {
+    font-size: 13px;
+    color: #ddd;
+    text-align: right;
+    word-break: break-all;
+}
+
+.detail-value.mono { font-family: monospace; font-size: 12px; }
+
+.members-list-detail {
+    background: #2c2c2c;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #444;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.member-detail-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #383838;
+}
+.member-detail-row:last-child { border-bottom: none; }
+
+.member-detail-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #3700b3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #bb86fc;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.member-detail-info { flex: 1; min-width: 0; }
+
+.member-detail-name {
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.member-detail-addr {
+    font-size: 11px;
+    color: #666;
+    font-family: monospace;
+}
+
+.me-badge {
+    font-size: 10px;
+    background: #1a6632;
+    color: #4caf50;
+    border-radius: 4px;
+    padding: 2px 5px;
+    font-weight: 600;
+}
+
+/* ── Утилиты ── */
+.loading-text, .hint-text { color: #666; font-size: 13px; padding: 8px; }
+.error-text { color: #cf6679; font-size: 13px; margin-bottom: 10px; }
+.empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 48px 24px;
+    color: #666;
+}
+.empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; margin: 0 0 16px; }
+</style>
+
 <script>
+    const MY_ADDRESS = "{{ address }}";
+
+    // ── Хранилище состояния ──────────────────────────────────────────────────
+    let allContacts = [];
+    let selectedMembers = {};   // { address: name }
+    let currentDetailGroup = null;
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Загрузка групп
+    // ══════════════════════════════════════════════════════════════════════════
     async function loadGroups() {
+        const container = document.getElementById('groupsList');
+        container.innerHTML = '<p class="loading-text">Loading groups...</p>';
         try {
             const response = await fetch('/get_groups');
             const data = await response.json();
-            if (response.ok) {
-                const container = document.getElementById('groupsList');
-                container.innerHTML = '';
-                if (data.groups.length === 0) {
-                    container.innerHTML = '<p>No groups found.</p>';
-                } else {
-                    const ul = document.createElement('ul');
-                    data.groups.forEach(group => {
-                        const li = document.createElement('li');
-                        li.className = 'group-item';
-                        li.innerHTML = `
-                            <span class="group-info">${group.name} (ID: ${group.id.substring(0, 10)}...)</span>
-                        `;
-                        ul.appendChild(li);
-                    });
-                    container.appendChild(ul);
-                }
-            } else {
-                console.error('Failed to load groups:', data.error);
-                document.getElementById('groupsList').innerHTML = `<p class="error">Error loading groups: ${data.error}</p>`;
+            if (!response.ok) throw new Error(data.error || 'Unknown error');
+
+            container.innerHTML = '';
+
+            if (data.groups.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">👥</div>
+                        <p>No groups yet. Create one to start chatting!</p>
+                        <button class="btn-primary" onclick="openCreateModal()">+ Create Group</button>
+                    </div>`;
+                return;
             }
-        } catch (error) {
-            console.error('Error loading groups:', error);
-            document.getElementById('groupsList').innerHTML = `<p class="error">Error loading groups.</p>`;
+
+            data.groups.forEach(group => {
+                container.appendChild(buildGroupCard(group));
+            });
+
+        } catch (err) {
+            console.error('Load groups error:', err);
+            container.innerHTML = `<p class="error-text">Failed to load groups: ${err.message}</p>`;
         }
     }
 
-    async function createGroup() {
-        const name = document.getElementById('groupName').value.trim();
-        const membersInput = document.getElementById('groupMembers').value;
-        const members = membersInput.split(',').map(m => m.trim()).filter(m => m);
+    function buildGroupCard(group) {
+        const card = document.createElement('div');
+        card.className = 'group-card';
 
-        if (!name || members.length === 0) {
-            alert('Please fill in group name and at least one member.');
-            return;
-        }
+        const isCreator = group.creator === MY_ADDRESS;
+        const memberCount = group.members.length;
+        const initials = group.name.substring(0, 2).toUpperCase();
+        const createdDate = group.created_at
+            ? new Date(group.created_at * 1000).toLocaleDateString()
+            : '—';
+
+        card.innerHTML = `
+            <div class="group-card-header">
+                <div class="group-avatar">${initials}</div>
+                <div class="group-title-block">
+                    <div class="group-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}</div>
+                    <div class="group-id-short">ID: ${group.id.substring(0, 12)}…</div>
+                </div>
+            </div>
+            ${isCreator ? '<div class="group-creator-badge">⭐ Creator</div>' : ''}
+            <div class="group-meta">
+                <span>${memberCount}</span> member${memberCount !== 1 ? 's' : ''}
+                &nbsp;·&nbsp; ${createdDate}
+            </div>
+            <div class="group-card-actions">
+                <button class="btn-primary" style="flex:1;" onclick='openGroupChatById("group:${group.id}", "${escapeHtml(group.name)}")'>
+                    💬 Open Chat
+                </button>
+                <button class="btn-secondary" onclick='openDetailModal(${JSON.stringify(group).replace(/'/g, "&#39;")})'>
+                    Info
+                </button>
+            </div>
+        `;
+        return card;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Открыть групповой чат
+    // ══════════════════════════════════════════════════════════════════════════
+    function openGroupChatById(groupAddress, groupName) {
+        const params = new URLSearchParams({ start_with: groupAddress, name: groupName });
+        location.href = '/chat?' + params.toString();
+    }
+
+    function openGroupChat() {
+        if (!currentDetailGroup) return;
+        openGroupChatById('group:' + currentDetailGroup.id, currentDetailGroup.name);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Модал: Детали группы
+    // ══════════════════════════════════════════════════════════════════════════
+    function openDetailModal(group) {
+        currentDetailGroup = group;
+
+        document.getElementById('detailGroupName').textContent = group.name;
+        document.getElementById('detailGroupId').textContent = group.id;
+        document.getElementById('detailCreator').textContent =
+            group.creator === MY_ADDRESS ? group.creator + ' (You)' : group.creator;
+        document.getElementById('detailCreatedAt').textContent = group.created_at
+            ? new Date(group.created_at * 1000).toLocaleString()
+            : '—';
+        document.getElementById('detailMemberCount').textContent = group.members.length;
+
+        const membersList = document.getElementById('detailMembersList');
+        membersList.innerHTML = '';
+        group.members.forEach(addr => {
+            const isMe = addr === MY_ADDRESS;
+            const name = isMe ? 'You' : (addr.substring(0, 10) + '...');
+            const row = document.createElement('div');
+            row.className = 'member-detail-row';
+            row.innerHTML = `
+                <div class="member-detail-avatar">${name.substring(0, 1).toUpperCase()}</div>
+                <div class="member-detail-info">
+                    <div class="member-detail-name">${isMe ? 'You' : addr.substring(0, 16) + '...'}</div>
+                    <div class="member-detail-addr">${addr}</div>
+                </div>
+                ${isMe ? '<span class="me-badge">ME</span>' : ''}
+            `;
+            membersList.appendChild(row);
+        });
+
+        document.getElementById('groupDetailModal').style.display = 'block';
+    }
+
+    function closeDetailModal() {
+        document.getElementById('groupDetailModal').style.display = 'none';
+        currentDetailGroup = null;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Модал: Создать группу
+    // ══════════════════════════════════════════════════════════════════════════
+    async function openCreateModal() {
+        selectedMembers = {};
+        document.getElementById('groupName').value = '';
+        document.getElementById('manualAddress').value = '';
+        document.getElementById('createGroupError').style.display = 'none';
+        renderSelectedMembers();
+
+        // Загружаем контакты
+        const listEl = document.getElementById('contactsCheckboxList');
+        listEl.innerHTML = '<p class="hint-text">Loading...</p>';
+        document.getElementById('createGroupModal').style.display = 'block';
 
         try {
-            const response = await fetch('/create_group', {
+            const res = await fetch('/get_contacts');
+            const data = await res.json();
+            allContacts = res.ok ? data.contacts : [];
+            renderContactsCheckboxes();
+        } catch (e) {
+            listEl.innerHTML = '<p class="hint-text">Could not load contacts.</p>';
+        }
+    }
+
+    function closeCreateModal() {
+        document.getElementById('createGroupModal').style.display = 'none';
+    }
+
+    function renderContactsCheckboxes() {
+        const listEl = document.getElementById('contactsCheckboxList');
+        if (!allContacts.length) {
+            listEl.innerHTML = '<p class="hint-text">No contacts yet. Add contacts first or use manual address input below.</p>';
+            return;
+        }
+        listEl.innerHTML = '';
+        allContacts.forEach(c => {
+            const item = document.createElement('label');
+            item.className = 'contact-checkbox-item';
+            item.innerHTML = `
+                <input type="checkbox" value="${c.address}"
+                    onchange="toggleContactMember('${c.address}', '${escapeHtml(c.name)}', this.checked)">
+                <div class="contact-checkbox-label">
+                    <div class="contact-checkbox-name">${escapeHtml(c.name)}</div>
+                    <div class="contact-checkbox-addr">${c.address.substring(0, 20)}...</div>
+                </div>
+            `;
+            listEl.appendChild(item);
+        });
+    }
+
+    function toggleContactMember(address, name, checked) {
+        if (checked) {
+            selectedMembers[address] = name;
+        } else {
+            delete selectedMembers[address];
+        }
+        renderSelectedMembers();
+    }
+
+    function addManualAddress() {
+        const input = document.getElementById('manualAddress');
+        const addr = input.value.trim();
+        if (!addr) return;
+        if (addr.length !== 64 || !/^[a-fA-F0-9]+$/.test(addr)) {
+            showCreateError('Address must be 64 hex characters.');
+            return;
+        }
+        if (addr === MY_ADDRESS) {
+            showCreateError('You are added automatically — no need to include yourself.');
+            return;
+        }
+        if (selectedMembers[addr]) {
+            showCreateError('This address is already added.');
+            return;
+        }
+        selectedMembers[addr] = addr.substring(0, 10) + '...';
+        input.value = '';
+        document.getElementById('createGroupError').style.display = 'none';
+        renderSelectedMembers();
+    }
+
+    function removeMember(address) {
+        delete selectedMembers[address];
+        // Снимаем чекбокс, если контакт
+        const cb = document.querySelector(`#contactsCheckboxList input[value="${address}"]`);
+        if (cb) cb.checked = false;
+        renderSelectedMembers();
+    }
+
+    function renderSelectedMembers() {
+        const count = Object.keys(selectedMembers).length;
+        const section = document.getElementById('selectedMembersSection');
+        document.getElementById('memberCount').textContent = count;
+
+        if (count === 0) {
+            section.style.display = 'none';
+            return;
+        }
+        section.style.display = 'block';
+
+        const listEl = document.getElementById('selectedMembersList');
+        listEl.innerHTML = '';
+        Object.entries(selectedMembers).forEach(([addr, name]) => {
+            const tag = document.createElement('div');
+            tag.className = 'member-tag';
+            tag.innerHTML = `
+                <span title="${addr}">${escapeHtml(name)}</span>
+                <button onclick="removeMember('${addr}')" title="Remove">×</button>
+            `;
+            listEl.appendChild(tag);
+        });
+    }
+
+    async function submitCreateGroup() {
+        const name = document.getElementById('groupName').value.trim();
+        const members = Object.keys(selectedMembers);
+
+        if (!name) { showCreateError('Please enter a group name.'); return; }
+        if (members.length === 0) { showCreateError('Please add at least one member.'); return; }
+
+        const btn = document.querySelector('#createGroupModal .btn-full');
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+
+        try {
+            const res = await fetch('/create_group', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, members })
             });
-            const data = await response.json();
-            if (response.ok) {
-                document.getElementById('groupName').value = '';
-                document.getElementById('groupMembers').value = '';
-                loadGroups(); // Перезагрузить группы
-                alert('Group created successfully.');
-            } else {
-                alert('Error: ' + data.error);
+            const data = await res.json();
+
+            if (!res.ok) {
+                showCreateError(data.error || 'Failed to create group.');
+                return;
             }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('An error occurred.');
+
+            closeCreateModal();
+            await loadGroups();
+
+            // Предлагаем сразу открыть чат
+            if (confirm(`Group "${name}" created with ${data.member_count} members!\n\nOpen group chat now?`)) {
+                openGroupChatById('group:' + data.group_id, name);
+            }
+
+        } catch (err) {
+            showCreateError('Network error. Please try again.');
+            console.error(err);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Create Group';
         }
     }
 
-    // Загрузка групп при открытии страницы
-    document.addEventListener('DOMContentLoaded', loadGroups);
+    function showCreateError(msg) {
+        const el = document.getElementById('createGroupError');
+        el.textContent = msg;
+        el.style.display = 'block';
+    }
+
+    // ── Утилиты ──────────────────────────────────────────────────────────────
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // ── Закрытие модалов кликом по фону ──────────────────────────────────────
+    window.addEventListener('click', e => {
+        if (e.target.id === 'createGroupModal') closeCreateModal();
+        if (e.target.id === 'groupDetailModal') closeDetailModal();
+    });
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { closeCreateModal(); closeDetailModal(); }
+    });
+
+    // Добавление участника по Enter
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('manualAddress').addEventListener('keydown', e => {
+            if (e.key === 'Enter') addManualAddress();
+        });
+        loadGroups();
+    });
 </script>
 {% endblock %}

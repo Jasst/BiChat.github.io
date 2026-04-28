@@ -332,7 +332,7 @@
     }
 
     function selectConversation(address, name, isGroup) {
-        currentChatAddress = address; currentChatIsGroup = isGroup;
+        currentChatAddress = address; currentChatIsGroup = isGroup === true || isGroup === 'true';
         currentChatPartnerAddress = isGroup ? "" : (address === userAddress ? "" : address);
         document.getElementById('currentChatName').textContent = name;
         document.querySelectorAll('.conversation-item').forEach(item => item.classList.remove('active'));
@@ -512,19 +512,24 @@
     function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
 
     // ✅ Обработка ?start_with= параметра при открытии чата
-    function handleStartWithParam() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const startWith = urlParams.get('start_with');
-        const startName = urlParams.get('name');
-        if (startWith && startName) {
-            // Ждём загрузки контактов, затем открываем чат
-            loadContactsForModal().then(() => {
-                selectConversation(startWith, startName, false);
-                // Очищаем URL
-                window.history.replaceState({}, document.title, window.location.pathname);
-            });
-        }
+    // ✅ Обработка ?start_with= параметра при открытии чата
+function handleStartWithParam() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const startWith = urlParams.get('start_with');
+    const startName = urlParams.get('name');
+    if (startWith && startName) {
+        // 🔧 ИСПРАВЛЕНО: определяем, группа это или нет
+        const isGroup = startWith.startsWith('group:');
+
+        // Ждём загрузки контактов, затем открываем чат
+        loadContactsForModal().then(() => {
+            // 🔧 ПЕРЕДАЁМ isGroup вместо жестко заданного false
+            selectConversation(startWith, startName, isGroup);
+            // Очищаем URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        });
     }
+}
 
     document.addEventListener('DOMContentLoaded', function() {
         loadConversations(); startPolling();
