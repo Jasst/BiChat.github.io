@@ -4,6 +4,7 @@ cryptography==41.0.7
 marshmallow==3.20.1
 mnemonic==0.20
 Werkzeug==2.3.7
+python-dotenv>=1.0.0
 
 # Для продакшена (раскомментируйте если нужно):
 # gunicorn==21.2.0

@@ -305,10 +305,10 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
         logger.debug(f"🔓 Decrypting from peer={peer_address[:16]}...")
 
         # 🔒 Проверка: адрес в пейлоаде должен совпадать с переданным peer_address
+        # СТАЛО — просто логируем для отладки, не ругаемся
         payload_peer = encrypted_payload.get('peer_address')
-        if payload_peer and payload_peer != peer_address:
-            logger.warning(f"⚠️ Address mismatch: payload={payload_peer[:16]}..., expected={peer_address[:16]}...")
-            # Не блокируем, но логируем — возможно, это первый обмен ключами
+        if payload_peer:
+            logger.debug(f"ℹ️ payload.peer_address={payload_peer[:16]}... sender={peer_address[:16]}...")
 
         # Вычисляем общий секрет с моим приватным ключом и публичным ключом отправителя
         shared_key = compute_shared_key_b64(my_mnemonic, peer_public_key_b64, peer_address)

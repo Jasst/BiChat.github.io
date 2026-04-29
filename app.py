@@ -17,7 +17,7 @@ import secrets
 from functools import lru_cache, wraps
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Callable, Tuple
-
+from datetime import timedelta
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, send_from_directory, g
 from flask.sessions import SecureCookieSessionInterface
 from mnemonic import Mnemonic
@@ -34,9 +34,12 @@ from crypto_manager import (
 # 🔧 Загрузка переменных из .env (для локальной разработки)
 try:
     from dotenv import load_dotenv
-    load_dotenv()  # pip install python-dotenv
+    import pathlib
+    # Ищем .env рядом с app.py, независимо от рабочей директории
+    _env_path = pathlib.Path(__file__).parent / '.env'
+    load_dotenv(dotenv_path=_env_path, override=False)
 except ImportError:
-    pass  # Если dotenv не установлен — пропускаем, используем системные env
+    pass
 
 # === Конфигурация ===
 CONFIG = {
@@ -47,7 +50,7 @@ CONFIG = {
     'CACHE_SIZE_CONTACTS': 64,
     'CACHE_SIZE_PUBKEYS': 256,
     'DB_TIMEOUT': 30.0,
-    'SESSION_LIFETIME': 3600,
+    'SESSION_LIFETIME': int(os.getenv('PERMANENT_SESSION_LIFETIME', 31536000)),
     'LOG_MAX_BYTES': 10 * 1024 * 1024,
     'LOG_BACKUP_COUNT': 5,
     'MAX_UPLOAD_SIZE': 16 * 1024 * 1024,
@@ -72,21 +75,28 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 STATIC_FOLDER = 'static'
 TEMPLATE_FOLDER = 'templates'
 
-# 🔒 Генерация криптографически стойкого SECRET_KEY при старте
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY or len(SECRET_KEY) < 32:
     SECRET_KEY = secrets.token_hex(32)
-    logging.warning("⚠️ Using auto-generated SECRET_KEY. Set SECRET_KEY env var for production!")
+    logging.warning("❌ SECRET_KEY NOT FOUND in env! Sessions will reset on restart!")
+else:
+    # WARNING чтобы точно попало в лог даже в продакшене
+    logging.warning(f"✅ SECRET_KEY loaded OK (length={len(SECRET_KEY)}, starts={SECRET_KEY[:6]}...)")
+
+# Проверка DATABASE_PATH
+logging.warning(f"📁 DATABASE_PATH={os.getenv('DATABASE_PATH', 'NOT SET')}")
+logging.warning(f"📁 UPLOAD_FOLDER={os.getenv('UPLOAD_FOLDER', 'NOT SET')}")
 
 MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
 
 # === Логирование ===
 def setup_logging():
-    log_dir = os.path.dirname(os.path.abspath('messenger.log')) or '.'
-    os.makedirs(log_dir, exist_ok=True)
+    # Явный абсолютный путь рядом с app.py
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messenger.log')
+
     file_handler = logging.handlers.RotatingFileHandler(
-        os.path.join(log_dir, 'messenger.log'),
+        log_path,
         maxBytes=CONFIG['LOG_MAX_BYTES'],
         backupCount=CONFIG['LOG_BACKUP_COUNT'],
         encoding='utf-8',
@@ -101,10 +111,13 @@ def setup_logging():
     is_prod = os.getenv('FLASK_ENV') == 'production'
     log_level = logging.WARNING if is_prod else logging.INFO
     handlers = [file_handler] if is_prod else [file_handler, console_handler]
-    logging.basicConfig(level=log_level, handlers=handlers)
+    logging.basicConfig(level=log_level, handlers=handlers, force=True)
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
     logging.getLogger('sqlite3').setLevel(logging.ERROR)
     logging.getLogger('cryptography').setLevel(logging.WARNING)
+
+    # Сразу пишем стартовое сообщение для проверки
+    logging.getLogger(__name__).warning(f"=== App started, log path: {log_path} ===")
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -252,6 +265,26 @@ class Blockchain:
             proof += 1
         raise RuntimeError(f"PoW failed after {CONFIG['POW_MAX_ITERATIONS']} iterations")
 
+# === Фоновый майнинг (не блокирует запросы пользователей) ===
+_pow_lock = threading.Lock()  # только один PoW за раз
+
+def _mine_block_async(db_path: str, last_proof: int) -> None:
+    """PoW в отдельном потоке — пользователь не ждёт."""
+    if not _pow_lock.acquire(blocking=False):
+        # Другой поток уже майнит — пропускаем
+        logger.debug("PoW already running, skipping")
+        return
+    try:
+        proof = blockchain.proof_of_work(last_proof)
+        with get_db_cursor(db_path) as cursor:
+            blockchain._new_block_raw(cursor, proof)
+        logger.debug(f"Block mined in background, proof={proof}")
+    except Exception as e:
+        logger.error(f"Async PoW failed: {e}")
+    finally:
+        _pow_lock.release()
+
+
 
 # === Flask app ===
 app = Flask(__name__, static_folder=STATIC_FOLDER, template_folder=TEMPLATE_FOLDER)
@@ -263,7 +296,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='__Secure-session',  # 🔒 Префикс для HTTPS-only
-    PERMANENT_SESSION_LIFETIME=CONFIG['SESSION_LIFETIME'],
+    PERMANENT_SESSION_LIFETIME=timedelta(seconds=CONFIG['SESSION_LIFETIME']),
 )
 
 app.session_interface = SecureCookieSessionInterface()
@@ -401,7 +434,6 @@ def decrypt_message_safe(key: bytes, encrypted_data: Optional[str],
 def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> Dict:
     """
     Обработка и расшифровка сообщения.
-
     🔒 mnemonic передаётся явно, не берётся из session в этой функции.
     """
     result = msg.copy()
@@ -429,14 +461,10 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                 return result
 
             user_data = encrypted_data[user_address]
-            # 🔒 Ключ вычисляется с использованием мнемоники
-            # Стало (с проверкой AAD):
             key = generate_symmetric_key(msg_sender, user_address, mnemonic)
             aad = msg_sender.encode('utf-8')
-            # Передаём AAD для верификации целостности и отправителя
             result['content'] = decrypt_message_aead(key, user_data.get('content'), associated_data=aad)
-            result['image'] = decrypt_message_aead(key, user_data.get('image'), associated_data=aad) if user_data.get(
-                'image') else None
+            result['image'] = decrypt_message_aead(key, user_data.get('image'), associated_data=aad) if user_data.get('image') else None
             return result
 
         # ── Прямые сообщения ─────────────────────────────────────────────────
@@ -446,16 +474,24 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
             payload = None
 
         if payload and isinstance(payload, dict) and payload.get('version') in ('hybrid-v1', 'hybrid-v2'):
-            # Определяем сторону диалога
+
             if msg['sender'] == user_address:
+                # Я отправитель — peer это получатель
                 peer_address = msg['recipient']
                 peer_pubkey, peer_verified = get_cached_public_key(peer_address)
                 if not peer_pubkey:
                     peer_pubkey, peer_verified = fetch_public_key_from_chain(peer_address)
             else:
+                # Я получатель — peer это отправитель
                 peer_address = msg['sender']
                 peer_pubkey = msg.get('sender_pubkey')
                 peer_verified = False
+
+                # 🔒 Верифицируем ключ прямо из сообщения
+                if peer_pubkey:
+                    peer_verified = verify_address_matches_pubkey(peer_address, peer_pubkey)
+
+                # Если в сообщении нет ключа — ищем в кэше и цепочке
                 if not peer_pubkey:
                     peer_pubkey, peer_verified = get_cached_public_key(peer_address)
                     if not peer_pubkey:
@@ -466,23 +502,22 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                 result['image'] = None
                 return result
 
-            # 🔒 Кэшируем с верификацией
+            # 🔒 Кэшируем с актуальным статусом верификации
             cache_public_key(peer_address, peer_pubkey, verified=peer_verified)
 
-            # 🔒 Для hybrid-v2 требуем верификации ключа
             if payload.get('version') == 'hybrid-v2' and not peer_verified:
                 logger.warning(f"Unverified key used for {peer_address[:16]}...")
-                # Можно разрешить с предупреждением или отклонить
-                # result['content'] = "[Unverified sender]"
-                # return result
+                # Продолжаем расшифровку — предупреждение уже залогировано
 
             decrypted = decrypt_hybrid(mnemonic, peer_pubkey, peer_address, payload)
             result['content'] = decrypted.get('content') or "[Decryption Failed]"
             result['image'] = decrypted.get('image')
+
         else:
-            # Legacy fallback: пытаемся расшифровать старым способом
+            # ── Legacy fallback ───────────────────────────────────────────────
             peer_addr = msg['sender'] if msg['sender'] != user_address else msg['recipient']
             peer_pubkey, _ = get_cached_public_key(peer_addr)
+
             if peer_pubkey:
                 try:
                     shared_key = compute_shared_key_b64(mnemonic, peer_pubkey, peer_addr)
@@ -492,17 +527,18 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                         result['image'] = decrypt_message_aead(shared_key, msg['image']) if msg['image'] else None
                         return result
                 except Exception:
-                    pass  # Пробуем следующий метод
+                    pass
 
-            # Последний шанс: симметричный ключ группы (для обратной совместимости)
+            # Последний шанс: симметричный ключ (обратная совместимость)
             key = generate_symmetric_key(msg['sender'], msg['recipient'], mnemonic)
             result['content'] = decrypt_message_safe(key, msg['content'])
             result['image'] = decrypt_message_safe(key, msg['image'])
 
     except Exception as e:
         logger.error(f"Message processing error (id={msg.get('id')}): {type(e).__name__}",
-                    exc_info=app.debug)
+                     exc_info=app.debug)
         result.update({'content': '[Error]', 'image': None})
+
     return result
 
 
@@ -564,6 +600,9 @@ def get_user_groups_cached(address: str) -> List[Dict[str, Any]]:
 
 @app.before_request
 def log_request():
+    if 'address' in session:
+        session.modified = True
+
     if app.debug:
         logger.debug(f"{request.method} {request.path}")
 
@@ -746,12 +785,17 @@ def send_message():
                     metadata={
                         'encryption': 'symmetric-group-v2',
                         'group_id': group_id,
-                        'sender_verified': True  # 🔒 Флаг: отправитель аутентифицирован
+                        'sender_verified': True
                     }
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
-                proof = blockchain.proof_of_work(last_proof)
-                blockchain._new_block_raw(cursor, proof)
+
+            # PoW в фоне — пользователь не ждёт
+            threading.Thread(
+                target=_mine_block_async,
+                args=(blockchain.db_path, last_proof),
+                daemon=True
+            ).start()
 
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
@@ -780,8 +824,12 @@ def send_message():
                     }
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
-                proof = blockchain.proof_of_work(last_proof)
-                blockchain._new_block_raw(cursor, proof)
+
+            threading.Thread(
+                target=_mine_block_async,
+                args=(blockchain.db_path, last_proof),
+                daemon=True
+            ).start()
 
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
@@ -801,17 +849,20 @@ def send_message():
             with get_db_cursor(blockchain.db_path) as cursor:
                 tx_id = blockchain.new_transaction(
                     cursor, sender, recipient,
-                    json.dumps(key_exchange_payload),  # 🔒 Только публичные данные
+                    json.dumps(key_exchange_payload),
                     None, sender_pubkey=my_pubkey,
                     metadata={
                         'encryption': 'key_exchange',
                         'note': 'Content will be sent after key exchange'
-                        # 🔒 НЕТ pending_content / pending_image!
                     }
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
-                proof = blockchain.proof_of_work(last_proof)
-                blockchain._new_block_raw(cursor, proof)
+
+            threading.Thread(
+                target=_mine_block_async,
+                args=(blockchain.db_path, last_proof),
+                daemon=True
+            ).start()
 
             # 🔒 Кэшируем НАШ ключ для получателя
             cache_public_key(sender, my_pubkey, source='outgoing', verified=True)

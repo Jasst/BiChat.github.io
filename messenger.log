@@ -267,3 +267,7 @@ RuntimeError: PoW failed after 2000000 iterations
 2026-04-29 01:50:34 WARNING [werkzeug:187]  * Debugger is active!
 2026-04-29 01:52:01 INFO [__main__:145] Blockchain initialized
 2026-04-29 01:52:01 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-29 22:11:59 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-29 22:12:26 WARNING [__main__:115] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-29 22:29:36 WARNING [__main__:115] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-29 23:23:08 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
