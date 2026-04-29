@@ -31,10 +31,17 @@ from crypto_manager import (
     clear_key_cache, get_cache_info
 )
 
+# 🔧 Загрузка переменных из .env (для локальной разработки)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # pip install python-dotenv
+except ImportError:
+    pass  # Если dotenv не установлен — пропускаем, используем системные env
+
 # === Конфигурация ===
 CONFIG = {
-    'POW_DIFFICULTY': 5,  # 🔧 УВЕЛИЧЕНО: было 3, теперь 5 (~1 млн итераций)
-    'POW_MAX_ITERATIONS': 2_000_000,
+    'POW_DIFFICULTY': int(os.getenv('POW_DIFFICULTY', 5)),  # читаем из .env
+    'POW_MAX_ITERATIONS': int(os.getenv('POW_MAX_ITERATIONS', 2_000_000)),
     'CACHE_SIZE_KEYS': 128,
     'CACHE_SIZE_GROUPS': 32,
     'CACHE_SIZE_CONTACTS': 64,
@@ -46,8 +53,22 @@ CONFIG = {
     'MAX_UPLOAD_SIZE': 16 * 1024 * 1024,
 }
 
-DATABASE_PATH = 'blockchain.db'
-UPLOAD_FOLDER = 'uploads'
+# 🔧 Читаем пути из .env или используем безопасные дефолты
+DATABASE_PATH = os.getenv('DATABASE_PATH', 'blockchain.db')
+UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
+
+# 🔧 Адаптация путей под ОС (Windows / Linux)
+import sys
+if sys.platform == 'win32':
+    # Если путь содержит Linux-разделители — заменяем на относительные
+    if DATABASE_PATH.startswith('/var/www/'):
+        DATABASE_PATH = 'blockchain.db'
+    if UPLOAD_FOLDER.startswith('/var/www/'):
+        UPLOAD_FOLDER = 'uploads'
+
+# 🔧 Создаём директории, если их нет (критично для первой инициализации!)
+os.makedirs(os.path.dirname(os.path.abspath(DATABASE_PATH)) or '.', exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 STATIC_FOLDER = 'static'
 TEMPLATE_FOLDER = 'templates'
 
@@ -62,9 +83,14 @@ MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
 # === Логирование ===
 def setup_logging():
+    log_dir = os.path.dirname(os.path.abspath('messenger.log')) or '.'
+    os.makedirs(log_dir, exist_ok=True)
     file_handler = logging.handlers.RotatingFileHandler(
-        'messenger.log', maxBytes=CONFIG['LOG_MAX_BYTES'],
-        backupCount=CONFIG['LOG_BACKUP_COUNT'], encoding='utf-8', delay=True
+        os.path.join(log_dir, 'messenger.log'),
+        maxBytes=CONFIG['LOG_MAX_BYTES'],
+        backupCount=CONFIG['LOG_BACKUP_COUNT'],
+        encoding='utf-8',
+        delay=True
     )
     file_handler.setFormatter(logging.Formatter(
         '%(asctime)s %(levelname)s [%(name)s:%(lineno)d] %(message)s',
@@ -643,7 +669,7 @@ def profile():
                           address=session.get('address'),
                           cache_stats=get_cache_info() if app.debug else None)
 
-@app.route('/get_public_key/<address>')
+@app.route('/get_public_key/<string:address>')
 def get_public_key_route(address: str):
     pubkey, verified = get_cached_public_key(address)
     if not pubkey:
