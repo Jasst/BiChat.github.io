@@ -5,9 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
-      <change afterPath="$PROJECT_DIR$/sec.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/WSG.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/check_env.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/passenger_wsgi.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/messenger.log" beforeDir="false" afterPath="$PROJECT_DIR$/messenger.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -96,6 +98,7 @@
     "Python.blockchain.executor": "Run",
     "Python.bot.executor": "Run",
     "Python.bot_script.executor": "Run",
+    "Python.check_env.executor": "Run",
     "Python.cripto_manager.executor": "Run",
     "Python.crypto_manager.executor": "Run",
     "Python.pythonProject1.executor": "Run",
