@@ -7,3 +7,6 @@
 *.pyc
 .vercel
 *.iml
+.env
+*.log
+*.zip
