@@ -271,3 +271,102 @@ RuntimeError: PoW failed after 2000000 iterations
 2026-04-29 22:12:26 WARNING [__main__:115] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
 2026-04-29 22:29:36 WARNING [__main__:115] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
 2026-04-29 23:23:08 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 22:26:20 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 22:35:57 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 22:38:43 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 22:39:53 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 22:57:04 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:02:54 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:02:54 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:02:55 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:02:55 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:02:55 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:09:38 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:09:38 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:09:39 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:09:39 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:09:39 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:09:50 INFO [__main__:633] Wallet created: a22e48aa069b3230...
+2026-04-30 23:09:56 INFO [__main__:633] Wallet created: 1f1f05875b98adb9...
+2026-04-30 23:11:06 INFO [__main__:991] Contact a22e48aa069b3230... added from chat
+2026-04-30 23:12:35 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:12:35 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:12:36 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:12:36 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:12:36 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:14:26 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:14:26 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:14:26 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:14:26 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:14:26 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:17:49 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:17:49 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:17:50 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:17:50 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:17:50 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:18:29 INFO [__main__:1222] Message #20 deleted by 1f1f05875b98adb9...
+2026-04-30 23:20:03 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:20:03 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:20:04 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:20:04 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:20:04 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:20:11 INFO [__main__:633] Wallet created: 17c9c5b017e0effb...
+2026-04-30 23:20:26 INFO [__main__:633] Wallet created: 2e066f3e15b3bf36...
+2026-04-30 23:20:44 INFO [__main__:991] Contact 17c9c5b017e0effb... added from chat
+2026-04-30 23:24:57 INFO [__main__:1222] Message #26 deleted by 17c9c5b017e0effb...
+2026-04-30 23:30:24 INFO [__main__:1222] Message #29 deleted by 2e066f3e15b3bf36...
+2026-04-30 23:30:29 INFO [__main__:1222] Message #28 deleted by 2e066f3e15b3bf36...
+2026-04-30 23:30:31 INFO [__main__:1153] Cleared 4 messages for 2e066f3e15b3bf36... in 17c9c5b017e0effbf8c1...
+2026-04-30 23:31:39 INFO [__main__:1153] Cleared 1 messages for 2e066f3e15b3bf36... in 17c9c5b017e0effbf8c1...
+2026-04-30 23:33:35 INFO [__main__:1222] Message #31 deleted by 2e066f3e15b3bf36...
+2026-04-30 23:33:40 INFO [__main__:1222] Message #32 deleted by 2e066f3e15b3bf36...
+2026-04-30 23:52:10 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:52:10 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:52:10 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:52:29 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:52:29 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:52:30 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-04-30 23:52:30 INFO [__main__:184] Blockchain initialized
+2026-04-30 23:52:30 WARNING [werkzeug:187]  * Debugger is active!
+2026-04-30 23:52:43 INFO [__main__:1251] Message #35 deleted by 2e066f3e15b3bf36...
+2026-04-30 23:52:46 INFO [__main__:1251] Message #33 deleted by 2e066f3e15b3bf36...
+2026-05-01 00:02:28 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:02:28 INFO [__main__:184] Blockchain initialized
+2026-05-01 00:02:28 WARNING [werkzeug:187]  * Debugger is active!
+2026-05-01 00:02:34 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:02:34 INFO [__main__:184] Blockchain initialized
+2026-05-01 00:02:34 WARNING [werkzeug:187]  * Debugger is active!
+2026-05-01 00:10:27 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:10:27 INFO [__main__:184] Blockchain initialized
+2026-05-01 00:10:28 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:10:28 INFO [__main__:184] Blockchain initialized
+2026-05-01 00:10:28 WARNING [werkzeug:187]  * Debugger is active!
+2026-05-01 00:10:42 INFO [__main__:1093] Contact 17c9c5b017e0effb... deleted by 2e066f3e15b3bf36...
+2026-05-01 00:10:53 INFO [__main__:1194] Mnemonic exported for 2e066f3e15b3bf36... from 127.0.0.1
+2026-05-01 00:11:11 INFO [__main__:1194] Mnemonic exported for 2e066f3e15b3bf36... from 127.0.0.1
+2026-05-01 00:11:35 INFO [__main__:1194] Mnemonic exported for 2e066f3e15b3bf36... from 127.0.0.1
+2026-05-01 00:12:15 INFO [__main__:1021] Contact 2e066f3e15b3bf36... added from chat
+2026-05-01 00:12:21 INFO [__main__:1138] Group '24' created by 17c9c5b017e0effb... with 2 members
+2026-05-01 00:16:00 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:16:00 INFO [__main__:186] Blockchain initialized
+2026-05-01 00:16:00 WARNING [werkzeug:187]  * Debugger is active!
+2026-05-01 00:16:04 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:26:24 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:26:24 INFO [__main__:186] Blockchain initialized
+2026-05-01 00:26:24 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 00:26:24 INFO [__main__:186] Blockchain initialized
+2026-05-01 00:26:24 WARNING [werkzeug:187]  * Debugger is active!
+2026-05-01 00:26:56 INFO [__main__:635] Wallet created: 9603d01361cd1475...
+2026-05-01 00:27:19 INFO [__main__:1140] Group '24' created by 9603d01361cd1475... with 2 members
+2026-05-01 00:27:35 INFO [__main__:1253] Group '24' (ID: 0c573c42238e4be0b4930fd58b219f08) deleted by creator 9603d01361cd1475...
+2026-05-01 01:48:59 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 01:48:59 INFO [__main__:186] Blockchain initialized
+2026-05-01 01:49:00 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 01:49:00 INFO [__main__:186] Blockchain initialized
+2026-05-01 01:49:00 WARNING [werkzeug:187]  * Debugger is active!
+2026-05-01 01:49:19 INFO [__main__:635] Wallet created: 44317c5e8dc5cbca...
+2026-05-01 01:49:24 INFO [__main__:635] Wallet created: 9c49b18f5b5bf701...
+2026-05-01 01:53:19 INFO [__main__:635] Wallet created: a9ed6fed1fa13b97...
+2026-05-01 01:53:25 INFO [__main__:635] Wallet created: 95f47d5338cb2e28...
+2026-05-01 01:54:12 INFO [__main__:872] Key exchange sent: a9ed6fed1fa13b97... -> 14f2274fea9c01af...
+2026-05-01 01:54:49 INFO [__main__:1368] Message #53 deleted by a9ed6fed1fa13b97...
