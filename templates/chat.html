@@ -1,0 +1,823 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="chat-container">
+    <div class="sidebar">
+        <div class="user-info">
+            <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
+            <button onclick="location.href='/logout'">Logout</button>
+        </div>
+
+        <!-- Навигация в виде вкладок -->
+        <div class="tabs">
+            <div class="tab active" onclick="location.href='/chat'">Chat</div>
+            <div class="tab" onclick="location.href='/contacts'">Contacts</div>
+            <div class="tab" onclick="location.href='/groups'">Groups</div>
+            <div class="tab" onclick="location.href='/profile'">Profile</div>
+        </div>
+
+        <!-- Содержимое вкладок -->
+        <div id="chat-tab" class="tab-content active">
+            <div class="conversations-header">
+                <h3>Conversations</h3>
+                <button id="newChatBtn" class="header-btn" title="Start New Chat">+</button>
+            </div>
+            <div class="conversations-list">
+                <ul id="conversationsList">
+                    <li class="conversation-item" data-address="" data-is-group="false">
+                        <em>Select a conversation</em>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="chat-header">
+            Chat with: <span id="currentChatName">-</span>
+            <button id="addToContactsBtn" class="header-btn" onclick="addContactFromChat()"
+                    disabled title="Add to Contacts">+</button>
+            <button id="clearConversationBtn" class="header-btn" onclick="clearConversation()"
+                    disabled title="Clear Messages">&#x1F5D1;</button>
+        </div>
+        <div class="messages" id="messagesContainer">
+            <p id="noChatSelectedMessage">Please select a conversation.</p>
+        </div>
+        <div class="input-area">
+            <input type="text" id="messageContent" placeholder="Type a message..." disabled>
+            <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="handleImageSelection(event)">
+            <button onclick="document.getElementById('imageInput').click()" id="attachImageButton" disabled title="Attach Image">&#x1F4F7;</button>
+            <button onclick="sendMessage()" id="sendButton" disabled>Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для нового чата -->
+<div id="newChatModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>Start New Chat</h2>
+        <div class="modal-body">
+            <div style="text-align: center; margin-bottom: 15px;">
+                <button onclick="openQRScannerInModal()" id="scanQRBtn" class="scan-qr-btn-modal">
+                    📷 Scan QR Code
+                </button>
+                <div id="qrScannerContainerModal" style="display: none; margin: 15px 0;">
+                    <div style="position: relative;">
+                        <video id="qrVideoModal" style="width: 100%; max-width: 250px; border: 2px solid #333; border-radius: 8px;"></video>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 200px; height: 200px; border: 2px solid #bb86fc; box-shadow: 0 0 0 1000px rgba(0,0,0,0.5);"></div>
+                    </div>
+                    <p style="color: #aaa; font-size: 12px; margin: 5px 0;">Point camera at QR code</p>
+                    <button onclick="forceCloseQRScannerInModal()" style="margin-top: 10px; background-color: #cf6679; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; width: 100%;">Cancel Scan</button>
+                </div>
+                <div id="scanResultModal" style="margin-top: 10px; color: green; font-weight: bold; display: none;"></div>
+            </div>
+
+            <div class="input-group">
+                <label for="newChatSelect">Select Contact:</label>
+                <select id="newChatSelect">
+                    <option value="">-- Select a Contact --</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="newChatAddress">Or enter Address:</label>
+                <input type="text" id="newChatAddress" placeholder="Enter full 64-character address">
+            </div>
+            <button id="startNewChatBtn">Start Chat</button>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для просмотра изображений -->
+<div id="imageModal" class="modal">
+    <div class="modal-content-image">
+        <span class="close-image-modal">&times;</span>
+        <img class="modal-image" id="modalImage" src="" alt="Full size image">
+        <div class="modal-image-actions">
+            <button id="downloadImageBtn">Download</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.status-active { color: #00c853; font-weight: bold; }
+.security-info {
+    background-color: #2c2c2c; padding: 15px; border-radius: 4px;
+    border-left: 3px solid #bb86fc;
+}
+.security-info p { margin: 8px 0; font-size: 14px; }
+
+.scan-qr-btn-modal {
+    background-color: #bb86fc; color: #121212; border: none;
+    padding: 12px 20px; border-radius: 4px; cursor: pointer;
+    font-weight: bold; width: 100%; margin-bottom: 15px;
+}
+.scan-qr-btn-modal:hover { background-color: #3700b3; }
+#qrScannerContainerModal video { background-color: #000; }
+
+#attachImageButton {
+    background: none; border: 1px solid #ccc; border-radius: 4px;
+    padding: 5px 10px; cursor: pointer; font-size: 16px; color: #ccc;
+}
+#attachImageButton:hover { color: #bb86fc; border-color: #bb86fc; }
+
+.modal {
+    display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+    width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9);
+}
+.modal-content {
+    background-color: #2c2c2c; margin: 5% auto; padding: 20px;
+    border: 1px solid #444; border-radius: 8px; width: 90%; max-width: 500px; color: #fff;
+}
+.modal-content-image {
+    background-color: transparent; margin: 5% auto; padding: 20px;
+    width: 90%; max-width: 90%; text-align: center; position: relative;
+}
+.modal-image {
+    max-width: 100%; max-height: 80vh; border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+}
+.modal-image-actions { margin-top: 15px; }
+.modal-image-actions button {
+    background-color: #bb86fc; color: #121212; border: none;
+    padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;
+}
+.modal-image-actions button:hover { background-color: #3700b3; }
+
+.close {
+    color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;
+}
+.close:hover, .close:focus { color: #fff; }
+
+.close-image-modal {
+    position: absolute; top: 15px; right: 35px; color: #f1f1f1;
+    font-size: 40px; font-weight: bold; cursor: pointer; z-index: 1001;
+}
+
+.close-image-modal:hover, .close-image-modal:focus { color: #bbb; }
+
+.message img {
+    cursor: pointer; border-radius: 4px; transition: transform 0.2s ease;
+}
+.message img:hover { transform: scale(1.05); }
+
+#addToContactsBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+#addToContactsBtn:not(:disabled):hover { background: #00c853; color: #121212; }
+    /* === Индикатор загрузки === */  /* ← ДОБАВЬТЕ ЭТО */
+.loading {
+    color: #888;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+}
+.messages.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+.error {
+    color: #cf6679;
+    font-weight: 500;
+    text-align: center;
+    padding: 20px;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+    function escapeHtml(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    function copyToClipboard(elementId, feedbackId) {
+        const element = document.getElementById(elementId);
+        const feedback = document.getElementById(feedbackId);
+        navigator.clipboard.writeText(element.value).then(() => {
+            feedback.textContent = 'Copied!'; feedback.style.color = 'green';
+            setTimeout(() => { feedback.textContent = ''; }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            feedback.textContent = 'Failed to copy!'; feedback.style.color = 'red';
+        });
+    }
+
+    let scanIntervalModal = null;
+    let streamModal = null;
+    let isQRScannerActiveModal = false;
+
+    function openQRScannerInModal() {
+        if (isQRScannerActiveModal) { console.log('QR Scanner already active'); return; }
+        const scannerContainer = document.getElementById('qrScannerContainerModal');
+        const video = document.getElementById('qrVideoModal');
+        const scanBtn = document.getElementById('scanQRBtn');
+        const scanResult = document.getElementById('scanResultModal');
+        if (!scannerContainer || !video || !scanBtn || !scanResult) { console.error('QR Scanner elements not found'); return; }
+        isQRScannerActiveModal = true;
+        scannerContainer.style.display = 'block'; scanBtn.style.display = 'none';
+        scanResult.style.display = 'none'; scanResult.textContent = '';
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }})
+                .then(function(mediaStream) {
+                    if (!isQRScannerActiveModal) { mediaStream.getTracks().forEach(track => track.stop()); return; }
+                    streamModal = mediaStream; video.srcObject = streamModal;
+                    video.onloadedmetadata = function() {
+                        if (isQRScannerActiveModal) {
+                            video.play().then(() => { startScanningModal(); }).catch(err => { console.error('Error playing video:', err); forceCloseQRScannerInModal(); });
+                        }
+                    };
+                })
+                .catch(function(err) { console.error("Error accessing camera: ", err); alert('Error accessing camera: ' + (err.message || 'Unknown error')); forceCloseQRScannerInModal(); });
+        } else { alert('Camera access not supported in this browser.'); forceCloseQRScannerInModal(); }
+    }
+
+    function startScanningModal() {
+        if (!isQRScannerActiveModal || scanIntervalModal) return;
+        const video = document.getElementById('qrVideoModal');
+        const scanResult = document.getElementById('scanResultModal');
+        if (!video || !scanResult) { console.error('Video or scan result elements not found'); return; }
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        scanIntervalModal = setInterval(function() {
+            if (!isQRScannerActiveModal) { stopScanningModal(); return; }
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                try {
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+                    if (code && code.data) {
+                        let addressToSet = ''; let successMessage = '';
+                        if (code.data.length === 64 && /^[a-fA-F0-9]+$/.test(code.data)) { addressToSet = code.data; successMessage = 'Address scanned successfully!'; }
+                        else if (code.data.startsWith('bitcoin:') || code.data.startsWith('BITCOIN:')) {
+                            const addressMatch = code.data.match(/bitcoin:([a-zA-Z0-9]{26,})/);
+                            if (addressMatch && addressMatch[1]) { addressToSet = addressMatch[1]; successMessage = 'Bitcoin address extracted!'; }
+                        }
+                        if (addressToSet) {
+                            stopScanningModal();
+                            const addressInput = document.getElementById('newChatAddress');
+                            if (addressInput) addressInput.value = addressToSet;
+                            if (scanResult) { scanResult.textContent = successMessage; scanResult.style.display = 'block'; scanResult.style.color = 'green'; }
+                            forceCloseQRScannerInModal(); return;
+                        }
+                    }
+                } catch (e) { console.log('QR scan attempt failed, continuing...', e); }
+            }
+        }, 300);
+    }
+
+    function stopScanningModal() { if (scanIntervalModal) { clearInterval(scanIntervalModal); scanIntervalModal = null; } }
+
+    function forceCloseQRScannerInModal() {
+        console.log('Force closing QR scanner...'); isQRScannerActiveModal = false; stopScanningModal();
+        const scannerContainer = document.getElementById('qrScannerContainerModal');
+        const scanBtn = document.getElementById('scanQRBtn');
+        const video = document.getElementById('qrVideoModal');
+        const scanResult = document.getElementById('scanResultModal');
+        if (scannerContainer) scannerContainer.style.display = 'none';
+        if (scanBtn) scanBtn.style.display = 'block';
+        if (streamModal) { try { const tracks = streamModal.getTracks(); tracks.forEach(track => { if (track.readyState === 'live') { track.stop(); } }); streamModal = null; } catch (e) { console.warn('Error stopping media stream:', e); streamModal = null; } }
+        if (video) { try { video.pause(); video.srcObject = null; video.load(); } catch (e) { console.warn('Error clearing video element:', e); } }
+        if (scanResult) { setTimeout(() => { if (scanResult.style.display === 'block') { scanResult.style.display = 'none'; scanResult.textContent = ''; } }, 2000); }
+    }
+
+    let pendingImageData = null;
+    function handleImageSelection(event) {
+        const file = event.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) { pendingImageData = e.target.result; };
+            reader.readAsDataURL(file);
+        } else { alert('Please select a valid image file.'); pendingImageData = null; }
+        event.target.value = '';
+    }
+
+    let currentImageSrc = '';
+    function openImageModal(src) {
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        const downloadBtn = document.getElementById('downloadImageBtn');
+        if (modal && modalImg) { modalImg.src = src; currentImageSrc = src; modal.style.display = 'block'; if (downloadBtn) downloadBtn.onclick = downloadCurrentImage; }
+    }
+    function closeImageModal() { const modal = document.getElementById('imageModal'); if (modal) modal.style.display = 'none'; }
+    function downloadCurrentImage() {
+        if (!currentImageSrc) return;
+        try {
+            const parts = currentImageSrc.split(';base64,');
+            if (parts.length !== 2) { alert('Invalid image data'); return; }
+            const mimeType = parts[0].split(':')[1]; const b64Data = parts[1];
+            const byteCharacters = atob(b64Data); const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], {type: mimeType});
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a'); link.href = blobUrl; link.download = 'image-' + new Date().getTime() + '.' + mimeType.split('/')[1];
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+        } catch (e) { console.error('Download error:', e); alert('Failed to download image'); }
+    }
+
+    // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
+    let currentChatAddress = "";
+    let currentChatIsGroup = false;
+    let currentChatPartnerAddress = "";
+    let userAddress = "{{ address }}";
+    let lastMessageTimestamp = 0;
+    let pollInterval;
+    let allContacts = [];
+
+    // 🔥 ПАГИНАЦИЯ: отслеживаем последний загруженный ID сообщения
+    let lastKnownMessageId = 0;
+
+    async function loadConversations() {
+    try {
+        const response = await fetch('/get_conversations');
+        const data = await response.json();
+        if (response.ok) {
+            const container = document.getElementById('conversationsList');
+            container.innerHTML = '';
+
+            if (!data.conversations || data.conversations.length === 0) {
+                container.innerHTML = '<li><em>No conversations. Add contacts!</em></li>';
+                return;
+            }
+
+            data.conversations.forEach(conv => {
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.dataset.address = conv.address || '';
+
+                // 🔥 ИСПРАВЛЕНО: храним как '1'/'0' для надёжного парсинга
+                li.dataset.isGroup = conv.is_group ? '1' : '0';
+
+                const displayName = (conv.name || conv.address || 'Unknown');
+                const shortName = displayName.length > 25 ? displayName.substring(0, 22) + '...' : displayName;
+
+                li.innerHTML = `<div class="status-indicator"></div><div></div>`;
+                li.querySelector('div:last-child').textContent = shortName;
+
+                // 🔥 Передаём уже нормализованное булево значение
+                const isGroupBool = !!(conv.is_group);
+                li.onclick = () => selectConversation(conv.address, conv.name || conv.address, isGroupBool);
+
+                container.appendChild(li);
+            });
+        } else {
+            console.error('Failed to load conversations:', data.error);
+        }
+    } catch (error) {
+        console.error('Error loading conversations:', error);
+    }
+}
+
+    function selectConversation(address, name, isGroup) {
+    stopPolling();
+
+    const container = document.getElementById('messagesContainer');
+    container.innerHTML = '<p class="loading">Loading conversation...</p>';
+    container.classList.add('loading');
+
+    _disableChatControls();
+
+    document.getElementById('currentChatName').textContent = name || 'Loading...';
+
+    // Обновление активного элемента
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    try {
+        const selector = `.conversation-item[data-address="${CSS.escape(address)}"]`;
+        const selectedItem = document.querySelector(selector);
+        if (selectedItem) selectedItem.classList.add('active');
+    } catch (e) {
+        document.querySelectorAll('.conversation-item').forEach(item => {
+            if (item.dataset.address === address) item.classList.add('active');
+        });
+    }
+
+    // Сброс и установка новых значений
+    currentChatAddress = address;
+    currentChatIsGroup = (
+        isGroup === true ||
+        isGroup === 'true' ||
+        isGroup === 1 ||
+        isGroup === '1' ||
+        (typeof isGroup === 'string' && isGroup.toLowerCase() === 'true')
+    );
+    currentChatPartnerAddress = currentChatIsGroup
+        ? ""
+        : (address === userAddress ? "" : address);
+
+    lastKnownMessageId = 0;
+    lastMessageTimestamp = 0;
+    pendingImageData = null;
+
+    // 🔥 Загружаем сообщения
+    loadMessagesForConversation(address, false);
+
+    // Перезапуск поллинга
+    setTimeout(() => {
+        if (currentChatAddress === address) {
+            startPolling();
+        }
+    }, 500);
+
+    console.log('🔄 Chat switched:', {
+        address: address?.substring(0, 16) + '...',
+        isGroup: currentChatIsGroup,
+        isNewChat: true  // 🔥 Для отладки
+    });
+}
+
+// 🔥 ВСПОМОГАТЕЛЬНАЯ функция: отключить элементы управления
+function _disableChatControls() {
+    document.getElementById('messageContent').disabled = true;
+    document.getElementById('attachImageButton').disabled = true;
+    document.getElementById('sendButton').disabled = true;
+    document.getElementById('addToContactsBtn').disabled = true;
+    document.getElementById('clearConversationBtn').disabled = true;
+}
+
+    async function loadContactsForModal() {
+        try {
+            const response = await fetch('/get_contacts');
+            const data = await response.json();
+            if (response.ok) {
+                allContacts = data.contacts;
+                const selectElement = document.getElementById('newChatSelect');
+                selectElement.innerHTML = '<option value="">-- Select a Contact --</option>';
+                allContacts.forEach(contact => {
+                    const option = document.createElement('option');
+                    option.value = contact.address;
+                    const displayName = contact.name.length > 30 ? contact.name.substring(0, 27) + '...' : contact.name;
+                    option.textContent = `${escapeHtml(displayName)} (${contact.address.substring(0, 10)}...)`;
+                    selectElement.appendChild(option);
+                });
+            } else { console.error('Failed to load contacts for modal:', data.error); alert('Could not load contacts.'); }
+        } catch (error) { console.error('Error loading contacts for modal:', error); alert('An error occurred while loading contacts.'); }
+    }
+
+
+
+
+// 🔥 ОБНОВЛЁННАЯ функция загрузки сообщений с пагинацией и защитой от смешивания
+
+// 🔥 ИСПРАВЛЕННАЯ функция загрузки сообщений (надёжная версия)
+async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
+    const container = document.getElementById('messagesContainer');
+
+    // 🔒 Валидация: пустой адрес
+    if (!chatWithAddress) {
+        container.innerHTML = '<p id="noChatSelectedMessage">Please select a conversation.</p>';
+        container.classList.remove('loading');
+        _enableChatControls();
+        return;
+    }
+
+    // 🔒 Валидация формата адреса
+    const isGroupFormat = chatWithAddress.startsWith('group:');
+    const isPersonalFormat = /^[a-fA-F0-9]{64}$/.test(chatWithAddress);
+
+    if (!isGroupFormat && !isPersonalFormat) {
+        console.error('❌ Invalid chat address format:', chatWithAddress);
+        container.innerHTML = `<p class="error">Invalid conversation format.</p>`;
+        container.classList.remove('loading');
+        _enableChatControls();
+        return;
+    }
+
+    try {
+        const params = new URLSearchParams({ with: chatWithAddress });
+        if (isNewMessage && lastKnownMessageId > 0) {
+            params.append('last_message_id', lastKnownMessageId);
+            params.append('limit', '50');
+        }
+
+        // 🔥 Добавляем таймаут для зависших запросов
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 секунд
+
+        const response = await fetch(`/get_conversation?${params}`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+
+        // 🔥 ВСЕГДА убираем класс loading сразу после получения ответа
+        container.classList.remove('loading');
+
+        if (response.ok) {
+            // 🔥 БЕЗОПАСНАЯ проверка сообщений (защита от undefined/null)
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            const shouldScroll = isNewMessage || (container.scrollTop + container.clientHeight >= container.scrollHeight - 5);
+
+            // 🔥 При первой загрузке или без пагинации — очищаем контейнер
+            if (!isNewMessage || lastKnownMessageId === 0) {
+                container.innerHTML = '';
+
+                // 🔥 Явная обработка: НОВЫЙ ЧАТ без сообщений
+                if (messages.length === 0) {
+                    container.innerHTML = '<p><em>No messages yet. Start the conversation!</em></p>';
+                    _enableChatControls();
+                    return;
+                }
+            }
+
+            // 🔥 Отображение сообщений
+            if (messages.length > 0) {
+                let maxTimestamp = 0;
+                const fragment = document.createDocumentFragment();
+
+                messages.forEach(msg => {
+                    // Защита от дублей
+                    if (document.getElementById(`msg-${msg.id}`)) return;
+
+                    if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
+
+                    const messageDiv = document.createElement('div');
+                    messageDiv.id = `msg-${msg.id}`;
+                    messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'}`;
+                    messageDiv.dataset.messageId = msg.id;
+                    messageDiv.dataset.chatType = currentChatIsGroup ? 'group' : 'personal';
+
+                    const contentP = document.createElement('p');
+                    contentP.textContent = msg.content || '';
+
+                    const senderInfo = (msg.is_mine || !currentChatIsGroup)
+                        ? ''
+                        : `<strong>${escapeHtml(msg.sender_name || msg.sender?.substring(0, 10) + '...')}</strong><br>`;
+
+                    let imageElem = null;
+                    if (msg.image) {
+                        imageElem = document.createElement('img');
+                        imageElem.src = msg.image;
+                        imageElem.alt = 'Image';
+                        imageElem.style.cssText = 'max-width: 200px; max-height: 200px; border-radius: 4px; cursor: pointer;';
+                        imageElem.dataset.fullSrc = msg.image;
+                        imageElem.onclick = () => openImageModal(msg.image);
+                    }
+
+                    const timeStr = new Date(msg.timestamp * 1000).toLocaleString();
+
+                    let deleteBtn = null;
+                    if (msg.is_mine) {
+                        deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'delete-message-btn';
+                        deleteBtn.dataset.id = msg.id;
+                        deleteBtn.title = 'Delete';
+                        deleteBtn.innerHTML = '&#x1F5D9;';
+                        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteMessage(msg.id, deleteBtn); };
+                    }
+
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'message-content-wrapper';
+                    wrapper.innerHTML = senderInfo;
+                    wrapper.appendChild(contentP);
+                    if (imageElem) wrapper.appendChild(imageElem);
+                    const timeSmall = document.createElement('small');
+                    timeSmall.textContent = timeStr;
+                    timeSmall.style.cssText = 'color: #888; font-size: 11px; display: block; margin-top: 4px;';
+                    wrapper.appendChild(timeSmall);
+
+                    messageDiv.appendChild(wrapper);
+                    if (deleteBtn) messageDiv.appendChild(deleteBtn);
+                    fragment.appendChild(messageDiv);
+
+                    if (msg.id > lastKnownMessageId) {
+                        lastKnownMessageId = msg.id;
+                    }
+                });
+
+                container.appendChild(fragment);
+                lastMessageTimestamp = maxTimestamp;
+            }
+
+            if (shouldScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
+
+            // 🔥 Включаем кнопки после успешной загрузки
+            _enableChatControls();
+
+        } else {
+            console.error('Failed to load conversation:', data.error);
+            if (!isNewMessage) {
+                container.innerHTML = `<p class="error">Error: ${escapeHtml(data.error || 'Unknown')}</p>`;
+            }
+            _enableChatControls();
+        }
+    } catch (error) {
+        console.error('Error loading conversation:', error);
+        container.classList.remove('loading');
+
+        if (error.name === 'AbortError') {
+            container.innerHTML = `<p class="error">Request timed out. Check your connection.</p>`;
+        } else if (!isNewMessage) {
+            container.innerHTML = `<p class="error">Network error loading messages.</p>`;
+        }
+        _enableChatControls();
+    }
+}
+
+// 🔥 ВСПОМОГАТЕЛЬНАЯ функция: включить элементы управления чатом
+function _enableChatControls() {
+    document.getElementById('messageContent').disabled = false;
+    document.getElementById('attachImageButton').disabled = false;
+    document.getElementById('sendButton').disabled = false;
+    document.getElementById('clearConversationBtn').disabled = false;
+
+    const addToContactsBtn = document.getElementById('addToContactsBtn');
+    if (currentChatIsGroup || !currentChatPartnerAddress || currentChatPartnerAddress === userAddress) {
+        addToContactsBtn.disabled = true;
+        addToContactsBtn.title = "Cannot add group or yourself";
+    } else {
+        addToContactsBtn.disabled = false;
+        addToContactsBtn.title = "Add to Contacts";
+    }
+}
+
+    async function sendMessage() {
+    const content = document.getElementById('messageContent').value.trim();
+    const recipient = currentChatAddress;
+
+    // 🔥 ИСПРАВЛЕНО: currentChatIsGroup уже булевый, не нужно проверять
+    const isGroup = currentChatIsGroup;
+
+    if (!recipient || (!content && !pendingImageData)) {
+        alert('Please enter a message or attach an image.');
+        return;
+    }
+
+    const messageType = isGroup ? 'group' : 'direct';
+
+    // 🔥 Для групп извлекаем ID из формата "group:xxx"
+    const groupId = isGroup && recipient.startsWith('group:')
+        ? recipient.split(':')[1]
+        : null;
+
+    const payload = {
+        recipient: recipient,
+        content: content || "",
+        message_type: messageType
+    };
+    if (groupId) payload.group_id = groupId;
+    if (pendingImageData) payload.image = pendingImageData;
+
+    try {
+        const response = await fetch('/send_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            document.getElementById('messageContent').value = '';
+            pendingImageData = null;
+            loadMessagesForConversation(recipient, true);
+        } else alert('Error: ' + data.error);
+    } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred.');
+    }
+}
+
+    async function addContactFromChat() {
+        if (!currentChatPartnerAddress || currentChatPartnerAddress === userAddress) {
+            alert("Cannot add this conversation to contacts.");
+            return;
+        }
+        const chatName = document.getElementById('currentChatName')?.textContent || currentChatPartnerAddress.substring(0, 10) + '...';
+        const payload = { contact_address: currentChatPartnerAddress, contact_name: chatName };
+        console.log('📤 Adding contact from chat:', payload);
+        try {
+            const response = await fetch('/add_contact_from_chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            console.log('📥 Add contact response:', response.status, data);
+            if (response.ok) {
+                alert('✅ ' + (data.message || 'Contact added!'));
+                const btn = document.getElementById('addToContactsBtn');
+                if (btn) { btn.disabled = true; btn.title = "Already in contacts"; }
+            } else {
+                alert('❌ Error: ' + (data.error || 'Failed to add contact'));
+            }
+        } catch (error) {
+            console.error('💥 Error adding contact:', error);
+            alert('❌ Network error while adding contact.');
+        }
+    }
+
+    async function deleteMessage(messageId, buttonElement) {
+        if (!confirm("Delete this message for yourself?")) return;
+        try {
+            buttonElement.disabled = true; buttonElement.textContent = '...';
+            const response = await fetch('/delete_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: messageId }) });
+            const data = await response.json();
+            if (response.ok) { buttonElement.closest('.message').remove(); console.log(data.message); }
+            else { alert('Error: ' + data.error); buttonElement.disabled = false; buttonElement.textContent = '&#x1F5D9;'; }
+        } catch (error) { console.error('Error deleting message:', error); alert('An error occurred while deleting the message.'); buttonElement.disabled = false; buttonElement.textContent = '&#x1F5D9;'; }
+    }
+
+    async function clearConversation() {
+        if (!currentChatAddress) { alert("No conversation selected."); return; }
+        if (!confirm("Clear all messages in this conversation?")) return;
+        try {
+            const response = await fetch('/clear_conversation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_with: currentChatAddress }) });
+            const data = await response.json();
+            if (response.ok) { document.getElementById('messagesContainer').innerHTML = '<p><em>Conversation cleared.</em></p>'; console.log(data.message); }
+            else alert('Error: ' + data.error);
+        } catch (error) { console.error('Error clearing conversation:', error); alert('An error occurred while clearing the conversation.'); }
+    }
+
+    function openNewChatModal() {
+        const modal = document.getElementById('newChatModal'); if (modal) modal.style.display = 'block';
+        const selectElement = document.getElementById('newChatSelect'); const addressInput = document.getElementById('newChatAddress');
+        if (selectElement) selectElement.value = ''; if (addressInput) addressInput.value = '';
+        loadContactsForModal(); forceCloseQRScannerInModal();
+    }
+    function closeNewChatModal() { const modal = document.getElementById('newChatModal'); if (modal) modal.style.display = 'none'; forceCloseQRScannerInModal(); }
+    async function startNewChat() {
+        const selectedAddress = document.getElementById('newChatSelect')?.value.trim() || '';
+        const enteredAddress = document.getElementById('newChatAddress')?.value.trim() || '';
+        let chatAddress = ''; let chatName = '';
+        if (selectedAddress) { chatAddress = selectedAddress; const contact = allContacts.find(c => c.address === selectedAddress); chatName = contact ? contact.name : selectedAddress.substring(0, 10) + '...'; }
+        else if (enteredAddress) { if (enteredAddress.length !== 64) { alert('Please enter a valid 64-character address.'); return; } if (enteredAddress === userAddress) { alert('You cannot start a chat with yourself.'); return; } chatAddress = enteredAddress; chatName = enteredAddress.substring(0, 10) + '...'; }
+        else { alert('Please select a contact or enter an address.'); return; }
+        closeNewChatModal(); selectConversation(chatAddress, chatName, false);
+    }
+
+    function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+
+    // 🔥 Не запускать поллинг если чат не выбран
+    if (!currentChatAddress) {
+        console.log('⏸️ Polling skipped: no chat selected');
+        return;
+    }
+
+    const chatAddressAtStart = currentChatAddress;
+
+    pollInterval = setInterval(() => {
+        // 🔥 Проверка: чат не сменился и всё ещё выбран
+        if (currentChatAddress && currentChatAddress === chatAddressAtStart) {
+            loadMessagesForConversation(currentChatAddress, true);
+        } else {
+            console.log('🛑 Polling stopped: chat changed');
+            stopPolling();
+        }
+    }, 3000);
+}
+    function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
+
+    function handleStartWithParam() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const startWith = urlParams.get('start_with');
+        const startName = urlParams.get('name');
+        if (startWith && startName) {
+            const isGroup = startWith.startsWith('group:');
+            loadContactsForModal().then(() => {
+                selectConversation(startWith, startName, isGroup);
+                window.history.replaceState({}, document.title, window.location.pathname);
+            });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadConversations();
+        handleStartWithParam();
+
+        const messageInput = document.getElementById('messageContent');
+        if (messageInput) {
+            messageInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+            });
+            messageInput.addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } });
+        }
+
+        document.getElementById('messagesContainer').addEventListener('click', function(e) {
+            if (e.target.tagName === 'IMG' && e.target.closest('.message')) {
+                const fullSrc = e.target.dataset.fullSrc || e.target.src;
+                if (fullSrc) openImageModal(fullSrc);
+            }
+            if (e.target.classList.contains('delete-message-btn')) {
+                const id = parseInt(e.target.dataset.id, 10);
+                if (id) deleteMessage(id, e.target);
+            }
+        });
+
+        const newChatBtn = document.getElementById('newChatBtn'); const closeModalBtn = document.querySelector('#newChatModal .close'); const startNewChatBtn = document.getElementById('startNewChatBtn');
+        if (newChatBtn) newChatBtn.onclick = openNewChatModal; if (closeModalBtn) closeModalBtn.onclick = closeNewChatModal; if (startNewChatBtn) startNewChatBtn.onclick = startNewChat;
+        window.onclick = function(event) { const newChatModal = document.getElementById('newChatModal'); const imageModal = document.getElementById('imageModal'); if (event.target == newChatModal) closeNewChatModal(); else if (event.target == imageModal) closeImageModal(); }
+        const closeImageModalBtn = document.querySelector('#imageModal .close-image-modal'); if (closeImageModalBtn) closeImageModalBtn.onclick = closeImageModal;
+    });
+    window.addEventListener('beforeunload', function() { forceCloseQRScannerInModal(); stopPolling(); });
+    document.addEventListener('keydown', function(event) { if (event.key === 'Escape') { const newChatModal = document.getElementById('newChatModal'); const imageModal = document.getElementById('imageModal'); if (newChatModal && newChatModal.style.display === 'block') closeNewChatModal(); else if (imageModal && imageModal.style.display === 'block') closeImageModal(); } });
+    document.addEventListener('visibilitychange', function() { if (document.hidden) forceCloseQRScannerInModal(); });
+</script>
+{% endblock %}

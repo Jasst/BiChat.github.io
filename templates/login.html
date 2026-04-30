@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-container">
+    <h1>Login</h1>
+    <form id="loginForm">
+        <textarea
+            id="mnemonic"
+            placeholder="Enter your 24-word mnemonic phrase"
+            rows="5"
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            autofocus
+            required
+        ></textarea>
+
+        <div id="errorMsg" style="color: #cf6679; font-size: 14px; margin: 8px 0; display: none;"></div>
+
+        <button type="submit" id="loginBtn">Login</button>
+    </form>
+    <a href="/">Back to Home</a>
+</div>
+
+<script>
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const mnemonic = document.getElementById('mnemonic').value.trim();
+        const btn = document.getElementById('loginBtn');
+        const errorMsg = document.getElementById('errorMsg');
+
+        errorMsg.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Logging in...';
+
+        try {
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mnemonic_phrase: mnemonic })
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                location.href = '/chat';
+            } else {
+                errorMsg.textContent = 'Error: ' + (data.error || 'Login failed');
+                errorMsg.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            errorMsg.textContent = 'Network error. Is the server running?';
+            errorMsg.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Login';
+        }
+    });
+</script>
+{% endblock %}
