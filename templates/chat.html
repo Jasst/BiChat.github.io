@@ -34,7 +34,6 @@
     <div class="main-content">
         <div class="chat-header">
             Chat with: <span id="currentChatName">-</span>
-            <!-- ✅ Кнопка "+" теперь работает: добавляет собеседника в контакты -->
             <button id="addToContactsBtn" class="header-btn" onclick="addContactFromChat()"
                     disabled title="Add to Contacts">+</button>
             <button id="clearConversationBtn" class="header-btn" onclick="clearConversation()"
@@ -58,7 +57,6 @@
         <span class="close">&times;</span>
         <h2>Start New Chat</h2>
         <div class="modal-body">
-            <!-- Кнопка сканирования QR-кода -->
             <div style="text-align: center; margin-bottom: 15px;">
                 <button onclick="openQRScannerInModal()" id="scanQRBtn" class="scan-qr-btn-modal">
                     📷 Scan QR Code
@@ -154,6 +152,7 @@
     position: absolute; top: 15px; right: 35px; color: #f1f1f1;
     font-size: 40px; font-weight: bold; cursor: pointer; z-index: 1001;
 }
+
 .close-image-modal:hover, .close-image-modal:focus { color: #bbb; }
 
 .message img {
@@ -161,20 +160,36 @@
 }
 .message img:hover { transform: scale(1.05); }
 
-/* ✅ Стили для кнопок в шапке чата */
-#addToContactsBtn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+#addToContactsBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+#addToContactsBtn:not(:disabled):hover { background: #00c853; color: #121212; }
+    /* === Индикатор загрузки === */  /* ← ДОБАВЬТЕ ЭТО */
+.loading {
+    color: #888;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
 }
-#addToContactsBtn:not(:disabled):hover {
-    background: #00c853;
-    color: #121212;
+.messages.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+.error {
+    color: #cf6679;
+    font-weight: 500;
+    text-align: center;
+    padding: 20px;
 }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
-    // Функции копирования
+    function escapeHtml(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
     function copyToClipboard(elementId, feedbackId) {
         const element = document.getElementById(elementId);
         const feedback = document.getElementById(feedbackId);
@@ -187,7 +202,6 @@
         });
     }
 
-    // Функции для QR-сканера в модальном окне
     let scanIntervalModal = null;
     let streamModal = null;
     let isQRScannerActiveModal = false;
@@ -253,7 +267,7 @@
         }, 300);
     }
 
-    function stopScanningModal() { if (scanIntervalModal) { clearInterval(scanIntervalModal); scanIntervalModal = null; console.log('QR scanning interval stopped'); } }
+    function stopScanningModal() { if (scanIntervalModal) { clearInterval(scanIntervalModal); scanIntervalModal = null; } }
 
     function forceCloseQRScannerInModal() {
         console.log('Force closing QR scanner...'); isQRScannerActiveModal = false; stopScanningModal();
@@ -263,25 +277,22 @@
         const scanResult = document.getElementById('scanResultModal');
         if (scannerContainer) scannerContainer.style.display = 'none';
         if (scanBtn) scanBtn.style.display = 'block';
-        if (streamModal) { try { const tracks = streamModal.getTracks(); tracks.forEach(track => { if (track.readyState === 'live') { track.stop(); console.log('Track stopped:', track.kind); } }); streamModal = null; console.log('Media stream closed'); } catch (e) { console.warn('Error stopping media stream:', e); streamModal = null; } }
-        if (video) { try { video.pause(); video.srcObject = null; video.load(); console.log('Video element cleared'); } catch (e) { console.warn('Error clearing video element:', e); } }
+        if (streamModal) { try { const tracks = streamModal.getTracks(); tracks.forEach(track => { if (track.readyState === 'live') { track.stop(); } }); streamModal = null; } catch (e) { console.warn('Error stopping media stream:', e); streamModal = null; } }
+        if (video) { try { video.pause(); video.srcObject = null; video.load(); } catch (e) { console.warn('Error clearing video element:', e); } }
         if (scanResult) { setTimeout(() => { if (scanResult.style.display === 'block') { scanResult.style.display = 'none'; scanResult.textContent = ''; } }, 2000); }
-        console.log('QR Scanner closed successfully');
     }
 
-    // --- Логика отправки изображений ---
     let pendingImageData = null;
     function handleImageSelection(event) {
         const file = event.target.files[0];
         if (file && file.type.startsWith('image/')) {
             const reader = new FileReader();
-            reader.onload = function(e) { pendingImageData = e.target.result; console.log("Image selected and encoded."); };
+            reader.onload = function(e) { pendingImageData = e.target.result; };
             reader.readAsDataURL(file);
         } else { alert('Please select a valid image file.'); pendingImageData = null; }
         event.target.value = '';
     }
 
-    // --- Логика просмотра изображений ---
     let currentImageSrc = '';
     function openImageModal(src) {
         const modal = document.getElementById('imageModal');
@@ -307,145 +318,379 @@
         } catch (e) { console.error('Download error:', e); alert('Failed to download image'); }
     }
 
-    // --- Остальные функции ---
-    let currentChatAddress = ""; let currentChatIsGroup = false; let currentChatPartnerAddress = "";
-    let userAddress = "{{ address }}"; let lastMessageTimestamp = 0; let pollInterval; let allContacts = [];
+    // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
+    let currentChatAddress = "";
+    let currentChatIsGroup = false;
+    let currentChatPartnerAddress = "";
+    let userAddress = "{{ address }}";
+    let lastMessageTimestamp = 0;
+    let pollInterval;
+    let allContacts = [];
+
+    // 🔥 ПАГИНАЦИЯ: отслеживаем последний загруженный ID сообщения
+    let lastKnownMessageId = 0;
 
     async function loadConversations() {
-        try {
-            const response = await fetch('/get_conversations'); const data = await response.json();
-            if (response.ok) {
-                const container = document.getElementById('conversationsList'); container.innerHTML = '';
-                if (data.conversations.length === 0) { container.innerHTML = '<li><em>No conversations. Add contacts!</em></li>'; }
-                else {
-                    data.conversations.forEach(conv => {
-                        const li = document.createElement('li'); li.className = 'conversation-item';
-                        li.dataset.address = conv.address; li.dataset.isGroup = conv.is_group;
-                        const displayName = conv.name.length > 25 ? conv.name.substring(0, 22) + '...' : conv.name;
-                        li.innerHTML = `<div class="status-indicator"></div><div>${displayName}</div>`;
-                        li.onclick = () => selectConversation(conv.address, conv.name, conv.is_group);
-                        container.appendChild(li);
-                    });
-                }
-            } else console.error('Failed to load conversations:', data.error);
-        } catch (error) { console.error('Error loading conversations:', error); }
+    try {
+        const response = await fetch('/get_conversations');
+        const data = await response.json();
+        if (response.ok) {
+            const container = document.getElementById('conversationsList');
+            container.innerHTML = '';
+
+            if (!data.conversations || data.conversations.length === 0) {
+                container.innerHTML = '<li><em>No conversations. Add contacts!</em></li>';
+                return;
+            }
+
+            data.conversations.forEach(conv => {
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.dataset.address = conv.address || '';
+
+                // 🔥 ИСПРАВЛЕНО: храним как '1'/'0' для надёжного парсинга
+                li.dataset.isGroup = conv.is_group ? '1' : '0';
+
+                const displayName = (conv.name || conv.address || 'Unknown');
+                const shortName = displayName.length > 25 ? displayName.substring(0, 22) + '...' : displayName;
+
+                li.innerHTML = `<div class="status-indicator"></div><div></div>`;
+                li.querySelector('div:last-child').textContent = shortName;
+
+                // 🔥 Передаём уже нормализованное булево значение
+                const isGroupBool = !!(conv.is_group);
+                li.onclick = () => selectConversation(conv.address, conv.name || conv.address, isGroupBool);
+
+                container.appendChild(li);
+            });
+        } else {
+            console.error('Failed to load conversations:', data.error);
+        }
+    } catch (error) {
+        console.error('Error loading conversations:', error);
     }
+}
 
     function selectConversation(address, name, isGroup) {
-        currentChatAddress = address; currentChatIsGroup = isGroup === true || isGroup === 'true';
-        currentChatPartnerAddress = isGroup ? "" : (address === userAddress ? "" : address);
-        document.getElementById('currentChatName').textContent = name;
-        document.querySelectorAll('.conversation-item').forEach(item => item.classList.remove('active'));
-        const selectedItems = document.querySelectorAll(`.conversation-item[data-address="${address}"]`);
-        if (selectedItems.length > 0) selectedItems[0].classList.add('active');
-        document.getElementById('messageContent').disabled = false;
-        document.getElementById('attachImageButton').disabled = false;
-        document.getElementById('sendButton').disabled = false;
-        document.getElementById('noChatSelectedMessage').style.display = 'none';
+    stopPolling();
 
-        // ✅ Кнопка "+" активируется только если это НЕ группа и НЕ я сам
-        const addToContactsBtn = document.getElementById('addToContactsBtn');
-        const clearConversationBtn = document.getElementById('clearConversationBtn');
-        if (isGroup || !currentChatPartnerAddress || currentChatPartnerAddress === userAddress) {
-            addToContactsBtn.disabled = true;
-            addToContactsBtn.title = "Cannot add group or yourself";
-        } else {
-            addToContactsBtn.disabled = false;
-            addToContactsBtn.title = "Add to Contacts";
-        }
-        clearConversationBtn.disabled = false;
-        clearConversationBtn.title = "Clear Messages";
+    const container = document.getElementById('messagesContainer');
+    container.innerHTML = '<p class="loading">Loading conversation...</p>';
+    container.classList.add('loading');
 
-        lastMessageTimestamp = 0; loadMessagesForConversation(address); pendingImageData = null;
+    _disableChatControls();
+
+    document.getElementById('currentChatName').textContent = name || 'Loading...';
+
+    // Обновление активного элемента
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    try {
+        const selector = `.conversation-item[data-address="${CSS.escape(address)}"]`;
+        const selectedItem = document.querySelector(selector);
+        if (selectedItem) selectedItem.classList.add('active');
+    } catch (e) {
+        document.querySelectorAll('.conversation-item').forEach(item => {
+            if (item.dataset.address === address) item.classList.add('active');
+        });
     }
+
+    // Сброс и установка новых значений
+    currentChatAddress = address;
+    currentChatIsGroup = (
+        isGroup === true ||
+        isGroup === 'true' ||
+        isGroup === 1 ||
+        isGroup === '1' ||
+        (typeof isGroup === 'string' && isGroup.toLowerCase() === 'true')
+    );
+    currentChatPartnerAddress = currentChatIsGroup
+        ? ""
+        : (address === userAddress ? "" : address);
+
+    lastKnownMessageId = 0;
+    lastMessageTimestamp = 0;
+    pendingImageData = null;
+
+    // 🔥 Загружаем сообщения
+    loadMessagesForConversation(address, false);
+
+    // Перезапуск поллинга
+    setTimeout(() => {
+        if (currentChatAddress === address) {
+            startPolling();
+        }
+    }, 500);
+
+    console.log('🔄 Chat switched:', {
+        address: address?.substring(0, 16) + '...',
+        isGroup: currentChatIsGroup,
+        isNewChat: true  // 🔥 Для отладки
+    });
+}
+
+// 🔥 ВСПОМОГАТЕЛЬНАЯ функция: отключить элементы управления
+function _disableChatControls() {
+    document.getElementById('messageContent').disabled = true;
+    document.getElementById('attachImageButton').disabled = true;
+    document.getElementById('sendButton').disabled = true;
+    document.getElementById('addToContactsBtn').disabled = true;
+    document.getElementById('clearConversationBtn').disabled = true;
+}
 
     async function loadContactsForModal() {
         try {
-            const response = await fetch('/get_contacts'); const data = await response.json();
+            const response = await fetch('/get_contacts');
+            const data = await response.json();
             if (response.ok) {
                 allContacts = data.contacts;
                 const selectElement = document.getElementById('newChatSelect');
                 selectElement.innerHTML = '<option value="">-- Select a Contact --</option>';
                 allContacts.forEach(contact => {
-                    const option = document.createElement('option'); option.value = contact.address;
+                    const option = document.createElement('option');
+                    option.value = contact.address;
                     const displayName = contact.name.length > 30 ? contact.name.substring(0, 27) + '...' : contact.name;
-                    option.textContent = `${displayName} (${contact.address.substring(0, 10)}...)`;
+                    option.textContent = `${escapeHtml(displayName)} (${contact.address.substring(0, 10)}...)`;
                     selectElement.appendChild(option);
                 });
             } else { console.error('Failed to load contacts for modal:', data.error); alert('Could not load contacts.'); }
         } catch (error) { console.error('Error loading contacts for modal:', error); alert('An error occurred while loading contacts.'); }
     }
 
-    async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
-        if (!chatWithAddress) { document.getElementById('messagesContainer').innerHTML = '<p id="noChatSelectedMessage">Please select a conversation.</p>'; return; }
-        try {
-            const response = await fetch(`/get_conversation?with=${encodeURIComponent(chatWithAddress)}`);
-            const data = await response.json();
-            if (response.ok) {
-                const container = document.getElementById('messagesContainer');
-                const shouldScroll = isNewMessage || (container.scrollTop + container.clientHeight >= container.scrollHeight - 5);
-                container.innerHTML = '';
-                if (data.messages.length === 0) { container.innerHTML = '<p><em>No messages yet.</em></p>'; }
-                else {
-                    let maxTimestamp = 0;
-                    data.messages.forEach(msg => {
-                        if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
-                        const messageDiv = document.createElement('div');
-                        messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'}`;
-                        messageDiv.dataset.messageId = msg.id;
-                        let imageHtml = '';
-                        if (msg.image) {
-                            if (msg.image.startsWith('data:image')) imageHtml = `<img src="${msg.image}" alt="Image" style="max-width: 200px; max-height: 200px; border-radius: 4px;" onclick="openImageModal('${msg.image}')">`;
-                            else imageHtml = `<img src="${msg.image}" alt="Image" style="max-width: 200px; max-height: 200px; border-radius: 4px;" onclick="openImageModal('${msg.image}')">`;
-                        }
-                        const senderInfo = (msg.is_mine || !currentChatIsGroup) ? '' : `<strong>${msg.sender_name}</strong><br>`;
-                        const deleteBtnHtml = msg.is_mine ? `<button class="delete-message-btn" onclick="deleteMessage(${msg.id}, this)" title="Delete">&#x1F5D9;</button>` : '';
-                        messageDiv.innerHTML = `<div class="message-content-wrapper">${senderInfo}<p>${msg.content}</p>${imageHtml}<small>${new Date(msg.timestamp * 1000).toLocaleString()}</small></div>${deleteBtnHtml}`;
-                        container.appendChild(messageDiv);
-                    });
-                    lastMessageTimestamp = maxTimestamp;
-                }
-                if (shouldScroll) container.scrollTop = container.scrollHeight;
-            } else { console.error('Failed to load conversation:', data.error); if (!isNewMessage) document.getElementById('messagesContainer').innerHTML = `<p>Error loading messages: ${data.error}</p>`; }
-        } catch (error) { console.error('Error loading conversation:', error); if (!isNewMessage) document.getElementById('messagesContainer').innerHTML = `<p>Error loading messages.</p>`; }
+
+
+
+// 🔥 ОБНОВЛЁННАЯ функция загрузки сообщений с пагинацией и защитой от смешивания
+
+// 🔥 ИСПРАВЛЕННАЯ функция загрузки сообщений (надёжная версия)
+async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
+    const container = document.getElementById('messagesContainer');
+
+    // 🔒 Валидация: пустой адрес
+    if (!chatWithAddress) {
+        container.innerHTML = '<p id="noChatSelectedMessage">Please select a conversation.</p>';
+        container.classList.remove('loading');
+        _enableChatControls();
+        return;
     }
+
+    // 🔒 Валидация формата адреса
+    const isGroupFormat = chatWithAddress.startsWith('group:');
+    const isPersonalFormat = /^[a-fA-F0-9]{64}$/.test(chatWithAddress);
+
+    if (!isGroupFormat && !isPersonalFormat) {
+        console.error('❌ Invalid chat address format:', chatWithAddress);
+        container.innerHTML = `<p class="error">Invalid conversation format.</p>`;
+        container.classList.remove('loading');
+        _enableChatControls();
+        return;
+    }
+
+    try {
+        const params = new URLSearchParams({ with: chatWithAddress });
+        if (isNewMessage && lastKnownMessageId > 0) {
+            params.append('last_message_id', lastKnownMessageId);
+            params.append('limit', '50');
+        }
+
+        // 🔥 Добавляем таймаут для зависших запросов
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 секунд
+
+        const response = await fetch(`/get_conversation?${params}`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+
+        // 🔥 ВСЕГДА убираем класс loading сразу после получения ответа
+        container.classList.remove('loading');
+
+        if (response.ok) {
+            // 🔥 БЕЗОПАСНАЯ проверка сообщений (защита от undefined/null)
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            const shouldScroll = isNewMessage || (container.scrollTop + container.clientHeight >= container.scrollHeight - 5);
+
+            // 🔥 При первой загрузке или без пагинации — очищаем контейнер
+            if (!isNewMessage || lastKnownMessageId === 0) {
+                container.innerHTML = '';
+
+                // 🔥 Явная обработка: НОВЫЙ ЧАТ без сообщений
+                if (messages.length === 0) {
+                    container.innerHTML = '<p><em>No messages yet. Start the conversation!</em></p>';
+                    _enableChatControls();
+                    return;
+                }
+            }
+
+            // 🔥 Отображение сообщений
+            if (messages.length > 0) {
+                let maxTimestamp = 0;
+                const fragment = document.createDocumentFragment();
+
+                messages.forEach(msg => {
+                    // Защита от дублей
+                    if (document.getElementById(`msg-${msg.id}`)) return;
+
+                    if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
+
+                    const messageDiv = document.createElement('div');
+                    messageDiv.id = `msg-${msg.id}`;
+                    messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'}`;
+                    messageDiv.dataset.messageId = msg.id;
+                    messageDiv.dataset.chatType = currentChatIsGroup ? 'group' : 'personal';
+
+                    const contentP = document.createElement('p');
+                    contentP.textContent = msg.content || '';
+
+                    const senderInfo = (msg.is_mine || !currentChatIsGroup)
+                        ? ''
+                        : `<strong>${escapeHtml(msg.sender_name || msg.sender?.substring(0, 10) + '...')}</strong><br>`;
+
+                    let imageElem = null;
+                    if (msg.image) {
+                        imageElem = document.createElement('img');
+                        imageElem.src = msg.image;
+                        imageElem.alt = 'Image';
+                        imageElem.style.cssText = 'max-width: 200px; max-height: 200px; border-radius: 4px; cursor: pointer;';
+                        imageElem.dataset.fullSrc = msg.image;
+                        imageElem.onclick = () => openImageModal(msg.image);
+                    }
+
+                    const timeStr = new Date(msg.timestamp * 1000).toLocaleString();
+
+                    let deleteBtn = null;
+                    if (msg.is_mine) {
+                        deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'delete-message-btn';
+                        deleteBtn.dataset.id = msg.id;
+                        deleteBtn.title = 'Delete';
+                        deleteBtn.innerHTML = '&#x1F5D9;';
+                        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteMessage(msg.id, deleteBtn); };
+                    }
+
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'message-content-wrapper';
+                    wrapper.innerHTML = senderInfo;
+                    wrapper.appendChild(contentP);
+                    if (imageElem) wrapper.appendChild(imageElem);
+                    const timeSmall = document.createElement('small');
+                    timeSmall.textContent = timeStr;
+                    timeSmall.style.cssText = 'color: #888; font-size: 11px; display: block; margin-top: 4px;';
+                    wrapper.appendChild(timeSmall);
+
+                    messageDiv.appendChild(wrapper);
+                    if (deleteBtn) messageDiv.appendChild(deleteBtn);
+                    fragment.appendChild(messageDiv);
+
+                    if (msg.id > lastKnownMessageId) {
+                        lastKnownMessageId = msg.id;
+                    }
+                });
+
+                container.appendChild(fragment);
+                lastMessageTimestamp = maxTimestamp;
+            }
+
+            if (shouldScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
+
+            // 🔥 Включаем кнопки после успешной загрузки
+            _enableChatControls();
+
+        } else {
+            console.error('Failed to load conversation:', data.error);
+            if (!isNewMessage) {
+                container.innerHTML = `<p class="error">Error: ${escapeHtml(data.error || 'Unknown')}</p>`;
+            }
+            _enableChatControls();
+        }
+    } catch (error) {
+        console.error('Error loading conversation:', error);
+        container.classList.remove('loading');
+
+        if (error.name === 'AbortError') {
+            container.innerHTML = `<p class="error">Request timed out. Check your connection.</p>`;
+        } else if (!isNewMessage) {
+            container.innerHTML = `<p class="error">Network error loading messages.</p>`;
+        }
+        _enableChatControls();
+    }
+}
+
+// 🔥 ВСПОМОГАТЕЛЬНАЯ функция: включить элементы управления чатом
+function _enableChatControls() {
+    document.getElementById('messageContent').disabled = false;
+    document.getElementById('attachImageButton').disabled = false;
+    document.getElementById('sendButton').disabled = false;
+    document.getElementById('clearConversationBtn').disabled = false;
+
+    const addToContactsBtn = document.getElementById('addToContactsBtn');
+    if (currentChatIsGroup || !currentChatPartnerAddress || currentChatPartnerAddress === userAddress) {
+        addToContactsBtn.disabled = true;
+        addToContactsBtn.title = "Cannot add group or yourself";
+    } else {
+        addToContactsBtn.disabled = false;
+        addToContactsBtn.title = "Add to Contacts";
+    }
+}
 
     async function sendMessage() {
-        const content = document.getElementById('messageContent').value.trim();
-        const recipient = currentChatAddress;
-        const isGroup = currentChatIsGroup === true || currentChatIsGroup === 'true';
-        if (!recipient || (!content && !pendingImageData)) { alert('Please enter a message or attach an image.'); return; }
-        const messageType = isGroup ? 'group' : 'direct';
-        const groupId = isGroup ? recipient.split(':')[1] : null;
-        const payload = { recipient: recipient, content: content || "", message_type: messageType };
-        if (groupId) payload.group_id = groupId;
-        if (pendingImageData) payload.image = pendingImageData;
-        try {
-            const response = await fetch('/send_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            const data = await response.json();
-            if (response.ok) { document.getElementById('messageContent').value = ''; pendingImageData = null; loadMessagesForConversation(recipient, true); }
-            else alert('Error: ' + data.error);
-        } catch (error) { console.error('Error:', error); alert('An error occurred.'); }
+    const content = document.getElementById('messageContent').value.trim();
+    const recipient = currentChatAddress;
+
+    // 🔥 ИСПРАВЛЕНО: currentChatIsGroup уже булевый, не нужно проверять
+    const isGroup = currentChatIsGroup;
+
+    if (!recipient || (!content && !pendingImageData)) {
+        alert('Please enter a message or attach an image.');
+        return;
     }
 
-    // ✅ ИСПРАВЛЕНА: Теперь кнопка "+" работает правильно
+    const messageType = isGroup ? 'group' : 'direct';
+
+    // 🔥 Для групп извлекаем ID из формата "group:xxx"
+    const groupId = isGroup && recipient.startsWith('group:')
+        ? recipient.split(':')[1]
+        : null;
+
+    const payload = {
+        recipient: recipient,
+        content: content || "",
+        message_type: messageType
+    };
+    if (groupId) payload.group_id = groupId;
+    if (pendingImageData) payload.image = pendingImageData;
+
+    try {
+        const response = await fetch('/send_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            document.getElementById('messageContent').value = '';
+            pendingImageData = null;
+            loadMessagesForConversation(recipient, true);
+        } else alert('Error: ' + data.error);
+    } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred.');
+    }
+}
+
     async function addContactFromChat() {
-        // Используем currentChatPartnerAddress (адрес собеседника), а не currentChatAddress
         if (!currentChatPartnerAddress || currentChatPartnerAddress === userAddress) {
             alert("Cannot add this conversation to contacts.");
             return;
         }
-
-        // Находим имя контакта из списка диалогов
         const chatName = document.getElementById('currentChatName')?.textContent || currentChatPartnerAddress.substring(0, 10) + '...';
-
-        const payload = {
-            contact_address: currentChatPartnerAddress,
-            contact_name: chatName
-        };
-
+        const payload = { contact_address: currentChatPartnerAddress, contact_name: chatName };
         console.log('📤 Adding contact from chat:', payload);
-
         try {
             const response = await fetch('/add_contact_from_chat', {
                 method: 'POST',
@@ -454,10 +699,8 @@
             });
             const data = await response.json();
             console.log('📥 Add contact response:', response.status, data);
-
             if (response.ok) {
                 alert('✅ ' + (data.message || 'Contact added!'));
-                // Деактивируем кнопку после успешного добавления
                 const btn = document.getElementById('addToContactsBtn');
                 if (btn) { btn.disabled = true; btn.title = "Already in contacts"; }
             } else {
@@ -508,35 +751,66 @@
         closeNewChatModal(); selectConversation(chatAddress, chatName, false);
     }
 
-    function startPolling() { if (pollInterval) clearInterval(pollInterval); pollInterval = setInterval(async () => { if (currentChatAddress) loadMessagesForConversation(currentChatAddress, true); }, 3000); }
+    function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+
+    // 🔥 Не запускать поллинг если чат не выбран
+    if (!currentChatAddress) {
+        console.log('⏸️ Polling skipped: no chat selected');
+        return;
+    }
+
+    const chatAddressAtStart = currentChatAddress;
+
+    pollInterval = setInterval(() => {
+        // 🔥 Проверка: чат не сменился и всё ещё выбран
+        if (currentChatAddress && currentChatAddress === chatAddressAtStart) {
+            loadMessagesForConversation(currentChatAddress, true);
+        } else {
+            console.log('🛑 Polling stopped: chat changed');
+            stopPolling();
+        }
+    }, 3000);
+}
     function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
 
-    // ✅ Обработка ?start_with= параметра при открытии чата
-    // ✅ Обработка ?start_with= параметра при открытии чата
-function handleStartWithParam() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const startWith = urlParams.get('start_with');
-    const startName = urlParams.get('name');
-    if (startWith && startName) {
-        // 🔧 ИСПРАВЛЕНО: определяем, группа это или нет
-        const isGroup = startWith.startsWith('group:');
-
-        // Ждём загрузки контактов, затем открываем чат
-        loadContactsForModal().then(() => {
-            // 🔧 ПЕРЕДАЁМ isGroup вместо жестко заданного false
-            selectConversation(startWith, startName, isGroup);
-            // Очищаем URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-        });
+    function handleStartWithParam() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const startWith = urlParams.get('start_with');
+        const startName = urlParams.get('name');
+        if (startWith && startName) {
+            const isGroup = startWith.startsWith('group:');
+            loadContactsForModal().then(() => {
+                selectConversation(startWith, startName, isGroup);
+                window.history.replaceState({}, document.title, window.location.pathname);
+            });
+        }
     }
-}
 
     document.addEventListener('DOMContentLoaded', function() {
-        loadConversations(); startPolling();
-        handleStartWithParam(); // ✅ Обрабатываем параметр из contacts.html
+        loadConversations();
+        handleStartWithParam();
 
         const messageInput = document.getElementById('messageContent');
-        if (messageInput) messageInput.addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } });
+        if (messageInput) {
+            messageInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+            });
+            messageInput.addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } });
+        }
+
+        document.getElementById('messagesContainer').addEventListener('click', function(e) {
+            if (e.target.tagName === 'IMG' && e.target.closest('.message')) {
+                const fullSrc = e.target.dataset.fullSrc || e.target.src;
+                if (fullSrc) openImageModal(fullSrc);
+            }
+            if (e.target.classList.contains('delete-message-btn')) {
+                const id = parseInt(e.target.dataset.id, 10);
+                if (id) deleteMessage(id, e.target);
+            }
+        });
+
         const newChatBtn = document.getElementById('newChatBtn'); const closeModalBtn = document.querySelector('#newChatModal .close'); const startNewChatBtn = document.getElementById('startNewChatBtn');
         if (newChatBtn) newChatBtn.onclick = openNewChatModal; if (closeModalBtn) closeModalBtn.onclick = closeNewChatModal; if (startNewChatBtn) startNewChatBtn.onclick = startNewChat;
         window.onclick = function(event) { const newChatModal = document.getElementById('newChatModal'); const imageModal = document.getElementById('imageModal'); if (event.target == newChatModal) closeNewChatModal(); else if (event.target == imageModal) closeImageModal(); }

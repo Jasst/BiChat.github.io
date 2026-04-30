@@ -175,6 +175,8 @@ def _create_pubkey_cache_table(cursor):
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_verified ON pubkey_cache(verified)')
 
 
+
+
 # === Blockchain ===
 class Blockchain:
     def __init__(self, db_path: str = DATABASE_PATH):
@@ -887,9 +889,14 @@ def send_message():
 # === Получение сообщений ===
 # =============================================================================
 
+# =============================================================================
+# === Получение сообщений (ОБНОВЛЁННЫЙ с пагинацией) ===
+# =============================================================================
+
 @app.route('/get_conversation', methods=['GET'])
 def get_conversation():
-    if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         user_addr = session['address']
@@ -904,32 +911,50 @@ def get_conversation():
             return jsonify({'error': 'Authentication failed'}), 403
 
         chat_with = request.args.get('with')
-        if not chat_with: return jsonify({'error': 'Missing "with" parameter'}), 400
+        if not chat_with:
+            return jsonify({'error': 'Missing "with" parameter'}), 400
+
+        # 🔥 ПАГИНАЦИЯ: параметры
+        last_message_id = request.args.get('last_message_id', type=int)
+        # Защита от слишком большого limit
+        limit = min(int(request.args.get('limit', 50)), 100)
 
         with get_db_cursor(blockchain.db_path) as cursor:
             if chat_with.startswith('group:'):
                 group_id = chat_with.split(':', 1)[1]
                 groups = get_user_groups_cached(user_addr)
                 user_group = next((g for g in groups if g['id'] == group_id), None)
-                if not user_group: return jsonify({'error': 'No access to this group'}), 403
-                cursor.execute('''
+                if not user_group:
+                    return jsonify({'error': 'No access to this group'}), 403
+
+                query = '''
                     SELECT id, sender, recipient, content, image, timestamp, sender_pubkey, metadata
-                    FROM transactions WHERE recipient = ? ORDER BY timestamp ASC
-                ''', (chat_with,))
+                    FROM transactions WHERE recipient = ?
+                '''
+                params = [chat_with]
             else:
-                cursor.execute('''
+                query = '''
                     SELECT id, sender, recipient, content, image, timestamp, sender_pubkey, metadata
                     FROM transactions
                     WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
-                    ORDER BY timestamp ASC
-                ''', (user_addr, chat_with, chat_with, user_addr))
+                '''
+                params = [user_addr, chat_with, chat_with, user_addr]
 
+            # 🔥 Фильтр по ID + лимит
+            if last_message_id:
+                query += ' AND id > ?'
+                params.append(last_message_id)
+            query += ' ORDER BY timestamp ASC LIMIT ?'
+            params.append(limit)
+
+            cursor.execute(query, params)
             messages = [
                 {'id': r[0], 'sender': r[1], 'recipient': r[2], 'content': r[3],
                  'image': r[4], 'timestamp': r[5], 'sender_pubkey': r[6], 'metadata': r[7]}
                 for r in cursor.fetchall()
             ]
 
+        # Расшифровка (без изменений)
         decrypted = []
         for msg in messages:
             dec = process_message_decryption(msg, user_addr, mnemonic)
@@ -941,10 +966,16 @@ def get_conversation():
                     meta = json.loads(msg['metadata']) if isinstance(msg['metadata'], str) else msg['metadata']
                     dec['encryption_type'] = meta.get('encryption', 'unknown')
                     dec['key_verified'] = meta.get('key_verified', False)
-                except Exception: pass
+                except Exception:
+                    pass
             decrypted.append(dec)
 
-        return jsonify({'messages': decrypted}), 200
+        # 🔥 Возвращаем флаг has_more для возможной подгрузки истории
+        return jsonify({
+            'messages': decrypted,
+            'has_more': len(messages) == limit
+        }), 200
+
     except Exception as e:
         logger.error(f"Get conversation error: {type(e).__name__}", exc_info=app.debug)
         return jsonify({'error': 'Failed to load messages'}), 500
@@ -957,6 +988,7 @@ def get_conversations_route():
     except Exception as e:
         logger.error(f"Get conversations error: {e}")
         return jsonify({'error': 'Failed'}), 500
+
 
 
 # =============================================================================
@@ -994,7 +1026,6 @@ def add_contact_from_chat():
     except Exception as e:
         logger.error(f"add_contact_from_chat error: {e}", exc_info=True)
         return jsonify({'error': f'Server error'}), 500
-
 
 @app.route('/get_contacts', methods=['GET'])
 def get_contacts_route():
@@ -1035,6 +1066,40 @@ def get_contacts_route():
         return jsonify({'error': f'Failed: {type(e).__name__}'}), 500
 
 
+# === Удаление контакта (добавьте в app.py) ===
+@app.route('/delete_contact', methods=['POST'])
+def delete_contact_route():
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json() or {}
+        contact_address = data.get('address', '').strip()
+
+        if not contact_address or len(contact_address) != 64:
+            return jsonify({'error': 'Invalid address format'}), 400
+
+        user_addr = session['address']
+
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute(
+                'DELETE FROM contacts WHERE user_address = ? AND contact_address = ?',
+                (user_addr, contact_address)
+            )
+            deleted = cursor.rowcount
+
+        # Очистка кэша
+        get_contact_name_cached.cache_clear()
+
+        if deleted:
+            logger.info(f"Contact {contact_address[:16]}... deleted by {user_addr[:16]}...")
+            return jsonify({'message': 'Contact deleted'}), 200
+        else:
+            return jsonify({'error': 'Contact not found'}), 404
+
+    except Exception as e:
+        logger.error(f"Delete contact error: {e}")
+        return jsonify({'error': 'Failed to delete contact'}), 500
 # =============================================================================
 # === Группы ===
 # =============================================================================
@@ -1088,33 +1153,114 @@ def create_group():
 
 @app.route('/api/export_mnemonic', methods=['POST'])
 def export_mnemonic():
-    """🔐 Экспорт мнемоники с подтверждением действия."""
+    """🔐 Экспорт мнемоники с подтверждением действия и защитой от утечек."""
+
+    # 🔒 1. Проверка сессии
+    if 'address' not in session:
+        logger.warning(f"Unauthorized mnemonic export attempt from {request.remote_addr}")
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json(silent=True) or {}
+        confirmation = data.get('confirmation', '').strip().upper()
+
+        # 🔒 2. Валидация подтверждения (без логирования ввода!)
+        valid_confirmations = ('I CONFIRM', 'ПОДТВЕРЖДАЮ', 'CONFIRM', 'YES')
+        if confirmation not in valid_confirmations:
+            # 🔥 НЕ логируем ввод пользователя — может содержать чувствительные данные
+            logger.warning(f"Invalid confirmation attempt for {session.get('address', 'unknown')[:16]}...")
+            return jsonify({'error': 'Please type "I CONFIRM" or "YES" to continue'}), 400
+
+        # 🔒 3. Получение мнемоники из сессии
+        mnemonic = session.get('mnemonic')
+        if not mnemonic:
+            logger.warning(f"Mnemonic export failed: session expired for {session.get('address', 'unknown')[:16]}...")
+            return jsonify({'error': 'Session expired. Please login again.'}), 401
+
+        # 🔒 4. Формирование ответа с заголовками безопасности
+        response = jsonify({
+            'mnemonic': mnemonic,
+            'warning': 'Auto-clears in 30 seconds. Do not share.',
+            'auto_clear_seconds': 30,
+            # 🔥 Не возвращаем адрес в ответе — клиент уже знает его
+        })
+
+        # 🔒 5. Заголовки против кэширования чувствительных данных
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+
+        # 🔒 6. Логирование успеха (без мнемоники!)
+        logger.info(f"Mnemonic exported for {session.get('address', 'unknown')[:16]}... from {request.remote_addr}")
+
+        return response, 200
+
+    except Exception as e:
+        # 🔥 НИКОГДА не логируем исключения с возможными чувствительными данными
+        logger.error(f"Mnemonic export error for {session.get('address', 'unknown')[:16]}...: {type(e).__name__}")
+        return jsonify({'error': 'Export failed'}), 500
+
+@app.route('/delete_group', methods=['POST'])
+def delete_group():
+    """🗑️ Удаление группы — только создатель может удалить."""
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
 
     try:
-        data = request.get_json() or {}
-        confirmation = data.get('confirmation', '').strip().upper()
+        data = request.get_json(silent=True) or {}
+        group_id = data.get('group_id', '').strip()
 
-        # Простая "капча" подтверждения
-        if confirmation not in ('I CONFIRM', 'ПОДТВЕРЖДАЮ', 'CONFIRM', 'YES'):
-            return jsonify({'error': 'Please type "I CONFIRM or YES" to continue'}), 400
+        if not group_id or len(group_id) != 32:  # UUID hex = 32 chars
+            return jsonify({'error': 'Invalid group ID format'}), 400
 
-        # ✅ Берём мнемонику из активной сессии
-        mnemonic = session.get('mnemonic')
-        if not mnemonic:
-            return jsonify({'error': 'Session expired. Please login again.'}), 401
+        user_addr = session['address']
+
+        with get_db_cursor(blockchain.db_path) as cursor:
+            # 🔒 Проверяем, что группа существует и пользователь — создатель
+            cursor.execute(
+                'SELECT id, name, creator, members FROM groups WHERE id = ?',
+                (group_id,)
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return jsonify({'error': 'Group not found'}), 404
+
+            creator = row[2]
+            group_name = row[1]
+
+            # 🔒 Только создатель может удалить
+            if creator != user_addr:
+                logger.warning(
+                    f"Unauthorized delete attempt: {user_addr[:16]}... tried to delete group {group_id} (creator: {creator[:16]}...)")
+                return jsonify({'error': 'Only the group creator can delete this group'}), 403
+
+            # 🔥 Удаляем группу
+            cursor.execute('DELETE FROM groups WHERE id = ?', (group_id,))
+
+            # 🔥 Опционально: удаляем сообщения группы (если хотите)
+            # ❗ В блокчейн-архитектуре сообщения обычно НЕ удаляются,
+            # но можно пометить группу как "архивированную" вместо удаления
+            # cursor.execute('DELETE FROM transactions WHERE recipient = ?', (f'group:{group_id}',))
+
+            deleted = cursor.rowcount
+
+        # Очистка кэша
+        get_user_groups_cached.cache_clear()
+
+        logger.info(f"Group '{group_name}' (ID: {group_id}) deleted by creator {user_addr[:16]}...")
 
         return jsonify({
-            'mnemonic': mnemonic,
-            'warning': 'Auto-clears in 30 seconds. Do not share.',
-            'auto_clear_seconds': 30
+            'message': 'Group deleted',
+            'group_id': group_id,
+            'group_name': group_name
         }), 200
 
     except Exception as e:
-        logger.error(f"Mnemonic export error: {e}")
-        return jsonify({'error': 'Export failed'}), 500
-
+        logger.error(f"Delete group error: {type(e).__name__}", exc_info=app.debug)
+        return jsonify({'error': 'Failed to delete group'}), 500
 
 # =============================================================================
 # === Утилиты и загрузка файлов ===

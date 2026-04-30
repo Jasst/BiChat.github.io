@@ -3,7 +3,7 @@
 <div class="chat-container">
     <div class="sidebar">
         <div class="user-info">
-            <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
+            <p>Your Address: <span id="userAddress">{{ address[:10] if address else 'Unknown' }}...</span></p>
             <button onclick="location.href='/logout'">Logout</button>
         </div>
 
@@ -114,422 +114,207 @@
 
 <style>
 /* ── Страница групп ── */
-.groups-page {
-    padding: 24px 28px;
-    overflow-y: auto;
-}
-
-.groups-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 24px;
-}
-
-.groups-header h2 {
-    margin: 0;
-    font-size: 22px;
-    color: #fff;
-}
+.groups-page { padding: 24px 28px; overflow-y: auto; }
+.groups-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.groups-header h2 { margin: 0; font-size: 22px; color: #fff; }
 
 /* ── Карточки групп ── */
-.groups-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-}
-
+.groups-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .group-card {
-    background: #1e1e1e;
-    border: 1px solid #333;
-    border-radius: 10px;
-    padding: 18px;
-    transition: border-color 0.2s, transform 0.15s;
+    background: #1e1e1e; border: 1px solid #333; border-radius: 10px;
+    padding: 18px; transition: border-color 0.2s, transform 0.15s;
+    position: relative;
 }
-
-.group-card:hover {
-    border-color: #bb86fc;
-    transform: translateY(-2px);
-}
-
-.group-card-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 12px;
-}
-
+.group-card:hover { border-color: #bb86fc; transform: translateY(-2px); }
+.group-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
 .group-avatar {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
+    width: 42px; height: 42px; border-radius: 50%;
     background: linear-gradient(135deg, #bb86fc, #3700b3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    font-weight: bold;
-    color: #fff;
-    flex-shrink: 0;
-    margin-right: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: bold; color: #fff; flex-shrink: 0; margin-right: 12px;
 }
-
-.group-title-block {
-    flex: 1;
-    min-width: 0;
-}
-
+.group-title-block { flex: 1; min-width: 0; }
 .group-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 3px;
+    font-size: 16px; font-weight: 600; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;
 }
-
-.group-id-short {
-    font-size: 11px;
-    color: #666;
-    font-family: monospace;
-}
-
-.group-meta {
-    font-size: 13px;
-    color: #aaa;
-    margin-bottom: 6px;
-}
-
-.group-meta span {
-    color: #bb86fc;
-    font-weight: 500;
-}
-
+.group-id-short { font-size: 11px; color: #666; font-family: monospace; }
+.group-meta { font-size: 13px; color: #aaa; margin-bottom: 6px; }
+.group-meta span { color: #bb86fc; font-weight: 500; }
 .group-creator-badge {
-    display: inline-block;
-    font-size: 10px;
-    background: #3700b3;
-    color: #bb86fc;
-    border-radius: 4px;
-    padding: 2px 6px;
-    margin-bottom: 12px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
+    display: inline-block; font-size: 10px; background: #3700b3;
+    color: #bb86fc; border-radius: 4px; padding: 2px 6px;
+    margin-bottom: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
 }
-
-.group-card-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-}
+.group-card-actions { display: flex; gap: 8px; margin-top: 12px; }
 
 /* ── Кнопки ── */
 .btn-primary {
-    background: #bb86fc;
-    color: #121212;
-    border: none;
-    padding: 9px 16px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 13px;
-    transition: background 0.2s;
+    background: #bb86fc; color: #121212; border: none;
+    padding: 9px 16px; border-radius: 6px; cursor: pointer;
+    font-weight: 600; font-size: 13px; transition: background 0.2s;
 }
 .btn-primary:hover { background: #9965e8; }
-
 .btn-secondary {
-    background: transparent;
-    color: #bb86fc;
-    border: 1px solid #bb86fc;
-    padding: 9px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 13px;
-    transition: background 0.2s;
+    background: transparent; color: #bb86fc; border: 1px solid #bb86fc;
+    padding: 9px 14px; border-radius: 6px; cursor: pointer;
+    font-weight: 500; font-size: 13px; transition: background 0.2s;
 }
 .btn-secondary:hover { background: rgba(187, 134, 252, 0.1); }
 
+/* 🔥 Кнопка удаления группы */
 .btn-danger {
-    background: transparent;
-    color: #cf6679;
-    border: 1px solid #cf6679;
-    padding: 9px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 13px;
-    transition: background 0.2s;
+    background: transparent; color: #cf6679; border: 1px solid #cf6679;
+    padding: 9px 14px; border-radius: 6px; cursor: pointer;
+    font-weight: 500; font-size: 13px; transition: background 0.2s;
+    min-width: 40px; display: flex; align-items: center; justify-content: center;
 }
-.btn-danger:hover { background: rgba(207, 102, 121, 0.1); }
+.btn-danger:hover { background: rgba(207, 102, 121, 0.15); color: #ff8a9a; }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-full { width: 100%; margin-top: 12px; padding: 11px; }
 
 /* ── Модальные окна ── */
 .modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0; top: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.85);
-    overflow-y: auto;
+    display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+    width: 100%; height: 100%; background: rgba(0,0,0,0.85); overflow-y: auto;
 }
-
 .modal-content {
-    background: #1e1e1e;
-    border: 1px solid #444;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 520px;
-    margin: 40px auto;
-    color: #fff;
-    overflow: hidden;
+    background: #1e1e1e; border: 1px solid #444; border-radius: 12px;
+    width: 90%; max-width: 520px; margin: 40px auto; color: #fff; overflow: hidden;
 }
-
 .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 22px;
-    border-bottom: 1px solid #333;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 22px; border-bottom: 1px solid #333;
 }
-
 .modal-header h3 { margin: 0; font-size: 17px; }
-
-.close {
-    font-size: 24px;
-    cursor: pointer;
-    color: #aaa;
-    line-height: 1;
-}
+.close { font-size: 24px; cursor: pointer; color: #aaa; line-height: 1; }
 .close:hover { color: #fff; }
-
 .modal-body { padding: 20px 22px; }
 
 /* ── Форма ── */
 .form-group { margin-bottom: 18px; }
-
 .form-group label {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    color: #aaa;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-bottom: 8px;
+    display: block; font-size: 12px; font-weight: 600; color: #aaa;
+    text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;
 }
-
 .form-group input[type="text"] {
-    width: 100%;
-    background: #2c2c2c;
-    border: 1px solid #444;
-    border-radius: 6px;
-    padding: 10px 12px;
-    color: #fff;
-    font-size: 14px;
-    box-sizing: border-box;
-    transition: border-color 0.2s;
+    width: 100%; background: #2c2c2c; border: 1px solid #444;
+    border-radius: 6px; padding: 10px 12px; color: #fff;
+    font-size: 14px; box-sizing: border-box; transition: border-color 0.2s;
 }
-.form-group input[type="text"]:focus {
-    outline: none;
-    border-color: #bb86fc;
-}
-
-.address-input-row {
-    display: flex;
-    gap: 8px;
-}
+.form-group input[type="text"]:focus { outline: none; border-color: #bb86fc; }
+.address-input-row { display: flex; gap: 8px; }
 .address-input-row input { flex: 1; }
 
 /* ── Список контактов с чекбоксами ── */
 .contacts-checkbox-list {
-    max-height: 160px;
-    overflow-y: auto;
-    background: #2c2c2c;
-    border: 1px solid #444;
-    border-radius: 6px;
-    padding: 6px;
+    max-height: 160px; overflow-y: auto; background: #2c2c2c;
+    border: 1px solid #444; border-radius: 6px; padding: 6px;
 }
-
 .contact-checkbox-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background 0.15s;
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border-radius: 5px; cursor: pointer; transition: background 0.15s;
 }
 .contact-checkbox-item:hover { background: #383838; }
-
 .contact-checkbox-item input[type="checkbox"] {
-    accent-color: #bb86fc;
-    width: 15px;
-    height: 15px;
-    cursor: pointer;
-    flex-shrink: 0;
+    accent-color: #bb86fc; width: 15px; height: 15px;
+    cursor: pointer; flex-shrink: 0;
 }
-
-.contact-checkbox-label {
-    flex: 1;
-    min-width: 0;
-}
-
-.contact-checkbox-name {
-    font-size: 14px;
-    color: #fff;
-    font-weight: 500;
-}
-
-.contact-checkbox-addr {
-    font-size: 11px;
-    color: #777;
-    font-family: monospace;
-}
+.contact-checkbox-label { flex: 1; min-width: 0; }
+.contact-checkbox-name { font-size: 14px; color: #fff; font-weight: 500; }
+.contact-checkbox-addr { font-size: 11px; color: #777; font-family: monospace; }
 
 /* ── Выбранные участники ── */
 .selected-members-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px;
-    background: #2c2c2c;
-    border: 1px solid #444;
-    border-radius: 6px;
-    min-height: 40px;
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 8px;
+    background: #2c2c2c; border: 1px solid #444; border-radius: 6px; min-height: 40px;
 }
-
 .member-tag {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    background: #3700b3;
-    color: #bb86fc;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 12px;
-    font-weight: 500;
+    display: flex; align-items: center; gap: 5px; background: #3700b3;
+    color: #bb86fc; border-radius: 4px; padding: 4px 8px;
+    font-size: 12px; font-weight: 500;
 }
-
 .member-tag button {
-    background: none;
-    border: none;
-    color: #bb86fc;
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    padding: 0;
-    opacity: 0.7;
+    background: none; border: none; color: #bb86fc; cursor: pointer;
+    font-size: 14px; line-height: 1; padding: 0; opacity: 0.7;
 }
 .member-tag button:hover { opacity: 1; }
 
 /* ── Детали группы ── */
 .detail-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 10px 0;
-    border-bottom: 1px solid #333;
-    gap: 12px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 10px 0; border-bottom: 1px solid #333; gap: 12px;
 }
-
 .detail-label {
-    font-size: 12px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    flex-shrink: 0;
+    font-size: 12px; color: #888; text-transform: uppercase;
+    letter-spacing: 0.5px; flex-shrink: 0;
 }
-
-.detail-value {
-    font-size: 13px;
-    color: #ddd;
-    text-align: right;
-    word-break: break-all;
-}
-
+.detail-value { font-size: 13px; color: #ddd; text-align: right; word-break: break-all; }
 .detail-value.mono { font-family: monospace; font-size: 12px; }
-
 .members-list-detail {
-    background: #2c2c2c;
-    border-radius: 6px;
-    overflow: hidden;
-    border: 1px solid #444;
-    max-height: 200px;
-    overflow-y: auto;
+    background: #2c2c2c; border-radius: 6px; overflow: hidden;
+    border: 1px solid #444; max-height: 200px; overflow-y: auto;
 }
-
 .member-detail-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    border-bottom: 1px solid #383838;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-bottom: 1px solid #383838;
 }
 .member-detail-row:last-child { border-bottom: none; }
-
 .member-detail-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: #3700b3;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    color: #bb86fc;
-    font-weight: bold;
-    flex-shrink: 0;
+    width: 30px; height: 30px; border-radius: 50%; background: #3700b3;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #bb86fc; font-weight: bold; flex-shrink: 0;
 }
-
 .member-detail-info { flex: 1; min-width: 0; }
-
 .member-detail-name {
-    font-size: 13px;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 13px; color: #fff; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
 }
-
-.member-detail-addr {
-    font-size: 11px;
-    color: #666;
-    font-family: monospace;
-}
-
+.member-detail-addr { font-size: 11px; color: #666; font-family: monospace; }
 .me-badge {
-    font-size: 10px;
-    background: #1a6632;
-    color: #4caf50;
-    border-radius: 4px;
-    padding: 2px 5px;
-    font-weight: 600;
+    font-size: 10px; background: #1a6632; color: #4caf50;
+    border-radius: 4px; padding: 2px 5px; font-weight: 600;
 }
 
 /* ── Утилиты ── */
 .loading-text, .hint-text { color: #666; font-size: 13px; padding: 8px; }
 .error-text { color: #cf6679; font-size: 13px; margin-bottom: 10px; }
 .empty-state {
-    grid-column: 1 / -1;
-    text-align: center;
-    padding: 48px 24px;
-    color: #666;
+    grid-column: 1 / -1; text-align: center; padding: 48px 24px; color: #666;
 }
 .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
 .empty-state p { font-size: 14px; margin: 0 0 16px; }
 </style>
 
 <script>
-    const MY_ADDRESS = "{{ address }}";
+    const MY_ADDRESS = "{{ address|default('', true) }}";
 
     // ── Хранилище состояния ──────────────────────────────────────────────────
     let allContacts = [];
     let selectedMembers = {};   // { address: name }
     let currentDetailGroup = null;
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Защита от XSS: экранирование для HTML-атрибутов
+    // ══════════════════════════════════════════════════════════════════════════
+    function escapeHtmlAttr(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/\//g, '&#x2F;');
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 
     // ══════════════════════════════════════════════════════════════════════════
     // Загрузка групп
@@ -560,7 +345,7 @@
 
         } catch (err) {
             console.error('Load groups error:', err);
-            container.innerHTML = `<p class="error-text">Failed to load groups: ${err.message}</p>`;
+            container.innerHTML = `<p class="error-text">Failed to load groups: ${escapeHtml(err.message)}</p>`;
         }
     }
 
@@ -575,12 +360,19 @@
             ? new Date(group.created_at * 1000).toLocaleDateString()
             : '—';
 
+        // ✅ Безопасное хранение данных в data-атрибутах вместо onclick
+        card.dataset.groupId = group.id;
+        card.dataset.groupName = group.name;
+        card.dataset.groupCreator = group.creator;
+        card.dataset.groupMembers = JSON.stringify(group.members);
+        card.dataset.groupCreatedAt = group.created_at || '';
+
         card.innerHTML = `
             <div class="group-card-header">
-                <div class="group-avatar">${initials}</div>
+                <div class="group-avatar">${escapeHtml(initials)}</div>
                 <div class="group-title-block">
                     <div class="group-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}</div>
-                    <div class="group-id-short">ID: ${group.id.substring(0, 12)}…</div>
+                    <div class="group-id-short">ID: ${escapeHtml(group.id.substring(0, 12))}…</div>
                 </div>
             </div>
             ${isCreator ? '<div class="group-creator-badge">⭐ Creator</div>' : ''}
@@ -589,15 +381,48 @@
                 &nbsp;·&nbsp; ${createdDate}
             </div>
             <div class="group-card-actions">
-                <button class="btn-primary" style="flex:1;" onclick='openGroupChatById("group:${group.id}", "${escapeHtml(group.name)}")'>
+                <button class="btn-primary" style="flex:1;" onclick="openGroupChatById('group:${escapeHtmlAttr(group.id)}', '${escapeHtmlAttr(group.name)}')">
                     💬 Open Chat
                 </button>
-                <button class="btn-secondary" onclick='openDetailModal(${JSON.stringify(group).replace(/'/g, "&#39;")})'>
-                    Info
-                </button>
+                <button class="btn-secondary" data-action="view-details">Info</button>
+                ${isCreator ? `
+                <button class="btn-danger" data-action="delete-group" title="Delete group (creator only)">
+                    🗑️
+                </button>` : ''}
             </div>
         `;
+
+        // ✅ Делегирование клика для кнопки "Info"
+        const infoBtn = card.querySelector('[data-action="view-details"]');
+        if (infoBtn) {
+            infoBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openDetailModalFromDataset(card);
+            });
+        }
+
+        // 🔥 Делегирование клика для кнопки удаления
+        const deleteBtn = card.querySelector('[data-action="delete-group"]');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteGroup(group.id, group.name);
+            });
+        }
+
         return card;
+    }
+
+    // ✅ Безопасное открытие модала из data-атрибутов
+    function openDetailModalFromDataset(card) {
+        const group = {
+            id: card.dataset.groupId,
+            name: card.dataset.groupName,
+            creator: card.dataset.groupCreator,
+            members: JSON.parse(card.dataset.groupMembers),
+            created_at: parseFloat(card.dataset.groupCreatedAt) || null
+        };
+        openDetailModal(group);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -636,10 +461,10 @@
             const row = document.createElement('div');
             row.className = 'member-detail-row';
             row.innerHTML = `
-                <div class="member-detail-avatar">${name.substring(0, 1).toUpperCase()}</div>
+                <div class="member-detail-avatar">${escapeHtml(name.substring(0, 1).toUpperCase())}</div>
                 <div class="member-detail-info">
-                    <div class="member-detail-name">${isMe ? 'You' : addr.substring(0, 16) + '...'}</div>
-                    <div class="member-detail-addr">${addr}</div>
+                    <div class="member-detail-name">${escapeHtml(isMe ? 'You' : addr.substring(0, 16) + '...')}</div>
+                    <div class="member-detail-addr">${escapeHtml(addr)}</div>
                 </div>
                 ${isMe ? '<span class="me-badge">ME</span>' : ''}
             `;
@@ -693,12 +518,15 @@
         allContacts.forEach(c => {
             const item = document.createElement('label');
             item.className = 'contact-checkbox-item';
+            // ✅ Безопасное экранирование для onclick
+            const safeAddr = escapeHtmlAttr(c.address);
+            const safeName = escapeHtmlAttr(c.name);
             item.innerHTML = `
-                <input type="checkbox" value="${c.address}"
-                    onchange="toggleContactMember('${c.address}', '${escapeHtml(c.name)}', this.checked)">
+                <input type="checkbox" value="${safeAddr}"
+                    onchange="toggleContactMember('${safeAddr}', '${safeName}', this.checked)">
                 <div class="contact-checkbox-label">
                     <div class="contact-checkbox-name">${escapeHtml(c.name)}</div>
-                    <div class="contact-checkbox-addr">${c.address.substring(0, 20)}...</div>
+                    <div class="contact-checkbox-addr">${escapeHtml(c.address.substring(0, 20))}...</div>
                 </div>
             `;
             listEl.appendChild(item);
@@ -739,7 +567,7 @@
     function removeMember(address) {
         delete selectedMembers[address];
         // Снимаем чекбокс, если контакт
-        const cb = document.querySelector(`#contactsCheckboxList input[value="${address}"]`);
+        const cb = document.querySelector(`#contactsCheckboxList input[value="${escapeHtmlAttr(address)}"]`);
         if (cb) cb.checked = false;
         renderSelectedMembers();
     }
@@ -760,9 +588,11 @@
         Object.entries(selectedMembers).forEach(([addr, name]) => {
             const tag = document.createElement('div');
             tag.className = 'member-tag';
+            const safeAddr = escapeHtmlAttr(addr);
+            const safeName = escapeHtmlAttr(name);
             tag.innerHTML = `
-                <span title="${addr}">${escapeHtml(name)}</span>
-                <button onclick="removeMember('${addr}')" title="Remove">×</button>
+                <span title="${safeAddr}">${escapeHtml(name)}</span>
+                <button onclick="removeMember('${safeAddr}')" title="Remove">×</button>
             `;
             listEl.appendChild(tag);
         });
@@ -811,15 +641,50 @@
 
     function showCreateError(msg) {
         const el = document.getElementById('createGroupError');
-        el.textContent = msg;
+        el.textContent = escapeHtml(msg);
         el.style.display = 'block';
     }
 
-    // ── Утилиты ──────────────────────────────────────────────────────────────
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+    // ══════════════════════════════════════════════════════════════════════════
+    // 🔥 Удаление группы (только для создателя)
+    // ══════════════════════════════════════════════════════════════════════════
+    async function deleteGroup(groupId, groupName) {
+        // 🔒 Двойное подтверждение
+        const firstConfirm = confirm(
+            `Are you sure you want to delete the group "${groupName}"?\n\n` +
+            `⚠️ This action cannot be undone.\n` +
+            `All messages will remain in the blockchain, but the group will be disbanded.`
+        );
+        if (!firstConfirm) return;
+
+        const secondConfirm = prompt(`Type "DELETE" to confirm deletion of "${groupName}":`);
+        if (!secondConfirm || secondConfirm.trim().toUpperCase() !== 'DELETE') {
+            alert('Deletion cancelled.');
+            return;
+        }
+
+        try {
+            const response = await fetch('/delete_group', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group_id: groupId })
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(`✅ Group "${groupName}" deleted successfully.`);
+                await loadGroups(); // Перезагрузить список
+            } else if (response.status === 403) {
+                alert(`❌ Permission denied: ${data.error}`);
+            } else if (response.status === 404) {
+                alert(`❌ Group not found.`);
+            } else {
+                alert(`❌ Error: ${data.error || 'Failed to delete group'}`);
+            }
+        } catch (error) {
+            console.error('Delete group error:', error);
+            alert('❌ Network error while deleting group. Please check your connection.');
+        }
     }
 
     // ── Закрытие модалов кликом по фону ──────────────────────────────────────
@@ -834,9 +699,12 @@
 
     // Добавление участника по Enter
     document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('manualAddress').addEventListener('keydown', e => {
-            if (e.key === 'Enter') addManualAddress();
-        });
+        const manualInput = document.getElementById('manualAddress');
+        if (manualInput) {
+            manualInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); addManualAddress(); }
+            });
+        }
         loadGroups();
     });
 </script>

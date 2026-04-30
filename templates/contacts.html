@@ -142,7 +142,18 @@
     let stream = null;
     let isScanning = false;
 
-    // === Защита от XSS ===
+    // === Защита от XSS: экранирование для HTML-атрибутов ===
+    function escapeHtmlAttr(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/\//g, '&#x2F;');
+    }
+
     function escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
@@ -181,14 +192,20 @@
 
     // === Начать чат с контактом ===
     function startChatWith(address, name) {
-        // Переходим на /chat и открываем диалог
-        window.location.href = `/chat?start_with=${encodeURIComponent(address)}&name=${encodeURIComponent(name)}`;
+        // ✅ Используем URLSearchParams для безопасного формирования URL
+        const params = new URLSearchParams({
+            start_with: address,
+            name: name
+        });
+        window.location.href = '/chat?' + params.toString();
     }
 
-    // Клик по адресу тоже копирует
+    // === Делегирование кликов для копирования адреса ===
     document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('contact-address')) {
-            copyAddress(e.target.id);
+        const addrEl = e.target.closest('.contact-address');
+        if (addrEl) {
+            e.preventDefault();
+            copyAddress(addrEl.id);
         }
     });
 
@@ -212,7 +229,11 @@
                     const li = document.createElement('li');
                     li.className = 'contact-item';
                     li.dataset.address = contact.address;
-                    // ✅ Добавлена кнопка 💬 для начала чата
+
+                    // ✅ Безопасное экранирование для onclick-атрибута
+                    const safeName = escapeHtmlAttr(contact.name);
+                    const safeAddr = escapeHtmlAttr(contact.address);
+
                     li.innerHTML = `
                         <div class="contact-info-wrapper">
                             <div class="contact-name" title="${escapeHtml(contact.name)}">
@@ -221,17 +242,17 @@
                             <div class="contact-address-row">
                                 <code class="contact-address" id="addr-${index}"
                                       title="Click to copy: ${contact.address}">
-                                    ${contact.address}
+                                    ${escapeHtml(contact.address)}
                                 </code>
                                 <div class="contact-actions">
                                     <button class="copy-btn" onclick="copyAddress('addr-${index}')"
                                             title="Copy address">📋</button>
-                                    <button class="chat-btn" onclick="startChatWith('${contact.address}', '${escapeHtml(contact.name)}')"
+                                    <button class="chat-btn" onclick="startChatWith('${safeAddr}', '${safeName}')"
                                             title="Start chat">💬</button>
                                 </div>
                             </div>
                         </div>
-                        <button class="delete-btn" onclick="deleteContact('${contact.address}', this)"
+                        <button class="delete-btn" onclick="deleteContact('${safeAddr}', this)"
                                 title="Delete contact">✕</button>
                     `;
                     ul.appendChild(li);
@@ -240,7 +261,7 @@
             } else {
                 if (noContactsMsg) {
                     noContactsMsg.style.display = 'block';
-                    noContactsMsg.textContent = data.error ? `Error: ${data.error}` : 'No contacts found. Add one!';
+                    noContactsMsg.textContent = data.error ? `Error: ${escapeHtml(data.error)}` : 'No contacts found. Add one!';
                 } else {
                     container.innerHTML = '<p>No contacts found.</p>';
                 }
@@ -258,8 +279,6 @@
         const name = nameInput?.value.trim() || '';
         const address = addressInput?.value.trim() || '';
 
-        console.log('📤 addContact called:', { name, address: address.substring(0, 16) + '...' });
-
         if (!name || !address) { alert('Please fill in both name and address.'); return; }
         if (address.length !== 64 || !/^[a-fA-F0-9]{64}$/.test(address)) {
             alert('Invalid address format. Must be 64 hex characters.'); return;
@@ -271,9 +290,7 @@
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({ name, address })
             });
-            console.log('📥 Response status:', response.status);
             const data = await response.json();
-            console.log('📥 Response ', data);
 
             if (response.ok) {
                 if (nameInput) nameInput.value = '';
@@ -282,7 +299,6 @@
                 alert('✅ Contact added successfully!');
             } else if (response.status === 404) {
                 alert('❌ Error: Route not found (404).\n\nTry:\n1. Restart the server\n2. Check app.py syntax\n3. Verify /add_contact route exists');
-                console.error('❌ 404 - Route /add_contact not registered');
             } else if (response.status === 401) {
                 alert('❌ Session expired. Please login again.');
                 window.location.href = '/login';
@@ -332,18 +348,23 @@
 
     // === QR-сканер функции ===
     function openQRScanner() {
+        if (isScanning) return;
         const scannerContainer = document.getElementById('qrScannerContainer');
         const video = document.getElementById('qrVideo');
         const scanResult = document.getElementById('scanResult');
         if (!scannerContainer || !video) { console.error('QR Scanner elements not found'); return; }
+
+        isScanning = true;
         scannerContainer.style.display = 'block';
         if (scanResult) { scanResult.style.display = 'none'; scanResult.textContent = ''; }
 
         if (navigator.mediaDevices?.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
                 .then(function(mediaStream) {
-                    stream = mediaStream; video.srcObject = stream; video.play();
-                    isScanning = true; startScanning();
+                    if (!isScanning) { mediaStream.getTracks().forEach(t => t.stop()); return; }
+                    stream = mediaStream;
+                    video.srcObject = stream;
+                    video.play().then(() => startScanning()).catch(() => forceCloseQRScanner());
                 })
                 .catch(function(err) {
                     console.error("Camera error:", err);
@@ -360,6 +381,7 @@
         const video = document.getElementById('qrVideo');
         const scanResult = document.getElementById('scanResult');
         if (!video || !isScanning) return;
+
         scanInterval = setInterval(function() {
             if (!isScanning) { stopScanning(); return; }
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
@@ -374,9 +396,9 @@
                         let address = '';
                         if (code.data.length === 64 && /^[a-fA-F0-9]{64}$/.test(code.data)) {
                             address = code.data;
-                        } else if (code.data.startsWith('bitcoin:')) {
-                            const m = code.data.match(/bitcoin:([a-zA-Z0-9]{26,})/);
-                            if (m?.[1]) address = m[1];
+                        } else if (code.data.startsWith('bitcoin:') || code.data.startsWith('BITCOIN:')) {
+                            const m = code.data.match(/bitcoin:([a-zA-Z0-9]{26,})/i);
+                            if (m?.[1] && /^[a-fA-F0-9]{64}$/.test(m[1])) address = m[1];
                         }
                         if (address) {
                             const addrInput = document.getElementById('contactAddress');
@@ -397,12 +419,21 @@
     function stopScanning() { isScanning = false; if (scanInterval) { clearInterval(scanInterval); scanInterval = null; } }
 
     function forceCloseQRScanner() {
+        stopScanning();
         const container = document.getElementById('qrScannerContainer');
         const video = document.getElementById('qrVideo');
         if (container) container.style.display = 'none';
-        stopScanning();
-        if (stream) { stream.getTracks().forEach(t => { if (t.readyState === 'live') t.stop(); }); stream = null; }
-        if (video) { if (video.srcObject) video.srcObject = null; video.pause(); video.load(); }
+        if (stream) {
+            stream.getTracks().forEach(t => { try { t.stop(); } catch(e) {} });
+            stream = null;
+        }
+        if (video) {
+            try {
+                if (video.srcObject) video.srcObject = null;
+                video.pause();
+                video.load();
+            } catch(e) {}
+        }
         const result = document.getElementById('scanResult');
         if (result) { result.style.display = 'none'; result.textContent = ''; }
     }
@@ -410,6 +441,8 @@
     // === Инициализация + обработка ?start_with= параметра ===
     document.addEventListener('DOMContentLoaded', function() {
         loadContacts();
+
+        // Обработка Escape
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') forceCloseQRScanner(); });
 
         // ✅ Если открыли с ?start_with= — сразу начинаем чат
@@ -417,15 +450,16 @@
         const startWith = urlParams.get('start_with');
         const startName = urlParams.get('name');
         if (startWith && startName) {
-            // Ждём немного, чтобы страница прогрузилась
             setTimeout(() => {
                 if (typeof startChatWith === 'function') {
-                    startChatWith(startWith, startName);
+                    startChatWith(decodeURIComponent(startWith), decodeURIComponent(startName));
                 }
             }, 500);
         }
     });
+
     window.addEventListener('beforeunload', forceCloseQRScanner);
     window.addEventListener('blur', forceCloseQRScanner);
+    window.addEventListener('pagehide', forceCloseQRScanner);
 </script>
 {% endblock %}
