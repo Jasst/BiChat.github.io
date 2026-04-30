@@ -131,7 +131,7 @@
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat\templates" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.app">
     <configuration name="Bot 2" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="BiChat.github.io" />
       <option name="ENV_FILES" value="" />
@@ -308,6 +308,15 @@
       <option name="launchJavascriptDebuger" value="false" />
       <method v="2" />
     </configuration>
+    <list>
+      <item itemvalue="Python.app" />
+      <item itemvalue="Python.pythonProject1" />
+      <item itemvalue="Python.Bot 2" />
+      <item itemvalue="Python.bot" />
+      <item itemvalue="Python.test" />
+      <item itemvalue="Python.bot_script" />
+      <item itemvalue="Python.Jarvis" />
+    </list>
     <recent_temporary>
       <list>
         <item itemvalue="Python.Jarvis" />
