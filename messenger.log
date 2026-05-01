@@ -370,3 +370,9 @@ RuntimeError: PoW failed after 2000000 iterations
 2026-05-01 01:53:25 INFO [__main__:635] Wallet created: 95f47d5338cb2e28...
 2026-05-01 01:54:12 INFO [__main__:872] Key exchange sent: a9ed6fed1fa13b97... -> 14f2274fea9c01af...
 2026-05-01 01:54:49 INFO [__main__:1368] Message #53 deleted by a9ed6fed1fa13b97...
+2026-05-01 19:18:01 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 19:18:01 INFO [__main__:195] Genesis block created
+2026-05-01 19:18:01 INFO [__main__:186] Blockchain initialized
+2026-05-01 19:18:02 WARNING [__main__:120] === App started, log path: C:\Users\PC\Documents\GitHub\BiChat.github.io\messenger.log ===
+2026-05-01 19:18:02 INFO [__main__:186] Blockchain initialized
+2026-05-01 19:18:02 WARNING [werkzeug:187]  * Debugger is active!
