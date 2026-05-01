@@ -3,7 +3,9 @@
 <div class="chat-container">
     <div class="sidebar">
         <div class="user-info">
-            <p>Your Address: <span id="userAddress">{{ address[:10] }}...</span></p>
+            <p>Your Address:
+                <span id="userAddress" data-full-address="{{ address }}">{{ address[:10] }}...</span>
+            </p>
             <button onclick="location.href='/logout'">Logout</button>
         </div>
 
@@ -819,5 +821,122 @@ function _enableChatControls() {
     window.addEventListener('beforeunload', function() { forceCloseQRScannerInModal(); stopPolling(); });
     document.addEventListener('keydown', function(event) { if (event.key === 'Escape') { const newChatModal = document.getElementById('newChatModal'); const imageModal = document.getElementById('imageModal'); if (newChatModal && newChatModal.style.display === 'block') closeNewChatModal(); else if (imageModal && imageModal.style.display === 'block') closeImageModal(); } });
     document.addEventListener('visibilitychange', function() { if (document.hidden) forceCloseQRScannerInModal(); });
+</script>
+<!-- GunDB библиотека (через CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script> <!-- опционально, если будете использовать SEA -->
+
+<!-- Наши модули -->
+<script src="/static/js/gun-config.js"></script>
+<script src="/static/js/p2p-sync.js"></script>
+
+<!-- Инициализация P2P (после загрузки основной логики чата) -->
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    const userAddressEl = document.getElementById('userAddress');
+    const userAddress = userAddressEl?.dataset?.fullAddress?.trim();
+    if (!userAddress || userAddress.length !== 64) {
+        console.log('⚠️ P2P init skipped: user address not ready');
+        return;
+    }
+
+    // Инициализация Gun
+    const gunReady = await window.GunConfig?.init(userAddress);
+    if (!gunReady) {
+        console.warn('⚠️ P2P sync disabled: Gun not available');
+        return;
+    }
+
+    window.p2p = new P2PSync();
+    console.log('✅ P2P sync ready');
+
+    // === Подписка на входящие сообщения (для мгновенного обновления) ===
+    window.subscribeToChat = function(chatId) {
+        if (!window.p2p) return;
+        if (window._currentChatUnsub) window._currentChatUnsub();
+
+        window._currentChatUnsub = window.p2p.subscribe(chatId, async (msg) => {
+            console.log('📥 P2P message received from', msg.sender.substring(0,16)+'...');
+
+            // 🔐 Запрашиваем расшифровку у бэкенда (мнемоника там)
+            try {
+                const res = await fetch('/decrypt_message', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        encrypted_payload: msg.encryptedPayload,
+                        peer_address: msg.sender
+                    })
+                });
+                const decrypted = await res.json();
+
+                // 🔥 Вставляем сообщение в чат, если это текущий диалог
+                if (currentChatAddress === chatId && decrypted.content) {
+                    appendMessageToUI({
+                        sender: msg.sender,
+                        content: decrypted.content,
+                        image: decrypted.image,
+                        timestamp: msg.timestamp / 1000, // Gun использует мс
+                        is_mine: false,
+                        id: 'p2p_' + Date.now() // временный ID
+                    });
+                    // Прокрутка вниз
+                    const container = document.getElementById('messagesContainer');
+                    container.scrollTop = container.scrollHeight;
+                }
+            } catch (e) {
+                console.warn('⚠️ P2P decrypt failed, will poll server', e);
+                // Не страшно: сообщение придёт через обычный поллинг
+            }
+        });
+        console.log(`✅ Listening P2P: ${chatId.substring(0,20)}...`);
+    };
+
+    // === Очистка при уходе ===
+    window.addEventListener('beforeunload', () => {
+        window.p2p?.unsubscribeAll();
+        window.GunConfig?.clearSensitive();
+    });
+});
+
+/**
+ * Вспомогательная функция: добавить сообщение в UI (без дублирования)
+ */
+function appendMessageToUI(msg) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+
+    // Проверка на дубликаты
+    if (document.getElementById(`msg-${msg.id}`)) return;
+
+    const messageDiv = document.createElement('div');
+    messageDiv.id = `msg-${msg.id}`;
+    messageDiv.className = `message received`;
+
+    const contentP = document.createElement('p');
+    contentP.textContent = msg.content || '';
+
+    let imageElem = null;
+    if (msg.image) {
+        imageElem = document.createElement('img');
+        imageElem.src = msg.image;
+        imageElem.alt = 'Image';
+        imageElem.style.cssText = 'max-width:200px;max-height:200px;border-radius:4px;cursor:pointer;';
+        imageElem.onclick = () => openImageModal(msg.image);
+    }
+
+    const timeStr = new Date(msg.timestamp * 1000).toLocaleString();
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message-content-wrapper';
+    wrapper.appendChild(contentP);
+    if (imageElem) wrapper.appendChild(imageElem);
+    const timeSmall = document.createElement('small');
+    timeSmall.textContent = timeStr;
+    timeSmall.style.cssText = 'color:#888;font-size:11px;display:block;margin-top:4px;';
+    wrapper.appendChild(timeSmall);
+
+    messageDiv.appendChild(wrapper);
+    container.appendChild(messageDiv);
+}
 </script>
 {% endblock %}
