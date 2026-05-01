@@ -164,7 +164,7 @@
 
 #addToContactsBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 #addToContactsBtn:not(:disabled):hover { background: #00c853; color: #121212; }
-    /* === Индикатор загрузки === */  /* ← ДОБАВЬТЕ ЭТО */
+
 .loading {
     color: #888;
     font-style: italic;
@@ -181,188 +181,197 @@
     text-align: center;
     padding: 20px;
 }
+
+/* Анимации для бейджа */
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.02); } }
+@keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
 <script>
-    function escapeHtml(str) {
-        if (!str) return '';
-        const d = document.createElement('div');
-        d.textContent = str;
-        return d.innerHTML;
-    }
+// =============================================================================
+// === Утилиты ===
+// =============================================================================
+function escapeHtml(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
 
-    function copyToClipboard(elementId, feedbackId) {
-        const element = document.getElementById(elementId);
-        const feedback = document.getElementById(feedbackId);
-        navigator.clipboard.writeText(element.value).then(() => {
-            feedback.textContent = 'Copied!'; feedback.style.color = 'green';
-            setTimeout(() => { feedback.textContent = ''; }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy: ', err);
-            feedback.textContent = 'Failed to copy!'; feedback.style.color = 'red';
-        });
-    }
+function copyToClipboard(elementId, feedbackId) {
+    const element = document.getElementById(elementId);
+    const feedback = document.getElementById(feedbackId);
+    if (!element) return;
+    navigator.clipboard.writeText(element.value).then(() => {
+        feedback.textContent = 'Copied!'; feedback.style.color = 'green';
+        setTimeout(() => { feedback.textContent = ''; }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy: ', err);
+        feedback.textContent = 'Failed to copy!'; feedback.style.color = 'red';
+    });
+}
 
-    let scanIntervalModal = null;
-    let streamModal = null;
-    let isQRScannerActiveModal = false;
+// =============================================================================
+// === QR Scanner ===
+// =============================================================================
+let scanIntervalModal = null;
+let streamModal = null;
+let isQRScannerActiveModal = false;
 
-    function openQRScannerInModal() {
-        if (isQRScannerActiveModal) { console.log('QR Scanner already active'); return; }
-        const scannerContainer = document.getElementById('qrScannerContainerModal');
-        const video = document.getElementById('qrVideoModal');
-        const scanBtn = document.getElementById('scanQRBtn');
-        const scanResult = document.getElementById('scanResultModal');
-        if (!scannerContainer || !video || !scanBtn || !scanResult) { console.error('QR Scanner elements not found'); return; }
-        isQRScannerActiveModal = true;
-        scannerContainer.style.display = 'block'; scanBtn.style.display = 'none';
-        scanResult.style.display = 'none'; scanResult.textContent = '';
+function openQRScannerInModal() {
+    if (isQRScannerActiveModal) { console.log('QR Scanner already active'); return; }
+    const scannerContainer = document.getElementById('qrScannerContainerModal');
+    const video = document.getElementById('qrVideoModal');
+    const scanBtn = document.getElementById('scanQRBtn');
+    const scanResult = document.getElementById('scanResultModal');
+    if (!scannerContainer || !video || !scanBtn || !scanResult) { console.error('QR Scanner elements not found'); return; }
+    isQRScannerActiveModal = true;
+    scannerContainer.style.display = 'block'; scanBtn.style.display = 'none';
+    scanResult.style.display = 'none'; scanResult.textContent = '';
 
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }})
-                .then(function(mediaStream) {
-                    if (!isQRScannerActiveModal) { mediaStream.getTracks().forEach(track => track.stop()); return; }
-                    streamModal = mediaStream; video.srcObject = streamModal;
-                    video.onloadedmetadata = function() {
-                        if (isQRScannerActiveModal) {
-                            video.play().then(() => { startScanningModal(); }).catch(err => { console.error('Error playing video:', err); forceCloseQRScannerInModal(); });
-                        }
-                    };
-                })
-                .catch(function(err) { console.error("Error accessing camera: ", err); alert('Error accessing camera: ' + (err.message || 'Unknown error')); forceCloseQRScannerInModal(); });
-        } else { alert('Camera access not supported in this browser.'); forceCloseQRScannerInModal(); }
-    }
-
-    function startScanningModal() {
-        if (!isQRScannerActiveModal || scanIntervalModal) return;
-        const video = document.getElementById('qrVideoModal');
-        const scanResult = document.getElementById('scanResultModal');
-        if (!video || !scanResult) { console.error('Video or scan result elements not found'); return; }
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        scanIntervalModal = setInterval(function() {
-            if (!isQRScannerActiveModal) { stopScanningModal(); return; }
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                try {
-                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                    const code = jsQR(imageData.data, imageData.width, imageData.height);
-                    if (code && code.data) {
-                        let addressToSet = ''; let successMessage = '';
-                        if (code.data.length === 64 && /^[a-fA-F0-9]+$/.test(code.data)) { addressToSet = code.data; successMessage = 'Address scanned successfully!'; }
-                        else if (code.data.startsWith('bitcoin:') || code.data.startsWith('BITCOIN:')) {
-                            const addressMatch = code.data.match(/bitcoin:([a-zA-Z0-9]{26,})/);
-                            if (addressMatch && addressMatch[1]) { addressToSet = addressMatch[1]; successMessage = 'Bitcoin address extracted!'; }
-                        }
-                        if (addressToSet) {
-                            stopScanningModal();
-                            const addressInput = document.getElementById('newChatAddress');
-                            if (addressInput) addressInput.value = addressToSet;
-                            if (scanResult) { scanResult.textContent = successMessage; scanResult.style.display = 'block'; scanResult.style.color = 'green'; }
-                            forceCloseQRScannerInModal(); return;
-                        }
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }})
+            .then(function(mediaStream) {
+                if (!isQRScannerActiveModal) { mediaStream.getTracks().forEach(track => track.stop()); return; }
+                streamModal = mediaStream; video.srcObject = streamModal;
+                video.onloadedmetadata = function() {
+                    if (isQRScannerActiveModal) {
+                        video.play().then(() => { startScanningModal(); }).catch(err => { console.error('Error playing video:', err); forceCloseQRScannerInModal(); });
                     }
-                } catch (e) { console.log('QR scan attempt failed, continuing...', e); }
-            }
-        }, 300);
-    }
+                };
+            })
+            .catch(function(err) { console.error("Error accessing camera: ", err); alert('Error accessing camera: ' + (err.message || 'Unknown error')); forceCloseQRScannerInModal(); });
+    } else { alert('Camera access not supported in this browser.'); forceCloseQRScannerInModal(); }
+}
 
-    function stopScanningModal() { if (scanIntervalModal) { clearInterval(scanIntervalModal); scanIntervalModal = null; } }
+function startScanningModal() {
+    if (!isQRScannerActiveModal || scanIntervalModal) return;
+    const video = document.getElementById('qrVideoModal');
+    const scanResult = document.getElementById('scanResultModal');
+    if (!video || !scanResult) { console.error('Video or scan result elements not found'); return; }
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    scanIntervalModal = setInterval(function() {
+        if (!isQRScannerActiveModal) { stopScanningModal(); return; }
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            try {
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                if (code && code.data) {
+                    let addressToSet = ''; let successMessage = '';
+                    if (code.data.length === 64 && /^[a-fA-F0-9]+$/.test(code.data)) { addressToSet = code.data; successMessage = 'Address scanned successfully!'; }
+                    else if (code.data.startsWith('bitcoin:') || code.data.startsWith('BITCOIN:')) {
+                        const addressMatch = code.data.match(/bitcoin:([a-zA-Z0-9]{26,})/);
+                        if (addressMatch && addressMatch[1]) { addressToSet = addressMatch[1]; successMessage = 'Bitcoin address extracted!'; }
+                    }
+                    if (addressToSet) {
+                        stopScanningModal();
+                        const addressInput = document.getElementById('newChatAddress');
+                        if (addressInput) addressInput.value = addressToSet;
+                        if (scanResult) { scanResult.textContent = successMessage; scanResult.style.display = 'block'; scanResult.style.color = 'green'; }
+                        forceCloseQRScannerInModal(); return;
+                    }
+                }
+            } catch (e) { console.log('QR scan attempt failed, continuing...', e); }
+        }
+    }, 300);
+}
 
-    function forceCloseQRScannerInModal() {
-        console.log('Force closing QR scanner...'); isQRScannerActiveModal = false; stopScanningModal();
-        const scannerContainer = document.getElementById('qrScannerContainerModal');
-        const scanBtn = document.getElementById('scanQRBtn');
-        const video = document.getElementById('qrVideoModal');
-        const scanResult = document.getElementById('scanResultModal');
-        if (scannerContainer) scannerContainer.style.display = 'none';
-        if (scanBtn) scanBtn.style.display = 'block';
-        if (streamModal) { try { const tracks = streamModal.getTracks(); tracks.forEach(track => { if (track.readyState === 'live') { track.stop(); } }); streamModal = null; } catch (e) { console.warn('Error stopping media stream:', e); streamModal = null; } }
-        if (video) { try { video.pause(); video.srcObject = null; video.load(); } catch (e) { console.warn('Error clearing video element:', e); } }
-        if (scanResult) { setTimeout(() => { if (scanResult.style.display === 'block') { scanResult.style.display = 'none'; scanResult.textContent = ''; } }, 2000); }
-    }
+function stopScanningModal() { if (scanIntervalModal) { clearInterval(scanIntervalModal); scanIntervalModal = null; } }
 
-    let pendingImageData = null;
-    function handleImageSelection(event) {
-        const file = event.target.files[0];
-        if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = function(e) { pendingImageData = e.target.result; };
-            reader.readAsDataURL(file);
-        } else { alert('Please select a valid image file.'); pendingImageData = null; }
-        event.target.value = '';
-    }
+function forceCloseQRScannerInModal() {
+    console.log('Force closing QR scanner...'); isQRScannerActiveModal = false; stopScanningModal();
+    const scannerContainer = document.getElementById('qrScannerContainerModal');
+    const scanBtn = document.getElementById('scanQRBtn');
+    const video = document.getElementById('qrVideoModal');
+    const scanResult = document.getElementById('scanResultModal');
+    if (scannerContainer) scannerContainer.style.display = 'none';
+    if (scanBtn) scanBtn.style.display = 'block';
+    if (streamModal) { try { const tracks = streamModal.getTracks(); tracks.forEach(track => { if (track.readyState === 'live') { track.stop(); } }); streamModal = null; } catch (e) { console.warn('Error stopping media stream:', e); streamModal = null; } }
+    if (video) { try { video.pause(); video.srcObject = null; video.load(); } catch (e) { console.warn('Error clearing video element:', e); } }
+    if (scanResult) { setTimeout(() => { if (scanResult.style.display === 'block') { scanResult.style.display = 'none'; scanResult.textContent = ''; } }, 2000); }
+}
 
-    let currentImageSrc = '';
-    function openImageModal(src) {
-        const modal = document.getElementById('imageModal');
-        const modalImg = document.getElementById('modalImage');
-        const downloadBtn = document.getElementById('downloadImageBtn');
-        if (modal && modalImg) { modalImg.src = src; currentImageSrc = src; modal.style.display = 'block'; if (downloadBtn) downloadBtn.onclick = downloadCurrentImage; }
-    }
-    function closeImageModal() { const modal = document.getElementById('imageModal'); if (modal) modal.style.display = 'none'; }
-    function downloadCurrentImage() {
-        if (!currentImageSrc) return;
-        try {
-            const parts = currentImageSrc.split(';base64,');
-            if (parts.length !== 2) { alert('Invalid image data'); return; }
-            const mimeType = parts[0].split(':')[1]; const b64Data = parts[1];
-            const byteCharacters = atob(b64Data); const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], {type: mimeType});
-            const blobUrl = URL.createObjectURL(blob);
-            const link = document.createElement('a'); link.href = blobUrl; link.download = 'image-' + new Date().getTime() + '.' + mimeType.split('/')[1];
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-            URL.revokeObjectURL(blobUrl);
-        } catch (e) { console.error('Download error:', e); alert('Failed to download image'); }
-    }
+// =============================================================================
+// === Изображения ===
+// =============================================================================
+let pendingImageData = null;
+function handleImageSelection(event) {
+    const file = event.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = function(e) { pendingImageData = e.target.result; };
+        reader.readAsDataURL(file);
+    } else { alert('Please select a valid image file.'); pendingImageData = null; }
+    event.target.value = '';
+}
 
-    // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
-    let currentChatAddress = "";
-    let currentChatIsGroup = false;
-    let currentChatPartnerAddress = "";
-    let userAddress = "{{ address }}";
-    let lastMessageTimestamp = 0;
-    let pollInterval;
-    let allContacts = [];
+let currentImageSrc = '';
+function openImageModal(src) {
+    const modal = document.getElementById('imageModal');
+    const modalImg = document.getElementById('modalImage');
+    const downloadBtn = document.getElementById('downloadImageBtn');
+    if (modal && modalImg) { modalImg.src = src; currentImageSrc = src; modal.style.display = 'block'; if (downloadBtn) downloadBtn.onclick = downloadCurrentImage; }
+}
+function closeImageModal() { const modal = document.getElementById('imageModal'); if (modal) modal.style.display = 'none'; }
+function downloadCurrentImage() {
+    if (!currentImageSrc) return;
+    try {
+        const parts = currentImageSrc.split(';base64,');
+        if (parts.length !== 2) { alert('Invalid image data'); return; }
+        const mimeType = parts[0].split(':')[1]; const b64Data = parts[1];
+        const byteCharacters = atob(b64Data); const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {type: mimeType});
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a'); link.href = blobUrl; link.download = 'image-' + new Date().getTime() + '.' + mimeType.split('/')[1];
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+    } catch (e) { console.error('Download error:', e); alert('Failed to download image'); }
+}
 
-    // 🔥 ПАГИНАЦИЯ: отслеживаем последний загруженный ID сообщения
-    let lastKnownMessageId = 0;
+// =============================================================================
+// === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
+// =============================================================================
+let currentChatAddress = "";
+let currentChatIsGroup = false;
+let currentChatPartnerAddress = "";
+let userAddress = "{{ address }}";
+let lastMessageTimestamp = 0;
+let pollInterval;
+let allContacts = [];
+let lastKnownMessageId = 0;
 
-    async function loadConversations() {
+// =============================================================================
+// === Функции чата ===
+// =============================================================================
+async function loadConversations() {
     try {
         const response = await fetch('/get_conversations');
         const data = await response.json();
         if (response.ok) {
             const container = document.getElementById('conversationsList');
             container.innerHTML = '';
-
             if (!data.conversations || data.conversations.length === 0) {
                 container.innerHTML = '<li><em>No conversations. Add contacts!</em></li>';
                 return;
             }
-
             data.conversations.forEach(conv => {
                 const li = document.createElement('li');
                 li.className = 'conversation-item';
                 li.dataset.address = conv.address || '';
-
-                // 🔥 ИСПРАВЛЕНО: храним как '1'/'0' для надёжного парсинга
                 li.dataset.isGroup = conv.is_group ? '1' : '0';
-
                 const displayName = (conv.name || conv.address || 'Unknown');
                 const shortName = displayName.length > 25 ? displayName.substring(0, 22) + '...' : displayName;
-
                 li.innerHTML = `<div class="status-indicator"></div><div></div>`;
                 li.querySelector('div:last-child').textContent = shortName;
-
-                // 🔥 Передаём уже нормализованное булево значение
                 const isGroupBool = !!(conv.is_group);
                 li.onclick = () => selectConversation(conv.address, conv.name || conv.address, isGroupBool);
-
                 container.appendChild(li);
             });
         } else {
@@ -373,21 +382,14 @@
     }
 }
 
-    function selectConversation(address, name, isGroup) {
+function selectConversation(address, name, isGroup) {
     stopPolling();
-
     const container = document.getElementById('messagesContainer');
     container.innerHTML = '<p class="loading">Loading conversation...</p>';
     container.classList.add('loading');
-
     _disableChatControls();
-
     document.getElementById('currentChatName').textContent = name || 'Loading...';
-
-    // Обновление активного элемента
-    document.querySelectorAll('.conversation-item').forEach(item => {
-        item.classList.remove('active');
-    });
+    document.querySelectorAll('.conversation-item').forEach(item => { item.classList.remove('active'); });
     try {
         const selector = `.conversation-item[data-address="${CSS.escape(address)}"]`;
         const selectedItem = document.querySelector(selector);
@@ -397,42 +399,26 @@
             if (item.dataset.address === address) item.classList.add('active');
         });
     }
-
-    // Сброс и установка новых значений
     currentChatAddress = address;
-    currentChatIsGroup = (
-        isGroup === true ||
-        isGroup === 'true' ||
-        isGroup === 1 ||
-        isGroup === '1' ||
-        (typeof isGroup === 'string' && isGroup.toLowerCase() === 'true')
-    );
-    currentChatPartnerAddress = currentChatIsGroup
-        ? ""
-        : (address === userAddress ? "" : address);
-
+    currentChatIsGroup = (isGroup === true || isGroup === 'true' || isGroup === 1 || isGroup === '1' || (typeof isGroup === 'string' && isGroup.toLowerCase() === 'true'));
+    currentChatPartnerAddress = currentChatIsGroup ? "" : (address === userAddress ? "" : address);
     lastKnownMessageId = 0;
     lastMessageTimestamp = 0;
     pendingImageData = null;
-
-    // 🔥 Загружаем сообщения
     loadMessagesForConversation(address, false);
-
-    // Перезапуск поллинга
     setTimeout(() => {
-        if (currentChatAddress === address) {
-            startPolling();
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
         }
-    }, 500);
-
-    console.log('🔄 Chat switched:', {
-        address: address?.substring(0, 16) + '...',
-        isGroup: currentChatIsGroup,
-        isNewChat: true  // 🔥 Для отладки
-    });
+    }, 100);
+    if (typeof window.subscribeToCurrentChat === 'function') {
+        window.subscribeToCurrentChat(address);
+    }
+    setTimeout(() => { if (currentChatAddress === address) { startPolling(); } }, 500);
+    console.log('🔄 Chat switched:', { address: address?.substring(0, 16) + '...', isGroup: currentChatIsGroup, isNewChat: true });
 }
 
-// 🔥 ВСПОМОГАТЕЛЬНАЯ функция: отключить элементы управления
 function _disableChatControls() {
     document.getElementById('messageContent').disabled = true;
     document.getElementById('attachImageButton').disabled = true;
@@ -441,229 +427,114 @@ function _disableChatControls() {
     document.getElementById('clearConversationBtn').disabled = true;
 }
 
-    async function loadContactsForModal() {
-        try {
-            const response = await fetch('/get_contacts');
-            const data = await response.json();
-            if (response.ok) {
-                allContacts = data.contacts;
-                const selectElement = document.getElementById('newChatSelect');
-                selectElement.innerHTML = '<option value="">-- Select a Contact --</option>';
-                allContacts.forEach(contact => {
-                    const option = document.createElement('option');
-                    option.value = contact.address;
-                    const displayName = contact.name.length > 30 ? contact.name.substring(0, 27) + '...' : contact.name;
-                    option.textContent = `${escapeHtml(displayName)} (${contact.address.substring(0, 10)}...)`;
-                    selectElement.appendChild(option);
-                });
-            } else { console.error('Failed to load contacts for modal:', data.error); alert('Could not load contacts.'); }
-        } catch (error) { console.error('Error loading contacts for modal:', error); alert('An error occurred while loading contacts.'); }
-    }
+async function loadContactsForModal() {
+    try {
+        const response = await fetch('/get_contacts');
+        const data = await response.json();
+        if (response.ok) {
+            allContacts = data.contacts;
+            const selectElement = document.getElementById('newChatSelect');
+            selectElement.innerHTML = '<option value="">-- Select a Contact --</option>';
+            allContacts.forEach(contact => {
+                const option = document.createElement('option');
+                option.value = contact.address;
+                const displayName = contact.name.length > 30 ? contact.name.substring(0, 27) + '...' : contact.name;
+                option.textContent = `${escapeHtml(displayName)} (${contact.address.substring(0, 10)}...)`;
+                selectElement.appendChild(option);
+            });
+        } else { console.error('Failed to load contacts for modal:', data.error); alert('Could not load contacts.'); }
+    } catch (error) { console.error('Error loading contacts for modal:', error); alert('An error occurred while loading contacts.'); }
+}
 
-
-
-
-// 🔥 ОБНОВЛЁННАЯ функция загрузки сообщений с пагинацией и защитой от смешивания
-
-// 🔥 ИСПРАВЛЕННАЯ функция загрузки сообщений (надёжная версия)
 async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
     const container = document.getElementById('messagesContainer');
-
-    // 🔒 Валидация: пустой адрес
-    if (!chatWithAddress) {
-        container.innerHTML = '<p id="noChatSelectedMessage">Please select a conversation.</p>';
-        container.classList.remove('loading');
-        _enableChatControls();
-        return;
-    }
-
-    // 🔒 Валидация формата адреса
+    if (!chatWithAddress) { container.innerHTML = '<p id="noChatSelectedMessage">Please select a conversation.</p>'; container.classList.remove('loading'); _enableChatControls(); return; }
     const isGroupFormat = chatWithAddress.startsWith('group:');
     const isPersonalFormat = /^[a-fA-F0-9]{64}$/.test(chatWithAddress);
-
-    if (!isGroupFormat && !isPersonalFormat) {
-        console.error('❌ Invalid chat address format:', chatWithAddress);
-        container.innerHTML = `<p class="error">Invalid conversation format.</p>`;
-        container.classList.remove('loading');
-        _enableChatControls();
-        return;
-    }
-
+    if (!isGroupFormat && !isPersonalFormat) { console.error('❌ Invalid chat address format:', chatWithAddress); container.innerHTML = `<p class="error">Invalid conversation format.</p>`; container.classList.remove('loading'); _enableChatControls(); return; }
     try {
         const params = new URLSearchParams({ with: chatWithAddress });
-        if (isNewMessage && lastKnownMessageId > 0) {
-            params.append('last_message_id', lastKnownMessageId);
-            params.append('limit', '50');
-        }
-
-        // 🔥 Добавляем таймаут для зависших запросов
+        if (isNewMessage && lastKnownMessageId > 0) { params.append('last_message_id', lastKnownMessageId); params.append('limit', '50'); }
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 секунд
-
-        const response = await fetch(`/get_conversation?${params}`, {
-            signal: controller.signal
-        });
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const response = await fetch(`/get_conversation?${params}`, { signal: controller.signal });
         clearTimeout(timeoutId);
-
         const data = await response.json();
-
-        // 🔥 ВСЕГДА убираем класс loading сразу после получения ответа
         container.classList.remove('loading');
-
         if (response.ok) {
-            // 🔥 БЕЗОПАСНАЯ проверка сообщений (защита от undefined/null)
             const messages = Array.isArray(data.messages) ? data.messages : [];
             const shouldScroll = isNewMessage || (container.scrollTop + container.clientHeight >= container.scrollHeight - 5);
-
-            // 🔥 При первой загрузке или без пагинации — очищаем контейнер
-            if (!isNewMessage || lastKnownMessageId === 0) {
-                container.innerHTML = '';
-
-                // 🔥 Явная обработка: НОВЫЙ ЧАТ без сообщений
-                if (messages.length === 0) {
-                    container.innerHTML = '<p><em>No messages yet. Start the conversation!</em></p>';
-                    _enableChatControls();
-                    return;
-                }
-            }
-
-            // 🔥 Отображение сообщений
+            if (!isNewMessage || lastKnownMessageId === 0) { container.innerHTML = ''; if (messages.length === 0) { container.innerHTML = '<p><em>No messages yet. Start the conversation!</em></p>'; _enableChatControls(); return; } }
             if (messages.length > 0) {
                 let maxTimestamp = 0;
                 const fragment = document.createDocumentFragment();
-
                 messages.forEach(msg => {
-                    // Защита от дублей
                     if (document.getElementById(`msg-${msg.id}`)) return;
-
                     if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
-
                     const messageDiv = document.createElement('div');
                     messageDiv.id = `msg-${msg.id}`;
                     messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'}`;
                     messageDiv.dataset.messageId = msg.id;
                     messageDiv.dataset.chatType = currentChatIsGroup ? 'group' : 'personal';
-
-                    const contentP = document.createElement('p');
-                    contentP.textContent = msg.content || '';
-
-                    const senderInfo = (msg.is_mine || !currentChatIsGroup)
-                        ? ''
-                        : `<strong>${escapeHtml(msg.sender_name || msg.sender?.substring(0, 10) + '...')}</strong><br>`;
-
+                    const contentP = document.createElement('p'); contentP.textContent = msg.content || '';
+                    const senderInfo = (msg.is_mine || !currentChatIsGroup) ? '' : `<strong>${escapeHtml(msg.sender_name || msg.sender?.substring(0, 10) + '...')}</strong><br>`;
                     let imageElem = null;
                     if (msg.image) {
                         imageElem = document.createElement('img');
-                        imageElem.src = msg.image;
-                        imageElem.alt = 'Image';
+                        imageElem.src = msg.image; imageElem.alt = 'Image';
                         imageElem.style.cssText = 'max-width: 200px; max-height: 200px; border-radius: 4px; cursor: pointer;';
                         imageElem.dataset.fullSrc = msg.image;
                         imageElem.onclick = () => openImageModal(msg.image);
                     }
-
                     const timeStr = new Date(msg.timestamp * 1000).toLocaleString();
-
                     let deleteBtn = null;
                     if (msg.is_mine) {
                         deleteBtn = document.createElement('button');
-                        deleteBtn.className = 'delete-message-btn';
-                        deleteBtn.dataset.id = msg.id;
-                        deleteBtn.title = 'Delete';
-                        deleteBtn.innerHTML = '&#x1F5D9;';
+                        deleteBtn.className = 'delete-message-btn'; deleteBtn.dataset.id = msg.id; deleteBtn.title = 'Delete'; deleteBtn.innerHTML = '&#x1F5D9;';
                         deleteBtn.onclick = (e) => { e.stopPropagation(); deleteMessage(msg.id, deleteBtn); };
                     }
-
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'message-content-wrapper';
-                    wrapper.innerHTML = senderInfo;
-                    wrapper.appendChild(contentP);
+                    const wrapper = document.createElement('div'); wrapper.className = 'message-content-wrapper';
+                    wrapper.innerHTML = senderInfo; wrapper.appendChild(contentP);
                     if (imageElem) wrapper.appendChild(imageElem);
-                    const timeSmall = document.createElement('small');
-                    timeSmall.textContent = timeStr;
-                    timeSmall.style.cssText = 'color: #888; font-size: 11px; display: block; margin-top: 4px;';
+                    const timeSmall = document.createElement('small'); timeSmall.textContent = timeStr; timeSmall.style.cssText = 'color: #888; font-size: 11px; display: block; margin-top: 4px;';
                     wrapper.appendChild(timeSmall);
-
                     messageDiv.appendChild(wrapper);
                     if (deleteBtn) messageDiv.appendChild(deleteBtn);
                     fragment.appendChild(messageDiv);
-
-                    if (msg.id > lastKnownMessageId) {
-                        lastKnownMessageId = msg.id;
-                    }
+                    if (msg.id > lastKnownMessageId) { lastKnownMessageId = msg.id; }
                 });
-
                 container.appendChild(fragment);
                 lastMessageTimestamp = maxTimestamp;
             }
-
-            if (shouldScroll) {
-                container.scrollTop = container.scrollHeight;
-            }
-
-            // 🔥 Включаем кнопки после успешной загрузки
+            if (shouldScroll) {smartScrollToBottom(container, false);} else {smartScrollToBottom(container, true);}
             _enableChatControls();
-
-        } else {
-            console.error('Failed to load conversation:', data.error);
-            if (!isNewMessage) {
-                container.innerHTML = `<p class="error">Error: ${escapeHtml(data.error || 'Unknown')}</p>`;
-            }
-            _enableChatControls();
-        }
+        } else { console.error('Failed to load conversation:', data.error); if (!isNewMessage) { container.innerHTML = `<p class="error">Error: ${escapeHtml(data.error || 'Unknown')}</p>`; } _enableChatControls(); }
     } catch (error) {
-        console.error('Error loading conversation:', error);
-        container.classList.remove('loading');
-
-        if (error.name === 'AbortError') {
-            container.innerHTML = `<p class="error">Request timed out. Check your connection.</p>`;
-        } else if (!isNewMessage) {
-            container.innerHTML = `<p class="error">Network error loading messages.</p>`;
-        }
+        console.error('Error loading conversation:', error); container.classList.remove('loading');
+        if (error.name === 'AbortError') { container.innerHTML = `<p class="error">Request timed out. Check your connection.</p>`; }
+        else if (!isNewMessage) { container.innerHTML = `<p class="error">Network error loading messages.</p>`; }
         _enableChatControls();
     }
 }
 
-// 🔥 ВСПОМОГАТЕЛЬНАЯ функция: включить элементы управления чатом
 function _enableChatControls() {
     document.getElementById('messageContent').disabled = false;
     document.getElementById('attachImageButton').disabled = false;
     document.getElementById('sendButton').disabled = false;
     document.getElementById('clearConversationBtn').disabled = false;
-
     const addToContactsBtn = document.getElementById('addToContactsBtn');
-    if (currentChatIsGroup || !currentChatPartnerAddress || currentChatPartnerAddress === userAddress) {
-        addToContactsBtn.disabled = true;
-        addToContactsBtn.title = "Cannot add group or yourself";
-    } else {
-        addToContactsBtn.disabled = false;
-        addToContactsBtn.title = "Add to Contacts";
-    }
+    if (currentChatIsGroup || !currentChatPartnerAddress || currentChatPartnerAddress === userAddress) { addToContactsBtn.disabled = true; addToContactsBtn.title = "Cannot add group or yourself"; }
+    else { addToContactsBtn.disabled = false; addToContactsBtn.title = "Add to Contacts"; }
 }
 
-    async function sendMessage() {
+async function sendMessage() {
     const content = document.getElementById('messageContent').value.trim();
     const recipient = currentChatAddress;
-
-    // 🔥 ИСПРАВЛЕНО: currentChatIsGroup уже булевый, не нужно проверять
     const isGroup = currentChatIsGroup;
-
-    if (!recipient || (!content && !pendingImageData)) {
-        alert('Please enter a message or attach an image.');
-        return;
-    }
-
+    if (!recipient || (!content && !pendingImageData)) { alert('Please enter a message or attach an image.'); return; }
     const messageType = isGroup ? 'group' : 'direct';
-
-    // 🔥 Для групп извлекаем ID из формата "group:xxx"
-    const groupId = isGroup && recipient.startsWith('group:')
-        ? recipient.split(':')[1]
-        : null;
-
-    const payload = {
-        recipient: recipient,
-        content: content || "",
-        message_type: messageType
-    };
+    const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
+    const payload = { recipient: recipient, content: content || "", message_type: messageType };
     if (groupId) payload.group_id = groupId;
     if (pendingImageData) payload.image = pendingImageData;
 
@@ -674,239 +545,98 @@ function _enableChatControls() {
             body: JSON.stringify(payload)
         });
         const data = await response.json();
+
         if (response.ok) {
             document.getElementById('messageContent').value = '';
             pendingImageData = null;
             loadMessagesForConversation(recipient, true);
-        } else alert('Error: ' + data.error);
+            if (window.p2p && typeof window.GunConfig?.encryptMessage === 'function') {
+                const txId = 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+                const encrypted = await window.GunConfig.encryptMessage(content, recipient, pendingImageData);
+                window.p2p.send(recipient, encrypted, txId);
+            }
+        } else {
+            alert('Error: ' + data.error);
+        }
     } catch (error) {
         console.error('Error:', error);
         alert('An error occurred.');
     }
 }
 
-    async function addContactFromChat() {
-        if (!currentChatPartnerAddress || currentChatPartnerAddress === userAddress) {
-            alert("Cannot add this conversation to contacts.");
-            return;
-        }
-        const chatName = document.getElementById('currentChatName')?.textContent || currentChatPartnerAddress.substring(0, 10) + '...';
-        const payload = { contact_address: currentChatPartnerAddress, contact_name: chatName };
-        console.log('📤 Adding contact from chat:', payload);
-        try {
-            const response = await fetch('/add_contact_from_chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json();
-            console.log('📥 Add contact response:', response.status, data);
-            if (response.ok) {
-                alert('✅ ' + (data.message || 'Contact added!'));
-                const btn = document.getElementById('addToContactsBtn');
-                if (btn) { btn.disabled = true; btn.title = "Already in contacts"; }
-            } else {
-                alert('❌ Error: ' + (data.error || 'Failed to add contact'));
-            }
-        } catch (error) {
-            console.error('💥 Error adding contact:', error);
-            alert('❌ Network error while adding contact.');
-        }
-    }
+async function addContactFromChat() {
+    if (!currentChatPartnerAddress || currentChatPartnerAddress === userAddress) { alert("Cannot add this conversation to contacts."); return; }
+    const chatName = document.getElementById('currentChatName')?.textContent || currentChatPartnerAddress.substring(0, 10) + '...';
+    const payload = { contact_address: currentChatPartnerAddress, contact_name: chatName };
+    console.log('📤 Adding contact from chat:', payload);
+    try {
+        const response = await fetch('/add_contact_from_chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await response.json();
+        console.log('📥 Add contact response:', response.status, data);
+        if (response.ok) { alert('✅ ' + (data.message || 'Contact added!')); const btn = document.getElementById('addToContactsBtn'); if (btn) { btn.disabled = true; btn.title = "Already in contacts"; } }
+        else { alert('❌ Error: ' + (data.error || 'Failed to add contact')); }
+    } catch (error) { console.error('💥 Error adding contact:', error); alert('❌ Network error while adding contact.'); }
+}
 
-    async function deleteMessage(messageId, buttonElement) {
-        if (!confirm("Delete this message for yourself?")) return;
-        try {
-            buttonElement.disabled = true; buttonElement.textContent = '...';
-            const response = await fetch('/delete_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: messageId }) });
-            const data = await response.json();
-            if (response.ok) { buttonElement.closest('.message').remove(); console.log(data.message); }
-            else { alert('Error: ' + data.error); buttonElement.disabled = false; buttonElement.textContent = '&#x1F5D9;'; }
-        } catch (error) { console.error('Error deleting message:', error); alert('An error occurred while deleting the message.'); buttonElement.disabled = false; buttonElement.textContent = '&#x1F5D9;'; }
-    }
+async function deleteMessage(messageId, buttonElement) {
+    if (!confirm("Delete this message for yourself?")) return;
+    try {
+        buttonElement.disabled = true; buttonElement.textContent = '...';
+        const response = await fetch('/delete_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id: messageId }) });
+        const data = await response.json();
+        if (response.ok) { buttonElement.closest('.message').remove(); console.log(data.message); }
+        else { alert('Error: ' + data.error); buttonElement.disabled = false; buttonElement.textContent = '&#x1F5D9;'; }
+    } catch (error) { console.error('Error deleting message:', error); alert('An error occurred while deleting the message.'); buttonElement.disabled = false; buttonElement.textContent = '&#x1F5D9;'; }
+}
 
-    async function clearConversation() {
-        if (!currentChatAddress) { alert("No conversation selected."); return; }
-        if (!confirm("Clear all messages in this conversation?")) return;
-        try {
-            const response = await fetch('/clear_conversation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_with: currentChatAddress }) });
-            const data = await response.json();
-            if (response.ok) { document.getElementById('messagesContainer').innerHTML = '<p><em>Conversation cleared.</em></p>'; console.log(data.message); }
-            else alert('Error: ' + data.error);
-        } catch (error) { console.error('Error clearing conversation:', error); alert('An error occurred while clearing the conversation.'); }
-    }
+async function clearConversation() {
+    if (!currentChatAddress) { alert("No conversation selected."); return; }
+    if (!confirm("Clear all messages in this conversation?")) return;
+    try {
+        const response = await fetch('/clear_conversation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_with: currentChatAddress }) });
+        const data = await response.json();
+        if (response.ok) { document.getElementById('messagesContainer').innerHTML = '<p><em>Conversation cleared.</em></p>'; console.log(data.message); }
+        else alert('Error: ' + data.error);
+    } catch (error) { console.error('Error clearing conversation:', error); alert('An error occurred while clearing the conversation.'); }
+}
 
-    function openNewChatModal() {
-        const modal = document.getElementById('newChatModal'); if (modal) modal.style.display = 'block';
-        const selectElement = document.getElementById('newChatSelect'); const addressInput = document.getElementById('newChatAddress');
-        if (selectElement) selectElement.value = ''; if (addressInput) addressInput.value = '';
-        loadContactsForModal(); forceCloseQRScannerInModal();
-    }
-    function closeNewChatModal() { const modal = document.getElementById('newChatModal'); if (modal) modal.style.display = 'none'; forceCloseQRScannerInModal(); }
-    async function startNewChat() {
-        const selectedAddress = document.getElementById('newChatSelect')?.value.trim() || '';
-        const enteredAddress = document.getElementById('newChatAddress')?.value.trim() || '';
-        let chatAddress = ''; let chatName = '';
-        if (selectedAddress) { chatAddress = selectedAddress; const contact = allContacts.find(c => c.address === selectedAddress); chatName = contact ? contact.name : selectedAddress.substring(0, 10) + '...'; }
-        else if (enteredAddress) { if (enteredAddress.length !== 64) { alert('Please enter a valid 64-character address.'); return; } if (enteredAddress === userAddress) { alert('You cannot start a chat with yourself.'); return; } chatAddress = enteredAddress; chatName = enteredAddress.substring(0, 10) + '...'; }
-        else { alert('Please select a contact or enter an address.'); return; }
-        closeNewChatModal(); selectConversation(chatAddress, chatName, false);
-    }
+function openNewChatModal() { const modal = document.getElementById('newChatModal'); if (modal) modal.style.display = 'block'; const selectElement = document.getElementById('newChatSelect'); const addressInput = document.getElementById('newChatAddress'); if (selectElement) selectElement.value = ''; if (addressInput) addressInput.value = ''; loadContactsForModal(); forceCloseQRScannerInModal(); }
+function closeNewChatModal() { const modal = document.getElementById('newChatModal'); if (modal) modal.style.display = 'none'; forceCloseQRScannerInModal(); }
+async function startNewChat() {
+    const selectedAddress = document.getElementById('newChatSelect')?.value.trim() || '';
+    const enteredAddress = document.getElementById('newChatAddress')?.value.trim() || '';
+    let chatAddress = ''; let chatName = '';
+    if (selectedAddress) { chatAddress = selectedAddress; const contact = allContacts.find(c => c.address === selectedAddress); chatName = contact ? contact.name : selectedAddress.substring(0, 10) + '...'; }
+    else if (enteredAddress) { if (enteredAddress.length !== 64) { alert('Please enter a valid 64-character address.'); return; } if (enteredAddress === userAddress) { alert('You cannot start a chat with yourself.'); return; } chatAddress = enteredAddress; chatName = enteredAddress.substring(0, 10) + '...'; }
+    else { alert('Please select a contact or enter an address.'); return; }
+    closeNewChatModal(); selectConversation(chatAddress, chatName, false);
+}
 
-    function startPolling() {
+function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
-
-    // 🔥 Не запускать поллинг если чат не выбран
-    if (!currentChatAddress) {
-        console.log('⏸️ Polling skipped: no chat selected');
-        return;
-    }
-
+    if (!currentChatAddress) { console.log('⏸️ Polling skipped: no chat selected'); return; }
     const chatAddressAtStart = currentChatAddress;
-
     pollInterval = setInterval(() => {
-        // 🔥 Проверка: чат не сменился и всё ещё выбран
-        if (currentChatAddress && currentChatAddress === chatAddressAtStart) {
-            loadMessagesForConversation(currentChatAddress, true);
-        } else {
-            console.log('🛑 Polling stopped: chat changed');
-            stopPolling();
-        }
+        if (currentChatAddress && currentChatAddress === chatAddressAtStart) { loadMessagesForConversation(currentChatAddress, true); }
+        else { console.log('🛑 Polling stopped: chat changed'); stopPolling(); }
     }, 3000);
 }
-    function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
-
-    function handleStartWithParam() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const startWith = urlParams.get('start_with');
-        const startName = urlParams.get('name');
-        if (startWith && startName) {
-            const isGroup = startWith.startsWith('group:');
-            loadContactsForModal().then(() => {
-                selectConversation(startWith, startName, isGroup);
-                window.history.replaceState({}, document.title, window.location.pathname);
-            });
-        }
+function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
+function handleStartWithParam() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const startWith = urlParams.get('start_with'); const startName = urlParams.get('name');
+    if (startWith && startName) {
+        const isGroup = startWith.startsWith('group:');
+        loadContactsForModal().then(() => { selectConversation(startWith, startName, isGroup); window.history.replaceState({}, document.title, window.location.pathname); });
     }
+}
 
-    document.addEventListener('DOMContentLoaded', function() {
-        loadConversations();
-        handleStartWithParam();
-
-        const messageInput = document.getElementById('messageContent');
-        if (messageInput) {
-            messageInput.addEventListener('input', function() {
-                this.style.height = 'auto';
-                this.style.height = Math.min(this.scrollHeight, 150) + 'px';
-            });
-            messageInput.addEventListener('keydown', function(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } });
-        }
-
-        document.getElementById('messagesContainer').addEventListener('click', function(e) {
-            if (e.target.tagName === 'IMG' && e.target.closest('.message')) {
-                const fullSrc = e.target.dataset.fullSrc || e.target.src;
-                if (fullSrc) openImageModal(fullSrc);
-            }
-            if (e.target.classList.contains('delete-message-btn')) {
-                const id = parseInt(e.target.dataset.id, 10);
-                if (id) deleteMessage(id, e.target);
-            }
-        });
-
-        const newChatBtn = document.getElementById('newChatBtn'); const closeModalBtn = document.querySelector('#newChatModal .close'); const startNewChatBtn = document.getElementById('startNewChatBtn');
-        if (newChatBtn) newChatBtn.onclick = openNewChatModal; if (closeModalBtn) closeModalBtn.onclick = closeNewChatModal; if (startNewChatBtn) startNewChatBtn.onclick = startNewChat;
-        window.onclick = function(event) { const newChatModal = document.getElementById('newChatModal'); const imageModal = document.getElementById('imageModal'); if (event.target == newChatModal) closeNewChatModal(); else if (event.target == imageModal) closeImageModal(); }
-        const closeImageModalBtn = document.querySelector('#imageModal .close-image-modal'); if (closeImageModalBtn) closeImageModalBtn.onclick = closeImageModal;
-    });
-    window.addEventListener('beforeunload', function() { forceCloseQRScannerInModal(); stopPolling(); });
-    document.addEventListener('keydown', function(event) { if (event.key === 'Escape') { const newChatModal = document.getElementById('newChatModal'); const imageModal = document.getElementById('imageModal'); if (newChatModal && newChatModal.style.display === 'block') closeNewChatModal(); else if (imageModal && imageModal.style.display === 'block') closeImageModal(); } });
-    document.addEventListener('visibilitychange', function() { if (document.hidden) forceCloseQRScannerInModal(); });
-</script>
-<!-- GunDB библиотека (через CDN) -->
-<script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script> <!-- опционально, если будете использовать SEA -->
-
-<!-- Наши модули -->
-<script src="/static/js/gun-config.js"></script>
-<script src="/static/js/p2p-sync.js"></script>
-
-<!-- Инициализация P2P (после загрузки основной логики чата) -->
-<script>
-document.addEventListener('DOMContentLoaded', async function() {
-    const userAddressEl = document.getElementById('userAddress');
-    const userAddress = userAddressEl?.dataset?.fullAddress?.trim();
-    if (!userAddress || userAddress.length !== 64) {
-        console.log('⚠️ P2P init skipped: user address not ready');
-        return;
-    }
-
-    // Инициализация Gun
-    const gunReady = await window.GunConfig?.init(userAddress);
-    if (!gunReady) {
-        console.warn('⚠️ P2P sync disabled: Gun not available');
-        return;
-    }
-
-    window.p2p = new P2PSync();
-    console.log('✅ P2P sync ready');
-
-    // === Подписка на входящие сообщения (для мгновенного обновления) ===
-    window.subscribeToChat = function(chatId) {
-        if (!window.p2p) return;
-        if (window._currentChatUnsub) window._currentChatUnsub();
-
-        window._currentChatUnsub = window.p2p.subscribe(chatId, async (msg) => {
-            console.log('📥 P2P message received from', msg.sender.substring(0,16)+'...');
-
-            // 🔐 Запрашиваем расшифровку у бэкенда (мнемоника там)
-            try {
-                const res = await fetch('/decrypt_message', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        encrypted_payload: msg.encryptedPayload,
-                        peer_address: msg.sender
-                    })
-                });
-                const decrypted = await res.json();
-
-                // 🔥 Вставляем сообщение в чат, если это текущий диалог
-                if (currentChatAddress === chatId && decrypted.content) {
-                    appendMessageToUI({
-                        sender: msg.sender,
-                        content: decrypted.content,
-                        image: decrypted.image,
-                        timestamp: msg.timestamp / 1000, // Gun использует мс
-                        is_mine: false,
-                        id: 'p2p_' + Date.now() // временный ID
-                    });
-                    // Прокрутка вниз
-                    const container = document.getElementById('messagesContainer');
-                    container.scrollTop = container.scrollHeight;
-                }
-            } catch (e) {
-                console.warn('⚠️ P2P decrypt failed, will poll server', e);
-                // Не страшно: сообщение придёт через обычный поллинг
-            }
-        });
-        console.log(`✅ Listening P2P: ${chatId.substring(0,20)}...`);
-    };
-
-    // === Очистка при уходе ===
-    window.addEventListener('beforeunload', () => {
-        window.p2p?.unsubscribeAll();
-        window.GunConfig?.clearSensitive();
-    });
-});
-
-/**
- * Вспомогательная функция: добавить сообщение в UI (без дублирования)
- */
+// =============================================================================
+// === appendMessageToUI ===
+// =============================================================================
 function appendMessageToUI(msg) {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
-
-    // Проверка на дубликаты
     if (document.getElementById(`msg-${msg.id}`)) return;
 
     const messageDiv = document.createElement('div');
@@ -938,5 +668,244 @@ function appendMessageToUI(msg) {
     messageDiv.appendChild(wrapper);
     container.appendChild(messageDiv);
 }
+
+// =============================================================================
+// === 🔊 ЗВУК ПРИ ПОЛУЧЕНИИ СООБЩЕНИЯ ===
+// =============================================================================
+function playReceivedSound() {
+  if (window.NotificationManager?.playSound) {
+    try {
+      const ctx = window.NotificationManager.audioCtx;
+      if (ctx?.state === 'suspended') ctx.resume();
+      if (ctx) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 1000; // Тон для входящих сообщений
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      }
+    } catch (e) {
+      console.debug('ℹ️ Received sound failed:', e);
+    }
+  }
+}
+
+// =============================================================================
+// === Экспорт для внешних скриптов ===
+// =============================================================================
+window.currentChatAddress = currentChatAddress;
+window.currentChatIsGroup = currentChatIsGroup;
+window.selectConversation = selectConversation;
+window.appendMessageToUI = appendMessageToUI;
+window.loadMessagesForConversation = loadMessagesForConversation;
+window.playReceivedSound = playReceivedSound;
+
+// =============================================================================
+// === P2P: Подписка на текущий чат ===
+// =============================================================================
+if (typeof window.subscribeToCurrentChat !== 'function') {
+  window.subscribeToCurrentChat = function(chatId) {
+    if (!window.p2p) return;
+
+    if (window._currentChatUnsub) {
+      window._currentChatUnsub();
+      window._currentChatUnsub = null;
+    }
+
+    window._currentChatUnsub = window.p2p.subscribe(chatId, async (msg) => {
+      console.log('📥 P2P message received from', msg.sender.substring(0,16)+'...');
+
+      try {
+        const res = await fetch('/decrypt_message', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            encrypted_payload: msg.encryptedPayload,
+            peer_address: msg.sender
+          })
+        });
+        const decrypted = await res.json();
+
+        if (window.currentChatAddress === chatId && typeof appendMessageToUI === 'function') {
+          appendMessageToUI({
+            sender: msg.sender,
+            content: decrypted.content,
+            image: decrypted.image,
+            timestamp: msg.timestamp / 1000,
+            is_mine: false,
+            id: 'p2p_' + Date.now()
+          });
+
+          const container = document.getElementById('messagesContainer');
+          smartScrollToBottom(container, false);
+
+          // 🔊 ВОСПРОИЗВЕСТИ ЗВУК ПРИ ПОЛУЧЕНИИ
+          playReceivedSound();
+        }
+      } catch (e) {
+        console.warn('⚠️ P2P decrypt failed, will poll server', e);
+      }
+    });
+
+    console.log(`✅ Listening P2P: ${chatId.substring(0,20)}...`);
+  };
+}
+
+// =============================================================================
+// === Умный авто-скролл ===
+// =============================================================================
+function smartScrollToBottom(container, force = false) {
+    if (!container) return;
+    if (force) {
+        container.scrollTop = container.scrollHeight;
+        return;
+    }
+    const scrollThreshold = 50;
+    const isAtBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) <= scrollThreshold;
+    if (!isAtBottom && !force) {
+        showNewMessagesBadge(1);
+    }
+    if (isAtBottom) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// =============================================================================
+// === Бейдж новых сообщений ===
+// =============================================================================
+function showNewMessagesBadge(count = 1) {
+    let badge = document.getElementById('newMessagesBadge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'newMessagesBadge';
+        badge.style.cssText = `
+            position: absolute; bottom: 80px; right: 20px;
+            background: #bb86fc; color: #121212;
+            padding: 10px 20px; border-radius: 24px;
+            font-weight: bold; font-size: 13px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 100;
+            animation: pulse 2s infinite, slideIn 0.3s ease-out;
+            display: flex; align-items: center; gap: 8px;
+        `;
+        badge.innerHTML = `🔔 <span id="badgeCount">${count}</span> new`;
+        badge.onclick = () => {
+            const container = document.getElementById('messagesContainer');
+            if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+            badge.remove();
+        };
+        document.querySelector('.main-content')?.appendChild(badge);
+    } else {
+        const countEl = document.getElementById('badgeCount');
+        if (countEl) {
+            const current = parseInt(countEl.textContent) || 0;
+            countEl.textContent = current + count;
+        }
+        if (badge._hideTimeout) clearTimeout(badge._hideTimeout);
+    }
+    // Звук для бейджа (отдельный от основного)
+    if (window.NotificationManager?.playSound) {
+        try {
+            const ctx = window.NotificationManager.audioCtx;
+            if (ctx?.state === 'suspended') ctx.resume();
+            if (ctx) {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.value = 1200;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.05, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+                osc.start(); osc.stop(ctx.currentTime + 0.15);
+            }
+        } catch (e) { console.debug('ℹ️ Badge sound failed:', e); }
+    }
+    badge._hideTimeout = setTimeout(() => badge?.remove(), 10000);
+}
+
+// =============================================================================
+// === Инициализация DOM ===
+// =============================================================================
+document.addEventListener('DOMContentLoaded', function() {
+    loadConversations();
+    handleStartWithParam();
+
+    const messageInput = document.getElementById('messageContent');
+    if (messageInput) {
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+        });
+        messageInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+
+    document.getElementById('messagesContainer').addEventListener('click', function(e) {
+        if (e.target.tagName === 'IMG' && e.target.closest('.message')) {
+            const fullSrc = e.target.dataset.fullSrc || e.target.src;
+            if (fullSrc) openImageModal(fullSrc);
+        }
+        if (e.target.classList.contains('delete-message-btn')) {
+            const id = parseInt(e.target.dataset.id, 10);
+            if (id) deleteMessage(id, e.target);
+        }
+    });
+
+    const newChatBtn = document.getElementById('newChatBtn');
+    const closeModalBtn = document.querySelector('#newChatModal .close');
+    const startNewChatBtn = document.getElementById('startNewChatBtn');
+
+    if (newChatBtn) newChatBtn.onclick = openNewChatModal;
+    if (closeModalBtn) closeModalBtn.onclick = closeNewChatModal;
+    if (startNewChatBtn) startNewChatBtn.onclick = startNewChat;
+
+    window.onclick = function(event) {
+        const newChatModal = document.getElementById('newChatModal');
+        const imageModal = document.getElementById('imageModal');
+        if (event.target == newChatModal) closeNewChatModal();
+        else if (event.target == imageModal) closeImageModal();
+    }
+
+    const closeImageModalBtn = document.querySelector('#imageModal .close-image-modal');
+    if (closeImageModalBtn) closeImageModalBtn.onclick = closeImageModal;
+
+    if (window.currentChatAddress && typeof window.subscribeToCurrentChat === 'function') {
+        window.subscribeToCurrentChat(window.currentChatAddress);
+    }
+
+    // 🔊 Инициализация аудио при первом клике
+    document.addEventListener('click', () => {
+        if (window.NotificationManager?.audioCtx?.state === 'suspended') {
+            window.NotificationManager.audioCtx.resume();
+        }
+    }, { once: true });
+});
+
+window.addEventListener('beforeunload', function() {
+    forceCloseQRScannerInModal();
+    stopPolling();
+    if (window._currentChatUnsub) window._currentChatUnsub();
+});
+
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        const newChatModal = document.getElementById('newChatModal');
+        const imageModal = document.getElementById('imageModal');
+        if (newChatModal && newChatModal.style.display === 'block') closeNewChatModal();
+        else if (imageModal && imageModal.style.display === 'block') closeImageModal();
+    }
+});
+
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) forceCloseQRScannerInModal();
+});
 </script>
 {% endblock %}

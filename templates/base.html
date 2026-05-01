@@ -5,18 +5,188 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Decentralized encrypted messenger">
     <meta name="theme-color" content="#121212">
-
     <title>Dark Messenger</title>
-
-    <!-- Favicon -->
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
         {% block content %}{% endblock %}
     </div>
+
+    <!-- 🔗 GunDB библиотеки -->
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
+
+    <!-- ⚙️ Наши модули -->
+    <script src="{{ url_for('static', filename='js/gun-config.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/p2p-sync.js') }}"></script>
+
+    <!-- 🔔 NotificationManager — глобальный для всех страниц -->
+    <script>
+    window.NotificationManager = {
+      audioCtx: null,
+      originalTitle: document.title,
+      blinkInterval: null,
+      initialized: false,
+
+      async init() {
+        if (this.initialized) return;
+        this.initialized = true;
+
+        const initAudio = () => {
+          if (this.audioCtx) return;
+          try { this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+          catch (e) { console.debug('ℹ️ Web Audio not available'); }
+        };
+        document.addEventListener('click', initAudio, { once: true, passive: true });
+
+        if ('Notification' in window && Notification.permission === 'default') {
+          try { await Notification.requestPermission(); }
+          catch (e) { console.debug('ℹ️ Notification request failed:', e); }
+        }
+      },
+
+      playSound() {
+        try {
+          if (this.audioCtx?.state === 'suspended') this.audioCtx.resume();
+          if (!this.audioCtx) return;
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+          osc.connect(gain); gain.connect(this.audioCtx.destination);
+          osc.frequency.value = 800; osc.type = 'sine';
+          gain.gain.setValueAtTime(0.1, this.audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.2);
+          osc.start(); osc.stop(this.audioCtx.currentTime + 0.2);
+        } catch (e) { console.debug('ℹ️ Sound play failed:', e); }
+      },
+
+      show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение') {
+        const currentChat = window.currentChatAddress || '';
+        const inActiveChat = document.visibilityState === 'visible' && currentChat === chatId;
+
+        // 🔊 ВСЕГДА проигрываем звук при получении сообщения
+        this.playSound();
+
+        // Если пользователь в этом чате и вкладка активна — не показываем десктоп-уведомление
+        if (inActiveChat) {
+          return;
+        }
+
+        const senderName = (sender || '').substring(0, 12) + (sender?.length > 12 ? '...' : '');
+        const title = isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
+
+        // Desktop notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            const n = new Notification(title, {
+              body: preview,
+              icon: '/static/favicon.ico',
+              tag: `msg-${chatId}`,
+              requireInteraction: true
+            });
+            n.onclick = () => {
+              window.focus();
+              if (typeof window.selectConversation === 'function') {
+                window.selectConversation(chatId, senderName, isGroup);
+              } else {
+                window.location.href = `/chat?start_with=${encodeURIComponent(chatId)}&name=${encodeURIComponent(senderName)}`;
+              }
+              n.close();
+            };
+            setTimeout(() => n.close(), 8000);
+          } catch (e) { console.debug('ℹ️ Notification failed:', e); }
+        }
+
+        // Мигание заголовка если вкладка неактивна
+        if (document.visibilityState !== 'visible') this.startBlink(title);
+      },
+
+      startBlink(text) {
+        if (this.blinkInterval) return;
+        let toggle = true;
+        this.blinkInterval = setInterval(() => {
+          document.title = toggle ? `🔔 ${text}` : this.originalTitle;
+          toggle = !toggle;
+        }, 1000);
+      },
+
+      stopBlink() {
+        if (this.blinkInterval) {
+          clearInterval(this.blinkInterval);
+          this.blinkInterval = null;
+          document.title = this.originalTitle;
+        }
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      window.NotificationManager?.init();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        window.NotificationManager?.stopBlink();
+      }
+    });
+    </script>
+
+    <!-- 🚀 Глобальная инициализация P2P -->
+    <script>
+    document.addEventListener('DOMContentLoaded', async function() {
+      const userAddressEl = document.getElementById('userAddress');
+      const addressInput = document.getElementById('address');
+      const userAddress = (userAddressEl?.dataset?.fullAddress ||
+                          addressInput?.value ||
+                          '').trim();
+
+      if (!userAddress || userAddress.length !== 64) {
+        console.log('⚠️ P2P init skipped: user address not ready');
+        return;
+      }
+
+      const gunReady = await window.GunConfig?.init(userAddress);
+      if (!gunReady) {
+        console.warn('⚠️ P2P sync disabled: Gun not available');
+        return;
+      }
+
+      window.p2p = new P2PSync();
+      console.log('✅ P2P sync ready');
+
+      window.subscribeToAllChats = async function() {
+        try {
+          const res = await fetch('/get_conversations');
+          const data = await res.json();
+          if (data.conversations) {
+            data.conversations.forEach(conv => {
+              const chatId = conv.is_group ? `group:${conv.address}` : conv.address;
+              window.p2p.subscribe(chatId, async (msg) => {
+                if (window.NotificationManager?.show) {
+                  window.NotificationManager.show(
+                    msg.sender,
+                    chatId,
+                    chatId.startsWith('group:'),
+                    '🔐 Новое зашифрованное сообщение'
+                  );
+                }
+              });
+            });
+            console.log(`✅ Subscribed to ${data.conversations.length} chats for notifications`);
+          }
+        } catch (e) {
+          console.warn('⚠️ Failed to subscribe to all chats:', e);
+        }
+      };
+
+      await window.subscribeToAllChats();
+      window.currentChatAddress = window.currentChatAddress || '';
+    });
+
+    window.addEventListener('beforeunload', () => {
+      window.p2p?.unsubscribeAll();
+      window.GunConfig?.clearSensitive?.();
+    });
+    </script>
 </body>
 </html>
