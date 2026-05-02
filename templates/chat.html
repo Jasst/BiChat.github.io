@@ -101,13 +101,13 @@
 </div>
 
 <style>
+/* ... (ваши стили без изменений) ... */
 .status-active { color: #00c853; font-weight: bold; }
 .security-info {
     background-color: #2c2c2c; padding: 15px; border-radius: 4px;
     border-left: 3px solid #bb86fc;
 }
 .security-info p { margin: 8px 0; font-size: 14px; }
-
 .scan-qr-btn-modal {
     background-color: #bb86fc; color: #121212; border: none;
     padding: 12px 20px; border-radius: 4px; cursor: pointer;
@@ -115,13 +115,11 @@
 }
 .scan-qr-btn-modal:hover { background-color: #3700b3; }
 #qrScannerContainerModal video { background-color: #000; }
-
 #attachImageButton {
     background: none; border: 1px solid #ccc; border-radius: 4px;
     padding: 5px 10px; cursor: pointer; font-size: 16px; color: #ccc;
 }
 #attachImageButton:hover { color: #bb86fc; border-color: #bb86fc; }
-
 .modal {
     display: none; position: fixed; z-index: 1000; left: 0; top: 0;
     width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9);
@@ -144,45 +142,28 @@
     padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;
 }
 .modal-image-actions button:hover { background-color: #3700b3; }
-
 .close {
     color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;
 }
 .close:hover, .close:focus { color: #fff; }
-
 .close-image-modal {
     position: absolute; top: 15px; right: 35px; color: #f1f1f1;
     font-size: 40px; font-weight: bold; cursor: pointer; z-index: 1001;
 }
-
 .close-image-modal:hover, .close-image-modal:focus { color: #bbb; }
-
 .message img {
     cursor: pointer; border-radius: 4px; transition: transform 0.2s ease;
 }
 .message img:hover { transform: scale(1.05); }
-
 #addToContactsBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 #addToContactsBtn:not(:disabled):hover { background: #00c853; color: #121212; }
-
 .loading {
-    color: #888;
-    font-style: italic;
-    text-align: center;
-    padding: 20px;
+    color: #888; font-style: italic; text-align: center; padding: 20px;
 }
-.messages.loading {
-    opacity: 0.7;
-    pointer-events: none;
-}
+.messages.loading { opacity: 0.7; pointer-events: none; }
 .error {
-    color: #cf6679;
-    font-weight: 500;
-    text-align: center;
-    padding: 20px;
+    color: #cf6679; font-weight: 500; text-align: center; padding: 20px;
 }
-
-/* Анимации для бейджа */
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.02); } }
 @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 </style>
@@ -214,7 +195,7 @@ function copyToClipboard(elementId, feedbackId) {
 }
 
 // =============================================================================
-// === QR Scanner ===
+// === QR Scanner (без изменений) ===
 // =============================================================================
 let scanIntervalModal = null;
 let streamModal = null;
@@ -297,7 +278,7 @@ function forceCloseQRScannerInModal() {
 }
 
 // =============================================================================
-// === Изображения ===
+// === Изображения (без изменений) ===
 // =============================================================================
 let pendingImageData = null;
 function handleImageSelection(event) {
@@ -399,9 +380,17 @@ function selectConversation(address, name, isGroup) {
             if (item.dataset.address === address) item.classList.add('active');
         });
     }
+    
+    // 🎯 ВАЖНО: Обновляем глобальные переменные ДО любых уведомлений
     currentChatAddress = address;
     currentChatIsGroup = (isGroup === true || isGroup === 'true' || isGroup === 1 || isGroup === '1' || (typeof isGroup === 'string' && isGroup.toLowerCase() === 'true'));
     currentChatPartnerAddress = currentChatIsGroup ? "" : (address === userAddress ? "" : address);
+    
+    // 🔄 Уведомляем NotificationManager о фокусе на чате
+    if (window.NotificationManager?.onChatFocus) {
+        window.NotificationManager.onChatFocus(address);
+    }
+    
     lastKnownMessageId = 0;
     lastMessageTimestamp = 0;
     pendingImageData = null;
@@ -412,6 +401,7 @@ function selectConversation(address, name, isGroup) {
             container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
         }
     }, 100);
+    
     if (typeof window.subscribeToCurrentChat === 'function') {
         window.subscribeToCurrentChat(address);
     }
@@ -550,6 +540,7 @@ async function sendMessage() {
             document.getElementById('messageContent').value = '';
             pendingImageData = null;
             loadMessagesForConversation(recipient, true);
+            // 🔁 P2P отправка (если доступна)
             if (window.p2p && typeof window.GunConfig?.encryptMessage === 'function') {
                 const txId = 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2);
                 const encrypted = await window.GunConfig.encryptMessage(content, recipient, pendingImageData);
@@ -632,16 +623,16 @@ function handleStartWithParam() {
 }
 
 // =============================================================================
-// === appendMessageToUI ===
+// === appendMessageToUI — с уведомлением ===
 // =============================================================================
-function appendMessageToUI(msg) {
+function appendMessageToUI(msg, { notify = true } = {}) {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
     if (document.getElementById(`msg-${msg.id}`)) return;
 
     const messageDiv = document.createElement('div');
     messageDiv.id = `msg-${msg.id}`;
-    messageDiv.className = `message received`;
+    messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'}`;
 
     const contentP = document.createElement('p');
     contentP.textContent = msg.content || '';
@@ -658,6 +649,14 @@ function appendMessageToUI(msg) {
     const timeStr = new Date(msg.timestamp * 1000).toLocaleString();
     const wrapper = document.createElement('div');
     wrapper.className = 'message-content-wrapper';
+    
+    // Показываем отправителя только в групповых чатах для входящих
+    if (!msg.is_mine && currentChatIsGroup) {
+        const senderSpan = document.createElement('strong');
+        senderSpan.textContent = escapeHtml(msg.sender_name || msg.sender?.substring(0, 10) + '…') + ': ';
+        wrapper.appendChild(senderSpan);
+    }
+    
     wrapper.appendChild(contentP);
     if (imageElem) wrapper.appendChild(imageElem);
     const timeSmall = document.createElement('small');
@@ -666,33 +665,36 @@ function appendMessageToUI(msg) {
     wrapper.appendChild(timeSmall);
 
     messageDiv.appendChild(wrapper);
-    container.appendChild(messageDiv);
-}
-
-// =============================================================================
-// === 🔊 ЗВУК ПРИ ПОЛУЧЕНИИ СООБЩЕНИЯ ===
-// =============================================================================
-function playReceivedSound() {
-  if (window.NotificationManager?.playSound) {
-    try {
-      const ctx = window.NotificationManager.audioCtx;
-      if (ctx?.state === 'suspended') ctx.resume();
-      if (ctx) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = 1000; // Тон для входящих сообщений
-        osc.type = 'sine';
-        gain.gain.setValueAtTime(0.05, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.15);
-      }
-    } catch (e) {
-      console.debug('ℹ️ Received sound failed:', e);
+    
+    // Кнопка удаления для своих сообщений
+    if (msg.is_mine) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-message-btn';
+        deleteBtn.dataset.id = msg.id;
+        deleteBtn.title = 'Delete';
+        deleteBtn.innerHTML = '&#x1F5D9;';
+        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteMessage(msg.id, deleteBtn); };
+        messageDiv.appendChild(deleteBtn);
     }
-  }
+
+    container.appendChild(messageDiv);
+    
+    // 🎯 Уведомление (если не своё сообщение и нужно)
+    if (notify && !msg.is_mine && window.NotificationManager?.show) {
+        const chatId = currentChatIsGroup ? `group:${currentChatAddress}` : currentChatAddress;
+        const preview = msg.content?.substring(0, 50) || (msg.image ? '📷 Image' : '🔐 Message');
+        
+        window.NotificationManager.show(
+            msg.sender_name || msg.sender,
+            chatId,
+            currentChatIsGroup,
+            preview,
+            msg.id
+        );
+    }
+    
+    // Авто-скролл
+    smartScrollToBottom(container, false);
 }
 
 // =============================================================================
@@ -703,22 +705,23 @@ window.currentChatIsGroup = currentChatIsGroup;
 window.selectConversation = selectConversation;
 window.appendMessageToUI = appendMessageToUI;
 window.loadMessagesForConversation = loadMessagesForConversation;
-window.playReceivedSound = playReceivedSound;
 
 // =============================================================================
-// === P2P: Подписка на текущий чат ===
+// === P2P: Подписка на текущий чат — ЕДИНАЯ ТОЧКА ВХОДА ===
 // =============================================================================
 if (typeof window.subscribeToCurrentChat !== 'function') {
   window.subscribeToCurrentChat = function(chatId) {
     if (!window.p2p) return;
 
+    // Отписываемся от предыдущего чата
     if (window._currentChatUnsub) {
       window._currentChatUnsub();
       window._currentChatUnsub = null;
     }
 
+    // Подписываемся на новый
     window._currentChatUnsub = window.p2p.subscribe(chatId, async (msg) => {
-      console.log('📥 P2P message received from', msg.sender.substring(0,16)+'...');
+      console.log('📥 P2P message received from', msg.sender?.substring(0,16)+'...');
 
       try {
         const res = await fetch('/decrypt_message', {
@@ -731,28 +734,25 @@ if (typeof window.subscribeToCurrentChat !== 'function') {
         });
         const decrypted = await res.json();
 
-        if (window.currentChatAddress === chatId && typeof appendMessageToUI === 'function') {
+        // 🎯 Добавляем в UI через единый интерфейс
+        if (typeof appendMessageToUI === 'function') {
           appendMessageToUI({
             sender: msg.sender,
+            sender_name: msg.senderName,
             content: decrypted.content,
             image: decrypted.image,
             timestamp: msg.timestamp / 1000,
             is_mine: false,
-            id: 'p2p_' + Date.now()
-          });
-
-          const container = document.getElementById('messagesContainer');
-          smartScrollToBottom(container, false);
-
-          // 🔊 ВОСПРОИЗВЕСТИ ЗВУК ПРИ ПОЛУЧЕНИИ
-          playReceivedSound();
+            id: 'p2p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+          }, { notify: true }); // notify: true — пусть appendMessageToUI решит, нужно ли уведомлять
         }
       } catch (e) {
         console.warn('⚠️ P2P decrypt failed, will poll server', e);
+        // Фоллбэк: сервер подхватит через polling
       }
     });
 
-    console.log(`✅ Listening P2P: ${chatId.substring(0,20)}...`);
+    console.log(`✅ Listening P2P: ${chatId?.substring(0,20)}...`);
   };
 }
 
@@ -806,23 +806,6 @@ function showNewMessagesBadge(count = 1) {
             countEl.textContent = current + count;
         }
         if (badge._hideTimeout) clearTimeout(badge._hideTimeout);
-    }
-    // Звук для бейджа (отдельный от основного)
-    if (window.NotificationManager?.playSound) {
-        try {
-            const ctx = window.NotificationManager.audioCtx;
-            if (ctx?.state === 'suspended') ctx.resume();
-            if (ctx) {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.frequency.value = 1200;
-                osc.type = 'sine';
-                gain.gain.setValueAtTime(0.05, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-                osc.start(); osc.stop(ctx.currentTime + 0.15);
-            }
-        } catch (e) { console.debug('ℹ️ Badge sound failed:', e); }
     }
     badge._hideTimeout = setTimeout(() => badge?.remove(), 10000);
 }
@@ -909,3 +892,4 @@ document.addEventListener('visibilitychange', function() {
 });
 </script>
 {% endblock %}
+
