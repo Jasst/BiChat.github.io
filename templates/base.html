@@ -31,6 +31,7 @@
       blinkInterval: null,
       initialized: false,
       lastNotificationTime: {},
+      activeChatId: null,
 
       async init() {
         if (this.initialized) return;
@@ -40,6 +41,7 @@
           if (this.audioCtx) return;
           try { 
             this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+            console.log('🔊 AudioContext initialized');
           } catch (e) { 
             console.debug('ℹ️ Web Audio not available'); 
           }
@@ -48,15 +50,29 @@
         document.addEventListener('touchstart', initAudio, { once: true, passive: true });
 
         if ('Notification' in window && Notification.permission === 'default') {
-          try { await Notification.requestPermission(); }
-          catch (e) { console.debug('ℹ️ Notification request failed:', e); }
+          try { 
+            const result = await Notification.requestPermission();
+            console.log('🔔 Notification permission:', result);
+          } catch (e) { 
+            console.debug('ℹ️ Notification request failed:', e); 
+          }
         }
+      },
+
+      setActiveChat(chatId) {
+        this.activeChatId = chatId ? this._normalizeChatId(chatId) : null;
+        if (this.activeChatId) {
+          console.log('✅ Active chat set:', this.activeChatId.substring(0, 16) + '...');
+        }
+        this.stopBlink();
       },
 
       playSound(type = 'default') {
         try {
           if (!this.audioCtx) return;
-          if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+          if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume().catch(() => {});
+          }
           
           const osc = this.audioCtx.createOscillator();
           const gain = this.audioCtx.createGain();
@@ -90,16 +106,20 @@
 
       _isInActiveChat(chatId) {
         if (document.visibilityState !== 'visible') return false;
-        const currentChat = window.currentChatAddress || '';
-        if (!currentChat || !chatId) return false;
-        return this._normalizeChatId(currentChat) === this._normalizeChatId(chatId);
+        const currentChat = this.activeChatId;
+        const targetChat = this._normalizeChatId(chatId);
+        if (!currentChat || !targetChat) return false;
+        return currentChat === targetChat;
       },
 
       _shouldNotify(chatId, sender, timestamp) {
-        const key = `${chatId}:${sender}`;
+        const key = `${this._normalizeChatId(chatId)}:${sender}`;
         const now = Date.now();
         const lastTime = this.lastNotificationTime[key] || 0;
-        if (now - lastTime < 2000) return false;
+        if (now - lastTime < 2000) {
+          console.debug('🚫 Notification throttled:', key);
+          return false;
+        }
         this.lastNotificationTime[key] = now;
         if (Object.keys(this.lastNotificationTime).length > 50) {
           Object.keys(this.lastNotificationTime).forEach(k => {
@@ -112,17 +132,20 @@
       },
 
       show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение', timestamp = Date.now()) {
-        // 🔊 Звук только если вкладка не активна
+        if (!sender || !chatId) {
+          console.warn('⚠️ NotificationManager.show: missing sender or chatId');
+          return;
+        }
+
         if (document.visibilityState !== 'visible') {
           this.playSound('received');
         }
 
-        // ❌ Не показываем уведомление если пользователь в этом чате И вкладка активна
         if (this._isInActiveChat(chatId)) {
+          console.debug('🔕 Notification suppressed: user in active chat', chatId.substring(0, 16) + '...');
           return;
         }
 
-        // Анти-спам
         if (!this._shouldNotify(chatId, sender, timestamp)) {
           return;
         }
@@ -131,7 +154,8 @@
         const title = isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
         const normalizedChatId = this._normalizeChatId(chatId);
 
-        // Desktop notification
+        console.log('🔔 Showing notification for:', { title, preview, chatId: normalizedChatId.substring(0, 16) + '...' });
+
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
             const n = new Notification(title, {
@@ -141,17 +165,19 @@
               requireInteraction: true,
               silent: true
             });
+            
             n.onclick = () => {
               window.focus();
               if (typeof window.selectConversation === 'function') {
-                const targetChatId = chatId.startsWith('group:') ? chatId : normalizedChatId;
+                const targetChatId = chatId; 
                 window.selectConversation(targetChatId, senderName, isGroup);
               } else {
-                const param = chatId.startsWith('group:') ? chatId : normalizedChatId;
+                const param = chatId;
                 window.location.href = `/chat?start_with=${encodeURIComponent(param)}&name=${encodeURIComponent(senderName)}`;
               }
               n.close();
             };
+            
             n.onerror = (e) => console.debug('ℹ️ Notification error:', e);
             setTimeout(() => n.close(), 8000);
           } catch (e) { 
@@ -159,36 +185,49 @@
           }
         }
 
-        // Мигание заголовка
         if (document.visibilityState !== 'visible') {
           this.startBlink(title);
         }
       },
 
       startBlink(text) {
-        if (this.blinkInterval) return;
+        if (this.blinkInterval) {
+          clearInterval(this.blinkInterval);
+          this.blinkInterval = null;
+        }
         let toggle = true;
         const original = this.originalTitle;
+        
         this.blinkInterval = setInterval(() => {
+          if (document.visibilityState === 'visible') {
+            this.stopBlink();
+            return;
+          }
           document.title = toggle ? `🔔 ${text}` : original;
           toggle = !toggle;
         }, 1000);
+        console.log('✨ Title blink started');
       },
 
       stopBlink() {
         if (this.blinkInterval) {
           clearInterval(this.blinkInterval);
           this.blinkInterval = null;
-          document.title = this.originalTitle;
         }
+        document.title = this.originalTitle;
+        console.log('✨ Title blink stopped');
       },
 
-      // Универсальный обработчик входящих сообщений
       handleIncomingMessage(msg) {
-        if (!msg?.sender || !msg?.chatId) return;
+        if (!msg?.sender || !msg?.chatId) {
+          console.warn('⚠️ handleIncomingMessage: invalid message', msg);
+          return;
+        }
         
         const isGroup = msg.chatId.startsWith('group:');
-        const preview = msg.image ? '📷 Изображение' : (msg.content?.substring(0, 50) || '🔐 Новое сообщение');
+        const preview = msg.image 
+          ? '📷 Изображение' 
+          : (msg.content?.substring(0, 50) || '🔐 Новое сообщение');
         
         this.show(
           msg.sender,
@@ -197,23 +236,36 @@
           preview + (msg.content?.length > 50 ? '...' : ''),
           msg.timestamp || Date.now()
         );
+      },
+
+      destroy() {
+        this.stopBlink();
+        if (this.audioCtx && this.audioCtx.state !== 'closed') {
+          this.audioCtx.close().catch(() => {});
+        }
+        this.initialized = false;
+        this.activeChatId = null;
+        console.log('🧹 NotificationManager destroyed');
       }
     };
 
-    // Инициализация
     document.addEventListener('DOMContentLoaded', () => {
       window.NotificationManager?.init();
     });
 
-    // Остановка мигания при возврате на вкладку
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         window.NotificationManager?.stopBlink();
+        document.title = window.NotificationManager?.originalTitle || document.title;
       }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      window.NotificationManager?.destroy();
     });
     </script>
 
-    <!-- 🚀 Инициализация P2P (без подписки на чаты!) -->
+    <!-- 🚀 Инициализация P2P -->
     <script>
     document.addEventListener('DOMContentLoaded', async function() {
       const userAddressEl = document.getElementById('userAddress');
@@ -233,15 +285,9 @@
         return;
       }
 
-      // Создаём экземпляр P2P для использования в chat.html
       window.p2p = new P2PSync();
       console.log('✅ P2P sync ready');
 
-      // 🔥 ВАЖНО: НЕ подписываемся на чаты здесь!
-      // Подписка и уведомления обрабатываются в chat.html
-      // Это устраняет гонку инициализации и дублирование
-
-      // Экспортируем пустую заглушку для обратной совместимости
       window.subscribeToAllChats = async function() {
         console.log('ℹ️ subscribeToAllChats: notifications handled in chat.html');
       };
