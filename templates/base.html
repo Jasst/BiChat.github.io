@@ -99,11 +99,8 @@
         const key = `${chatId}:${sender}`;
         const now = Date.now();
         const lastTime = this.lastNotificationTime[key] || 0;
-        
         if (now - lastTime < 2000) return false;
-        
         this.lastNotificationTime[key] = now;
-        
         if (Object.keys(this.lastNotificationTime).length > 50) {
           Object.keys(this.lastNotificationTime).forEach(k => {
             if (now - this.lastNotificationTime[k] > 60000) {
@@ -115,14 +112,17 @@
       },
 
       show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение', timestamp = Date.now()) {
-        if (!this._isInActiveChat(chatId)) {
+        // 🔊 Звук только если вкладка не активна
+        if (document.visibilityState !== 'visible') {
           this.playSound('received');
         }
 
+        // ❌ Не показываем уведомление если пользователь в этом чате И вкладка активна
         if (this._isInActiveChat(chatId)) {
           return;
         }
 
+        // Анти-спам
         if (!this._shouldNotify(chatId, sender, timestamp)) {
           return;
         }
@@ -131,6 +131,7 @@
         const title = isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
         const normalizedChatId = this._normalizeChatId(chatId);
 
+        // Desktop notification
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
             const n = new Notification(title, {
@@ -158,6 +159,7 @@
           }
         }
 
+        // Мигание заголовка
         if (document.visibilityState !== 'visible') {
           this.startBlink(title);
         }
@@ -181,6 +183,7 @@
         }
       },
 
+      // Универсальный обработчик входящих сообщений
       handleIncomingMessage(msg) {
         if (!msg?.sender || !msg?.chatId) return;
         
@@ -197,10 +200,12 @@
       }
     };
 
+    // Инициализация
     document.addEventListener('DOMContentLoaded', () => {
       window.NotificationManager?.init();
     });
 
+    // Остановка мигания при возврате на вкладку
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         window.NotificationManager?.stopBlink();
@@ -208,7 +213,7 @@
     });
     </script>
 
-    <!-- 🚀 Глобальная инициализация P2P -->
+    <!-- 🚀 Инициализация P2P (без подписки на чаты!) -->
     <script>
     document.addEventListener('DOMContentLoaded', async function() {
       const userAddressEl = document.getElementById('userAddress');
@@ -228,37 +233,18 @@
         return;
       }
 
+      // Создаём экземпляр P2P для использования в chat.html
       window.p2p = new P2PSync();
       console.log('✅ P2P sync ready');
 
-      window.subscribeToAllChats = async function() {
-        try {
-          const res = await fetch('/get_conversations');
-          const data = await res.json();
-          if (data.conversations) {
-            data.conversations.forEach(conv => {
-              const chatId = conv.is_group ? `group:${conv.address}` : conv.address;
-              window.p2p.subscribe(chatId, async (msg) => {
-                if (window.NotificationManager?.handleIncomingMessage) {
-                  window.NotificationManager.handleIncomingMessage({
-                    sender: msg.sender,
-                    chatId: chatId,
-                    content: msg.encryptedPayload?.content,
-                    image: msg.encryptedPayload?.image,
-                    timestamp: msg.timestamp
-                  });
-                }
-              });
-            });
-            console.log(`✅ Subscribed to ${data.conversations.length} chats for notifications`);
-          }
-        } catch (e) {
-          console.warn('⚠️ Failed to subscribe to all chats:', e);
-        }
-      };
+      // 🔥 ВАЖНО: НЕ подписываемся на чаты здесь!
+      // Подписка и уведомления обрабатываются в chat.html
+      // Это устраняет гонку инициализации и дублирование
 
-      await window.subscribeToAllChats();
-      window.currentChatAddress = window.currentChatAddress || '';
+      // Экспортируем пустую заглушку для обратной совместимости
+      window.subscribeToAllChats = async function() {
+        console.log('ℹ️ subscribeToAllChats: notifications handled in chat.html');
+      };
     });
 
     window.addEventListener('beforeunload', () => {
