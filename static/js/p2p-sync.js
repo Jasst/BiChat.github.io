@@ -1,8 +1,8 @@
 /**
  * p2p-sync.js — P2P-синхронизация с fallback на Long Polling
  * 
- * 🔔 Уведомления теперь обрабатываются ТОЛЬКО через window.NotificationManager
- * для предотвращения дублирования звуков и уведомлений
+ * 🔔 ВАЖНО: Этот модуль НЕ обрабатывает уведомления.
+ * Уведомления обрабатываются в chat.html через appendMessageToUI.
  */
 class P2PSync {
   constructor() {
@@ -32,8 +32,7 @@ class P2PSync {
             tx_id: payload.tx_id,
             via: 'gun'
           });
-          // 🔔 Уведомления обрабатываются в chat.html через appendMessageToUI
-          // Здесь НЕ вызываем NotificationManager чтобы избежать дублирования
+          // 🔔 Уведомления обрабатываются ВНЕ этого модуля (в chat.html)
         } catch (e) {
           console.warn('⚠️ P2P parse error:', e);
         }
@@ -87,8 +86,7 @@ class P2PSync {
                 tx_id: msg.tx_id,
                 via: 'poll'
               });
-              // 🔔 Уведомления обрабатываются в chat.html через appendMessageToUI
-              // Здесь НЕ вызываем NotificationManager чтобы избежать дублирования
+              // 🔔 Уведомления обрабатываются ВНЕ этого модуля (в chat.html)
             });
           }
         }
