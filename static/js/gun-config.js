@@ -1,147 +1,200 @@
 /**
- * gun-config.js — GunDB конфигурация для Dark Messenger
- * 🎯 Умный режим: авто-детект + ручной оверрайд для будущего
+ * gun-config.js — GunDB Configuration for Dark Messenger
+ * 🎯 Smart mode: auto-detect + manual override
  */
 
-// 🔥 Глобальный флаг: можно переключить вручную для тестов
-// Использование: ?p2p=force в URL — включить даже если хостинг блокирует
-const P2P_OVERRIDE = new URLSearchParams(window.location.search).get('p2p') === 'force';
+(function() {
+  'use strict';
 
-window.GunConfig = {
-  peers: [],
-  roomPrefix: 'dm_v1:',
-  gun: null,
-  userId: null,
-  mode: 'unknown', // 'p2p' | 'localStorage' | 'disabled'
+  // 🔥 Global flags
+  const P2P_OVERRIDE = new URLSearchParams(window.location.search).get('p2p') === 'force';
+  const DEBUG = process.env.NODE_ENV !== 'production';
 
-  /**
-   * Детектирование, блокирует ли среда WebSocket
-   * @returns {Promise<boolean>} true = блокировка (shared-хостинг)
-   */
-  async _detectWebSocketBlocked() {
-    return new Promise((resolve) => {
-      // Если принудительное включение — сразу считаем что всё ок
-      if (P2P_OVERRIDE) {
-        console.log('🔓 P2P forced via URL parameter');
-        return resolve(false);
+  const GunConfig = {
+    peers: [],
+    roomPrefix: 'dm_v1:',
+    gun: null,
+    userId: null,
+    mode: 'unknown', // 'p2p' | 'localStorage' | 'disabled'
+
+    /**
+     * Detect if WebSocket is blocked by environment
+     * @returns {Promise<boolean>} true = blocked
+     */
+    async _detectWebSocketBlocked() {
+      return new Promise((resolve) => {
+        if (P2P_OVERRIDE) {
+          if (DEBUG) console.log('🔓 P2P forced via URL parameter');
+          return resolve(false);
+        }
+
+        const testRelay = 'wss://gun.robins.one/gun';
+        let ws;
+
+        try {
+          ws = new WebSocket(testRelay);
+        } catch (e) {
+          if (DEBUG) console.debug('ℹ️ WebSocket creation blocked:', e.name);
+          return resolve(true);
+        }
+
+        const timeout = setTimeout(() => {
+          ws?.close();
+          resolve(true);
+        }, 2000);
+
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          ws.close();
+          resolve(false);
+        };
+
+        ws.onerror = () => {
+          clearTimeout(timeout);
+          resolve(true);
+        };
+      });
+    },
+
+    /**
+     * Initialize GunDB with smart mode detection
+     * @param {string} userId - User's public address
+     * @returns {Promise<boolean>} Success status
+     */
+    async init(userId) {
+      if (!userId || userId.length !== 64) {
+        console.warn('⚠️ Invalid user address');
+        return false;
       }
 
-      // Быстрый тест подключения к стабильному релею
-      const testRelay = 'wss://gun.robins.one/gun';
-      let ws;
+      this.userId = userId;
 
+      // 1️⃣ Load peer config from server
       try {
-        ws = new WebSocket(testRelay);
+        const res = await fetch('/gun-config', { cache: 'no-store' });
+        if (res.ok) {
+          const config = await res.json();
+          this.peers = config.peers || this.peers;
+          this.roomPrefix = config.roomPrefix || this.roomPrefix;
+        }
       } catch (e) {
-        // 🔥 Ловим блокировку на уровне создания сокета
-        console.debug('ℹ️ WebSocket creation blocked:', e.name);
-        return resolve(true);
+        if (DEBUG) console.debug('ℹ️ Using default peers config');
+        this.peers = [
+          'https://gun.robins.one/gun',
+          'https://relic.eastus.cloudapp.azure.com/gun'
+        ];
       }
 
-      const timeout = setTimeout(() => {
-        ws.close();
-        resolve(true); // Не ответил за 2с → скорее всего блокировка
-      }, 2000);
+      // 2️⃣ Check if Gun library is loaded
+      if (typeof Gun === 'undefined') {
+        console.warn('⚠️ Gun library not loaded');
+        this.mode = 'disabled';
+        return false;
+      }
 
-      ws.onopen = () => {
-        clearTimeout(timeout);
-        ws.close();
-        resolve(false); // WebSocket работает ✅
+      // 3️⃣ Detect WebSocket availability
+      const isBlocked = await this._detectWebSocketBlocked();
+
+      // 4️⃣ Select operating mode
+      if (isBlocked && !P2P_OVERRIDE) {
+        // 🔹 localStorage-only mode
+        this.mode = 'localStorage';
+        this.gun = Gun({
+          peers: [],
+          localStorage: true,
+          radisk: false,
+          silent: true
+        });
+        console.log('✅ GunDB: localStorage mode (WebSocket blocked)');
+      } else {
+        // 🔹 Full P2P mode
+        this.mode = 'p2p';
+        this.gun = Gun({
+          peers: this.peers,
+          localStorage: true,
+          radisk: false,
+          retry: 3,
+          timeout: 5000,
+          silent: !DEBUG
+        });
+
+        // Connection logging
+        this.gun.on('connect', (ctx) => {
+          if (DEBUG) console.log('✅ P2P connected:', ctx?.peer?.url);
+        });
+        this.gun.on('disconnect', (ctx) => {
+          if (DEBUG) console.debug('ℹ️ P2P disconnected:', ctx?.peer?.url);
+        });
+        console.log(`✅ GunDB: P2P mode with ${this.peers.length} peers`);
+      }
+
+      return true;
+    },
+
+    /**
+     * Get Gun room reference for chat
+     * @param {string} chatId - Chat identifier
+     * @returns {Object} Gun chain reference
+     */
+    getRoom(chatId) {
+      if (!this.gun) throw new Error('Gun not initialized');
+      return this.gun.get(this.roomPrefix + chatId);
+    },
+
+    /**
+     * Check if P2P mode is active
+     * @returns {boolean}
+     */
+    isP2PEnabled() {
+      return this.mode === 'p2p';
+    },
+
+    /**
+     * Encrypt message for P2P transmission
+     * @param {string} content - Message content
+     * @param {string} recipient - Recipient address
+     * @param {string|null} image - Optional image data
+     * @returns {Promise<Object>} Encrypted payload
+     */
+    async encryptMessage(content, recipient, image = null) {
+      if (!this.gun?.user) {
+        throw new Error('User not authenticated');
+      }
+
+      const payload = {
+        content: content || '',
+        image: image,
+        ts: Date.now(),
+        version: '1.0'
       };
 
-      ws.onerror = () => {
-        clearTimeout(timeout);
-        resolve(true); // Ошибка → блокировка ❌
-      };
-    });
-  },
+      // SEA encryption (Gun's encryption module)
+      try {
+        const encrypted = await SEA.encrypt(
+          JSON.stringify(payload),
+          recipient,
+          null,
+          { raw: true }
+        );
+        return { encrypted, ts: payload.ts };
+      } catch (e) {
+        console.error('❌ Encryption failed:', e);
+        throw e;
+      }
+    },
 
-  async init(userId) {
-    this.userId = userId;
-
-    // 1️⃣ Загружаем конфиг пиров с сервера
-    try {
-      const res = await fetch('/gun-config');
-      const config = await res.json();
-      this.peers = config.peers || [];
-      this.roomPrefix = config.roomPrefix || 'dm_v1:';
-    } catch (e) {
-      console.debug('ℹ️ Gun config fetch failed, using defaults', e);
-      this.peers = [
-        'https://gun.robins.one/gun',
-        'https://relic.eastus.cloudapp.azure.com/gun',
-        'https://gun-manhattan.herokuapp.com/gun'
-      ];
+    /**
+     * Clear sensitive data from memory
+     */
+    clearSensitive() {
+      if (this.gun?.user) {
+        // SEA cleanup if needed
+      }
+      this.userId = null;
     }
+  };
 
-    // 2️⃣ Проверяем, загружена ли библиотека Gun
-    if (typeof Gun === 'undefined') {
-      console.warn('⚠️ Gun library not loaded');
-      this.mode = 'disabled';
-      return false;
-    }
+  // Export to global scope
+  window.GunConfig = GunConfig;
 
-    // 3️⃣ Детектируем блокировку WebSocket (если не форсировано)
-    const isBlocked = await this._detectWebSocketBlocked();
-
-    // 4️⃣ Выбираем режим работы
-    if (isBlocked && !P2P_OVERRIDE) {
-      // 🔹 Режим 1: только localStorage (для shared-хостинга)
-      this.mode = 'localStorage';
-      this.gun = Gun({
-        peers: [],           // ❌ Не пытаемся подключаться к релеям
-        localStorage: true,  // ✅ Локальный кэш работает
-        radisk: false,
-        silent: true         // Меньше внутренних логов
-      });
-      console.log('✅ GunDB: localStorage mode (WebSocket blocked)');
-      console.log('💡 To test P2P: add ?p2p=force to URL');
-    } else {
-      // 🔹 Режим 2: полный P2P (для VPS / локальной разработки)
-      this.mode = 'p2p';
-      this.gun = Gun({
-        peers: this.peers,   // ✅ Подключаемся к релеям
-        localStorage: true,  // ✅ + локальный кэш
-        radisk: false,
-        retry: 3,
-        timeout: 5000,
-        silent: false
-      });
-
-      // Логирование подключений (только в режиме P2P)
-      this.gun.on('connect', (ctx) => {
-        console.log('✅ P2P connected:', ctx?.peer?.url);
-      });
-      this.gun.on('disconnect', (ctx) => {
-        console.debug('ℹ️ P2P disconnected:', ctx?.peer?.url);
-      });
-
-      console.log(`✅ GunDB: P2P mode with ${this.peers.length} peers`);
-    }
-
-    return true;
-  },
-
-  getRoom(chatId) {
-    if (!this.gun) throw new Error('Gun not initialized');
-    return this.gun.get(this.roomPrefix + chatId);
-  },
-
-  /**
-   * Проверка, активен ли полноценный P2P-режим
-   * @returns {boolean}
-   */
-  isP2PEnabled() {
-    return this.mode === 'p2p';
-  },
-
-  /**
-   * Очистка чувствительных данных
-   */
-  clearSensitive() {
-    // Мнемоника не хранится здесь — только в session на сервере
-    if (this.gun?.user) {
-      // Дополнительная очистка если нужно
-    }
-  }
-};
+})();

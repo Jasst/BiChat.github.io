@@ -1,303 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Decentralized encrypted messenger">
-    <meta name="theme-color" content="#121212">
-    <title>Dark Messenger</title>
-    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Decentralized encrypted messenger">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="color-scheme" content="dark">
+
+  <title>{% block title %}Dark Messenger{% endblock %}</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  {% block head_extra %}{% endblock %}
 </head>
 <body>
-    <div class="container">
-        {% block content %}{% endblock %}
-    </div>
+  <!-- Skip link for accessibility -->
+  <a href="#main" class="sr-only">Skip to main content</a>
 
-    <!-- 🔗 GunDB библиотеки -->
-    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
 
-    <!-- ⚙️ Наши модули -->
-    <script src="{{ url_for('static', filename='js/gun-config.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/p2p-sync.js') }}"></script>
+  <!-- Global notification container -->
+  <div id="notification-container" aria-live="polite" aria-atomic="true"></div>
 
-    <!-- 🔔 NotificationManager — глобальный для всех страниц -->
-    <script>
-    window.NotificationManager = {
-      audioCtx: null,
-      originalTitle: document.title,
-      blinkInterval: null,
-      initialized: false,
-      lastNotificationTime: {},
-      activeChatId: null,
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/gun/sea.js" defer></script>
 
-      async init() {
-        if (this.initialized) return;
-        this.initialized = true;
+  <!-- App modules -->
+  <script src="{{ url_for('static', filename='js/gun-config.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/p2p-sync.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/notification-manager.js') }}" defer></script>
 
-        const initAudio = () => {
-          if (this.audioCtx) return;
-          try { 
-            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
-            console.log('🔊 AudioContext initialized');
-          } catch (e) { 
-            console.debug('ℹ️ Web Audio not available'); 
-          }
-        };
-        document.addEventListener('click', initAudio, { once: true, passive: true });
-        document.addEventListener('touchstart', initAudio, { once: true, passive: true });
-
-        if ('Notification' in window && Notification.permission === 'default') {
-          try { 
-            const result = await Notification.requestPermission();
-            console.log('🔔 Notification permission:', result);
-          } catch (e) { 
-            console.debug('ℹ️ Notification request failed:', e); 
-          }
-        }
-      },
-
-      setActiveChat(chatId) {
-        this.activeChatId = chatId ? this._normalizeChatId(chatId) : null;
-        if (this.activeChatId) {
-          console.log('✅ Active chat set:', this.activeChatId.substring(0, 16) + '...');
-        }
-        this.stopBlink();
-      },
-
-      playSound(type = 'default') {
-        try {
-          if (!this.audioCtx) return;
-          if (this.audioCtx.state === 'suspended') {
-            this.audioCtx.resume().catch(() => {});
-          }
-          
-          const osc = this.audioCtx.createOscillator();
-          const gain = this.audioCtx.createGain();
-          osc.connect(gain); 
-          gain.connect(this.audioCtx.destination);
-          
-          if (type === 'received') {
-            osc.frequency.value = 1000;
-            osc.type = 'sine';
-            gain.gain.setValueAtTime(0.08, this.audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.15);
-            osc.start(); 
-            osc.stop(this.audioCtx.currentTime + 0.15);
-          } else {
-            osc.frequency.value = 800;
-            osc.type = 'sine';
-            gain.gain.setValueAtTime(0.1, this.audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.2);
-            osc.start(); 
-            osc.stop(this.audioCtx.currentTime + 0.2);
-          }
-        } catch (e) { 
-          console.debug('ℹ️ Sound play failed:', e); 
-        }
-      },
-
-      _normalizeChatId(chatId) {
-        if (!chatId) return '';
-        return chatId.startsWith('group:') ? chatId.slice(6) : chatId;
-      },
-
-      _isInActiveChat(chatId) {
-        if (document.visibilityState !== 'visible') return false;
-        const currentChat = this.activeChatId;
-        const targetChat = this._normalizeChatId(chatId);
-        if (!currentChat || !targetChat) return false;
-        return currentChat === targetChat;
-      },
-
-      _shouldNotify(chatId, sender, timestamp) {
-        const key = `${this._normalizeChatId(chatId)}:${sender}`;
-        const now = Date.now();
-        const lastTime = this.lastNotificationTime[key] || 0;
-        if (now - lastTime < 2000) {
-          console.debug('🚫 Notification throttled:', key);
-          return false;
-        }
-        this.lastNotificationTime[key] = now;
-        if (Object.keys(this.lastNotificationTime).length > 50) {
-          Object.keys(this.lastNotificationTime).forEach(k => {
-            if (now - this.lastNotificationTime[k] > 60000) {
-              delete this.lastNotificationTime[k];
-            }
-          });
-        }
-        return true;
-      },
-
-      show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение', timestamp = Date.now()) {
-        if (!sender || !chatId) {
-          console.warn('⚠️ NotificationManager.show: missing sender or chatId');
-          return;
-        }
-
-        if (document.visibilityState !== 'visible') {
-          this.playSound('received');
-        }
-
-        if (this._isInActiveChat(chatId)) {
-          console.debug('🔕 Notification suppressed: user in active chat', chatId.substring(0, 16) + '...');
-          return;
-        }
-
-        if (!this._shouldNotify(chatId, sender, timestamp)) {
-          return;
-        }
-
-        const senderName = (sender || '').substring(0, 12) + (sender?.length > 12 ? '...' : '');
-        const title = isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
-        const normalizedChatId = this._normalizeChatId(chatId);
-
-        console.log('🔔 Showing notification for:', { title, preview, chatId: normalizedChatId.substring(0, 16) + '...' });
-
-        if ('Notification' in window && Notification.permission === 'granted') {
-          try {
-            const n = new Notification(title, {
-              body: preview,
-              icon: '/static/favicon.ico',
-              tag: `msg-${normalizedChatId}`,
-              requireInteraction: true,
-              silent: true
-            });
-            
-            n.onclick = () => {
-              window.focus();
-              if (typeof window.selectConversation === 'function') {
-                const targetChatId = chatId; 
-                window.selectConversation(targetChatId, senderName, isGroup);
-              } else {
-                const param = chatId;
-                window.location.href = `/chat?start_with=${encodeURIComponent(param)}&name=${encodeURIComponent(senderName)}`;
-              }
-              n.close();
-            };
-            
-            n.onerror = (e) => console.debug('ℹ️ Notification error:', e);
-            setTimeout(() => n.close(), 8000);
-          } catch (e) { 
-            console.debug('ℹ️ Notification failed:', e); 
-          }
-        }
-
-        if (document.visibilityState !== 'visible') {
-          this.startBlink(title);
-        }
-      },
-
-      startBlink(text) {
-        if (this.blinkInterval) {
-          clearInterval(this.blinkInterval);
-          this.blinkInterval = null;
-        }
-        let toggle = true;
-        const original = this.originalTitle;
-        
-        this.blinkInterval = setInterval(() => {
-          if (document.visibilityState === 'visible') {
-            this.stopBlink();
-            return;
-          }
-          document.title = toggle ? `🔔 ${text}` : original;
-          toggle = !toggle;
-        }, 1000);
-        console.log('✨ Title blink started');
-      },
-
-      stopBlink() {
-        if (this.blinkInterval) {
-          clearInterval(this.blinkInterval);
-          this.blinkInterval = null;
-        }
-        document.title = this.originalTitle;
-        console.log('✨ Title blink stopped');
-      },
-
-      handleIncomingMessage(msg) {
-        if (!msg?.sender || !msg?.chatId) {
-          console.warn('⚠️ handleIncomingMessage: invalid message', msg);
-          return;
-        }
-        
-        const isGroup = msg.chatId.startsWith('group:');
-        const preview = msg.image 
-          ? '📷 Изображение' 
-          : (msg.content?.substring(0, 50) || '🔐 Новое сообщение');
-        
-        this.show(
-          msg.sender,
-          msg.chatId,
-          isGroup,
-          preview + (msg.content?.length > 50 ? '...' : ''),
-          msg.timestamp || Date.now()
-        );
-      },
-
-      destroy() {
-        this.stopBlink();
-        if (this.audioCtx && this.audioCtx.state !== 'closed') {
-          this.audioCtx.close().catch(() => {});
-        }
-        this.initialized = false;
-        this.activeChatId = null;
-        console.log('🧹 NotificationManager destroyed');
-      }
-    };
-
-    document.addEventListener('DOMContentLoaded', () => {
-      window.NotificationManager?.init();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        window.NotificationManager?.stopBlink();
-        document.title = window.NotificationManager?.originalTitle || document.title;
-      }
-    });
-
-    window.addEventListener('beforeunload', () => {
-      window.NotificationManager?.destroy();
-    });
-    </script>
-
-    <!-- 🚀 Инициализация P2P -->
-    <script>
+  <!-- P2P Initialization -->
+  <script>
     document.addEventListener('DOMContentLoaded', async function() {
+      // Get user address from page
       const userAddressEl = document.getElementById('userAddress');
       const addressInput = document.getElementById('address');
-      const userAddress = (userAddressEl?.dataset?.fullAddress ||
-                          addressInput?.value ||
-                          '').trim();
+      const userAddress = (
+        userAddressEl?.dataset?.fullAddress ||
+        addressInput?.value ||
+        ''
+      ).trim();
 
+      // Skip if address not ready
       if (!userAddress || userAddress.length !== 64) {
-        console.log('⚠️ P2P init skipped: user address not ready');
+        console.log('⚠️ P2P init skipped: address not ready');
         return;
       }
 
+      // Initialize GunDB
       const gunReady = await window.GunConfig?.init(userAddress);
       if (!gunReady) {
         console.warn('⚠️ P2P sync disabled: Gun not available');
         return;
       }
 
+      // Initialize P2P sync
       window.p2p = new P2PSync();
       console.log('✅ P2P sync ready');
 
+      // Global chat subscription helper
       window.subscribeToAllChats = async function() {
-        console.log('ℹ️ subscribeToAllChats: notifications handled in chat.html');
+        console.log('ℹ️ subscribeToAllChats: notifications handled by NotificationManager');
       };
     });
 
+    // Cleanup on unload
     window.addEventListener('beforeunload', () => {
       window.p2p?.unsubscribeAll();
       window.GunConfig?.clearSensitive?.();
+      window.NotificationManager?.destroy();
     });
-    </script>
+  </script>
+
+  {% block scripts %}{% endblock %}
 </body>
 </html>
-

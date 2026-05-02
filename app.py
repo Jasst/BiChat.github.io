@@ -43,7 +43,7 @@ except ImportError:
 
 # === Конфигурация ===
 CONFIG = {
-    'POW_DIFFICULTY': int(os.getenv('POW_DIFFICULTY', 5)),  # читаем из .env
+    'POW_DIFFICULTY': int(os.getenv('POW_DIFFICULTY', 2)),  # читаем из .env
     'POW_MAX_ITERATIONS': int(os.getenv('POW_MAX_ITERATIONS', 2_000_000)),
     'CACHE_SIZE_KEYS': 128,
     'CACHE_SIZE_GROUPS': 32,

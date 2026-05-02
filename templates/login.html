@@ -1,60 +1,77 @@
 {% extends "base.html" %}
+
+{% block title %}Login — Dark Messenger{% endblock %}
+
 {% block content %}
 <div class="auth-container">
+  <div class="auth-card animate-fade">
     <h1>Login</h1>
-    <form id="loginForm">
-        <textarea
-            id="mnemonic"
-            placeholder="Enter your 24-word mnemonic phrase"
-            rows="5"
-            autocomplete="off"
-            autocorrect="off"
-            spellcheck="false"
-            autofocus
-            required
-        ></textarea>
+    <p class="subtitle">Enter your 24-word mnemonic phrase to access your account</p>
 
-        <div id="errorMsg" style="color: #cf6679; font-size: 14px; margin: 8px 0; display: none;"></div>
+    <form id="loginForm" class="auth-form">
+      <textarea
+        id="mnemonic"
+        placeholder="Enter your mnemonic phrase"
+        rows="5"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        autofocus
+        required
+        class="input input-monospace"
+        style="font-size: 13px; line-height: 1.6;"
+      ></textarea>
 
-        <button type="submit" id="loginBtn">Login</button>
+      <div id="errorMsg" class="hidden" style="color: var(--status-error); font-size: 13px;"></div>
+
+      <button type="submit" class="btn btn-primary" id="loginBtn" style="width: 100%;">
+        Login
+      </button>
     </form>
-    <a href="/">Back to Home</a>
+
+    <div class="auth-footer">
+      <a href="/">← Back to Home</a>
+    </div>
+  </div>
 </div>
 
+{% block scripts %}
 <script>
-    document.getElementById('loginForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
+document.getElementById('loginForm')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
 
-        const mnemonic = document.getElementById('mnemonic').value.trim();
-        const btn = document.getElementById('loginBtn');
-        const errorMsg = document.getElementById('errorMsg');
+  const mnemonic = document.getElementById('mnemonic').value.trim();
+  const btn = document.getElementById('loginBtn');
+  const error = document.getElementById('errorMsg');
 
-        errorMsg.style.display = 'none';
-        btn.disabled = true;
-        btn.textContent = 'Logging in...';
+  error.classList.add('hidden');
+  btn.disabled = true;
+  btn.textContent = 'Logging in…';
 
-        try {
-            const response = await fetch('/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mnemonic_phrase: mnemonic })
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                location.href = '/chat';
-            } else {
-                errorMsg.textContent = 'Error: ' + (data.error || 'Login failed');
-                errorMsg.style.display = 'block';
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            errorMsg.textContent = 'Network error. Is the server running?';
-            errorMsg.style.display = 'block';
-        } finally {
-            btn.disabled = false;
-            btn.textContent = 'Login';
-        }
+  try {
+    const res = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mnemonic_phrase: mnemonic })
     });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      window.location.href = '/chat';
+    } else {
+      error.textContent = 'Error: ' + (data.error || 'Login failed');
+      error.classList.remove('hidden');
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    error.textContent = 'Network error. Is the server running?';
+    error.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Login';
+  }
+});
 </script>
+{% endblock %}
 {% endblock %}
