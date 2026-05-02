@@ -18,12 +18,10 @@
     <!-- 🔗 GunDB библиотеки -->
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
-
-    <!-- ⚙️ Наши модули -->
     <script src="{{ url_for('static', filename='js/gun-config.js') }}"></script>
     <script src="{{ url_for('static', filename='js/p2p-sync.js') }}"></script>
 
-    <!-- 🔔 NotificationManager — исправленная версия -->
+    <!-- 🔔 NotificationManager — ИСПРАВЛЕННЫЙ -->
     <script>
     window.NotificationManager = {
       audioCtx: null,
@@ -35,14 +33,12 @@
       async init() {
         if (this.initialized) return;
         this.initialized = true;
-
         const initAudio = () => {
           if (this.audioCtx) return;
           try { this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
           catch (e) { console.debug('ℹ️ Web Audio not available'); }
         };
         document.addEventListener('click', initAudio, { once: true, passive: true });
-
         if ('Notification' in window && Notification.permission === 'default') {
           try { await Notification.requestPermission(); }
           catch (e) { console.debug('ℹ️ Notification request failed:', e); }
@@ -83,15 +79,13 @@
         } catch (e) { console.debug('ℹ️ Sound play failed:', e); }
       },
 
-      show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение', messageId = null) {
+      show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение', messageId = null, isOwnMessage = false) {
+        // 🔇 НИКОГДА не уведомляем о своих сообщениях
+        if (isOwnMessage) return false;
         // 🔇 Не уведомляем, если пользователь в этом чате и вкладка активна
-        if (this._isActiveChat(chatId)) {
-          return false;
-        }
+        if (this._isActiveChat(chatId)) return false;
         // 🚫 Анти-спам
-        if (!this._shouldNotify(chatId)) {
-          return false;
-        }
+        if (!this._shouldNotify(chatId)) return false;
 
         // 🔊 Звук
         const isGroupChat = isGroup || String(chatId).toLowerCase().startsWith('group:');
@@ -124,9 +118,7 @@
         }
 
         // 🔁 Мигание заголовка
-        if (document.visibilityState !== 'visible') {
-          this.startBlink(title);
-        }
+        if (document.visibilityState !== 'visible') this.startBlink(title);
         return true;
       },
 
@@ -155,16 +147,11 @@
       }
     };
 
-    document.addEventListener('DOMContentLoaded', () => {
-      window.NotificationManager?.init();
-    });
-    
+    document.addEventListener('DOMContentLoaded', () => window.NotificationManager?.init());
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         window.NotificationManager?.stopBlink();
-        if (window.currentChatAddress) {
-          window.NotificationManager?.onChatFocus(window.currentChatAddress);
-        }
+        if (window.currentChatAddress) window.NotificationManager?.onChatFocus(window.currentChatAddress);
       }
     });
     </script>
@@ -174,24 +161,19 @@
     document.addEventListener('DOMContentLoaded', async function() {
       const userAddressEl = document.getElementById('userAddress');
       const addressInput = document.getElementById('address');
-      const userAddress = (userAddressEl?.dataset?.fullAddress ||
-                          addressInput?.value ||
-                          '').trim();
+      const userAddress = (userAddressEl?.dataset?.fullAddress || addressInput?.value || '').trim();
 
       if (!userAddress || userAddress.length !== 64) {
         console.log('⚠️ P2P init skipped: user address not ready');
         return;
       }
-
       const gunReady = await window.GunConfig?.init(userAddress);
-      if (!gunReady) {
-        console.warn('⚠️ P2P sync disabled: Gun not available');
-        return;
-      }
+      if (!gunReady) { console.warn('⚠️ P2P sync disabled: Gun not available'); return; }
 
       window.p2p = new P2PSync();
       console.log('✅ P2P sync ready');
 
+      // 📡 Подписка на ВСЕ чаты ТОЛЬКО для фоновых уведомлений
       window.subscribeToAllChats = async function() {
         try {
           const res = await fetch('/get_conversations');
@@ -200,25 +182,26 @@
             data.conversations.forEach(conv => {
               const chatId = conv.is_group ? `group:${conv.address}` : conv.address;
               window.p2p.subscribe(chatId, async (msg) => {
-                if (window.NotificationManager?.show) {
+                // ⚠️ Это для ФОНОВЫХ уведомлений — не дублируем с chat.html
+                if (window.NotificationManager?.show && !window._chatPageActive) {
                   const preview = msg.preview || '🔐 Новое зашифрованное сообщение';
                   const isGroup = String(chatId).toLowerCase().startsWith('group:');
-                  window.NotificationManager.show(msg.sender, chatId, isGroup, preview, msg.id);
+                  window.NotificationManager.show(msg.sender, chatId, isGroup, preview, msg.id, false);
                 }
               });
             });
-            console.log(`✅ Subscribed to ${data.conversations.length} chats for notifications`);
+            console.log(`✅ Subscribed to ${data.conversations.length} chats for background notifications`);
           }
-        } catch (e) {
-          console.warn('⚠️ Failed to subscribe to all chats:', e);
-        }
+        } catch (e) { console.warn('⚠️ Failed to subscribe to all chats:', e); }
       };
 
       await window.subscribeToAllChats();
       window.currentChatAddress = window.currentChatAddress || '';
+      window._chatPageActive = true; // Флаг: мы на странице чата
     });
 
     window.addEventListener('beforeunload', () => {
+      window._chatPageActive = false;
       window.p2p?.unsubscribeAll();
       window.GunConfig?.clearSensitive?.();
     });
