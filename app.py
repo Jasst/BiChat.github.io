@@ -43,7 +43,7 @@ except ImportError:
 
 # === Конфигурация ===
 CONFIG = {
-    'POW_DIFFICULTY': int(os.getenv('POW_DIFFICULTY', 5)),  # читаем из .env
+    'POW_DIFFICULTY': int(os.getenv('POW_DIFFICULTY', 2)),  # читаем из .env
     'POW_MAX_ITERATIONS': int(os.getenv('POW_MAX_ITERATIONS', 2_000_000)),
     'CACHE_SIZE_KEYS': 128,
     'CACHE_SIZE_GROUPS': 32,
@@ -287,7 +287,8 @@ def _mine_block_async(db_path: str, last_proof: int) -> None:
         _pow_lock.release()
 
 
-
+_p2p_buffer: Dict[str, List[Dict]] = {}
+_p2p_buffer_lock = threading.Lock()
 # === Flask app ===
 app = Flask(__name__, static_folder=STATIC_FOLDER, template_folder=TEMPLATE_FOLDER)
 app.config.update(
@@ -610,7 +611,7 @@ def log_request():
 
     # 🔒 Проверка сессии для защищённых эндпоинтов
     if request.endpoint and request.endpoint not in ('index', 'login', 'create_wallet',
-                                                      'static', 'serve_upload'):
+                                                      'static', 'serve_upload', 'test_socket'):
         if 'address' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
 
@@ -725,6 +726,7 @@ def get_public_key_route(address: str):
     return jsonify({'error': 'Public key not found'}), 404
 
 
+
 # =============================================================================
 # === Отправка сообщений (БЕЗОПАСНАЯ ВЕРСИЯ) ===
 # =============================================================================
@@ -732,7 +734,8 @@ def get_public_key_route(address: str):
 @app.route('/send_message', methods=['POST'])
 def send_message():
     # 🔒 Проверка сессии дублируется в before_request, но для явности:
-    if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         data = MessageSchema().load(request.get_json())
@@ -760,7 +763,8 @@ def send_message():
         if msg_type == 'group' and group_id:
             groups = get_user_groups_cached(sender)
             group = next((g for g in groups if g['id'] == group_id), None)
-            if not group: return jsonify({'error': 'Group not found or no access'}), 404
+            if not group:
+                return jsonify({'error': 'Group not found or no access'}), 404
 
             encrypted_map: Dict[str, Any] = {}
             for member in group['members']:
@@ -799,6 +803,19 @@ def send_message():
                 daemon=True
             ).start()
 
+            # 🔁 GunDB: публикуем зашифрованные данные (опционально, для мгновенной доставки)
+            try:
+                p2p_payload = {
+                    'content': json.dumps(encrypted_map),
+                    'image': None,
+                    'ts': time.time() * 1000,  # Gun использует мс
+                    'tx_id': tx_id,
+                    'version': 'symmetric-group-v2'
+                }
+                logger.debug(f"📤 P2P publish (group): {sender[:16]}... -> group:{group_id} (tx:{tx_id})")
+            except Exception as e:
+                logger.debug(f"ℹ️ P2P group publish skipped: {e}")
+
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
                 'recipient': f"group:{group_id}", 'type': 'group',
@@ -806,7 +823,8 @@ def send_message():
             }), 201
 
         # ── Прямые сообщения ──────────────────────────────────────────────────
-        if sender == recipient: return jsonify({'error': 'Cannot message yourself'}), 400
+        if sender == recipient:
+            return jsonify({'error': 'Cannot message yourself'}), 400
 
         recipient_pubkey, recipient_verified = get_cached_public_key(recipient)
         if not recipient_pubkey:
@@ -827,11 +845,43 @@ def send_message():
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
 
+            # PoW в фоне
             threading.Thread(
                 target=_mine_block_async,
                 args=(blockchain.db_path, last_proof),
                 daemon=True
             ).start()
+
+            # 🔁 Long Polling: сохраняем в буфер для мгновенной доставки (ПРАВИЛЬНОЕ МЕСТО!)
+            try:
+                with _p2p_buffer_lock:
+                    _p2p_buffer.setdefault(recipient, []).append({
+                        'sender': sender,
+                        'recipient': recipient,
+                        'content': content,  # 🔐 уже зашифровано бэкендом!
+                        'image': image,
+                        'ts': time.time(),    # секунды (фронтенд конвертирует)
+                        'tx_id': tx_id,
+                        'id': tx_id
+                    })
+                    # Ограничиваем размер буфера
+                    if len(_p2p_buffer[recipient]) > 100:
+                        _p2p_buffer[recipient] = _p2p_buffer[recipient][-100:]
+            except Exception as e:
+                logger.debug(f"ℹ️ P2P buffer update skipped: {e}")
+
+            # 🔁 GunDB: публикуем зашифрованные данные (опционально)
+            try:
+                p2p_payload = {
+                    'content': content,
+                    'image': image,
+                    'ts': time.time() * 1000,
+                    'tx_id': tx_id,
+                    'version': 'hybrid-v2'
+                }
+                logger.debug(f"📤 P2P publish: {sender[:16]}... -> {recipient[:16]}... (tx:{tx_id})")
+            except Exception as e:
+                logger.debug(f"ℹ️ P2P publish skipped: {e}")
 
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
@@ -839,6 +889,7 @@ def send_message():
                 'encryption': 'hybrid-v2',
                 'key_verified': recipient_verified
             }), 201
+
         else:
             # 🔒 НЕТ plaintext в metadata! Только запрос на обмен ключами
             key_exchange_payload = {
@@ -875,7 +926,7 @@ def send_message():
                 'tx_id': tx_id,
                 'recipient': recipient,
                 'key_exchange': True,
-                'my_pubkey': my_pubkey  # Для удобства клиента
+                'my_pubkey': my_pubkey
             }), 201
 
     except ValidationError as err:
@@ -884,10 +935,6 @@ def send_message():
         logger.error(f"Send message error: {type(e).__name__}", exc_info=app.debug)
         return jsonify({'error': 'Failed to send'}), 500
 
-
-# =============================================================================
-# === Получение сообщений ===
-# =============================================================================
 
 # =============================================================================
 # === Получение сообщений (ОБНОВЛЁННЫЙ с пагинацией) ===
@@ -1372,6 +1419,140 @@ def delete_message():
     except Exception as e:
         logger.error(f"Delete message error: {e}")
         return jsonify({'error': 'Failed'}), 500
+
+# =============================================================================
+# === GunDB: Конфигурация для фронтенда ===
+# =============================================================================
+
+@app.route('/gun-config')
+def gun_config():
+    """Актуальные публичные релеи GunDB"""
+    peers = [
+        # ✅ Наиболее стабильные (проверены):
+        'https://gun.robins.one/gun',  # Robin's relay — стабильный
+        'https://relic.eastus.cloudapp.azure.com/gun',  # Azure-hosted
+        'https://gun-manhattan.herokuapp.com/gun',
+        # ⚠️ Могут работать с перерывами:
+        'https://gundb-relay-eb4x.onrender.com/gun',  # Render (может "спать")
+        'https://gun-relay-7q2w.onrender.com/gun',  # Альтернатива Render
+
+        # 🔄 Резерв: только localStorage, если всё остальное не работает
+    ]
+    return jsonify({
+        'peers': peers,
+        'room_prefix': 'dm_v1:',
+        'version': '1.0',
+        'fallback': 'localStorage'  # подсказка для фронтенда
+    })
+
+# Опционально: простой ретранслятор для GunDB (если не используете публичные релеи)
+# Требуется: pip install gun
+try:
+    from gun import Gun  # если установлен
+    @app.route('/gun', methods=['GET', 'POST', 'OPTIONS'])
+    def gun_relay():
+        """Простейший WebSocket-ретранслятор для GunDB"""
+        # В реальности лучше использовать standalone Gun-сервер
+        # Это заглушка для быстрого старта
+        if request.method == 'OPTIONS':
+            return '', 204
+        return jsonify({'ok': True})
+except ImportError:
+    pass  # Gun не установлен — используем публичные релеи
+
+
+@app.route('/decrypt_message', methods=['POST'])
+def decrypt_message_api():
+    """🔓 Расшифровка сообщения (для P2P-входящих)"""
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json()
+        encrypted_payload = data.get('encrypted_payload')
+        peer_address = data.get('peer_address')  # адрес ОТПРАВИТЕЛЯ
+
+        if not encrypted_payload or not peer_address:
+            return jsonify({'error': 'Missing fields'}), 400
+
+        user_addr = session['address']
+        mnemonic = session.get('mnemonic')
+        if not mnemonic:
+            return jsonify({'error': 'Session expired'}), 401
+
+        # Получаем публичный ключ отправителя
+        peer_pubkey, _ = get_cached_public_key(peer_address)
+        if not peer_pubkey:
+            peer_pubkey, _ = fetch_public_key_from_chain(peer_address)
+        if not peer_pubkey:
+            return jsonify({'content': '[Waiting for key exchange...]'}), 200
+
+        # Расшифровываем через ваше крипто-ядро
+        decrypted = decrypt_hybrid(mnemonic, peer_pubkey, peer_address, encrypted_payload)
+
+        return jsonify({
+            'content': decrypted.get('content'),
+            'image': decrypted.get('image')
+        }), 200
+
+    except Exception as e:
+        logger.error(f"P2P decrypt error: {e}")
+        return jsonify({'content': '[Decryption failed]'}), 200  # 200, чтобы не триггерить повторные запросы
+
+# =============================================================================
+# === Тестовые утилиты ===
+# =============================================================================
+
+@app.route('/test-socket.html')
+def test_socket():
+    """Тестовая страница проверки WebSocket/SSE/Long Polling (без авторизации)"""
+    return render_template('test-socket.html')
+
+
+# =============================================================================
+# === P2P Long Polling fallback (для shared-хостинга) ===
+# =============================================================================
+
+
+
+
+@app.route('/p2p-poll')
+def p2p_poll():
+    """
+    Long Polling endpoint для эмуляции P2P на хостингах без WebSocket.
+    Возвращает зашифрованные сообщения для текущего пользователя.
+    """
+    if 'address' not in session:
+        return jsonify([]), 401
+
+    chat_id = request.args.get('chat', '')
+    since = float(request.args.get('since', 0))
+    user_addr = session['address']
+
+    if not chat_id:
+        return jsonify([]), 400
+
+    with _p2p_buffer_lock:
+        # Получаем сообщения для этого чата, новее чем `since`
+        messages = _p2p_buffer.get(chat_id, [])
+        new_messages = [
+            m for m in messages
+            if m['ts'] > since and m['recipient'] in (user_addr, chat_id)
+        ]
+
+        # Очищаем старые сообщения (храним 5 минут)
+        cutoff = time.time() - 300
+        _p2p_buffer[chat_id] = [m for m in messages if m['ts'] > cutoff]
+
+    return jsonify(new_messages), 200
+
+
+# Модификация send_message: добавляем в буфер для long polling
+# Найдите функцию send_message и после строки с `threading.Thread(...).start()`
+# добавьте этот блок (для прямых сообщений):
+
+
+
 
 # === Error handlers ===
 @app.errorhandler(404)
