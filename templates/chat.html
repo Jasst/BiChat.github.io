@@ -9,7 +9,6 @@
             <button onclick="location.href='/logout'">Logout</button>
         </div>
 
-        <!-- Навигация в виде вкладок -->
         <div class="tabs">
             <div class="tab active" onclick="location.href='/chat'">Chat</div>
             <div class="tab" onclick="location.href='/contacts'">Contacts</div>
@@ -17,7 +16,6 @@
             <div class="tab" onclick="location.href='/profile'">Profile</div>
         </div>
 
-        <!-- Содержимое вкладок -->
         <div id="chat-tab" class="tab-content active">
             <div class="conversations-header">
                 <h3>Conversations</h3>
@@ -60,9 +58,7 @@
         <h2>Start New Chat</h2>
         <div class="modal-body">
             <div style="text-align: center; margin-bottom: 15px;">
-                <button onclick="openQRScannerInModal()" id="scanQRBtn" class="scan-qr-btn-modal">
-                    📷 Scan QR Code
-                </button>
+                <button onclick="openQRScannerInModal()" id="scanQRBtn" class="scan-qr-btn-modal">📷 Scan QR Code</button>
                 <div id="qrScannerContainerModal" style="display: none; margin: 15px 0;">
                     <div style="position: relative;">
                         <video id="qrVideoModal" style="width: 100%; max-width: 250px; border: 2px solid #333; border-radius: 8px;"></video>
@@ -73,12 +69,9 @@
                 </div>
                 <div id="scanResultModal" style="margin-top: 10px; color: green; font-weight: bold; display: none;"></div>
             </div>
-
             <div class="input-group">
                 <label for="newChatSelect">Select Contact:</label>
-                <select id="newChatSelect">
-                    <option value="">-- Select a Contact --</option>
-                </select>
+                <select id="newChatSelect"><option value="">-- Select a Contact --</option></select>
             </div>
             <div class="input-group">
                 <label for="newChatAddress">Or enter Address:</label>
@@ -101,69 +94,32 @@
 </div>
 
 <style>
-/* ... (ваши стили без изменений) ... */
 .status-active { color: #00c853; font-weight: bold; }
-.security-info {
-    background-color: #2c2c2c; padding: 15px; border-radius: 4px;
-    border-left: 3px solid #bb86fc;
-}
+.security-info { background-color: #2c2c2c; padding: 15px; border-radius: 4px; border-left: 3px solid #bb86fc; }
 .security-info p { margin: 8px 0; font-size: 14px; }
-.scan-qr-btn-modal {
-    background-color: #bb86fc; color: #121212; border: none;
-    padding: 12px 20px; border-radius: 4px; cursor: pointer;
-    font-weight: bold; width: 100%; margin-bottom: 15px;
-}
+.scan-qr-btn-modal { background-color: #bb86fc; color: #121212; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 15px; }
 .scan-qr-btn-modal:hover { background-color: #3700b3; }
 #qrScannerContainerModal video { background-color: #000; }
-#attachImageButton {
-    background: none; border: 1px solid #ccc; border-radius: 4px;
-    padding: 5px 10px; cursor: pointer; font-size: 16px; color: #ccc;
-}
+#attachImageButton { background: none; border: 1px solid #ccc; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 16px; color: #ccc; }
 #attachImageButton:hover { color: #bb86fc; border-color: #bb86fc; }
-.modal {
-    display: none; position: fixed; z-index: 1000; left: 0; top: 0;
-    width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9);
-}
-.modal-content {
-    background-color: #2c2c2c; margin: 5% auto; padding: 20px;
-    border: 1px solid #444; border-radius: 8px; width: 90%; max-width: 500px; color: #fff;
-}
-.modal-content-image {
-    background-color: transparent; margin: 5% auto; padding: 20px;
-    width: 90%; max-width: 90%; text-align: center; position: relative;
-}
-.modal-image {
-    max-width: 100%; max-height: 80vh; border-radius: 4px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.5);
-}
+.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
+.modal-content { background-color: #2c2c2c; margin: 5% auto; padding: 20px; border: 1px solid #444; border-radius: 8px; width: 90%; max-width: 500px; color: #fff; }
+.modal-content-image { background-color: transparent; margin: 5% auto; padding: 20px; width: 90%; max-width: 90%; text-align: center; position: relative; }
+.modal-image { max-width: 100%; max-height: 80vh; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
 .modal-image-actions { margin-top: 15px; }
-.modal-image-actions button {
-    background-color: #bb86fc; color: #121212; border: none;
-    padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;
-}
+.modal-image-actions button { background-color: #bb86fc; color: #121212; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
 .modal-image-actions button:hover { background-color: #3700b3; }
-.close {
-    color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;
-}
+.close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
 .close:hover, .close:focus { color: #fff; }
-.close-image-modal {
-    position: absolute; top: 15px; right: 35px; color: #f1f1f1;
-    font-size: 40px; font-weight: bold; cursor: pointer; z-index: 1001;
-}
+.close-image-modal { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; z-index: 1001; }
 .close-image-modal:hover, .close-image-modal:focus { color: #bbb; }
-.message img {
-    cursor: pointer; border-radius: 4px; transition: transform 0.2s ease;
-}
+.message img { cursor: pointer; border-radius: 4px; transition: transform 0.2s ease; }
 .message img:hover { transform: scale(1.05); }
 #addToContactsBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 #addToContactsBtn:not(:disabled):hover { background: #00c853; color: #121212; }
-.loading {
-    color: #888; font-style: italic; text-align: center; padding: 20px;
-}
+.loading { color: #888; font-style: italic; text-align: center; padding: 20px; }
 .messages.loading { opacity: 0.7; pointer-events: none; }
-.error {
-    color: #cf6679; font-weight: 500; text-align: center; padding: 20px;
-}
+.error { color: #cf6679; font-weight: 500; text-align: center; padding: 20px; }
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.02); } }
 @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 </style>
@@ -195,7 +151,7 @@ function copyToClipboard(elementId, feedbackId) {
 }
 
 // =============================================================================
-// === QR Scanner (без изменений) ===
+// === QR Scanner ===
 // =============================================================================
 let scanIntervalModal = null;
 let streamModal = null;
@@ -278,7 +234,7 @@ function forceCloseQRScannerInModal() {
 }
 
 // =============================================================================
-// === Изображения (без изменений) ===
+// === Изображения ===
 // =============================================================================
 let pendingImageData = null;
 function handleImageSelection(event) {
@@ -381,12 +337,12 @@ function selectConversation(address, name, isGroup) {
         });
     }
     
-    // 🎯 ВАЖНО: Обновляем глобальные переменные ДО любых уведомлений
+    // 🎯 ВАЖНО: Сначала обновляем глобальные переменные
     currentChatAddress = address;
     currentChatIsGroup = (isGroup === true || isGroup === 'true' || isGroup === 1 || isGroup === '1' || (typeof isGroup === 'string' && isGroup.toLowerCase() === 'true'));
     currentChatPartnerAddress = currentChatIsGroup ? "" : (address === userAddress ? "" : address);
     
-    // 🔄 Уведомляем NotificationManager о фокусе на чате
+    // 🔄 Уведомляем NotificationManager о фокусе
     if (window.NotificationManager?.onChatFocus) {
         window.NotificationManager.onChatFocus(address);
     }
@@ -394,7 +350,10 @@ function selectConversation(address, name, isGroup) {
     lastKnownMessageId = 0;
     lastMessageTimestamp = 0;
     pendingImageData = null;
+    
+    // 📥 Загружаем сообщения
     loadMessagesForConversation(address, false);
+    
     setTimeout(() => {
         const container = document.getElementById('messagesContainer');
         if (container) {
@@ -540,7 +499,6 @@ async function sendMessage() {
             document.getElementById('messageContent').value = '';
             pendingImageData = null;
             loadMessagesForConversation(recipient, true);
-            // 🔁 P2P отправка (если доступна)
             if (window.p2p && typeof window.GunConfig?.encryptMessage === 'function') {
                 const txId = 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2);
                 const encrypted = await window.GunConfig.encryptMessage(content, recipient, pendingImageData);
@@ -623,9 +581,9 @@ function handleStartWithParam() {
 }
 
 // =============================================================================
-// === appendMessageToUI — с уведомлением ===
+// === appendMessageToUI — БЕЗ ИЗМЕНЕНИЙ сигнатуры ===
 // =============================================================================
-function appendMessageToUI(msg, { notify = true } = {}) {
+function appendMessageToUI(msg) {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
     if (document.getElementById(`msg-${msg.id}`)) return;
@@ -679,11 +637,10 @@ function appendMessageToUI(msg, { notify = true } = {}) {
 
     container.appendChild(messageDiv);
     
-    // 🎯 Уведомление (если не своё сообщение и нужно)
-    if (notify && !msg.is_mine && window.NotificationManager?.show) {
+    // 🎯 Уведомление через NotificationManager (только для входящих)
+    if (!msg.is_mine && window.NotificationManager?.show) {
         const chatId = currentChatIsGroup ? `group:${currentChatAddress}` : currentChatAddress;
         const preview = msg.content?.substring(0, 50) || (msg.image ? '📷 Image' : '🔐 Message');
-        
         window.NotificationManager.show(
             msg.sender_name || msg.sender,
             chatId,
@@ -707,19 +664,17 @@ window.appendMessageToUI = appendMessageToUI;
 window.loadMessagesForConversation = loadMessagesForConversation;
 
 // =============================================================================
-// === P2P: Подписка на текущий чат — ЕДИНАЯ ТОЧКА ВХОДА ===
+// === P2P: Подписка на текущий чат ===
 // =============================================================================
 if (typeof window.subscribeToCurrentChat !== 'function') {
   window.subscribeToCurrentChat = function(chatId) {
     if (!window.p2p) return;
 
-    // Отписываемся от предыдущего чата
     if (window._currentChatUnsub) {
       window._currentChatUnsub();
       window._currentChatUnsub = null;
     }
 
-    // Подписываемся на новый
     window._currentChatUnsub = window.p2p.subscribe(chatId, async (msg) => {
       console.log('📥 P2P message received from', msg.sender?.substring(0,16)+'...');
 
@@ -734,7 +689,7 @@ if (typeof window.subscribeToCurrentChat !== 'function') {
         });
         const decrypted = await res.json();
 
-        // 🎯 Добавляем в UI через единый интерфейс
+        // 🎯 Добавляем в UI через стандартный appendMessageToUI
         if (typeof appendMessageToUI === 'function') {
           appendMessageToUI({
             sender: msg.sender,
@@ -744,11 +699,10 @@ if (typeof window.subscribeToCurrentChat !== 'function') {
             timestamp: msg.timestamp / 1000,
             is_mine: false,
             id: 'p2p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-          }, { notify: true }); // notify: true — пусть appendMessageToUI решит, нужно ли уведомлять
+          });
         }
       } catch (e) {
         console.warn('⚠️ P2P decrypt failed, will poll server', e);
-        // Фоллбэк: сервер подхватит через polling
       }
     });
 
