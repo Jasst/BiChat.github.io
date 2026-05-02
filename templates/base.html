@@ -18,10 +18,12 @@
     <!-- 🔗 GunDB библиотеки -->
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
+
+    <!-- ⚙️ Наши модули -->
     <script src="{{ url_for('static', filename='js/gun-config.js') }}"></script>
     <script src="{{ url_for('static', filename='js/p2p-sync.js') }}"></script>
 
-    <!-- 🔔 NotificationManager — ИСПРАВЛЕННЫЙ -->
+    <!-- 🔔 NotificationManager — глобальный для всех страниц -->
     <script>
     window.NotificationManager = {
       audioCtx: null,
@@ -33,93 +35,132 @@
       async init() {
         if (this.initialized) return;
         this.initialized = true;
+
         const initAudio = () => {
           if (this.audioCtx) return;
-          try { this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-          catch (e) { console.debug('ℹ️ Web Audio not available'); }
+          try { 
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+          } catch (e) { 
+            console.debug('ℹ️ Web Audio not available'); 
+          }
         };
         document.addEventListener('click', initAudio, { once: true, passive: true });
+        document.addEventListener('touchstart', initAudio, { once: true, passive: true });
+
         if ('Notification' in window && Notification.permission === 'default') {
           try { await Notification.requestPermission(); }
           catch (e) { console.debug('ℹ️ Notification request failed:', e); }
         }
       },
 
-      _normalizeChatId(chatId) {
-        if (!chatId) return '';
-        return String(chatId).toLowerCase().trim();
-      },
-
-      _isActiveChat(chatId) {
-        const current = this._normalizeChatId(window.currentChatAddress || '');
-        const target = this._normalizeChatId(chatId);
-        return document.visibilityState === 'visible' && current === target;
-      },
-
-      _shouldNotify(chatId) {
-        const now = Date.now();
-        const normalized = this._normalizeChatId(chatId);
-        const last = this.lastNotificationTime[normalized] || 0;
-        if (now - last < 2000) return false;
-        this.lastNotificationTime[normalized] = now;
-        return true;
-      },
-
-      playSound(frequency = 800, duration = 0.2, volume = 0.1) {
+      playSound(type = 'default') {
         try {
           if (!this.audioCtx) return;
           if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+          
           const osc = this.audioCtx.createOscillator();
           const gain = this.audioCtx.createGain();
-          osc.connect(gain); gain.connect(this.audioCtx.destination);
-          osc.frequency.value = frequency; osc.type = 'sine';
-          gain.gain.setValueAtTime(volume, this.audioCtx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + duration);
-          osc.start(); osc.stop(this.audioCtx.currentTime + duration);
-        } catch (e) { console.debug('ℹ️ Sound play failed:', e); }
+          osc.connect(gain); 
+          gain.connect(this.audioCtx.destination);
+          
+          if (type === 'received') {
+            osc.frequency.value = 1000;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.08, this.audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.15);
+            osc.start(); 
+            osc.stop(this.audioCtx.currentTime + 0.15);
+          } else {
+            osc.frequency.value = 800;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.1, this.audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.2);
+            osc.start(); 
+            osc.stop(this.audioCtx.currentTime + 0.2);
+          }
+        } catch (e) { 
+          console.debug('ℹ️ Sound play failed:', e); 
+        }
       },
 
-      show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение', messageId = null, isOwnMessage = false) {
-        // 🔇 НИКОГДА не уведомляем о своих сообщениях
-        if (isOwnMessage) return false;
-        // 🔇 Не уведомляем, если пользователь в этом чате и вкладка активна
-        if (this._isActiveChat(chatId)) return false;
-        // 🚫 Анти-спам
-        if (!this._shouldNotify(chatId)) return false;
+      _normalizeChatId(chatId) {
+        if (!chatId) return '';
+        return chatId.startsWith('group:') ? chatId.slice(6) : chatId;
+      },
 
-        // 🔊 Звук
-        const isGroupChat = isGroup || String(chatId).toLowerCase().startsWith('group:');
-        this.playSound(isGroupChat ? 600 : 800, 0.18, 0.08);
+      _isInActiveChat(chatId) {
+        if (document.visibilityState !== 'visible') return false;
+        const currentChat = window.currentChatAddress || '';
+        if (!currentChat || !chatId) return false;
+        return this._normalizeChatId(currentChat) === this._normalizeChatId(chatId);
+      },
 
-        const senderName = (sender || 'Unknown').substring(0, 15) + ((sender && sender.length > 15) ? '…' : '');
-        const title = isGroupChat ? `👥 ${senderName}` : `💬 ${senderName}`;
+      _shouldNotify(chatId, sender, timestamp) {
+        const key = `${chatId}:${sender}`;
+        const now = Date.now();
+        const lastTime = this.lastNotificationTime[key] || 0;
+        
+        if (now - lastTime < 2000) return false;
+        
+        this.lastNotificationTime[key] = now;
+        
+        if (Object.keys(this.lastNotificationTime).length > 50) {
+          Object.keys(this.lastNotificationTime).forEach(k => {
+            if (now - this.lastNotificationTime[k] > 60000) {
+              delete this.lastNotificationTime[k];
+            }
+          });
+        }
+        return true;
+      },
 
-        // 🖥️ Desktop notification
+      show(sender, chatId, isGroup = false, preview = '🔐 Новое сообщение', timestamp = Date.now()) {
+        if (!this._isInActiveChat(chatId)) {
+          this.playSound('received');
+        }
+
+        if (this._isInActiveChat(chatId)) {
+          return;
+        }
+
+        if (!this._shouldNotify(chatId, sender, timestamp)) {
+          return;
+        }
+
+        const senderName = (sender || '').substring(0, 12) + (sender?.length > 12 ? '...' : '');
+        const title = isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
+        const normalizedChatId = this._normalizeChatId(chatId);
+
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
             const n = new Notification(title, {
               body: preview,
               icon: '/static/favicon.ico',
-              tag: `msg-${this._normalizeChatId(chatId)}`,
+              tag: `msg-${normalizedChatId}`,
               requireInteraction: true,
               silent: true
             });
             n.onclick = () => {
               window.focus();
               if (typeof window.selectConversation === 'function') {
-                window.selectConversation(chatId, senderName, isGroupChat);
+                const targetChatId = chatId.startsWith('group:') ? chatId : normalizedChatId;
+                window.selectConversation(targetChatId, senderName, isGroup);
               } else {
-                window.location.href = `/chat?start_with=${encodeURIComponent(chatId)}&name=${encodeURIComponent(senderName)}`;
+                const param = chatId.startsWith('group:') ? chatId : normalizedChatId;
+                window.location.href = `/chat?start_with=${encodeURIComponent(param)}&name=${encodeURIComponent(senderName)}`;
               }
               n.close();
             };
+            n.onerror = (e) => console.debug('ℹ️ Notification error:', e);
             setTimeout(() => n.close(), 8000);
-          } catch (e) { console.debug('ℹ️ Notification failed:', e); }
+          } catch (e) { 
+            console.debug('ℹ️ Notification failed:', e); 
+          }
         }
 
-        // 🔁 Мигание заголовка
-        if (document.visibilityState !== 'visible') this.startBlink(title);
-        return true;
+        if (document.visibilityState !== 'visible') {
+          this.startBlink(title);
+        }
       },
 
       startBlink(text) {
@@ -140,18 +181,29 @@
         }
       },
 
-      onChatFocus(chatId) {
-        const normalized = this._normalizeChatId(chatId);
-        delete this.lastNotificationTime[normalized];
-        this.stopBlink();
+      handleIncomingMessage(msg) {
+        if (!msg?.sender || !msg?.chatId) return;
+        
+        const isGroup = msg.chatId.startsWith('group:');
+        const preview = msg.image ? '📷 Изображение' : (msg.content?.substring(0, 50) || '🔐 Новое сообщение');
+        
+        this.show(
+          msg.sender,
+          msg.chatId,
+          isGroup,
+          preview + (msg.content?.length > 50 ? '...' : ''),
+          msg.timestamp || Date.now()
+        );
       }
     };
 
-    document.addEventListener('DOMContentLoaded', () => window.NotificationManager?.init());
+    document.addEventListener('DOMContentLoaded', () => {
+      window.NotificationManager?.init();
+    });
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         window.NotificationManager?.stopBlink();
-        if (window.currentChatAddress) window.NotificationManager?.onChatFocus(window.currentChatAddress);
       }
     });
     </script>
@@ -161,19 +213,24 @@
     document.addEventListener('DOMContentLoaded', async function() {
       const userAddressEl = document.getElementById('userAddress');
       const addressInput = document.getElementById('address');
-      const userAddress = (userAddressEl?.dataset?.fullAddress || addressInput?.value || '').trim();
+      const userAddress = (userAddressEl?.dataset?.fullAddress ||
+                          addressInput?.value ||
+                          '').trim();
 
       if (!userAddress || userAddress.length !== 64) {
         console.log('⚠️ P2P init skipped: user address not ready');
         return;
       }
+
       const gunReady = await window.GunConfig?.init(userAddress);
-      if (!gunReady) { console.warn('⚠️ P2P sync disabled: Gun not available'); return; }
+      if (!gunReady) {
+        console.warn('⚠️ P2P sync disabled: Gun not available');
+        return;
+      }
 
       window.p2p = new P2PSync();
       console.log('✅ P2P sync ready');
 
-      // 📡 Подписка на ВСЕ чаты ТОЛЬКО для фоновых уведомлений
       window.subscribeToAllChats = async function() {
         try {
           const res = await fetch('/get_conversations');
@@ -182,26 +239,29 @@
             data.conversations.forEach(conv => {
               const chatId = conv.is_group ? `group:${conv.address}` : conv.address;
               window.p2p.subscribe(chatId, async (msg) => {
-                // ⚠️ Это для ФОНОВЫХ уведомлений — не дублируем с chat.html
-                if (window.NotificationManager?.show && !window._chatPageActive) {
-                  const preview = msg.preview || '🔐 Новое зашифрованное сообщение';
-                  const isGroup = String(chatId).toLowerCase().startsWith('group:');
-                  window.NotificationManager.show(msg.sender, chatId, isGroup, preview, msg.id, false);
+                if (window.NotificationManager?.handleIncomingMessage) {
+                  window.NotificationManager.handleIncomingMessage({
+                    sender: msg.sender,
+                    chatId: chatId,
+                    content: msg.encryptedPayload?.content,
+                    image: msg.encryptedPayload?.image,
+                    timestamp: msg.timestamp
+                  });
                 }
               });
             });
-            console.log(`✅ Subscribed to ${data.conversations.length} chats for background notifications`);
+            console.log(`✅ Subscribed to ${data.conversations.length} chats for notifications`);
           }
-        } catch (e) { console.warn('⚠️ Failed to subscribe to all chats:', e); }
+        } catch (e) {
+          console.warn('⚠️ Failed to subscribe to all chats:', e);
+        }
       };
 
       await window.subscribeToAllChats();
       window.currentChatAddress = window.currentChatAddress || '';
-      window._chatPageActive = true; // Флаг: мы на странице чата
     });
 
     window.addEventListener('beforeunload', () => {
-      window._chatPageActive = false;
       window.p2p?.unsubscribeAll();
       window.GunConfig?.clearSensitive?.();
     });
