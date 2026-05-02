@@ -330,11 +330,11 @@ let currentChatIsGroup = false;
 let currentChatPartnerAddress = "";
 let userAddress = "{{ address }}";
 let lastMessageTimestamp = 0;
-let pollInterval;
+let pollInterval = null;
 let allContacts = [];
 let lastKnownMessageId = 0;
+let currentChatUnsub = null;
 
-// Экспорт для глобального доступа
 window.currentChatAddress = currentChatAddress;
 window.currentChatIsGroup = currentChatIsGroup;
 
@@ -374,16 +374,24 @@ async function loadConversations() {
 }
 
 function selectConversation(address, name, isGroup) {
-    stopPolling();
+    console.log('🔄 Switching chat:', { address: address?.substring(0,16)+'...', isGroup });
     
-    // 🔥 Обновляем глобальные переменные ПЕРВЫМ делом
+    stopPolling();
+    if (currentChatUnsub && typeof currentChatUnsub === 'function') {
+        currentChatUnsub();
+        currentChatUnsub = null;
+    }
+    
     currentChatAddress = address;
-    currentChatIsGroup = (isGroup === true || isGroup === 'true' || isGroup === 1 || isGroup === '1' || (typeof isGroup === 'string' && isGroup.toLowerCase() === 'true'));
+    currentChatIsGroup = (isGroup === true || isGroup === 'true' || isGroup === 1 || isGroup === '1');
     currentChatPartnerAddress = currentChatIsGroup ? "" : (address === userAddress ? "" : address);
     
-    // Экспортируем для глобального доступа
     window.currentChatAddress = currentChatAddress;
     window.currentChatIsGroup = currentChatIsGroup;
+    
+    if (window.NotificationManager?.setActiveChat) {
+        window.NotificationManager.setActiveChat(address);
+    }
     
     const container = document.getElementById('messagesContainer');
     container.innerHTML = '<p class="loading">Loading conversation...</p>';
@@ -418,21 +426,61 @@ function selectConversation(address, name, isGroup) {
         }
     }, 100);
     
-    // 🔥 Подписка на P2P для текущего чата
-    if (typeof window.subscribeToCurrentChat === 'function') {
-        window.subscribeToCurrentChat(address);
-    }
+    _subscribeToCurrentChat(address);
     
     setTimeout(() => { 
         if (currentChatAddress === address) { 
             startPolling(); 
         } 
     }, 500);
+}
+
+function _subscribeToCurrentChat(chatId) {
+    if (!window.p2p || typeof window.p2p.subscribe !== 'function') {
+        console.warn('⚠️ P2P not available, using polling only');
+        return;
+    }
     
-    console.log('🔄 Chat switched:', { 
-        address: address?.substring(0, 16) + '...', 
-        isGroup: currentChatIsGroup, 
-        isNewChat: true 
+    console.log('🔗 Subscribing to P2P chat:', chatId.substring(0, 16) + '...');
+    
+    currentChatUnsub = window.p2p.subscribe(chatId, async (msg) => {
+        console.log('📥 P2P message received via', msg.via, 'from', msg.sender?.substring(0,16)+'...');
+
+        try {
+            const res = await fetch('/decrypt_message', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    encrypted_payload: msg.encryptedPayload,
+                    peer_address: msg.sender
+                }),
+                cache: 'no-store'
+            });
+            
+            const decrypted = await res.json();
+
+            if (res.ok && decrypted?.content !== undefined) {
+                const messageData = {
+                    sender: msg.sender,
+                    content: decrypted.content,
+                    image: decrypted.image,
+                    timestamp: msg.timestamp ? (msg.timestamp > 1e10 ? msg.timestamp / 1000 : msg.timestamp) : Date.now() / 1000,
+                    is_mine: false,
+                    id: 'p2p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+                    chatId: chatId
+                };
+                
+                if (typeof appendMessageToUI === 'function') {
+                    appendMessageToUI(messageData);
+                }
+            } else {
+                console.warn('⚠️ Decrypt failed:', decrypted.error);
+                loadMessagesForConversation(chatId, true);
+            }
+        } catch (e) {
+            console.warn('⚠️ P2P decrypt error, falling back to polling:', e);
+            loadMessagesForConversation(chatId, true);
+        }
     });
 }
 
@@ -630,15 +678,38 @@ async function startNewChat() {
 }
 
 function startPolling() {
-    if (pollInterval) clearInterval(pollInterval);
-    if (!currentChatAddress) { console.log('⏸️ Polling skipped: no chat selected'); return; }
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+    
+    if (!currentChatAddress) {
+        console.log('⏸️ Polling skipped: no chat selected');
+        return;
+    }
+    
     const chatAddressAtStart = currentChatAddress;
+    
     pollInterval = setInterval(() => {
-        if (currentChatAddress && currentChatAddress === chatAddressAtStart) { loadMessagesForConversation(currentChatAddress, true); }
-        else { console.log('🛑 Polling stopped: chat changed'); stopPolling(); }
+        if (currentChatAddress && currentChatAddress === chatAddressAtStart) {
+            loadMessagesForConversation(currentChatAddress, true);
+        } else {
+            console.log('🛑 Polling stopped: chat changed');
+            stopPolling();
+        }
     }, 3000);
+    
+    console.log('🔄 Polling started for:', currentChatAddress.substring(0, 16) + '...');
 }
-function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
+
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+        console.log('🛑 Polling stopped');
+    }
+}
+
 function handleStartWithParam() {
     const urlParams = new URLSearchParams(window.location.search);
     const startWith = urlParams.get('start_with'); const startName = urlParams.get('name');
@@ -649,16 +720,24 @@ function handleStartWithParam() {
 }
 
 // =============================================================================
-// === appendMessageToUI ===
+// === appendMessageToUI — ЕДИНСТВЕННОЕ место для уведомлений ===
 // =============================================================================
 function appendMessageToUI(msg) {
     const container = document.getElementById('messagesContainer');
-    if (!container) return;
-    if (document.getElementById(`msg-${msg.id}`)) return;
+    if (!container) {
+        console.warn('⚠️ appendMessageToUI: container not found');
+        return;
+    }
+    
+    if (document.getElementById(`msg-${msg.id}`)) {
+        console.debug('🔄 Skipping duplicate message:', msg.id);
+        return;
+    }
 
     const messageDiv = document.createElement('div');
     messageDiv.id = `msg-${msg.id}`;
-    messageDiv.className = `message received`;
+    messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'}`;
+    messageDiv.dataset.messageId = msg.id;
 
     const contentP = document.createElement('p');
     contentP.textContent = msg.content || '';
@@ -669,10 +748,11 @@ function appendMessageToUI(msg) {
         imageElem.src = msg.image;
         imageElem.alt = 'Image';
         imageElem.style.cssText = 'max-width:200px;max-height:200px;border-radius:4px;cursor:pointer;';
+        imageElem.dataset.fullSrc = msg.image;
         imageElem.onclick = () => openImageModal(msg.image);
     }
 
-    const timeStr = new Date(msg.timestamp * 1000).toLocaleString();
+    const timeStr = new Date((msg.timestamp || Date.now()/1000) * 1000).toLocaleString();
     const wrapper = document.createElement('div');
     wrapper.className = 'message-content-wrapper';
     wrapper.appendChild(contentP);
@@ -685,81 +765,21 @@ function appendMessageToUI(msg) {
     messageDiv.appendChild(wrapper);
     container.appendChild(messageDiv);
     
-    // 🔔 Уведомление: показываем ТОЛЬКО если вкладка не активна
-    // (даже если это текущий чат — пользователь может не смотреть на экран)
-    if (document.visibilityState !== 'visible' && window.NotificationManager?.show) {
-        window.NotificationManager.show(
-            msg.sender,
-            msg.chatId || currentChatAddress,
-            (msg.chatId || currentChatAddress).startsWith('group:'),
-            msg.content?.substring(0, 50) || '🔐 Новое сообщение',
-            msg.timestamp * 1000
-        );
+    // 🔔 УВЕДОМЛЕНИЯ — ТОЛЬКО ЗДЕСЬ и ТОЛЬКО ОДИН РАЗ
+    const shouldNotify = document.visibilityState !== 'visible' || 
+                         !window.NotificationManager?._isInActiveChat?.(msg.chatId);
+    
+    if (shouldNotify && window.NotificationManager?.handleIncomingMessage) {
+        window.NotificationManager.handleIncomingMessage({
+            sender: msg.sender,
+            chatId: msg.chatId || currentChatAddress,
+            content: msg.content,
+            image: msg.image,
+            timestamp: msg.timestamp * 1000
+        });
     }
     
     smartScrollToBottom(container, false);
-}
-
-// =============================================================================
-// === Экспорт для внешних скриптов ===
-// =============================================================================
-window.selectConversation = selectConversation;
-window.appendMessageToUI = appendMessageToUI;
-window.loadMessagesForConversation = loadMessagesForConversation;
-
-// =============================================================================
-// === P2P: Подписка на текущий чат ===
-// =============================================================================
-if (typeof window.subscribeToCurrentChat !== 'function') {
-  window.subscribeToCurrentChat = function(chatId) {
-    if (!window.p2p) return;
-
-    // Отписываемся от предыдущего чата
-    if (window._currentChatUnsub) {
-      window._currentChatUnsub();
-      window._currentChatUnsub = null;
-    }
-
-    window._currentChatUnsub = window.p2p.subscribe(chatId, async (msg) => {
-      console.log('📥 P2P message received from', msg.sender?.substring(0,16)+'...');
-
-      try {
-        const res = await fetch('/decrypt_message', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            encrypted_payload: msg.encryptedPayload,
-            peer_address: msg.sender
-          })
-        });
-        const decrypted = await res.json();
-
-        if (res.ok && decrypted?.content !== undefined) {
-          const messageData = {
-            sender: msg.sender,
-            content: decrypted.content,
-            image: decrypted.image,
-            timestamp: msg.timestamp ? msg.timestamp / 1000 : Date.now() / 1000,
-            is_mine: false,
-            id: 'p2p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-            chatId: chatId
-          };
-          
-          // Всегда отображаем сообщение в текущем чате
-          if (typeof appendMessageToUI === 'function') {
-            appendMessageToUI(messageData);
-          }
-        }
-      } catch (e) {
-        console.warn('⚠️ P2P decrypt failed, will poll server', e);
-        if (window.currentChatAddress) {
-          loadMessagesForConversation(window.currentChatAddress, true);
-        }
-      }
-    });
-
-    console.log(`✅ Listening P2P: ${chatId.substring(0,20)}...`);
-  };
 }
 
 // =============================================================================
@@ -817,12 +837,22 @@ function showNewMessagesBadge(count = 1) {
 }
 
 // =============================================================================
+// === Экспорт для внешних скриптов ===
+// =============================================================================
+window.selectConversation = selectConversation;
+window.appendMessageToUI = appendMessageToUI;
+window.loadMessagesForConversation = loadMessagesForConversation;
+
+// =============================================================================
 // === Инициализация DOM ===
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
-    // Инициализируем NotificationManager
     if (window.NotificationManager?.init) {
         window.NotificationManager.init();
+    }
+    
+    if (currentChatAddress && window.NotificationManager?.setActiveChat) {
+        window.NotificationManager.setActiveChat(currentChatAddress);
     }
     
     loadConversations();
@@ -871,11 +901,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const closeImageModalBtn = document.querySelector('#imageModal .close-image-modal');
     if (closeImageModalBtn) closeImageModalBtn.onclick = closeImageModal;
 
-    if (window.currentChatAddress && typeof window.subscribeToCurrentChat === 'function') {
-        window.subscribeToCurrentChat(window.currentChatAddress);
-    }
-
-    // 🔊 Инициализация аудио при первом взаимодействии
     const initAudioOnInteraction = () => {
         if (window.NotificationManager?.audioCtx?.state === 'suspended') {
             window.NotificationManager.audioCtx.resume().catch(() => {});
@@ -887,26 +912,59 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('touchstart', initAudioOnInteraction, { passive: true });
 });
 
+// =============================================================================
+// === Очистка при выгрузке ===
+// =============================================================================
 window.addEventListener('beforeunload', function() {
+    console.log('🧹 Cleaning up on page unload');
+    
     forceCloseQRScannerInModal();
     stopPolling();
-    if (window._currentChatUnsub) window._currentChatUnsub();
+    
+    if (currentChatUnsub && typeof currentChatUnsub === 'function') {
+        currentChatUnsub();
+        currentChatUnsub = null;
+    }
+    
+    if (window.p2p && typeof window.p2p.unsubscribeAll === 'function') {
+        window.p2p.unsubscribeAll();
+    }
+    
+    if (window.NotificationManager?.destroy) {
+        window.NotificationManager.destroy();
+    }
 });
 
+// =============================================================================
+// === Обработчик клавиш ===
+// =============================================================================
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
         const newChatModal = document.getElementById('newChatModal');
         const imageModal = document.getElementById('imageModal');
-        if (newChatModal && newChatModal.style.display === 'block') closeNewChatModal();
-        else if (imageModal && imageModal.style.display === 'block') closeImageModal();
+        if (newChatModal && newChatModal.style.display === 'block') {
+            closeNewChatModal();
+        } else if (imageModal && imageModal.style.display === 'block') {
+            closeImageModal();
+        }
     }
 });
 
+// =============================================================================
+// === visibilitychange — управление уведомлениями ===
+// =============================================================================
 document.addEventListener('visibilitychange', function() {
-    if (document.hidden) forceCloseQRScannerInModal();
-    // При возврате на вкладку — останавливаем мигание
-    if (document.visibilityState === 'visible') {
-        window.NotificationManager?.stopBlink();
+    if (document.hidden) {
+        forceCloseQRScannerInModal();
+    } else {
+        if (window.NotificationManager?.stopBlink) {
+            window.NotificationManager.stopBlink();
+        }
+        document.title = window.NotificationManager?.originalTitle || document.title;
+        
+        if (currentChatAddress) {
+            loadMessagesForConversation(currentChatAddress, true);
+        }
     }
 });
 </script>
