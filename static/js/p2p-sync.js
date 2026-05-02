@@ -1,5 +1,8 @@
 /**
- * p2p-sync.js — P2P-синхронизация с fallback на Long Polling + Уведомления
+ * p2p-sync.js — P2P-синхронизация с fallback на Long Polling
+ * 
+ * 🔔 Уведомления теперь обрабатываются ТОЛЬКО через window.NotificationManager
+ * для предотвращения дублирования звуков и уведомлений
  */
 class P2PSync {
   constructor() {
@@ -29,16 +32,8 @@ class P2PSync {
             tx_id: payload.tx_id,
             via: 'gun'
           });
-
-          // 🔔 Уведомление при получении через Gun
-          if (window.NotificationManager?.show) {
-            window.NotificationManager.show(
-              senderAddr,
-              chatId,
-              chatId.startsWith('group:'),
-              '🔐 Новое сообщение'
-            );
-          }
+          // 🔔 Уведомления обрабатываются в chat.html через appendMessageToUI
+          // Здесь НЕ вызываем NotificationManager чтобы избежать дублирования
         } catch (e) {
           console.warn('⚠️ P2P parse error:', e);
         }
@@ -92,16 +87,8 @@ class P2PSync {
                 tx_id: msg.tx_id,
                 via: 'poll'
               });
-
-              // 🔔 Уведомление при получении через Polling
-              if (window.NotificationManager?.show) {
-                window.NotificationManager.show(
-                  msg.sender,
-                  chatId,
-                  chatId.startsWith('group:'),
-                  '🔐 Новое сообщение'
-                );
-              }
+              // 🔔 Уведомления обрабатываются в chat.html через appendMessageToUI
+              // Здесь НЕ вызываем NotificationManager чтобы избежать дублирования
             });
           }
         }
@@ -158,3 +145,4 @@ class P2PSync {
 }
 
 window.P2PSync = P2PSync;
+
