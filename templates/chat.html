@@ -373,6 +373,22 @@ const QRScanner = {
   }
 };
 
+// === Глобальные обёртки для QRScanner (ВСТАВИТЬ СЮДА) ===
+// =============================================================================
+function openQRScannerInModal() {
+  QRScanner.openInModal();
+}
+
+function forceCloseQRScannerInModal() {
+  QRScanner.close();
+}
+
+// Опционально: экспорт для отладки
+window.QRScanner = QRScanner;
+window.openQRScannerInModal = openQRScannerInModal;
+window.forceCloseQRScannerInModal = forceCloseQRScannerInModal;
+
+
 // =============================================================================
 // === Chat Functions ===
 // =============================================================================
