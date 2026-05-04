@@ -22,11 +22,9 @@
         style="font-size: 13px; line-height: 1.6;"
       ></textarea>
 
-      <div id="errorMsg" class="hidden" style="color: var(--status-error); font-size: 13px;"></div>
+      <div id="errorMsg" class="hidden error"></div>
 
-      <button type="submit" class="btn btn-primary" id="loginBtn" style="width: 100%;">
-        Login
-      </button>
+      <button type="submit" class="btn btn-primary" id="loginBtn" style="width: 100%;">Login</button>
     </form>
 
     <div class="auth-footer">
@@ -37,40 +35,29 @@
 
 {% block scripts %}
 <script>
-document.getElementById('loginForm')?.addEventListener('submit', async function(e) {
-  e.preventDefault();
+document.addEventListener('DOMContentLoaded', function() {
+  const form = DOM.getById('loginForm');
+  const btn = DOM.getById('loginBtn');
+  const error = DOM.getById('errorMsg');
 
-  const mnemonic = document.getElementById('mnemonic').value.trim();
-  const btn = document.getElementById('loginBtn');
-  const error = document.getElementById('errorMsg');
+  FormHelpers.handleSubmit(form, btn, async (formData) => {
+    const mnemonic = formData.get('mnemonic')?.toString().trim();
 
-  error.classList.add('hidden');
-  btn.disabled = true;
-  btn.textContent = 'Logging in…';
-
-  try {
     const res = await fetch('/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mnemonic_phrase: mnemonic })
     });
-
     const data = await res.json();
 
     if (res.ok) {
       window.location.href = '/chat';
     } else {
       error.textContent = 'Error: ' + (data.error || 'Login failed');
-      error.classList.remove('hidden');
+      DOM.show(error);
+      throw new Error(data.error); // Для обработки в handleSubmit
     }
-  } catch (err) {
-    console.error('Login error:', err);
-    error.textContent = 'Network error. Is the server running?';
-    error.classList.remove('hidden');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Login';
-  }
+  });
 });
 </script>
 {% endblock %}

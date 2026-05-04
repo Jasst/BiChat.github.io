@@ -5,7 +5,7 @@
 {% block content %}
 <div class="chat-container">
   <!-- Sidebar -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="Navigation">
     <header class="sidebar-header">
       <div class="user-info">
         <span class="address font-mono" id="userAddress">{{ address[:10] }}…</span>
@@ -24,28 +24,33 @@
   <!-- Main Content -->
   <main class="main-content">
     <header class="chat-header">
+      <button class="btn btn-icon menu-toggle" id="menuToggle"
+              onclick="toggleSidebar()" aria-label="Toggle menu"
+              style="display: none;">☰</button>
       <h2>Groups</h2>
       <button class="btn btn-primary" onclick="openCreateModal()">+ New Group</button>
     </header>
 
-    <div class="list-container" id="groupsList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-md); padding: var(--space-md);">
+       <div class="list-container groups-grid" id="groupsList">
       <div class="loading">Loading groups…</div>
     </div>
   </main>
 </div>
+
+<div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- Create Group Modal -->
 <div id="createModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
       <h3>Create Group</h3>
-      <button class="modal-close" onclick="closeCreateModal()" aria-label="Close">&times;</button>
+      <button class="modal-close" onclick="ModalManager.close('createModal')" aria-label="Close">&times;</button>
     </header>
 
     <div class="modal-body">
       <div class="form-group">
         <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Group Name</label>
-        <input type="text" id="groupName" class="input" placeholder="e.g. Team Alpha" maxlength="100">
+        <input type="text" id="groupName" class="input" placeholder="e.g. Team Alpha" maxlength="100" data-validate="name">
       </div>
 
       <div class="form-group">
@@ -58,7 +63,7 @@
       <div class="form-group">
         <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Or Add Address</label>
         <div style="display: flex; gap: var(--space-xs);">
-          <input type="text" id="manualAddress" class="input input-monospace" placeholder="64-char hex" maxlength="64" style="flex: 1;">
+          <input type="text" id="manualAddress" class="input input-monospace" placeholder="64-char hex" maxlength="64" style="flex: 1;" data-validate="address">
           <button class="btn" onclick="addManualAddress()">Add</button>
         </div>
       </div>
@@ -70,12 +75,12 @@
         <div id="selectedList" style="display: flex; flex-wrap: wrap; gap: var(--space-xs);"></div>
       </div>
 
-      <div id="createError" class="hidden" style="color: var(--status-error); font-size: 13px;"></div>
+      <div id="createError" class="hidden error"></div>
     </div>
 
     <footer class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitCreate()">Create</button>
+      <button class="btn btn-ghost" onclick="ModalManager.close('createModal')">Cancel</button>
+      <button class="btn btn-primary" id="createSubmitBtn" onclick="submitCreate()">Create</button>
     </footer>
   </div>
 </div>
@@ -85,7 +90,7 @@
   <div class="modal">
     <header class="modal-header">
       <h3 id="detailTitle">Group Details</h3>
-      <button class="modal-close" onclick="closeDetailModal()" aria-label="Close">&times;</button>
+      <button class="modal-close" onclick="ModalManager.close('detailModal')" aria-label="Close">&times;</button>
     </header>
 
     <div class="modal-body">
@@ -115,35 +120,24 @@
 </div>
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
 <script>
-// === State ===
+// === Groups-Specific State ===
 const MY_ADDR = "{{ address|default('', true) }}";
 let allContacts = [];
 let selectedMembers = {};
 let currentGroup = null;
 
-// === Utilities ===
-const Utils = {
-  escapeHtml: (str) => {
-    if (!str) return '';
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
-  },
-  escapeAttr: (str) => String(str || '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
-};
-
 // === Load Groups ===
 async function loadGroups() {
-  const container = document.getElementById('groupsList');
+  const container = DOM.getById('groupsList');
+  if (!container) return;
+
   container.innerHTML = '<div class="loading">Loading…</div>';
 
   try {
     const res = await fetch('/get_groups');
     const data = await res.json();
-
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
     if (!data.groups?.length) {
@@ -161,35 +155,36 @@ async function loadGroups() {
     container.style.display = 'grid';
 
     data.groups.forEach(g => {
-      const card = document.createElement('div');
-      card.className = 'list-item';
-      card.style.flexDirection = 'column';
-      card.style.alignItems = 'flex-start';
-      card.dataset.id = g.id;
+      const card = DOM.createElement('div', {
+        className: 'list-item',
+        dataset: { id: g.id }
+      });
 
       const isCreator = g.creator === MY_ADDR;
       const initials = g.name.slice(0, 2).toUpperCase();
       const date = g.created_at ? new Date(g.created_at * 1000).toLocaleDateString() : '—';
 
       card.innerHTML = `
-        <div style="display: flex; align-items: center; gap: var(--space-sm); width: 100%; margin-bottom: var(--space-xs);">
-          <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; font-weight: 600;">${Utils.escapeHtml(initials)}</div>
-          <div style="flex: 1; min-width: 0;">
-            <div class="name truncate" style="font-weight: 500;">${Utils.escapeHtml(g.name)}</div>
-            <div class="text-muted" style="font-size: 11px;">ID: ${Utils.escapeHtml(g.id.slice(0, 12))}…</div>
-          </div>
-        </div>
-        ${isCreator ? '<span style="font-size: 10px; background: var(--accent-soft); color: var(--accent); padding: 2px 6px; border-radius: 4px;">Creator</span>' : ''}
-        <div class="text-muted" style="font-size: 12px; margin: var(--space-xs) 0;">
-          ${g.members.length} member${g.members.length !== 1 ? 's' : ''} · ${date}
-        </div>
-        <div style="display: flex; gap: var(--space-xs); width: 100%;">
-          <button class="btn btn-primary" style="flex: 1;" onclick="openGroupChatById('group:${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')">💬 Chat</button>
-          <button class="btn" onclick="openDetail('${Utils.escapeAttr(JSON.stringify(g))}')">Info</button>
-          ${isCreator ? `<button class="btn" style="color: var(--status-error);" onclick="deleteGroup('${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')" title="Delete">🗑</button>` : ''}
-        </div>
-      `;
+  <div class="group-card-header">
+    <div class="group-card-avatar">${Utils.escapeHtml(initials)}</div>
+    <div class="group-card-title">
+      <div class="group-card-name truncate">${Utils.escapeHtml(g.name)}</div>
+      <div class="group-card-id">ID: ${Utils.escapeHtml(g.id.slice(0, 12))}…</div>
+    </div>
+  </div>
 
+  ${isCreator ? `<span class="group-card-creator-badge">Creator</span>` : ''}
+
+  <div class="group-card-meta">
+    ${g.members.length} member${g.members.length !== 1 ? 's' : ''} · ${date}
+  </div>
+
+  <div class="group-card-actions">
+    <button class="btn btn-primary" onclick="openGroupChatById('group:${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')">💬 Chat</button>
+    <button class="btn" onclick="openDetail('${Utils.escapeAttr(JSON.stringify(g))}')">Info</button>
+    ${isCreator ? `<button class="btn btn-icon" style="color: var(--status-error);" onclick="deleteGroup('${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')" title="Delete">🗑</button>` : ''}
+  </div>
+      `;
       container.appendChild(card);
     });
   } catch (error) {
@@ -201,15 +196,14 @@ async function loadGroups() {
 // === Create Modal ===
 async function openCreateModal() {
   selectedMembers = {};
-  document.getElementById('groupName').value = '';
-  document.getElementById('manualAddress').value = '';
-  document.getElementById('createError').classList.add('hidden');
+  DOM.getById('groupName').value = '';
+  DOM.getById('manualAddress').value = '';
+  DOM.hide(DOM.getById('createError'));
   renderSelected();
+  ModalManager.open('createModal');
 
-  const list = document.getElementById('contactsList');
+  const list = DOM.getById('contactsList');
   list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs);">Loading…</p>';
-
-  document.getElementById('createModal').classList.remove('hidden');
 
   try {
     const res = await fetch('/get_contacts');
@@ -221,26 +215,19 @@ async function openCreateModal() {
   }
 }
 
-function closeCreateModal() {
-  document.getElementById('createModal').classList.add('hidden');
-}
-
 function renderContacts() {
-  const list = document.getElementById('contactsList');
-
+  const list = DOM.getById('contactsList');
   if (!allContacts.length) {
     list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs); font-size: 12px;">No contacts. Add some first or use manual address.</p>';
     return;
   }
-
   list.innerHTML = '';
-
   allContacts.forEach(c => {
-    const item = document.createElement('label');
-    item.style.cssText = 'display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs); cursor: pointer; border-radius: var(--radius-sm);';
+    const item = DOM.createElement('label', {
+      style: 'display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs); cursor: pointer; border-radius: var(--radius-sm);'
+    });
     item.onmouseenter = () => item.style.background = 'var(--bg-hover)';
     item.onmouseleave = () => item.style.background = '';
-
     item.innerHTML = `
       <input type="checkbox" value="${Utils.escapeAttr(c.address)}"
              onchange="toggleMember('${Utils.escapeAttr(c.address)}', '${Utils.escapeAttr(c.name)}', this.checked)"
@@ -250,7 +237,6 @@ function renderContacts() {
         <div class="text-muted font-mono" style="font-size: 10px;">${Utils.escapeHtml(c.address.slice(0, 20))}…</div>
       </div>
     `;
-
     list.appendChild(item);
   });
 }
@@ -262,26 +248,20 @@ function toggleMember(addr, name, checked) {
 }
 
 function addManualAddress() {
-  const input = document.getElementById('manualAddress');
+  const input = DOM.getById('manualAddress');
   const addr = input.value.trim();
+  const validation = FormHelpers.validateAddress(addr);
 
-  if (!addr) return;
-  if (addr.length !== 64 || !/^[a-fA-F0-9]+$/.test(addr)) {
-    showError('Address must be 64 hex characters');
+  if (!validation.valid) {
+    showError(validation.error);
     return;
   }
-  if (addr === MY_ADDR) {
-    showError('You are included automatically');
-    return;
-  }
-  if (selectedMembers[addr]) {
-    showError('Already added');
-    return;
-  }
+  if (addr === MY_ADDR) { showError('You are included automatically'); return; }
+  if (selectedMembers[addr]) { showError('Already added'); return; }
 
   selectedMembers[addr] = addr.slice(0, 10) + '…';
   input.value = '';
-  document.getElementById('createError').classList.add('hidden');
+  DOM.hide(DOM.getById('createError'));
   renderSelected();
 }
 
@@ -294,44 +274,38 @@ function removeMember(addr) {
 
 function renderSelected() {
   const count = Object.keys(selectedMembers).length;
-  const section = document.getElementById('selectedSection');
-  const list = document.getElementById('selectedList');
+  const section = DOM.getById('selectedSection');
+  const list = DOM.getById('selectedList');
+  DOM.getById('memberCount').textContent = count;
 
-  document.getElementById('memberCount').textContent = count;
-
-  if (count === 0) {
-    section.classList.add('hidden');
-    return;
-  }
-
-  section.classList.remove('hidden');
+  if (count === 0) { DOM.hide(section); return; }
+  DOM.show(section);
   list.innerHTML = '';
 
   Object.entries(selectedMembers).forEach(([addr, name]) => {
-    const tag = document.createElement('span');
-    tag.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); color: var(--accent); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 12px;';
-    tag.innerHTML = `
-      ${Utils.escapeHtml(name)}
-      <button onclick="removeMember('${Utils.escapeAttr(addr)}')" style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
-    `;
+    const tag = DOM.createElement('span', {
+      style: 'display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); color: var(--accent); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 12px;',
+      html: `${Utils.escapeHtml(name)}<button onclick="removeMember('${Utils.escapeAttr(addr)}')" style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; line-height: 1;">&times;</button>`
+    });
     list.appendChild(tag);
   });
 }
 
 function showError(msg) {
-  const el = document.getElementById('createError');
+  const el = DOM.getById('createError');
   el.textContent = Utils.escapeHtml(msg);
-  el.classList.remove('hidden');
+  DOM.show(el);
 }
 
 async function submitCreate() {
-  const name = document.getElementById('groupName').value.trim();
+  const name = DOM.getById('groupName').value.trim();
   const members = Object.keys(selectedMembers);
 
-  if (!name) { showError('Enter a group name'); return; }
+  const nameValid = FormHelpers.validateName(name);
+  if (!nameValid.valid) { showError(nameValid.error); return; }
   if (!members.length) { showError('Add at least one member'); return; }
 
-  const btn = document.querySelector('#createModal .btn-primary');
+  const btn = DOM.getById('createSubmitBtn');
   btn.disabled = true;
   btn.textContent = 'Creating…';
 
@@ -341,15 +315,11 @@ async function submitCreate() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, members })
     });
-
     const data = await res.json();
 
-    if (!res.ok) {
-      showError(data.error || 'Failed to create');
-      return;
-    }
+    if (!res.ok) { showError(data.error || 'Failed to create'); return; }
 
-    closeCreateModal();
+    ModalManager.close('createModal');
     await loadGroups();
 
     if (confirm(`Group "${name}" created!\nOpen chat now?`)) {
@@ -369,40 +339,32 @@ function openDetail(groupJson) {
   const g = JSON.parse(groupJson);
   currentGroup = g;
 
-  document.getElementById('detailTitle').textContent = g.name;
-  document.getElementById('detailId').textContent = g.id;
-  document.getElementById('detailCreator').textContent =
-    g.creator === MY_ADDR ? g.creator + ' (You)' : g.creator;
-  document.getElementById('detailDate').textContent =
-    g.created_at ? new Date(g.created_at * 1000).toLocaleString() : '—';
-  document.getElementById('detailCount').textContent = g.members.length;
+  DOM.getById('detailTitle').textContent = g.name;
+  DOM.getById('detailId').textContent = g.id;
+  DOM.getById('detailCreator').textContent = g.creator === MY_ADDR ? g.creator + ' (You)' : g.creator;
+  DOM.getById('detailDate').textContent = g.created_at ? new Date(g.created_at * 1000).toLocaleString() : '—';
+  DOM.getById('detailCount').textContent = g.members.length;
 
-  const list = document.getElementById('detailMembers');
+  const list = DOM.getById('detailMembers');
   list.innerHTML = '';
-
   g.members.forEach(addr => {
     const isMe = addr === MY_ADDR;
     const name = isMe ? 'You' : addr.slice(0, 16) + '…';
-
-    const row = document.createElement('div');
-    row.style.cssText = 'display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs); border-bottom: 1px solid var(--border-color);';
-    row.innerHTML = `
-      <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">${Utils.escapeHtml(name[0])}</div>
-      <div style="flex: 1; min-width: 0;">
-        <div style="font-size: 13px;">${Utils.escapeHtml(isMe ? 'You' : addr.slice(0, 16) + '…')}</div>
-        <div class="text-muted font-mono" style="font-size: 10px;">${Utils.escapeHtml(addr)}</div>
-      </div>
-      ${isMe ? '<span style="font-size: 10px; background: var(--accent-soft); color: var(--accent); padding: 2px 6px; border-radius: 4px;">ME</span>' : ''}
-    `;
+    const row = DOM.createElement('div', {
+      style: 'display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs); border-bottom: 1px solid var(--border-color);',
+      html: `
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">${Utils.escapeHtml(name[0])}</div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 13px;">${Utils.escapeHtml(isMe ? 'You' : addr.slice(0, 16) + '…')}</div>
+          <div class="text-muted font-mono" style="font-size: 10px;">${Utils.escapeHtml(addr)}</div>
+        </div>
+        ${isMe ? '<span style="font-size: 10px; background: var(--accent-soft); color: var(--accent); padding: 2px 6px; border-radius: 4px;">ME</span>' : ''}
+      `
+    });
     list.appendChild(row);
   });
 
-  document.getElementById('detailModal').classList.remove('hidden');
-}
-
-function closeDetailModal() {
-  document.getElementById('detailModal').classList.add('hidden');
-  currentGroup = null;
+  ModalManager.open('detailModal');
 }
 
 // === Chat Navigation ===
@@ -410,7 +372,6 @@ function openGroupChatById(addr, name) {
   const params = new URLSearchParams({ start_with: addr, name });
   location.href = '/chat?' + params;
 }
-
 function openGroupChat() {
   if (!currentGroup) return;
   openGroupChatById('group:' + currentGroup.id, currentGroup.name);
@@ -419,9 +380,8 @@ function openGroupChat() {
 // === Delete Group ===
 async function deleteGroup(id, name) {
   if (!confirm(`Delete group "${name}"?\n\n⚠️ This cannot be undone.`)) return;
-
-  const confirm = prompt(`Type "DELETE" to confirm:`);
-  if (!confirm || confirm.trim().toUpperCase() !== 'DELETE') {
+  const confirmInput = prompt(`Type "DELETE" to confirm:`);
+  if (!confirmInput || confirmInput.trim().toUpperCase() !== 'DELETE') {
     window.NotificationManager?.showToast('Cancelled', 'warning');
     return;
   }
@@ -432,7 +392,6 @@ async function deleteGroup(id, name) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ group_id: id })
     });
-
     const data = await res.json();
 
     if (res.ok) {
@@ -453,24 +412,18 @@ async function deleteGroup(id, name) {
 document.addEventListener('DOMContentLoaded', function() {
   loadGroups();
 
-  // Enter key for manual address
-  document.getElementById('manualAddress')?.addEventListener('keydown', (e) => {
+  // Валидация полей
+  const nameInput = DOM.getById('groupName');
+  const addrInput = DOM.getById('manualAddress');
+  const errorEl = DOM.getById('createError');
+
+  if (nameInput) FormHelpers.attachValidation(nameInput, (v) => FormHelpers.validateName(v), errorEl);
+  if (addrInput) FormHelpers.attachValidation(addrInput, (v) => FormHelpers.validateAddress(v), errorEl);
+
+  // Enter для manual address
+  addrInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); addManualAddress(); }
   });
-});
-
-// === Modal backdrop close ===
-window.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal-overlay')) {
-    e.target.classList.add('hidden');
-  }
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeCreateModal();
-    closeDetailModal();
-  }
 });
 </script>
 {% endblock %}

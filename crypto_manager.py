@@ -282,40 +282,32 @@ def encrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
     }
 
 
+
+
 def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str,
                    encrypted_payload: Dict[str, Any]) -> Dict[str, Optional[str]]:
-    """
-    Расшифровка гибридного сообщения.
-
-    Параметры:
-    - my_mnemonic: моя мнемоника (расшифровываю я)
-    - peer_public_key_b64: публичный ключ ОТПРАВИТЕЛЯ (чтобы вычислить shared secret)
-    - peer_address: адрес ОТПРАВИТЕЛЯ (для верификации ключа)
-    - encrypted_payload: зашифрованные данные
-    """
     result: Dict[str, Optional[str]] = {'content': None, 'image': None}
 
     try:
+        # 🔒 Валидация входных данных
+        if not peer_public_key_b64 or not peer_address:
+            logger.error(f"❌ decrypt_hybrid: missing peer_public_key_b64 or peer_address")
+            return result
+
         enc_session_key = encrypted_payload.get('enc_session_key')
         if not enc_session_key:
-            logger.warning("❌ Missing enc_session_key")
+            logger.warning("❌ Missing enc_session_key in payload")
             return result
 
         # 🔍 Лог для отладки
-        logger.debug(f"🔓 Decrypting from peer={peer_address[:16]}...")
+        logger.debug(f"🔓 Decrypt attempt: peer={peer_address[:16]}...")
 
-        # 🔒 Проверка: адрес в пейлоаде должен совпадать с переданным peer_address
-        # СТАЛО — просто логируем для отладки, не ругаемся
-        payload_peer = encrypted_payload.get('peer_address')
-        if payload_peer:
-            logger.debug(f"ℹ️ payload.peer_address={payload_peer[:16]}... sender={peer_address[:16]}...")
-
-        # Вычисляем общий секрет с моим приватным ключом и публичным ключом отправителя
+        # 🔒 Вычисляем общий секрет (проверка адреса встроена)
         shared_key = compute_shared_key_b64(my_mnemonic, peer_public_key_b64, peer_address)
 
         session_key_b64 = decrypt_message_aead(shared_key, enc_session_key)
         if not session_key_b64 or session_key_b64 == "[Decryption Failed]":
-            logger.warning("❌ Failed to decrypt session key")
+            logger.warning(f"❌ Session key decryption failed for peer={peer_address[:16]}...")
             return result
 
         session_key = base64.b64decode(session_key_b64)
@@ -324,7 +316,7 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
         result['image'] = decrypt_message_aead(session_key, encrypted_payload.get('image'))
 
         if result['content'] == "[Decryption Failed]":
-            logger.warning("❌ Content decryption failed")
+            logger.warning(f"❌ Content decryption failed for message from {peer_address[:16]}...")
 
         return result
 
@@ -335,9 +327,8 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
             logger.error(f"❌ Decryption ValueError: {e}")
         return result
     except Exception as e:
-        logger.error(f"❌ Hybrid decryption failed: {type(e).__name__}: {e}", exc_info=True)
+        logger.error(f"❌ Hybrid decryption unexpected error: {type(e).__name__}: {e}", exc_info=True)
         return result
-
 
 # =============================================================================
 # 🔄 Часть 6: Утилиты и кэширование

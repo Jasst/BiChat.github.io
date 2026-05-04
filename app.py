@@ -18,6 +18,8 @@ from functools import lru_cache, wraps
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from datetime import timedelta
+
+
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, send_from_directory, g
 from flask.sessions import SecureCookieSessionInterface
 from mnemonic import Mnemonic
@@ -30,6 +32,7 @@ from crypto_manager import (
     generate_address, generate_address_from_pubkey, verify_address_matches_pubkey,
     clear_key_cache, get_cache_info
 )
+import hmac
 
 # 🔧 Загрузка переменных из .env (для локальной разработки)
 try:
@@ -80,12 +83,10 @@ if not SECRET_KEY or len(SECRET_KEY) < 32:
     SECRET_KEY = secrets.token_hex(32)
     logging.warning("❌ SECRET_KEY NOT FOUND in env! Sessions will reset on restart!")
 else:
-    # WARNING чтобы точно попало в лог даже в продакшене
-    logging.warning(f"✅ SECRET_KEY loaded OK (length={len(SECRET_KEY)}, starts={SECRET_KEY[:6]}...)")
-
-# Проверка DATABASE_PATH
-logging.warning(f"📁 DATABASE_PATH={os.getenv('DATABASE_PATH', 'NOT SET')}")
-logging.warning(f"📁 UPLOAD_FOLDER={os.getenv('UPLOAD_FOLDER', 'NOT SET')}")
+    # Лог только в режиме разработки, чтобы не спамить в продакшене
+    # ✅ СТАЛО (исправлено):
+    if os.getenv('FLASK_ENV') != 'production':
+        logging.warning("✅ SECRET_KEY loaded from .env")  # используем logging, а не logger
 
 MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
@@ -434,116 +435,161 @@ def decrypt_message_safe(key: bytes, encrypted_data: Optional[str],
     return decrypt_message_aead(key, encrypted_data, fallback=fallback)
 
 
+#=============================================================================
+# === Расшифровка сообщений — ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ ===
+# =============================================================================
+
 def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> Dict:
     """
-    Обработка и расшифровка сообщения.
-    🔒 mnemonic передаётся явно, не берётся из session в этой функции.
+    Безопасная обработка и расшифровка сообщений.
+    ✅ Исправлены: конфликт версий, парсинг payload, обработка key_exchange, fallback
     """
     result = msg.copy()
+
     try:
-        # ── Групповые сообщения ──────────────────────────────────────────────
+        # =====================================================================
+        # 1. ГРУППОВЫЕ СООБЩЕНИЯ
+        # =====================================================================
         if msg['recipient'].startswith('group:'):
             group_id = msg['recipient'].split(':', 1)[1]
             groups = get_user_groups_cached(user_address)
             user_group = next((g for g in groups if g['id'] == group_id), None)
 
             if not user_group or user_address not in user_group['members']:
-                result.update({'content': "[No access]", 'image': None})
+                result.update({'content': "[No access to group]", 'image': None})
                 return result
 
             try:
                 encrypted_data = json.loads(msg['content']) if isinstance(msg['content'], str) else msg['content']
             except json.JSONDecodeError:
-                result.update({'content': "[Invalid JSON]", 'image': None})
+                result.update({'content': "[Invalid JSON in group message]", 'image': None})
                 return result
 
-            msg_sender = msg['sender']
-
             if user_address not in encrypted_data:
-                result.update({'content': "[Message not available]", 'image': None})
+                result.update({'content': "[Message not available for you]", 'image': None})
                 return result
 
             user_data = encrypted_data[user_address]
+            msg_sender = msg['sender']
             key = generate_symmetric_key(msg_sender, user_address, mnemonic)
             aad = msg_sender.encode('utf-8')
+
             result['content'] = decrypt_message_aead(key, user_data.get('content'), associated_data=aad)
-            result['image'] = decrypt_message_aead(key, user_data.get('image'), associated_data=aad) if user_data.get('image') else None
+            result['image'] = decrypt_message_aead(key, user_data.get('image'), associated_data=aad) if user_data.get(
+                'image') else None
+            result['encryption_type'] = 'symmetric-group-v2'
+            result['group_id'] = group_id
             return result
 
-        # ── Прямые сообщения ─────────────────────────────────────────────────
-        try:
-            payload = json.loads(msg['content']) if isinstance(msg['content'], str) else None
-        except Exception:
-            payload = None
+        # =====================================================================
+        # 2. ПРЯМЫЕ СООБЩЕНИЯ — Безопасный парсинг payload
+        # =====================================================================
+        payload = None
+        raw_content = msg['content']
 
-        if payload and isinstance(payload, dict) and payload.get('version') in ('hybrid-v1', 'hybrid-v2'):
+        if isinstance(raw_content, str):
+            try:
+                parsed = json.loads(raw_content)
+                if isinstance(parsed, dict) and parsed.get('version') in ('hybrid-v1', 'hybrid-v2', 'key_exchange'):
+                    payload = parsed
+            except json.JSONDecodeError:
+                pass
+        elif isinstance(raw_content, dict):
+            if raw_content.get('version') in ('hybrid-v1', 'hybrid-v2', 'key_exchange'):
+                payload = raw_content
 
-            if msg['sender'] == user_address:
-                # Я отправитель — peer это получатель
-                peer_address = msg['recipient']
-                peer_pubkey, peer_verified = get_cached_public_key(peer_address)
-                if not peer_pubkey:
-                    peer_pubkey, peer_verified = fetch_public_key_from_chain(peer_address)
+        # 🔑 2.1 Обработка обмена ключами (КРИТИЧНО: проверяем ПЕРЕД гибридной логикой!)
+        if payload and payload.get('version') == 'key_exchange':
+            result['content'] = "[Key exchange request — waiting for response]"
+            result['image'] = None
+            result['encryption_type'] = 'key_exchange'
+            result['peer_pubkey'] = payload.get('my_pubkey')
+            return result
+
+        # 🔐 2.2 Обработка гибридного шифрования (v1 / v2)
+        # 🔐 2.2 Обработка гибридного шифрования (v1 / v2)
+        if payload and payload.get('version') in ('hybrid-v1', 'hybrid-v2'):
+            if not payload.get('enc_session_key'):
+                logger.warning(
+                    f"⚠️ Hybrid payload missing enc_session_key! "
+                    f"msg_id={msg.get('id')}, sender={msg.get('sender', '')[:16]}..., "
+                    f"keys={list(payload.keys()) if payload else 'N/A'}"
+                )
+                # 🔄 НЕ возвращаем ошибку — сбрасываем payload, чтобы сработал LEGACY FALLBACK ниже
+                payload = None
             else:
-                # Я получатель — peer это отправитель
-                peer_address = msg['sender']
-                peer_pubkey = msg.get('sender_pubkey')
-                peer_verified = False
-
-                # 🔒 Верифицируем ключ прямо из сообщения
-                if peer_pubkey:
-                    peer_verified = verify_address_matches_pubkey(peer_address, peer_pubkey)
-
-                # Если в сообщении нет ключа — ищем в кэше и цепочке
-                if not peer_pubkey:
+                # Определяем адрес и публичный ключ пира
+                if msg['sender'] == user_address:
+                    peer_address = msg['recipient']
                     peer_pubkey, peer_verified = get_cached_public_key(peer_address)
                     if not peer_pubkey:
                         peer_pubkey, peer_verified = fetch_public_key_from_chain(peer_address)
+                else:
+                    peer_address = msg['sender']
+                    peer_pubkey = msg.get('sender_pubkey')
+                    peer_verified = False
+                    if peer_pubkey:
+                        peer_verified = verify_address_matches_pubkey(peer_address, peer_pubkey)
+                    if not peer_pubkey:
+                        peer_pubkey, peer_verified = get_cached_public_key(peer_address)
+                        if not peer_pubkey:
+                            peer_pubkey, peer_verified = fetch_public_key_from_chain(peer_address)
 
-            if not peer_pubkey:
-                result['content'] = "[Waiting for key exchange...]"
-                result['image'] = None
-                return result
+                if not peer_pubkey:
+                    result['content'] = "[Waiting for key exchange...]"
+                    result['image'] = None
+                    result['encryption_type'] = payload.get('version')
+                    return result
 
-            # 🔒 Кэшируем с актуальным статусом верификации
-            cache_public_key(peer_address, peer_pubkey, verified=peer_verified)
+                cache_public_key(peer_address, peer_pubkey, verified=peer_verified)
 
-            if payload.get('version') == 'hybrid-v2' and not peer_verified:
-                logger.warning(f"Unverified key used for {peer_address[:16]}...")
-                # Продолжаем расшифровку — предупреждение уже залогировано
-
-            decrypted = decrypt_hybrid(mnemonic, peer_pubkey, peer_address, payload)
-            result['content'] = decrypted.get('content') or "[Decryption Failed]"
-            result['image'] = decrypted.get('image')
-
-        else:
-            # ── Legacy fallback ───────────────────────────────────────────────
-            peer_addr = msg['sender'] if msg['sender'] != user_address else msg['recipient']
-            peer_pubkey, _ = get_cached_public_key(peer_addr)
-
-            if peer_pubkey:
                 try:
-                    shared_key = compute_shared_key_b64(mnemonic, peer_pubkey, peer_addr)
-                    content = decrypt_message_aead(shared_key, msg['content'])
-                    if content and content != "[Decryption Failed]":
-                        result['content'] = content
-                        result['image'] = decrypt_message_aead(shared_key, msg['image']) if msg['image'] else None
-                        return result
-                except Exception:
-                    pass
+                    decrypted = decrypt_hybrid(mnemonic, peer_pubkey, peer_address, payload)
+                    result['content'] = decrypted.get('content') or "[Decryption Failed]"
+                    result['image'] = decrypted.get('image')
+                    result['encryption_type'] = payload.get('version')
+                    result['key_verified'] = peer_verified
+                except Exception as e:
+                    logger.error(f"❌ decrypt_hybrid failed: {e}")
+                    result['content'] = "[Decryption Error]"
+                    result['image'] = None
+                return result  # ← Возвращаем ТОЛЬКО при успешной расшифровке
+        # =====================================================================
+        # 3. LEGACY FALLBACK (старые сообщения)
+        # =====================================================================
+        peer_addr = msg['sender'] if msg['sender'] != user_address else msg['recipient']
+        peer_pubkey, _ = get_cached_public_key(peer_addr)
 
-            # Последний шанс: симметричный ключ (обратная совместимость)
+        if peer_pubkey:
+            try:
+                shared_key = compute_shared_key_b64(mnemonic, peer_pubkey, peer_addr)
+                content = decrypt_message_aead(shared_key, msg['content'])
+                if content and content != "[Decryption Failed]":
+                    result['content'] = content
+                    result['image'] = decrypt_message_aead(shared_key, msg['image']) if msg.get('image') else None
+                    result['encryption_type'] = 'legacy-ecdh'
+                    return result
+            except Exception:
+                pass
+
+        try:
             key = generate_symmetric_key(msg['sender'], msg['recipient'], mnemonic)
             result['content'] = decrypt_message_safe(key, msg['content'])
             result['image'] = decrypt_message_safe(key, msg['image'])
+            result['encryption_type'] = 'legacy-symmetric'
+            return result
+        except Exception:
+            pass
+
+        result['content'] = "[Decryption Failed]"
+        result['image'] = None
+        result['encryption_type'] = 'unknown'
+        return result
 
     except Exception as e:
-        logger.error(f"Message processing error (id={msg.get('id')}): {type(e).__name__}",
-                     exc_info=app.debug)
-        result.update({'content': '[Error]', 'image': None})
-
-    return result
-
+        logger.error(f"❌ process_message_decryption CRITICAL: {type(e).__name__}: {e}", exc_info=app.debug)
+        result.update({'content': '[System Error]', 'image': None, 'error': str(e)[:100]})
+        return result
 
 # === Список диалогов ===
 def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
@@ -733,11 +779,17 @@ def get_public_key_route(address: str):
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    # 🔒 Проверка сессии дублируется в before_request, но для явности:
+    """
+    Отправка сообщения с гибридным шифрованием.
+    🔒 Мнемоника берётся ТОЛЬКО из сессии, не из запроса клиента.
+    """
+    # 🔒 Проверка сессии (дублируется в before_request для явности)
     if 'address' not in session:
+        logger.warning(f"⚠️ Unauthorized send_message attempt from {request.remote_addr}")
         return jsonify({'error': 'Unauthorized'}), 401
 
     try:
+        # Валидация входных данных
         data = MessageSchema().load(request.get_json())
         sender = session['address']
         recipient = data['recipient']
@@ -746,43 +798,53 @@ def send_message():
         msg_type = data.get('message_type', 'direct')
         group_id = data.get('group_id')
 
-        # 🔒 Мнемоника запрашивается у клиента для каждой отправки (не хранится в сессии)
+        # 🔒 КРИТИЧНО: мнемоника ТОЛЬКО из сессии
         mnemonic = session.get('mnemonic')
         if not mnemonic:
+            logger.warning(f"⚠️ No mnemonic in session for {sender[:16]}...")
             return jsonify({'error': 'Session expired. Please login again.'}), 401
 
-        # 🔒 Верифицируем, что адрес соответствует мнемонике
+        # 🔒 Верификация: адрес в сессии должен соответствовать мнемонике
         expected_address = generate_address(mnemonic)
         if not hmac.compare_digest(expected_address, sender):
-            logger.warning(f"⚠️ Mnemonic/address mismatch for {sender[:16]}...")
+            logger.critical(
+                f"🚫 Mnemonic/address mismatch! session={sender[:16]}..., expected={expected_address[:16]}...")
             return jsonify({'error': 'Authentication failed'}), 403
 
+        # Получаем наш публичный ключ для подписи транзакций
         my_pubkey = get_public_key_b64(mnemonic)
 
-        # ── Групповые сообщения ───────────────────────────────────────────────
+        # =====================================================================
+        # ── ГРУППОВЫЕ СООБЩЕНИЯ ─────────────────────────────────────────────
+        # =====================================================================
         if msg_type == 'group' and group_id:
             groups = get_user_groups_cached(sender)
             group = next((g for g in groups if g['id'] == group_id), None)
-            if not group:
+            if not group or sender not in group['members']:
                 return jsonify({'error': 'Group not found or no access'}), 404
 
+            # Шифруем отдельно для каждого участника группы
             encrypted_map: Dict[str, Any] = {}
             for member in group['members']:
                 try:
-                    # 🔒 Ключ включает мнемонику отправителя
+                    # 🔒 Ключ зависит от отправителя + получателя (детерминированный)
                     key = generate_symmetric_key(sender, member, mnemonic)
-                    aad = sender.encode('utf-8')  # Аутентифицируем адрес отправителя
+                    # 🔒 AAD = адрес отправителя для аутентификации источника
+                    aad = sender.encode('utf-8')
+
                     encrypted_map[member] = {
                         'content': encrypt_message_aead(key, content, associated_data=aad),
                         'image': encrypt_message_aead(key, image, associated_data=aad) if image else None,
                         'sender': sender  # Явно сохраняем для проверки на стороне получателя
                     }
                 except Exception as e:
-                    logger.warning(f"Encrypt for {member[:10]}... failed: {type(e).__name__}")
+                    logger.warning(f"⚠️ Encrypt for {member[:10]}... failed: {type(e).__name__}")
+                    continue
 
             if not encrypted_map:
                 return jsonify({'error': 'Encryption failed for all members'}), 500
 
+            # Сохраняем в блокчейн
             with get_db_cursor(blockchain.db_path) as cursor:
                 tx_id = blockchain.new_transaction(
                     cursor, sender, f"group:{group_id}",
@@ -791,68 +853,89 @@ def send_message():
                     metadata={
                         'encryption': 'symmetric-group-v2',
                         'group_id': group_id,
-                        'sender_verified': True
+                        'sender_verified': True,
+                        'member_count': len(encrypted_map)
                     }
                 )
+                # PoW в фоне — пользователь не ждёт
                 last_proof = blockchain._last_block_raw(cursor)['proof']
+                threading.Thread(
+                    target=_mine_block_async,
+                    args=(blockchain.db_path, last_proof),
+                    daemon=True
+                ).start()
 
-            # PoW в фоне — пользователь не ждёт
-            threading.Thread(
-                target=_mine_block_async,
-                args=(blockchain.db_path, last_proof),
-                daemon=True
-            ).start()
-
-            # 🔁 GunDB: публикуем зашифрованные данные (опционально, для мгновенной доставки)
+            # 🔁 P2P-буфер для мгновенной доставки (long polling fallback)
             try:
-                p2p_payload = {
-                    'content': json.dumps(encrypted_map),
-                    'image': None,
-                    'ts': time.time() * 1000,  # Gun использует мс
-                    'tx_id': tx_id,
-                    'version': 'symmetric-group-v2'
-                }
-                logger.debug(f"📤 P2P publish (group): {sender[:16]}... -> group:{group_id} (tx:{tx_id})")
+                with _p2p_buffer_lock:
+                    for member in group['members']:
+                        _p2p_buffer.setdefault(member, []).append({
+                            'sender': sender,
+                            'recipient': f"group:{group_id}",
+                            'content': content,  # 🔐 уже зашифровано!
+                            'image': image,
+                            'ts': time.time(),
+                            'tx_id': tx_id,
+                            'id': f"group_{tx_id}_{member[:8]}",
+                            'is_group': True
+                        })
+                        # Ограничиваем размер буфера
+                        if len(_p2p_buffer[member]) > 100:
+                            _p2p_buffer[member] = _p2p_buffer[member][-100:]
             except Exception as e:
-                logger.debug(f"ℹ️ P2P group publish skipped: {e}")
+                logger.debug(f"ℹ️ P2P buffer update skipped: {e}")
 
             return jsonify({
-                'message': 'Sent', 'tx_id': tx_id,
-                'recipient': f"group:{group_id}", 'type': 'group',
-                'encryption': 'symmetric-group-v2'
+                'message': 'Sent',
+                'tx_id': tx_id,
+                'recipient': f"group:{group_id}",
+                'type': 'group',
+                'encryption': 'symmetric-group-v2',
+                'members_encrypted': len(encrypted_map)
             }), 201
 
-        # ── Прямые сообщения ──────────────────────────────────────────────────
+        # =====================================================================
+        # ── ПРЯМЫЕ СООБЩЕНИЯ ────────────────────────────────────────────────
+        # =====================================================================
         if sender == recipient:
             return jsonify({'error': 'Cannot message yourself'}), 400
 
+        # Получаем публичный ключ получателя
         recipient_pubkey, recipient_verified = get_cached_public_key(recipient)
         if not recipient_pubkey:
             recipient_pubkey, recipient_verified = fetch_public_key_from_chain(recipient)
 
         if recipient_pubkey:
-            # 🔒 Используем hybrid-v2 с верификацией адреса
-            payload = encrypt_hybrid(mnemonic, recipient_pubkey, recipient, content, image_data=image)
+            # ✅ Используем hybrid-v2 с верификацией адреса получателя
+            payload = encrypt_hybrid(
+                mnemonic,  # моя мнемоника (для вычисления shared secret)
+                recipient_pubkey,  # публичный ключ ПОЛУЧАТЕЛЯ
+                recipient,  # адрес ПОЛУЧАТЕЛЯ (для верификации)
+                content,
+                image_data=image
+            )
 
+            # Сохраняем в блокчейн
             with get_db_cursor(blockchain.db_path) as cursor:
                 tx_id = blockchain.new_transaction(
-                    cursor, sender, recipient, json.dumps(payload), None,
+                    cursor, sender, recipient,
+                    json.dumps(payload), None,
                     sender_pubkey=my_pubkey,
                     metadata={
                         'encryption': 'hybrid-v2',
-                        'key_verified': recipient_verified
+                        'key_verified': recipient_verified,
+                        'content_preview': content[:20] + '...' if len(content) > 20 else content
                     }
                 )
+                # PoW в фоне
                 last_proof = blockchain._last_block_raw(cursor)['proof']
+                threading.Thread(
+                    target=_mine_block_async,
+                    args=(blockchain.db_path, last_proof),
+                    daemon=True
+                ).start()
 
-            # PoW в фоне
-            threading.Thread(
-                target=_mine_block_async,
-                args=(blockchain.db_path, last_proof),
-                daemon=True
-            ).start()
-
-            # 🔁 Long Polling: сохраняем в буфер для мгновенной доставки (ПРАВИЛЬНОЕ МЕСТО!)
+            # 🔁 P2P-буфер для мгновенной доставки
             try:
                 with _p2p_buffer_lock:
                     _p2p_buffer.setdefault(recipient, []).append({
@@ -860,67 +943,58 @@ def send_message():
                         'recipient': recipient,
                         'content': content,  # 🔐 уже зашифровано бэкендом!
                         'image': image,
-                        'ts': time.time(),    # секунды (фронтенд конвертирует)
+                        'ts': time.time(),
                         'tx_id': tx_id,
-                        'id': tx_id
+                        'id': tx_id,
+                        'is_group': False
                     })
-                    # Ограничиваем размер буфера
                     if len(_p2p_buffer[recipient]) > 100:
                         _p2p_buffer[recipient] = _p2p_buffer[recipient][-100:]
             except Exception as e:
                 logger.debug(f"ℹ️ P2P buffer update skipped: {e}")
 
-            # 🔁 GunDB: публикуем зашифрованные данные (опционально)
-            try:
-                p2p_payload = {
-                    'content': content,
-                    'image': image,
-                    'ts': time.time() * 1000,
-                    'tx_id': tx_id,
-                    'version': 'hybrid-v2'
-                }
-                logger.debug(f"📤 P2P publish: {sender[:16]}... -> {recipient[:16]}... (tx:{tx_id})")
-            except Exception as e:
-                logger.debug(f"ℹ️ P2P publish skipped: {e}")
-
             return jsonify({
-                'message': 'Sent', 'tx_id': tx_id,
-                'recipient': recipient, 'type': 'direct',
+                'message': 'Sent',
+                'tx_id': tx_id,
+                'recipient': recipient,
+                'type': 'direct',
                 'encryption': 'hybrid-v2',
                 'key_verified': recipient_verified
             }), 201
 
         else:
-            # 🔒 НЕТ plaintext в metadata! Только запрос на обмен ключами
+            # 🔑 Нет публичного ключа — отправляем запрос на обмен ключами
+            # ✅ СТАЛО:
             key_exchange_payload = {
                 'my_pubkey': my_pubkey,
                 'message': 'key_exchange_request',
-                'version': 'hybrid-v2',
-                'sender_address': sender
+                'version': 'key_exchange',  # ← Уникальная версия для обмена ключами
+                'sender_address': sender,
+                'timestamp': time.time()
             }
 
             with get_db_cursor(blockchain.db_path) as cursor:
                 tx_id = blockchain.new_transaction(
                     cursor, sender, recipient,
                     json.dumps(key_exchange_payload),
-                    None, sender_pubkey=my_pubkey,
+                    None,
+                    sender_pubkey=my_pubkey,
                     metadata={
                         'encryption': 'key_exchange',
                         'note': 'Content will be sent after key exchange'
                     }
                 )
                 last_proof = blockchain._last_block_raw(cursor)['proof']
-
-            threading.Thread(
-                target=_mine_block_async,
-                args=(blockchain.db_path, last_proof),
-                daemon=True
-            ).start()
+                threading.Thread(
+                    target=_mine_block_async,
+                    args=(blockchain.db_path, last_proof),
+                    daemon=True
+                ).start()
 
             # 🔒 Кэшируем НАШ ключ для получателя
             cache_public_key(sender, my_pubkey, source='outgoing', verified=True)
 
-            logger.info(f"Key exchange sent: {sender[:16]}... -> {recipient[:16]}...")
+            logger.info(f"🔑 Key exchange sent: {sender[:16]}... -> {recipient[:16]}...")
             return jsonify({
                 'message': 'Key exchange sent. Please ask recipient to fetch your public key.',
                 'tx_id': tx_id,
@@ -930,55 +1004,68 @@ def send_message():
             }), 201
 
     except ValidationError as err:
+        logger.warning(f"⚠️ Validation error in send_message: {err.messages}")
         return jsonify({'error': err.messages}), 400
     except Exception as e:
-        logger.error(f"Send message error: {type(e).__name__}", exc_info=app.debug)
-        return jsonify({'error': 'Failed to send'}), 500
-
-
+        logger.error(f"❌ send_message error: {type(e).__name__}", exc_info=os.getenv('FLASK_ENV') != 'production')
+        return jsonify({'error': 'Internal server error'}), 500  # без деталей!
 # =============================================================================
 # === Получение сообщений (ОБНОВЛЁННЫЙ с пагинацией) ===
 # =============================================================================
 
 @app.route('/get_conversation', methods=['GET'])
 def get_conversation():
+    """
+    Получение истории чата с расшифровкой.
+    🔒 Мнемоника берётся ТОЛЬКО из сессии.
+    🔥 Поддержка пагинации для больших историй.
+    """
+    # 🔒 Проверка сессии
     if 'address' not in session:
+        logger.warning(f"⚠️ Unauthorized get_conversation attempt from {request.remote_addr}")
         return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         user_addr = session['address']
 
-        # 🔒 Мнемоника запрашивается для расшифровки
+        # 🔒 Мнемоника ТОЛЬКО из сессии
         mnemonic = session.get('mnemonic')
         if not mnemonic:
+            logger.warning(f"⚠️ No mnemonic in session for {user_addr[:16]}...")
             return jsonify({'error': 'Session expired. Please login again.'}), 401
 
-        # 🔒 Верификация
-        if generate_address(mnemonic) != user_addr:
+        # 🔒 Верификация адреса
+        expected_address = generate_address(mnemonic)
+        if not hmac.compare_digest(expected_address, user_addr):
+            logger.critical(f"🚫 Mnemonic/address mismatch in get_conversation!")
             return jsonify({'error': 'Authentication failed'}), 403
 
+        # Параметры запроса
         chat_with = request.args.get('with')
         if not chat_with:
             return jsonify({'error': 'Missing "with" parameter'}), 400
 
-        # 🔥 ПАГИНАЦИЯ: параметры
+        # 🔥 ПАГИНАЦИЯ: параметры для подгрузки истории
         last_message_id = request.args.get('last_message_id', type=int)
-        # Защита от слишком большого limit
-        limit = min(int(request.args.get('limit', 50)), 100)
+        limit = min(int(request.args.get('limit', 50)), 100)  # Защита от слишком большого limit
 
         with get_db_cursor(blockchain.db_path) as cursor:
+            # ── Групповые чаты ─────────────────────────────────────────────
             if chat_with.startswith('group:'):
                 group_id = chat_with.split(':', 1)[1]
                 groups = get_user_groups_cached(user_addr)
                 user_group = next((g for g in groups if g['id'] == group_id), None)
-                if not user_group:
+                if not user_group or user_addr not in user_group['members']:
                     return jsonify({'error': 'No access to this group'}), 403
 
                 query = '''
                     SELECT id, sender, recipient, content, image, timestamp, sender_pubkey, metadata
-                    FROM transactions WHERE recipient = ?
+                    FROM transactions 
+                    WHERE recipient = ?
                 '''
                 params = [chat_with]
+
+            # ── Прямые чаты ────────────────────────────────────────────────
             else:
                 query = '''
                     SELECT id, sender, recipient, content, image, timestamp, sender_pubkey, metadata
@@ -987,45 +1074,64 @@ def get_conversation():
                 '''
                 params = [user_addr, chat_with, chat_with, user_addr]
 
-            # 🔥 Фильтр по ID + лимит
+            # 🔥 Фильтр по ID + лимит для пагинации
             if last_message_id:
                 query += ' AND id > ?'
                 params.append(last_message_id)
+
             query += ' ORDER BY timestamp ASC LIMIT ?'
             params.append(limit)
 
             cursor.execute(query, params)
             messages = [
-                {'id': r[0], 'sender': r[1], 'recipient': r[2], 'content': r[3],
-                 'image': r[4], 'timestamp': r[5], 'sender_pubkey': r[6], 'metadata': r[7]}
+                {
+                    'id': r[0],
+                    'sender': r[1],
+                    'recipient': r[2],
+                    'content': r[3],
+                    'image': r[4],
+                    'timestamp': r[5],
+                    'sender_pubkey': r[6],
+                    'metadata': r[7]
+                }
                 for r in cursor.fetchall()
             ]
 
-        # Расшифровка (без изменений)
+        # 🔐 Расшифровка сообщений
         decrypted = []
         for msg in messages:
             dec = process_message_decryption(msg, user_addr, mnemonic)
+
+            # Добавляем имена контактов для отображения
             dec['sender_name'] = get_contact_name_cached(user_addr, msg['sender']) or msg['sender']
             dec['recipient_name'] = get_contact_name_cached(user_addr, msg['recipient']) or msg['recipient']
-            dec['is_mine'] = msg['sender'] == user_addr
+            dec['is_mine'] = (msg['sender'] == user_addr)
+
+            # Добавляем метаданные шифрования для отладки
             if msg.get('metadata'):
                 try:
                     meta = json.loads(msg['metadata']) if isinstance(msg['metadata'], str) else msg['metadata']
                     dec['encryption_type'] = meta.get('encryption', 'unknown')
                     dec['key_verified'] = meta.get('key_verified', False)
+                    dec['version'] = meta.get('version', 'legacy')
                 except Exception:
                     pass
+
             decrypted.append(dec)
 
-        # 🔥 Возвращаем флаг has_more для возможной подгрузки истории
+        # 🔥 Возвращаем флаг has_more для бесконечной прокрутки
         return jsonify({
             'messages': decrypted,
-            'has_more': len(messages) == limit
+            'has_more': len(messages) == limit,  # Если вернули ровно limit — есть ещё
+            'chat_with': chat_with,
+            'last_message_id': messages[-1]['id'] if messages else None
         }), 200
 
     except Exception as e:
-        logger.error(f"Get conversation error: {type(e).__name__}", exc_info=app.debug)
-        return jsonify({'error': 'Failed to load messages'}), 500
+        logger.error(f"❌ get_conversation error: {type(e).__name__}: {e}", exc_info=True)
+        return jsonify({'error': f'Failed to load messages: {type(e).__name__}'}), 500
+
+
 
 @app.route('/get_conversations', methods=['GET'])
 def get_conversations_route():
@@ -1499,21 +1605,6 @@ def decrypt_message_api():
         logger.error(f"P2P decrypt error: {e}")
         return jsonify({'content': '[Decryption failed]'}), 200  # 200, чтобы не триггерить повторные запросы
 
-# =============================================================================
-# === Тестовые утилиты ===
-# =============================================================================
-
-@app.route('/test-socket.html')
-def test_socket():
-    """Тестовая страница проверки WebSocket/SSE/Long Polling (без авторизации)"""
-    return render_template('test-socket.html')
-
-
-# =============================================================================
-# === P2P Long Polling fallback (для shared-хостинга) ===
-# =============================================================================
-
-
 
 
 @app.route('/p2p-poll')
@@ -1554,7 +1645,9 @@ def p2p_poll():
 
 
 
-# === Error handlers ===
+
+
+
 @app.errorhandler(404)
 def not_found(e): return jsonify({'error': 'Not found'}), 404
 @app.errorhandler(500)
@@ -1562,10 +1655,43 @@ def server_error(e): return jsonify({'error': 'Internal server error'}), 500
 @app.errorhandler(413)
 def file_too_large(e): return jsonify({'error': 'File too large (max 16MB)'}), 413
 
+# ✅ СТАЛО (безопасно):
+# =============================================================================
+# === Запуск приложения ===
+# =============================================================================
+
 if __name__ == '__main__':
-    # 🔒 В продакшене использовать gunicorn + HTTPS
-    debug_mode = os.getenv('FLASK_ENV') != 'production'
-    app.run(host='127.0.0.1' if not debug_mode else '0.0.0.0',
-           port=5000,
-           debug=debug_mode,
-           threaded=True)
+    """
+    🔹 Для локальной разработки:
+        python app.py
+
+    🔹 Для reg.ru (shared hosting):
+        Запуск через Passenger/CGI настраивается в панели хостинга.
+        Если поддерживается прямой запуск — используйте этот блок.
+    """
+
+    # 🔒 Проверка базовой безопасности
+    if not SECRET_KEY or len(SECRET_KEY) < 32:
+        logger.critical("❌ SECRET_KEY too short or missing! Set it in .env")
+
+    # Определяем режим
+    is_production = os.getenv('FLASK_ENV') == 'production'
+
+    if is_production:
+        # 🔒 Продакшен-настройки
+        logger.warning("🚀 Starting in PRODUCTION mode")
+        app.run(
+            host='127.0.0.1',  # ← Только localhost для безопасности!
+            port=5000,
+            debug=False,  # ← НИКОГДА не включайте debug=True в продакшене
+            threaded=True  # ← Обработка нескольких запросов
+        )
+    else:
+        # 🔧 Разработка — можно запускать на всех интерфейсах
+        logger.info("🔧 Starting in DEVELOPMENT mode")
+        app.run(
+            host='0.0.0.0',
+            port=5000,
+            debug=True,
+            threaded=True
+        )

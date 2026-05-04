@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome — Dark Messenger{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+  <div class="auth-card animate-fade">
+    <!-- Logo / Brand -->
+    <div class="auth-brand" style="margin-bottom: var(--space-lg); text-align: center;">
+      <div style="
+        width: 64px; height: 64px; margin: 0 auto var(--space-md);
+        background: var(--accent); border-radius: var(--radius-lg);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 28px; color: var(--text-inverse);
+        box-shadow: 0 4px 20px rgba(255,255,255,0.15);
+      ">🔐</div>
+      <h1 style="font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.5px;">Dark Messenger</h1>
+      <p class="subtitle" style="color: var(--text-secondary); font-size: 14px; margin-top: var(--space-xs); line-height: 1.5;">Decentralized • End-to-end encrypted • Your keys, your messages</p>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="auth-form">
+      <button class="btn btn-primary" onclick="location.href='/login'" style="width: 100%;">🔑 Login with Mnemonic</button>
+      <button class="btn" id="createWalletBtn" onclick="createWallet()" style="width: 100%;">✨ Create New Wallet</button>
+    </div>
+
+    <!-- Footer Info -->
+    <div class="auth-footer" style="margin-top: var(--space-xl); text-align: center; color: var(--text-muted); font-size: 12px;">
+      <p>🔐 No central server • No data collection</p>
+      <p style="margin-top: var(--space-xs);">
+        <a href="#" onclick="return false;" style="color: var(--text-secondary); text-decoration: none; transition: color var(--transition-fast);" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">
+          Learn more about security →
+        </a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- 🔐 Mnemonic Display Modal -->
+<div id="mnemonicModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="mnemonicTitle">
+  <div class="modal animate-slide" style="max-width: 520px;">
+    <header class="modal-header">
+      <h3 id="mnemonicTitle" style="margin: 0; color: var(--accent);">✅ Wallet Created</h3>
+      <button class="modal-close" onclick="MnemonicManager.hide()" aria-label="Close">&times;</button>
+    </header>
+
+    <div class="modal-body">
+      <p style="color: var(--status-warning); font-weight: 500; margin: 0 0 var(--space-md); padding: var(--space-sm); background: rgba(170, 170, 170, 0.1); border-radius: var(--radius-sm);">
+        ⚠️ Save this phrase securely. It cannot be recovered if lost!
+      </p>
+
+      <div id="mnemonicDisplay" class="input-monospace" style="
+        background: var(--bg-tertiary); padding: var(--space-md);
+        border-radius: var(--radius-md); border: 1px solid var(--border-color);
+        word-break: break-all; user-select: all;
+        min-height: 80px; display: flex; align-items: center;
+        text-align: center; justify-content: center;
+        font-size: 13px; line-height: 1.6;
+      "></div>
+
+      <div style="display: flex; gap: var(--space-sm); margin: var(--space-md) 0;">
+        <button class="btn" onclick="MnemonicManager.copy(() => NotificationManager?.showToast('✓ Copied!', 'success'))" style="flex: 1;">📋 Copy</button>
+        <button class="btn" onclick="MnemonicManager.download()" style="flex: 1;">📥 Download</button>
+      </div>
+
+      <div style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary);">
+        <strong style="color: var(--text-primary);">🔒 Security tips:</strong>
+        <ul style="margin: var(--space-xs) 0 0 var(--space-md); padding: 0;">
+          <li style="margin: var(--space-xs) 0;">Write it down on paper</li>
+          <li style="margin: var(--space-xs) 0;">Store in a secure location</li>
+          <li style="margin: var(--space-xs) 0;">Never share or enter on suspicious sites</li>
+        </ul>
+      </div>
+
+      <p style="color: var(--text-muted); font-size: 11px; text-align: center; margin-top: var(--space-md);">
+        Auto-clear in <span id="countdown" style="font-weight: 600; color: var(--accent);">30</span>s for security
+      </p>
+    </div>
+
+    <footer class="modal-footer">
+      <button class="btn btn-primary" onclick="proceedToChat()" style="width: 100%;">✓ I've Saved It — Continue</button>
+    </footer>
+  </div>
+</div>
+
+{% block scripts %}
+<!-- Подключаем менеджер мнемоник -->
+<script src="{{ url_for('static', filename='js/mnemonic-manager.js') }}"></script>
+
+<script>
+let createdMnemonic = null;
+
+async function createWallet() {
+  const btn = DOM.getById('createWalletBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    btn.classList.add('animate-pulse');
+  }
+
+  try {
+    const response = await fetch('/create_wallet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+
+    if (response.ok) {
+      createdMnemonic = data.mnemonic_phrase;
+      // Используем общий менеджер вместо ручного showModal
+      MnemonicManager.showInModal(data.mnemonic_phrase);
+      console.log('✅ Wallet created for:', data.address?.slice(0, 16) + '…');
+    } else {
+      window.NotificationManager?.showToast(data.error || 'Wallet creation failed', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '✨ Create New Wallet';
+        btn.classList.remove('animate-pulse');
+      }
+    }
+  } catch (error) {
+    console.error('Network error:', error);
+    window.NotificationManager?.showToast('Network error. Please try again.', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '✨ Create New Wallet';
+      btn.classList.remove('animate-pulse');
+    }
+  }
+}
+
+function proceedToChat() {
+  MnemonicManager.hide(); // Безопасная очистка + закрытие
+  window.location.href = '/chat';
+}
+
+// Инициализация
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.NotificationManager?.init) window.NotificationManager.init();
+});
+
+// Экспорт
+window.createWallet = createWallet;
+window.proceedToChat = proceedToChat;
+</script>
+{% endblock %}
+{% endblock %}

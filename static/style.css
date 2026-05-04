@@ -264,6 +264,7 @@ body {
 .container {
   display: flex;
   height: 100vh;
+  height: 100dvh;  /* ✅ Поддержка динамической высоты */
   max-width: 1400px;
   margin: 0 auto;
   background: var(--bg-primary);
@@ -277,6 +278,7 @@ body {
   justify-content: center;
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;  /* ✅ */
   padding: var(--space-lg);
   background:
     radial-gradient(ellipse at top, var(--accent-soft) 0%, transparent 50%),
@@ -833,8 +835,156 @@ body {
   display: flex;
   gap: var(--space-xs);
 }
+/* ===== Group Cards ===== */
+.group-card {
+  flex-direction: column !important; /* Переопределяем .list-item */
+  align-items: flex-start !important;
+  padding: var(--space-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  min-height: 140px;
+}
 
+.group-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-focus);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.group-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  margin-bottom: var(--space-sm);
+}
+
+.group-card-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.group-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-card-name {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.group-card-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.group-card-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: var(--space-xs) 0 var(--space-sm);
+  width: 100%;
+}
+
+.group-card-creator-badge {
+  font-size: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: var(--space-sm);
+  align-self: flex-start;
+}
+
+.group-card-actions {
+  display: flex;
+  gap: var(--space-xs);
+  width: 100%;
+  margin-top: auto; /* Прижимает кнопки к низу */
+}
+
+.group-card-actions .btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-md);
+  padding: var(--space-md);
+  align-content: start;
+}
+
+/* Адаптив для мобильных */
+@media (max-width: 768px) {
+  .groups-grid {
+    grid-template-columns: 1fr; /* Одна колонка на мобильных */
+    padding: var(--space-sm);
+  }
+}
 /* ===== QR Code ===== */
+/* Анимация сканирования */
+/* ✅ Единый блок для QR-контейнеров */
+#qrScannerContainer,
+#qrScannerContainerModal {
+  position: relative;
+  display: inline-block;
+}
+/* ✅ Если нужно отключить зеркало для задней камеры — добавьте класс */
+#qrVideo.no-mirror,
+#qrVideoModal.no-mirror {
+  transform: none;
+}
+/* Анимация сканирования — единая для всех контейнеров */
+#qrScannerContainer.scanning::after,
+#qrScannerContainerModal.scanning::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  animation: scanPulse 1.5s infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes scanPulse {
+  0%, 100% {
+    opacity: 0.3;
+    box-shadow: 0 0 0 0 rgba(255,255,255,0.3);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 20px transparent;
+  }
+}
+
+/* Видео для QR-сканера — фикс для мобильных */
+#qrVideo,
+#qrVideoModal {
+  object-fit: cover;        /* Заполняет контейнер без искажений */
+  background: #000;         /* Чёрный фон пока нет потока */
+  display: block;
+
+}
+
+/* В CSS */
+
 .qr-container {
   display: inline-flex;
   flex-direction: column;
@@ -902,51 +1052,6 @@ body {
   gap: var(--space-xs);
 }
 
-/* ===== Empty States ===== */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-xl);
-  text-align: center;
-  color: var(--text-muted);
-}
-
-.empty-state .icon {
-  font-size: 48px;
-  margin-bottom: var(--space-md);
-  opacity: 0.5;
-}
-
-.empty-state p {
-  font-size: 14px;
-  margin-bottom: var(--space-md);
-}
-
-/* ===== Loading States ===== */
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-lg);
-  color: var(--text-muted);
-}
-
-.loading::after {
-  content: '';
-  width: 16px;
-  height: 16px;
-  margin-left: var(--space-sm);
-  border: 2px solid var(--border-color);
-  border-top-color: var(--text-primary);
-  border-radius: var(--radius-full);
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 
 /* ===== Notifications ===== */
 .notification {
@@ -1007,21 +1112,57 @@ body {
 .notification.warning { border-left: 3px solid var(--status-warning); }
 
 /* ===== Responsive ===== */
+.modal {
+  max-width: calc(100vw - 32px);
+  margin: 16px;
+}
+
 @media (max-width: 768px) {
+   /* ✅ Кнопка меню — показываем только на мобильных */
+  .menu-toggle {
+    display: flex !important;
+    margin-right: var(--space-sm);
+    order: -1; /* Чтобы была слева в хедере */
+  }
+    /* ✅ Сайдбар — фиксированный, скрыт по умолчанию */
   .sidebar {
     position: fixed;
     left: 0;
     top: 0;
     height: 100vh;
+    height: 100dvh; /* ✅ Фикс для мобильных браузеров */
+    width: 280px;
     transform: translateX(-100%);
+    transition: transform var(--transition-normal);
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
   }
 
+  /* ✅ Открытый сайдбар */
   .sidebar.open {
     transform: translateX(0);
   }
 
-  .menu-toggle {
-    display: flex !important;
+  /* ✅ Оверлей — затемнение фона */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 99;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+  }
+
+  .sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+  }
+
+  /* ✅ Основной контент на всю ширину */
+  .main-content {
+    width: 100%;
   }
 
   .chat-header .title .subtitle {
@@ -1031,11 +1172,28 @@ body {
   .message {
     max-width: 95%;
   }
-
+  /* ✅ Добавьте это: */
   .modal {
-    max-width: calc(100vw - var(--space-lg) * 2);
+    max-width: calc(100vw - 32px) !important;  /* Отступы по краям */
+    margin: 16px;
+    max-height: calc(100dvh - 32px);           /* Учитываем адресную строку */
+    overflow-y: auto;                          /* Прокрутка если контент не влезает */
+  }
+
+  .modal-body {
+    max-height: 60vh;  /* Ограничение высоты тела модалки */
+    overflow-y: auto;
+  }
+
+
+  /* ✅ Фикс для auth-card на маленьких экранах */
+  .auth-card {
+    max-width: 100%;
+    padding: var(--space-md);
+    margin: 0 var(--space-sm);
   }
 }
+
 
 @media (min-width: 1024px) {
   body {
@@ -1121,34 +1279,6 @@ body {
   font-size: 14px;
 }
 
-/* Delete button */
-.delete-message-btn {
-  background: none;
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 2px 6px;
-  cursor: pointer;
-  font-size: 12px;
-  margin-left: 8px;
-  opacity: 0;
-  transition: opacity 0.2s, color 0.2s;
-}
-
-.message:hover .delete-message-btn {
-  opacity: 1;
-}
-
-.delete-message-btn:hover {
-  color: var(--status-error);
-  border-color: var(--status-error);
-}
-
-/* Message content wrapper */
-.message-content-wrapper {
-  flex: 1;
-  min-width: 0;
-}
 
 .message-content-wrapper strong {
   font-size: 12px;
