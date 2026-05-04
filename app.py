@@ -1638,16 +1638,6 @@ def p2p_poll():
     return jsonify(new_messages), 200
 
 
-# Модификация send_message: добавляем в буфер для long polling
-# Найдите функцию send_message и после строки с `threading.Thread(...).start()`
-# добавьте этот блок (для прямых сообщений):
-
-
-
-
-
-
-
 @app.errorhandler(404)
 def not_found(e): return jsonify({'error': 'Not found'}), 404
 @app.errorhandler(500)

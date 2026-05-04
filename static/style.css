@@ -985,59 +985,69 @@ body {
 
 /* В CSS */
 
+/* ===== QR Code — FIX для мобильных ===== */
 .qr-container {
-  display: inline-flex;
+  display: flex;              /* ✅ Было: inline-flex → flex */
   flex-direction: column;
-  align-items: center;
+  align-items: center;        /* ✅ Центрируем содержимое */
+  justify-content: center;
   gap: var(--space-md);
   padding: var(--space-lg);
   background: var(--bg-tertiary);
   border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+
+  /* ✅ Предотвращаем вылезание за границы */
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;             /* ✅ Центрируем сам контейнер */
+  box-sizing: border-box;
 }
 
 .qr-container canvas {
   border-radius: var(--radius-sm);
   padding: var(--space-sm);
   background: var(--text-primary);
-    /* ✅ Адаптивное масштабирование */
-  max-width: 100%;
+
+  /* ✅ Адаптивное масштабирование без переполнения */
+  width: 256px;
+  height: 256px;
+  max-width: 100%;            /* ✅ Не шире родителя */
   height: auto;
   display: block;
-  image-rendering: pixelated; /* Чёткие края для пиксельных паттернов */
+  image-rendering: pixelated;
+
+  /* ✅ Убираем возможные отступы, создающие сдвиг */
+  margin: 0 auto;
 }
 
 
-/* ✅ Мобильные: ещё крупнее + отступы */
+/* ✅ Мобильные: строгое центрирование */
 @media (max-width: 768px) {
   .qr-container {
+    margin-right: 0 !important; /* Убираем отступ справа на мобильных */
     padding: var(--space-md);
-    width: 100%;
-    max-width: 320px;
+    width: calc(100% - 32px); /* ✅ Отступы по краям экрана */
+    max-width: 280px;
     margin: 0 auto;
   }
 
   .qr-container canvas {
-    width: 256px;  /* Фиксированный крупный размер на мобильных */
-    height: 256px;
-    max-width: none; /* Отменяем max-width: 100% для точного размера */
+    width: 100%;              /* ✅ Растягиваем на всю ширину контейнера */
+    height: auto;
+    aspect-ratio: 1 / 1;      /* ✅ Сохраняем квадратную пропорцию */
+    max-width: 256px;         /* ✅ Но не больше 256px */
   }
 }
+
 /* ✅ Очень маленькие экраны (< 360px) */
 @media (max-width: 360px) {
-  .qr-container canvas {
-    width: 220px;
-    height: 220px;
+  .qr-container {
+    width: calc(100% - 24px);
+    max-width: 240px;
+    padding: var(--space-sm);
   }
 }
-
-/* ✅ Desktop: можно чуть больше, если позволяет место */
-@media (min-width: 1024px) {
-  .qr-container canvas {
-    width: 280px;
-    height: 280px;
-  }
-}
-
 
 .qr-actions {
   display: flex;
@@ -1351,5 +1361,36 @@ body {
 
   .messages {
     overflow: visible;
+  }
+}
+
+/* === 📱 Mobile: QR влево === */
+@media (max-width: 768px) {
+  /* Профиль: лейбл на всю строку, контент под ним */
+  .profile-row {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .profile-row label {
+    min-width: 100%;
+    margin-bottom: 4px;
+  }
+
+  .profile-row > div:not(label) {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+
+  /* QR-контейнер: прижимаем влево, отменяем центрирование */
+  .qr-container {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    text-align: left !important;
+  }
+
+  /* Кнопки под QR тоже влево */
+  .qr-actions {
+    justify-content: flex-start !important;
   }
 }

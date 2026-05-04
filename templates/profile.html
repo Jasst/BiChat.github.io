@@ -38,17 +38,35 @@
               <button class="btn btn-icon" onclick="copyAddressToClipboard()" title="Copy">📋</button>
           </div>
         </div>
-        <div class="profile-row">
-          <label>Share via QR</label>
-          <div class="qr-container">
-            <div id="qrcode"></div>
-            <div class="qr-actions">
-              <button class="btn btn-ghost" onclick="downloadQR()">📥 Download</button>
-              <button class="btn btn-ghost" onclick="shareQR()">📤 Share</button>
-            </div>
-          </div>
-        </div>
+
+<!-- ✅ Правильно: контейнер с центрированием -->
+<!-- QR Section — Safari Mobile Fix (inline styles) -->
+<div class="profile-row">
+  <label>QR</label>
+  <div style="width: 100%; display: block; text-align: left !important;">
+    <div class="qr-container" style="
+      margin: 0 !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      text-align: left !important;
+      width: 100%;
+      max-width: 280px;
+      box-sizing: border-box;
+    ">
+      <div id="qrcode" style="text-align: left !important;"></div>
+      <div class="qr-actions" style="
+        display: flex !important;
+        justify-content: flex-start !important;
+        gap: var(--space-xs);
+        flex-wrap: wrap;
+        margin-top: var(--space-sm);
+      ">
+        <button class="btn btn-ghost" onclick="downloadQR()">📥 Download</button>
+        <button class="btn btn-ghost" onclick="shareQR()">📤 Share</button>
       </div>
+    </div>
+  </div>
+</div>
 
       <!-- Mnemonic Card -->
       <div class="profile-card">
