@@ -591,31 +591,102 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
         result.update({'content': '[System Error]', 'image': None, 'error': str(e)[:100]})
         return result
 
-# === Список диалогов ===
+
 def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
+    """Возвращает список диалогов с простым превью."""
     conversations: Dict[str, Dict] = {}
     try:
         with get_db_cursor(blockchain.db_path) as cursor:
+            # Запрос получает сообщения с контентом и временем, от новых к старым
             cursor.execute('''
-                SELECT DISTINCT CASE WHEN sender = ? THEN recipient ELSE sender END AS partner
-                FROM transactions WHERE sender = ? OR recipient = ?
-            ''', (user_address, user_address, user_address))
+                SELECT 
+                    CASE WHEN sender = :addr THEN recipient ELSE sender END AS partner,
+                    content,
+                    image,
+                    timestamp,
+                    sender
+                FROM transactions
+                WHERE sender = :addr OR recipient = :addr
+                ORDER BY timestamp DESC
+            ''', {'addr': user_address})
+
+            seen_partners = set()
             for row in cursor.fetchall():
-                partner = row[0]
-                if partner == user_address: continue
+                partner, raw_content, raw_image, ts, msg_sender = row
+                if partner == user_address or partner in seen_partners:
+                    continue
+                seen_partners.add(partner)
+
+                # 🔹 Формируем ПРЕДЕЛЬНО простое превью
+                if msg_sender == user_address:
+                    # ✅ Исходящее — просто "Вы"
+                    preview = "Вы"
+                else:
+                    # 🔹 Входящее — иконка + тип
+                    if raw_image:
+                        preview = "📷 Фото"
+                    elif raw_content:
+                        try:
+                            data = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
+                            v = data.get('version') if isinstance(data, dict) else None
+                            if v == 'key_exchange':
+                                preview = "🔑 Обмен ключами"
+                            else:
+                                preview = "💬 Новое сообщение"
+                        except:
+                            preview = "💬 Новое сообщение"
+                    else:
+                        preview = "💬 Новое сообщение"
+
+                # 🔹 Сохраняем в словарь
                 if partner.startswith('group:'):
                     group_id = partner.split(':', 1)[1]
                     groups = get_user_groups_cached(user_address)
                     group = next((g for g in groups if g['id'] == group_id), None)
-                    if group:
-                        conversations[partner] = {'address': partner, 'name': group['name'], 'is_group': True}
+                    name = group['name'] if group else f'Группа {group_id[:8]}...'
+                    conversations[partner] = {
+                        'address': partner,
+                        'name': name,
+                        'is_group': True,
+                        'last_preview': preview,
+                        'last_ts': ts
+                    }
                 else:
                     name = get_contact_name_cached(user_address, partner) or partner[:10] + "..."
-                    conversations[partner] = {'address': partner, 'name': name, 'is_group': False}
+                    conversations[partner] = {
+                        'address': partner,
+                        'name': name,
+                        'is_group': False,
+                        'last_preview': preview,
+                        'last_ts': ts
+                    }
+
     except Exception as e:
         logger.error(f"Get conversations error: {e}")
-    return list(conversations.values())
 
+    # 🔥 Сортируем: самые свежие диалогов сверху
+    return sorted(conversations.values(), key=lambda x: x.get('last_ts', 0), reverse=True)
+
+
+@app.route('/mark_conversation_read', methods=['POST'])
+def mark_conversation_read():
+    """Фиксирует прочтение диалога (для синхронизации между устройствами)."""
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json() or {}
+        chat_with = data.get('chat_with', '').strip()
+        if not chat_with:
+            return jsonify({'error': 'Missing chat_with'}), 400
+
+        # 🔹 Здесь можно записать last_read_ts в БД при миграции.
+        # Пока просто логируем и возвращаем успех для фоновой синхронизации.
+        logger.debug(f"👁️ Read mark: {session['address'][:16]}... -> {chat_with[:20]}... at {time.time():.0f}")
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        logger.error(f"Mark read error: {e}")
+        return jsonify({'error': 'Failed'}), 500
 
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_CONTACTS'])
 def get_contact_name_cached(user_address: str, contact_address: str) -> Optional[str]:

@@ -420,6 +420,27 @@ body {
 }
 
 /* ===== Conversations List ===== */
+.messages {
+  scroll-behavior: smooth;
+}
+.conversation-item .meta .truncate:contains("✓") {
+  color: var(--text-muted);
+  font-style: italic;
+}
+/* Или универсальный класс: */
+.preview-read {
+  color: var(--text-secondary) !important;
+  font-style: italic;
+}
+
+.conversation-item .meta .truncate {
+    color: var(--text-secondary);
+}
+.conversation-item .meta .truncate:has(~ .status:empty):before {
+    /* Если нужно визуально отделить "Вы:" */
+}
+/* Простой вариант: сервер уже возвращает "Вы: 💬 Сообщение", фронтенд отобразит как есть */
+
 .conversations-list {
   flex: 1;
   overflow-y: auto;

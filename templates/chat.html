@@ -154,6 +154,7 @@
 <!-- ✅ Оверлей для закрытия сайдбара на мобильных -->
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 {% block scripts %}
+
 <!-- ✅ 1. Полифил для Node.js process (для gun-config.js / p2p-sync.js) -->
 <script>window.process = window.process || { env: {} };</script>
 
@@ -161,6 +162,8 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
+<!-- Добавьте после common.js -->
+<script src="{{ url_for('static', filename='js/notification-manager.js') }}"></script>
 <!-- Ваши gun/p2p скрипты, если есть -->
 <!-- <script src="{{ url_for('static', filename='js/gun-config.js') }}"></script> -->
 <!-- <script src="{{ url_for('static', filename='js/p2p-sync.js') }}"></script> -->
@@ -303,6 +306,10 @@ function selectConversation(address, name, isGroup) {
   State.pendingImageData = null;
   loadMessagesForConversation(address, false);
   _subscribeToCurrentChat(address);
+    // ✅ ДОБАВИТЬ: помечаем чат как прочитанный в интерфейсе
+  updateConversationPreview(address, '✓ Прочитано');
+   // ✅ Гибридное обновление превью: мгновенно + фоновая синхронизация
+  markConversationAsRead(address);
   setTimeout(() => { if (State.currentChatAddress === address) startPolling(); }, 500);
   if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
 }
@@ -368,33 +375,43 @@ function _enableChatControls() {
 async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
   const container = document.getElementById('messagesContainer');
   if (!container) return;
+
   if (!chatWithAddress) {
     if (!isNewMessage) container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">💬</div><p>Select a conversation to start chatting</p></div>';
     _enableChatControls();
     return;
   }
+
   const isGroup = chatWithAddress.startsWith('group:');
-  const isPersonal = Security.isValidAddress(chatWithAddress); // ✅ Используем Security из common.js
+  const isPersonal = Security.isValidAddress(chatWithAddress);
   if (!isGroup && !isPersonal) {
     container.innerHTML = '<p class="text-muted text-center">Invalid conversation</p>';
     container.classList.remove('loading');
     _enableChatControls();
     return;
   }
-  if (!isNewMessage) { container.innerHTML = '<div class="loading">Loading messages…</div>'; container.classList.add('loading'); }
+
+  if (!isNewMessage) {
+    container.innerHTML = '<div class="loading">Loading messages…</div>';
+    container.classList.add('loading');
+  }
+
   try {
     const params = new URLSearchParams({ with: chatWithAddress });
     if (isNewMessage && State.lastKnownMessageId > 0) {
       params.append('last_message_id', State.lastKnownMessageId);
       params.append('limit', '50');
     }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const res = await fetch('/get_conversation?' + params.toString(), { signal: controller.signal });
     clearTimeout(timeout);
+
     const data = await res.json();
     container.classList.remove('loading');
     if (!res.ok) throw new Error(data.error || 'Failed to load');
+
     const messages = Array.isArray(data.messages) ? data.messages : [];
     if (!messages?.length) {
       if (isNewMessage) { _enableChatControls(); return; }
@@ -402,36 +419,68 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       _enableChatControls();
       return;
     }
+
     if (!isNewMessage || State.lastKnownMessageId === 0) container.innerHTML = '';
+
     let maxTimestamp = 0;
     const fragment = document.createDocumentFragment();
+
     messages.forEach(msg => {
       if (document.getElementById('msg-' + msg.id)) return;
       if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
+
       const messageDiv = document.createElement('div');
       messageDiv.id = 'msg-' + msg.id;
       messageDiv.className = 'message ' + (msg.is_mine ? 'sent' : 'received') + ' animate-fade';
       messageDiv.dataset.messageId = msg.id;
+
       const initials = (msg.sender || 'U').slice(0, 1).toUpperCase();
       const senderName = msg.is_mine || !State.currentChatIsGroup
         ? ''
         : '<strong>' + Utils.escapeHtml(msg.sender_name || (msg.sender ? msg.sender.slice(0, 10) + '…' : '')) + '</strong><br>';
+
       let imageHtml = '';
       if (msg.image) {
         imageHtml = `<img src="${Utils.escapeHtml(msg.image)}" alt="Image" onclick="openImageModal('${Utils.escapeHtml(msg.image)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
       }
+
       const timeStr = Utils.formatTimestamp(msg.timestamp);
       const deleteBtn = msg.is_mine
         ? `<button class="delete-btn" data-id="${msg.id}" title="Delete">🗑</button>`
         : '';
+
       messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
       fragment.appendChild(messageDiv);
       if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
     });
-    container.appendChild(fragment);
+
+     container.appendChild(fragment);
     State.lastMessageTimestamp = maxTimestamp;
-    const shouldScroll = isNewMessage || isUserAtBottom(container);
-    if (shouldScroll) smartScrollToBottom(container, !isNewMessage);
+
+    // ✅ ИСПРАВЛЕНИЕ: Надёжная прокрутка с двойным setTimeout
+    const scrollToBottom = () => {
+      if (!container) return;
+      // Принудительный reflow для корректного scrollHeight
+      void container.offsetHeight;
+
+      if (!isNewMessage) {
+        // 📜 При открытии чата — мгновенно в самый низ
+        container.scrollTop = container.scrollHeight;
+      } else {
+        // 💬 При новых сообщениях — всегда вниз (если пользователь не ушёл вверх сознательно)
+        // Проверяем с небольшим допуском, чтобы не дёргать скролл
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+        if (isNearBottom) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        } else {
+          showNewMessagesBadge();
+        }
+      }
+    };
+
+    // Двойной setTimeout: первый — отдаёт управление браузеру, второй — ждёт отрисовку
+    setTimeout(() => { setTimeout(scrollToBottom, 10); }, 0);
+
     _enableChatControls();
   } catch (error) {
     console.error('Load messages error:', error);
@@ -465,7 +514,7 @@ function appendMessageToUI(msg) {
   messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span></div></div>`;
   container.appendChild(messageDiv);
   const shouldNotify = document.visibilityState !== 'visible' ||
-    !window.NotificationManager?. _isInActiveChat?.(msg.chatId);
+    !window.NotificationManager?._isInActiveChat?.(msg.chatId);
   if (shouldNotify && window.NotificationManager?.handleIncomingMessage) {
     window.NotificationManager.handleIncomingMessage({
       sender: msg.sender,
@@ -518,6 +567,10 @@ const payload = {
       contentEl.style.height = 'auto';
       State.pendingImageData = null;
       loadMessagesForConversation(recipient, true);
+      loadConversations(); // ✅ ОБНОВЛЯЕМ САЙДБАР ПОСЛЕ ОТПРАВКИ
+
+
+    // ✅ КОНЕЦ ВСТАВКИ
       // P2P-публикация (опционально)
       if (window.p2p && window.GunConfig?.encryptMessage) {
         const txId = 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2);
@@ -713,6 +766,51 @@ async function startNewChat() {
   selectConversation(address, name, false);
 }
 
+/**
+ * Мгновенно обновляет превью в сайдбаре + синхронизирует с сервером
+ */
+async function markConversationAsRead(chatId) {
+  // 1️⃣ Мгновенное обновление DOM (Вариант 1)
+  const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+  if (item) {
+    const meta = item.querySelector('.meta .truncate');
+    if (meta) {
+      meta.textContent = '✓ Прочитано';
+      meta.style.color = 'var(--text-secondary)';
+      meta.style.fontStyle = 'italic';
+    }
+  }
+
+  // 2️⃣ Фоновая синхронизация (Вариант 2) — не блокирует UI
+  try {
+    await fetch('/mark_conversation_read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_with: chatId }),
+      // 🔥 Отключаем retry и кэш, чтобы не грузить сеть при плохом соединении
+      cache: 'no-store'
+    });
+  } catch (e) {
+    console.debug('ℹ️ Read sync skipped (offline or network error)');
+  }
+}
+
+function updateConversationPreview(chatId, newPreview) {
+  const items = document.querySelectorAll('.conversation-item');
+  for (const item of items) {
+    if (item.dataset.address === chatId) {
+      const meta = item.querySelector('.meta .truncate');
+      if (meta) {
+        meta.textContent = newPreview;
+        meta.classList.add('preview-read');
+        // Убираем визуальный акцент "нового" сообщения
+        item.style.background = '';
+        item.style.fontWeight = '';
+      }
+      break;
+    }
+  }
+}
 // =============================================================================
 // === Init ===
 // =============================================================================
@@ -722,6 +820,12 @@ document.addEventListener('DOMContentLoaded', function() {
     window.NotificationManager.setActiveChat(State.currentChatAddress);
   }
   loadConversations();
+    // ✅ Автообновление сайдбара — только ОДИН раз при загрузке
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      loadConversations();
+    }
+  }, 5000);
   const params = new URLSearchParams(window.location.search);
   const startWith = params.get('start_with');
   const startName = params.get('name');
