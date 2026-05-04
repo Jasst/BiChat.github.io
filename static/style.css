@@ -999,7 +999,45 @@ body {
   border-radius: var(--radius-sm);
   padding: var(--space-sm);
   background: var(--text-primary);
+    /* ✅ Адаптивное масштабирование */
+  max-width: 100%;
+  height: auto;
+  display: block;
+  image-rendering: pixelated; /* Чёткие края для пиксельных паттернов */
 }
+
+
+/* ✅ Мобильные: ещё крупнее + отступы */
+@media (max-width: 768px) {
+  .qr-container {
+    padding: var(--space-md);
+    width: 100%;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+
+  .qr-container canvas {
+    width: 256px;  /* Фиксированный крупный размер на мобильных */
+    height: 256px;
+    max-width: none; /* Отменяем max-width: 100% для точного размера */
+  }
+}
+/* ✅ Очень маленькие экраны (< 360px) */
+@media (max-width: 360px) {
+  .qr-container canvas {
+    width: 220px;
+    height: 220px;
+  }
+}
+
+/* ✅ Desktop: можно чуть больше, если позволяет место */
+@media (min-width: 1024px) {
+  .qr-container canvas {
+    width: 280px;
+    height: 280px;
+  }
+}
+
 
 .qr-actions {
   display: flex;

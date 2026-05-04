@@ -195,12 +195,13 @@
     if (address && address !== 'None' && qrDiv && typeof QRCode !== 'undefined') {
       qrDiv.innerHTML = '';
       try {
-        new QRCode(qrDiv, {
+        // ✅ Стало:
+          new QRCode(qrDiv, {
           text: address,
-          width: 128, height: 128,
+          width: 256, height: 256,  // ← оптимальный размер
           colorDark: "#ffffff", colorLight: "#0a0a0a",
-          correctLevel: QRCode.CorrectLevel.H
-        });
+          correctLevel: QRCode.CorrectLevel.H  // High = лучше сканируется при повреждениях
+          });
       } catch (e) {
         qrDiv.innerHTML = '<span class="text-muted">QR error</span>';
         console.error('QR generation failed:', e);
