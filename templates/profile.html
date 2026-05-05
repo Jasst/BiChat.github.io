@@ -8,11 +8,10 @@
     <header class="sidebar-header">
       <div class="user-info">
         <span class="address font-mono" id="userAddress">{{ address[:10] }}…</span>
-        <!-- ✅ Кнопка выхода с подтверждением -->
         <button class="btn btn-ghost btn-icon"
                 onclick="confirmLogout(event)"
                 aria-label="Logout"
-                title="Log out ?">⏻</button>
+                title="Log out">⏻</button>
       </div>
     </header>
     <nav class="tabs" role="tablist">
@@ -32,83 +31,72 @@
     </header>
 
     <div class="profile-section">
-      <!-- Address Card -->
+
+      <!-- 🔹 Address Card -->
       <div class="profile-card">
         <h3>Your Address</h3>
         <div class="profile-row">
           <label>Public Address</label>
-          <div style="flex: 1; display: flex; align-items: center; gap: var(--space-sm);">
-            <span class="value font-mono" id="address" style="user-select: all;">{{ address|default('', true) }}</span>
+          <div class="profile-value-wrap">
+            <span class="value font-mono" id="address" style="user-select: all; word-break: break-all;">{{ address|default('', true) }}</span>
             <button class="btn btn-icon" onclick="copyAddressToClipboard()" title="Copy">📋</button>
           </div>
         </div>
 
         <!-- QR Section -->
         <div class="profile-row">
-          <label>QR</label>
-          <div style="width: 100%; display: block; text-align: left !important;">
-            <div class="qr-container" style="
-              margin: 0 !important;
-              width: 100%;
-              max-width: 280px;
-              box-sizing: border-box;
-            ">
-              <div id="qrcode" style="text-align: left !important;"></div>
-              <div class="qr-actions" style="
-                display: flex !important;
-                justify-content: flex-start !important;
-                gap: var(--space-xs);
-                flex-wrap: wrap;
-                margin-top: var(--space-sm);
-              ">
-                <button class="btn btn-ghost" onclick="downloadQR()">📥 Download</button>
-                <button class="btn btn-ghost" onclick="shareQR()">📤 Share</button>
-              </div>
+          <label>QR Code</label>
+          <div class="qr-container">
+            <div id="qrcode"></div>
+            <div class="qr-actions">
+              <button class="btn btn-ghost" onclick="downloadQR()">📥 Download</button>
+              <button class="btn btn-ghost" onclick="shareQR()">📤 Share</button>
             </div>
-          </div>
-        </div>
-
-        <!-- Mnemonic Card -->
-        <div class="profile-card">
-          <h3>Recovery Phrase</h3>
-          <div class="profile-row">
-            <label>Mnemonic</label>
-            <div style="flex: 1; display: flex; align-items: center; gap: var(--space-sm);">
-              <input type="password" id="mnemonicDisplay" class="input input-monospace"
-                     value="••••••••••••••••••••" readonly style="flex: 1;">
-              <button class="btn" id="toggleMnemonicBtn" onclick="toggleMnemonic()" disabled>Show</button>
-              <button class="btn" id="copyMnemonicBtn" onclick="copyMnemonicToClipboard()" disabled>📋</button>
-            </div>
-          </div>
-          <p class="text-muted" style="font-size: 12px; margin: var(--space-xs) 0 0;">
-            ⚠️ Keep this phrase secret. Never share it with anyone.
-          </p>
-          <button class="btn btn-primary" style="margin-top: var(--space-md);" onclick="exportMnemonicSecure()">
-            🔐 Export Mnemonic
-          </button>
-        </div>
-
-        <!-- Security Info -->
-        <div class="profile-card">
-          <h3>Security</h3>
-          <div class="profile-row">
-            <label>Wallet Status</label>
-            <span style="color: var(--status-success); font-weight: 500;">● Active</span>
-          </div>
-          <div class="profile-row">
-            <label>Network</label>
-            <span>Mainnet</span>
-          </div>
-          <div class="profile-row">
-            <label>Mnemonic Display</label>
-            <span style="color: var(--status-warning);">Hidden (Secure)</span>
-          </div>
-          <div class="profile-row">
-            <label>Session</label>
-            <span id="sessionInfo" class="font-mono">Loading…</span>
           </div>
         </div>
       </div>
+
+      <!-- 🔹 Recovery Phrase Card -->
+      <div class="profile-card">
+        <h3>Recovery Phrase</h3>
+        <div class="profile-row">
+          <label>Mnemonic</label>
+          <div class="profile-value-wrap">
+            <input type="password" id="mnemonicDisplay" class="input input-monospace"
+                   value="••••••••••••••••••••" readonly>
+            <button class="btn" id="toggleMnemonicBtn" onclick="toggleMnemonic()" disabled>Show</button>
+            <button class="btn btn-icon" id="copyMnemonicBtn" onclick="copyMnemonicToClipboard()" disabled title="Copy">📋</button>
+          </div>
+        </div>
+        <p class="text-muted" style="font-size: 12px; margin: var(--space-xs) 0 0;">
+          ⚠️ Keep this phrase secret. Never share it with anyone.
+        </p>
+        <button class="btn btn-primary" style="margin-top: var(--space-md);" onclick="exportMnemonicSecure()">
+          🔐 Export Mnemonic
+        </button>
+      </div>
+
+      <!-- 🔹 Security Info Card -->
+      <div class="profile-card">
+        <h3>Security</h3>
+        <div class="profile-row">
+          <label>Wallet Status</label>
+          <span class="status-badge status-success">● Active</span>
+        </div>
+        <div class="profile-row">
+          <label>Network</label>
+          <span>Mainnet</span>
+        </div>
+        <div class="profile-row">
+          <label>Mnemonic Display</label>
+          <span class="status-badge status-warning">Hidden (Secure)</span>
+        </div>
+        <div class="profile-row">
+          <label>Session</label>
+          <span id="sessionInfo" class="font-mono">Loading…</span>
+        </div>
+      </div>
+
     </div>
   </main>
 </div>
@@ -153,7 +141,7 @@
       <div id="modalMnemonic" class="input-monospace"
            style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); border: 1px solid var(--border-color); word-break: break-all; text-align: center; min-height: 100px; display: flex; align-items: center; justify-content: center;">
       </div>
-      <p style="color: var(--status-error); font-weight: 500; text-align: center;">
+      <p style="color: var(--status-error); font-weight: 500; text-align: center; margin: var(--space-sm) 0;">
         ⚠️ NEVER SHARE THIS WITH ANYONE!
       </p>
       <div style="display: flex; gap: var(--space-sm); justify-content: center;">
@@ -191,7 +179,6 @@
 </div>
 
 {% block scripts %}
-<!-- ✅ Порядок загрузки скриптов -->
 <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mnemonic-manager.js') }}"></script>
@@ -200,15 +187,11 @@
 <script>
 ;(function() {
   'use strict';
-
-  // Защита от повторного выполнения
   if (window._profileScriptLoaded) return;
   window._profileScriptLoaded = true;
 
-  // === State ===
   let secureMnemonic = null;
 
-  // === Утилиты: Копирование ===
   function copyToClipboard(text, successMsg, errorMsg) {
     if (!text || text === 'None') {
       window.NotificationManager?.showToast(errorMsg || 'Nothing to copy', 'error');
@@ -217,7 +200,6 @@
     const doCopy = () => navigator.clipboard.writeText(text);
     const onSuccess = () => window.NotificationManager?.showToast(successMsg, 'success');
     const onError = (err) => window.NotificationManager?.showToast((errorMsg || 'Copy failed') + ': ' + err, 'error');
-
     if (window.Utils?.copyToClipboard) {
       window.Utils.copyToClipboard(text, onSuccess, onError);
     } else {
@@ -239,18 +221,17 @@
     copyToClipboard(text, '✓ Mnemonic copied! Clear clipboard after use', 'Copy failed');
   }
 
-  // === QR Functions ===
   function initQRCode() {
     const address = document.getElementById('address')?.textContent?.trim();
     const qrDiv = document.getElementById('qrcode');
     if (!address || address === 'None' || !qrDiv || typeof QRCode === 'undefined') return;
-
     qrDiv.innerHTML = '';
     try {
       new QRCode(qrDiv, {
         text: address,
-        width: 256, height: 256,
-        colorDark: '#ffffff', colorLight: '#0a0a0a',
+        width: 220, height: 220,
+        colorDark: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
+        colorLight: getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#0a0a0a',
         correctLevel: QRCode.CorrectLevel.H
       });
     } catch (e) {
@@ -277,7 +258,6 @@
   async function shareQR() {
     const address = document.getElementById('address')?.textContent?.trim();
     if (!address) return window.NotificationManager?.showToast('No address', 'error');
-
     try {
       if (navigator.share) {
         await navigator.share({ title: 'My Wallet Address', text: `Address: ${address}`, url: window.location.href });
@@ -293,14 +273,11 @@
     }
   }
 
-  // === Mnemonic Functions ===
   function toggleMnemonic() {
     if (!secureMnemonic) return window.NotificationManager?.showToast('🔐 Export mnemonic first', 'warning');
-
     const display = document.getElementById('mnemonicDisplay');
     const btn = document.getElementById('toggleMnemonicBtn');
     if (!display || !btn) return;
-
     const isHidden = display.type === 'password' || display.value.includes('•••');
     display.value = isHidden ? secureMnemonic : '••••••••••••••••••••';
     display.type = isHidden ? 'text' : 'password';
@@ -317,7 +294,6 @@
     const display = document.getElementById('mnemonicDisplay');
     const toggle = document.getElementById('toggleMnemonicBtn');
     const copy = document.getElementById('copyMnemonicBtn');
-
     [display, toggle, copy].forEach(el => { if (el) el.disabled = !loaded; });
     if (display && !loaded) { display.value = '••••••••••••••••••••'; display.type = 'password'; }
   }
@@ -326,17 +302,14 @@
     const input = document.getElementById('confirmInput');
     const btn = document.getElementById('confirmSubmitBtn');
     const error = document.getElementById('confirmError');
-
     const value = input?.value?.trim()?.toUpperCase();
     if (!value || !['I CONFIRM', 'CONFIRM', 'YES'].includes(value)) {
       if (error) { error.textContent = 'Type "I CONFIRM" exactly'; error.classList.remove('hidden'); }
       input?.focus();
       return;
     }
-
     if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
     if (error) { error.textContent = 'Connecting…'; error.classList.remove('hidden'); }
-
     try {
       const res = await fetch('/api/export_mnemonic', {
         method: 'POST',
@@ -344,7 +317,6 @@
         body: JSON.stringify({ confirmation: value })
       });
       const result = await res.json();
-
       if (res.ok) {
         secureMnemonic = result.mnemonic;
         updateMnemonicUI(true);
@@ -362,32 +334,27 @@
     }
   }
 
-  // === 🔐 Logout Functions (ГЛОБАЛЬНЫЕ — для onclick) ===
+  // 🔐 Logout
   window.confirmLogout = function(event) {
     event?.preventDefault();
     const modal = document.getElementById('logoutModal');
     const input = document.getElementById('logoutConfirmInput');
     const error = document.getElementById('logoutError');
-
     modal?.classList.remove('hidden');
     if (input) { input.value = ''; input.focus(); }
     error?.classList.add('hidden');
   };
-
   window.closeLogoutModal = function() {
     document.getElementById('logoutModal')?.classList.add('hidden');
   };
-
   window.executeLogout = function() {
     window.closeLogoutModal();
     window.location.href = '/logout';
   };
-
   function validateLogoutInput() {
     const input = document.getElementById('logoutConfirmInput');
     const error = document.getElementById('logoutError');
     const value = input?.value.trim().toUpperCase();
-
     if (value === 'LOGOUT' || value === 'OK') {
       window.executeLogout();
       return true;
@@ -400,31 +367,23 @@
     return false;
   }
 
-  // === Init: DOMContentLoaded ===
   document.addEventListener('DOMContentLoaded', function() {
-    // QR Code
     initQRCode();
-
-    // Session info
     const sessionEl = document.getElementById('sessionInfo');
     if (sessionEl) sessionEl.textContent = 'Active • ' + new Date().toLocaleTimeString();
 
-    // Mnemonic confirm modal
     const confirmInput = document.getElementById('confirmInput');
     const confirmBtn = document.getElementById('confirmSubmitBtn');
     confirmInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleMnemonicConfirm(); });
     confirmBtn?.addEventListener('click', handleMnemonicConfirm);
 
-    // 🔐 Logout modal handlers
     const logoutInput = document.getElementById('logoutConfirmInput');
     const logoutBtn = document.getElementById('logoutConfirmBtn');
     const logoutModal = document.getElementById('logoutModal');
-
     logoutInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') validateLogoutInput(); });
     logoutBtn?.addEventListener('click', validateLogoutInput);
     logoutModal?.addEventListener('click', (e) => { if (e.target === logoutModal) window.closeLogoutModal(); });
 
-    // Modal backdrop close (для всех модалок)
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
       overlay.addEventListener('click', (e) => {
         if (e.target === overlay && window.ModalManager?.close) {
@@ -434,7 +393,6 @@
     });
   });
 
-  // === Global: Escape key handler ===
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
       window.closeLogoutModal();
@@ -443,14 +401,12 @@
     }
   });
 
-  // === Global: Click outside modals ===
   window.addEventListener('click', (e) => {
     if (e.target.classList.contains('modal-overlay') && window.ModalManager?.close) {
       window.ModalManager.close(e.target.id);
     }
   });
 
-  // === Export public functions ===
   Object.assign(window, {
     copyAddressToClipboard,
     copyMnemonicToClipboard,
@@ -459,48 +415,167 @@
     downloadQR,
     shareQR
   });
-
 })();
 </script>
 
-<!-- ✅ CSS для кнопки ошибки (если не определён в base.css) -->
+<!-- ═══════════════════════════════════════════════════════════
+     CSS FIXES FOR PROFILE PAGE — ОБЯЗАТЕЛЬНО
+═══════════════════════════════════════════════════════════ -->
 <style>
-  .btn-logout:hover {
-  background: var(--status-error, #ef4444) !important;
-  color: var(--text-inverse, #fff) !important;
-  transform: scale(1.05);
-  transition: all 0.15s ease;
+/* Контейнер секций профиля */
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg, 24px);
+  padding: var(--space-md);
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
-.btn-logout:hover::after {
-  content: "Log out";
-  position: absolute;
-  top: 50%; left: 100%;
-  transform: translateY(-50%);
-  margin-left: 8px;
-  padding: 4px 8px;
-  background: var(--bg-elevated);
+
+/* Карточка профиля */
+.profile-card {
+  background: var(--bg-card, var(--bg-tertiary, #1a1a2e));
+  border: 1px solid var(--border-color, #2a2a4a);
+  border-radius: var(--radius-md, 12px);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.profile-card h3 {
+  margin: 0 0 var(--space-sm);
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 16px;
   color: var(--text-primary);
-  font-size: 11px;
-  border-radius: 4px;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 100;
 }
-@media (max-width: 768px) { .btn-logout:hover::after { display: none; } }
-  .btn-error {
-    background: var(--status-error, #ef4444);
-    color: var(--text-inverse, #fff);
-    border: none;
-    padding: 10px 20px;
-    border-radius: var(--radius-md, 8px);
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
+
+/* Строка: label + value */
+.profile-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-xs) 0;
+}
+
+.profile-row label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 130px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.profile-value-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.profile-value-wrap .input-monospace {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+/* QR контейнер */
+.qr-container {
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+#qrcode {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto var(--space-sm);
+}
+
+#qrcode img,
+#qrcode canvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+.qr-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.qr-actions .btn {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+/* Бейджи статуса */
+.status-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+.status-success {
+  color: var(--status-success, #22c55e);
+  background: rgba(34, 197, 94, 0.1);
+}
+.status-warning {
+  color: var(--status-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+/* Адаптив */
+@media (max-width: 600px) {
+  .profile-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-xs);
   }
-  .btn-error:hover { opacity: 0.9; }
-  .btn-error:disabled { opacity: 0.5; cursor: not-allowed; }
-  .hidden { display: none !important; }
-  .error { color: var(--status-error, #ef4444); font-size: 12px; margin-top: 4px; }
+
+  .profile-row label {
+    min-width: auto;
+  }
+
+  .profile-value-wrap {
+    width: 100%;
+  }
+
+  .profile-section {
+    padding: var(--space-sm);
+  }
+
+  .qr-container {
+    max-width: 100%;
+  }
+}
+
+/* Утилиты */
+.hidden { display: none !important; }
+.error { color: var(--status-error, #ef4444); font-size: 12px; margin-top: 4px; }
+.btn-error {
+  background: var(--status-error, #ef4444);
+  color: var(--text-inverse, #fff);
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-md, 8px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-error:hover { opacity: 0.9; }
+.btn-error:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 
 {% endblock %}
