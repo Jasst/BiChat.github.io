@@ -385,6 +385,20 @@ body {
   content: '…';
 }
 
+.btn-error {
+  background: var(--status-error, #ef4444);
+  color: var(--text-inverse, #fff);
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-md, 8px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-error:hover {
+  opacity: 0.9;
+}
+
 /* ===== Tabs ===== */
 .tabs {
   display: flex;
