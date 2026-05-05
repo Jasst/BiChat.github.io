@@ -333,8 +333,19 @@ class ContactSchema(Schema):
     address = fields.Str(required=True, validate=lambda x: len(x) == 64)
     name = fields.Str(required=True, validate=lambda x: 1 <= len(x) <= 50)
 
+class EditContactSchema(Schema):
+    address = fields.Str(required=True, validate=lambda x: len(x) == 64)
+    name = fields.Str(required=True, validate=lambda x: 1 <= len(x.strip()) <= 50)
+
+    @post_load
+    def strip_fields(self, data, **kwargs):
+        data['name'] = data['name'].strip()
+        data['address'] = data['address'].strip().lower()
+        return data
+
 class DeleteMessageSchema(Schema):
     message_id = fields.Int(required=True, validate=lambda x: x > 0)
+
 
 
 # === Кэш публичных ключей (с верификацией) ===
@@ -425,6 +436,34 @@ def get_contacts(user_address: str) -> List[Dict[str, Any]]:
         )
         return [{'address': row[0], 'name': row[1], 'pubkey': row[2], 'created_at': row[3]}
                 for row in cursor.fetchall()]
+
+# === Обновление имени контакта ===
+def update_contact_name(user_address: str, contact_address: str, new_name: str) -> bool:
+    """Обновляет имя контакта в БД с валидацией."""
+    if not new_name or not new_name.strip():
+        return False
+
+    # 🔒 Санитизация: убираем контрольные символы
+    clean_name = ''.join(c for c in new_name.strip() if ord(c) >= 32 and ord(c) != 127)
+    if not clean_name or len(clean_name) > 50:
+        return False
+
+    try:
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute(
+                'UPDATE contacts SET contact_name = ? WHERE user_address = ? AND contact_address = ?',
+                (clean_name, user_address, contact_address.lower())
+            )
+            updated = cursor.rowcount
+
+        # 🔥 Очистка кэша при успешном обновлении
+        if updated:
+            get_contact_name_cached.cache_clear()
+            logger.info(f"Contact name updated: {contact_address[:16]}... -> '{clean_name}'")
+        return bool(updated)
+    except Exception as e:
+        logger.error(f"Update contact name DB error: {e}")
+        return False
 
 
 # === Расшифровка сообщений ===
@@ -1324,6 +1363,61 @@ def delete_contact_route():
     except Exception as e:
         logger.error(f"Delete contact error: {e}")
         return jsonify({'error': 'Failed to delete contact'}), 500
+
+
+# === Редактирование имени контакта ===
+@app.route('/edit_contact', methods=['POST'])
+def edit_contact_route():
+    """🔐 Редактирование имени контакта с полной защитой."""
+
+    # 🔒 1. Проверка сессии
+    if 'address' not in session:
+        logger.warning(f"⚠️ Unauthorized edit_contact attempt from {request.remote_addr}")
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        # 🔒 2. Валидация входных данных через схему
+        data = EditContactSchema().load(request.get_json(silent=True) or {})
+        user_addr = session['address']
+        contact_address = data['address']
+        new_name = data['name']
+
+        # 🔒 3. Проверка: не редактируем сами себя
+        if hmac.compare_digest(user_addr, contact_address):
+            return jsonify({'error': 'Cannot edit yourself as a contact'}), 400
+
+        # 🔒 4. Проверка: контакт должен существовать
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute(
+                'SELECT contact_name FROM contacts WHERE user_address = ? AND contact_address = ?',
+                (user_addr, contact_address)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({'error': 'Contact not found'}), 404
+            old_name = row[0]
+
+        # 🔒 5. Оптимизация: если имя не изменилось — возвращаем успех
+        if old_name == new_name:
+            return jsonify({'message': 'No changes', 'unchanged': True}), 200
+
+        # 🔒 6. Обновление в БД
+        if update_contact_name(user_addr, contact_address, new_name):
+            return jsonify({
+                'message': 'Contact name updated',
+                'old_name': old_name,
+                'new_name': new_name
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to update contact name'}), 500
+
+    except ValidationError as err:
+        logger.warning(f"⚠️ Validation error in edit_contact: {err.messages}")
+        return jsonify({'error': err.messages}), 400
+    except Exception as e:
+        logger.error(f"❌ edit_contact error: {type(e).__name__}: {e}", exc_info=app.debug)
+        return jsonify({'error': 'Internal server error'}), 500
+
 # =============================================================================
 # === Группы ===
 # =============================================================================

@@ -23,11 +23,9 @@
   <!-- Main Content -->
   <main class="main-content">
     <header class="chat-header">
-      <!-- ✅ Кнопка меню для мобильных -->
       <button class="btn btn-icon menu-toggle" id="menuToggle"
               onclick="toggleSidebar()" aria-label="Toggle menu"
               style="display: none;">☰</button>
-
       <h2>Contacts</h2>
       <button class="btn btn-primary" onclick="openQRScanner()">📷 Scan QR</button>
     </header>
@@ -36,14 +34,9 @@
     <div id="qrScannerContainer" class="hidden" style="padding: var(--space-md); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
       <div class="text-center">
         <div style="position: relative; display: inline-block; margin-bottom: var(--space-sm);">
-          <!-- ✅ FIX: добавлен transform: scaleX(-1) для корректного отображения -->
           <video id="qrVideo"
-                 style="width: 200px; height: 200px; border-radius: var(--radius-md); background: #000; "
-                 playsinline
-                 autoplay
-                 muted
-                 disablepictureinpicture>
-          </video>
+                 style="width: 200px; height: 200px; border-radius: var(--radius-md); background: #000;"
+                 playsinline autoplay muted disablepictureinpicture></video>
           <div style="position: absolute; inset: 0; border: 2px solid var(--accent); border-radius: var(--radius-md); pointer-events: none;"></div>
         </div>
         <p class="text-muted" style="font-size: 12px;">Point camera at QR code</p>
@@ -59,175 +52,334 @@
 
     <!-- Add Contact Form -->
     <div style="padding: var(--space-md); border-top: 1px solid var(--border-color); background: var(--bg-secondary);">
-      <div style="display: flex; gap: var(--space-sm);">
-        <input type="text" id="contactName" class="input" placeholder="Name" style="flex: 1;">
-        <input type="text" id="contactAddress" class="input input-monospace" placeholder="64-char address" maxlength="64" style="flex: 2;">
+      <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
+        <input type="text" id="contactName" class="input" placeholder="Name" maxlength="50" style="flex: 1; min-width: 120px;">
+        <input type="text" id="contactAddress" class="input input-monospace" placeholder="64-char address" maxlength="64" style="flex: 2; min-width: 200px;">
         <button class="btn btn-primary" onclick="addContact()">Add</button>
       </div>
+      <p class="text-muted" style="font-size: 11px; margin-top: var(--space-xs);">
+        Name: 1–50 chars • Address: exactly 64 hex characters
+      </p>
     </div>
   </main>
 </div>
 
-<!-- ✅ Оверлей для закрытия сайдбара -->
+<!-- Overlay for mobile sidebar -->
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
 {% block scripts %}
-<!-- ✅ Порядок: jsQR → common.js → mobile-sidebar → ваш код -->
+<!-- Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
 
 <script>
-// ✅ Защита от повторного выполнения скрипта
 ;(function() {
+  'use strict';
+
+  // ✅ Защита от повторного выполнения
   if (window._contactsScriptLoaded) return;
   window._contactsScriptLoaded = true;
 
-  // === Contacts-Specific State ===
+  // === Constants ===
+  const MAX_NAME_LENGTH = 50;
+  const ADDRESS_LENGTH = 64;
+  const ADDRESS_REGEX = /^[0-9a-f]{64}$/i;
+
+  // === State ===
   let allContacts = [];
+  let csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+  // === Helpers ===
+  const $ = (id) => document.getElementById(id);
+  const escapeHtml = (str) => {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+  };
+  const escapeAttr = (str) => String(str ?? '').replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+  const isValidAddress = (addr) => ADDRESS_REGEX.test(String(addr || '').trim());
+  const isValidName = (name) => {
+    const n = String(name || '').trim();
+    return n.length >= 1 && n.length <= MAX_NAME_LENGTH && !/[\u0000-\u001F\u007F]/.test(n);
+  };
+
+  // === Fetch wrapper with CSRF & error handling ===
+  async function secureFetch(url, options = {}) {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
+      ...(options.headers || {})
+    };
+    try {
+      const res = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+      if (res.status === 401) {
+        window.NotificationManager?.showToast('Session expired', 'error');
+        setTimeout(() => location.href = '/login', 1500);
+        return null;
+      }
+      return res;
+    } catch (e) {
+      console.error('Network error:', e);
+      window.NotificationManager?.showToast('Connection failed', 'error');
+      return null;
+    }
+  }
 
   // === Load Contacts ===
   async function loadContacts() {
-    const container = DOM.getById('contactsList');
+    const container = $('contactsList');
     if (!container) return;
 
-    try {
-      const res = await fetch('/get_contacts');
-      const data = await res.json();
+    container.innerHTML = '<div class="loading">Loading contacts…</div>';
 
-      if (!res.ok || !data.contacts?.length) {
+    try {
+      const res = await secureFetch('/get_contacts');
+      if (!res) throw new Error('Network error');
+
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.contacts)) {
+        throw new Error(data.error || 'Invalid response');
+      }
+
+      allContacts = data.contacts;
+
+      if (allContacts.length === 0) {
         container.innerHTML = `
           <div class="empty-state">
             <div class="icon">👥</div>
             <p>No contacts yet</p>
-            <p class="text-muted">Add contacts to start chatting</p>
+            <p class="text-muted">Add contacts manually or scan QR code</p>
           </div>
         `;
         return;
       }
 
-      allContacts = data.contacts;
       container.innerHTML = '';
-
-      data.contacts.forEach((c, i) => {
+      allContacts.forEach((c, i) => {
         const item = document.createElement('div');
         item.className = 'list-item';
         item.dataset.address = c.address;
-
         item.innerHTML = `
           <div class="info">
-            <div class="name truncate">${Utils.escapeHtml(c.name)}</div>
-            <div class="address font-mono truncate" id="addr-${i}" title="Click to copy">${Utils.escapeHtml(c.address)}</div>
+            <div class="name truncate" id="name-${i}" title="${escapeAttr(c.name)}">${escapeHtml(c.name)}</div>
+            <div class="address font-mono truncate" id="addr-${i}" title="Click to copy" style="cursor: pointer;">${escapeHtml(c.address)}</div>
           </div>
           <div class="actions">
             <button class="btn btn-icon" onclick="copyAddress('addr-${i}')" title="Copy address">📋</button>
-            <button class="btn btn-icon" onclick="startChat('${Utils.escapeAttr(c.address)}', '${Utils.escapeAttr(c.name)}')" title="Start chat">💬</button>
-            <button class="btn btn-icon" style="color: var(--status-error);" onclick="deleteContact('${Utils.escapeAttr(c.address)}', this)" title="Delete">✕</button>
+            <button class="btn btn-icon" onclick="startChat('${escapeAttr(c.address)}', '${escapeAttr(c.name)}')" title="Start chat">💬</button>
+            <button class="btn btn-icon" onclick="editContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}', this)" title="Edit name">✏️</button>
+            <button class="btn btn-icon" style="color: var(--status-error);" onclick="deleteContact('${escapeAttr(c.address)}', this)" title="Delete">✕</button>
           </div>
         `;
         container.appendChild(item);
       });
+
+      // Клик по адресу → копирование
+      container.querySelectorAll('.address').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyAddress(el.id);
+        });
+      });
+
     } catch (error) {
       console.error('Load contacts error:', error);
-      container.innerHTML = '<p class="text-muted text-center">Failed to load</p>';
+      container.innerHTML = '<p class="text-muted text-center">Failed to load contacts</p>';
+      window.NotificationManager?.showToast('Failed to load contacts', 'error');
     }
   }
 
   // === Copy Address ===
   function copyAddress(elementId) {
-    const el = DOM.getById(elementId);
+    const el = $(elementId);
     if (!el) return;
-    Utils.copyToClipboard(el.textContent.trim());
-    window.NotificationManager?.showToast('Address copied', 'success');
+    const text = el.textContent.trim();
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        window.NotificationManager?.showToast('Address copied', 'success');
+      }).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      window.NotificationManager?.showToast('Address copied', 'success');
+    } catch {
+      window.NotificationManager?.showToast('Copy failed', 'error');
+    }
+    document.body.removeChild(ta);
   }
 
   // === Start Chat ===
   function startChat(address, name) {
-    const params = new URLSearchParams({ start_with: address, name });
-    location.href = '/chat?' + params;
+    if (!isValidAddress(address)) {
+      window.NotificationManager?.showToast('Invalid address', 'error');
+      return;
+    }
+    const params = new URLSearchParams({ start_with: address, name: name || '' });
+    location.href = '/chat?' + params.toString();
   }
 
   // === Add Contact ===
   async function addContact() {
-    const name = DOM.getById('contactName')?.value.trim();
-    const address = DOM.getById('contactAddress')?.value.trim();
+    const nameInput = $('contactName');
+    const addrInput = $('contactAddress');
+    const name = nameInput?.value.trim();
+    const address = addrInput?.value.trim().toLowerCase();
 
     if (!name || !address) {
       window.NotificationManager?.showToast('Fill in both fields', 'warning');
-      return false; // ✅ Возвращаем false для обработки из common.js
+      return false;
     }
-
-    if (!Security.isValidAddress(address)) {
-      window.NotificationManager?.showToast('Invalid address format', 'error');
+    if (!isValidName(name)) {
+      window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning');
+      return false;
+    }
+    if (!isValidAddress(address)) {
+      window.NotificationManager?.showToast('Address must be 64 hex characters', 'error');
       return false;
     }
 
-    // ✅ Проверка: не добавлен ли контакт уже
-    const exists = allContacts?.some(c => c.address.toLowerCase() === address.toLowerCase());
+    // Проверка на дубликат
+    const exists = allContacts.some(c => c.address.toLowerCase() === address);
     if (exists) {
       window.NotificationManager?.showToast('Contact already exists', 'warning');
-      const contact = allContacts.find(c => c.address.toLowerCase() === address.toLowerCase());
+      const contact = allContacts.find(c => c.address.toLowerCase() === address);
       startChat(address, contact.name);
       return true;
     }
 
     try {
-      const res = await fetch('/add_contact', {
+      const res = await secureFetch('/add_contact', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, address })
       });
-      const data = await res.json();
+      if (!res) return false;
 
+      const data = await res.json();
       if (res.ok) {
-        DOM.getById('contactName').value = '';
-        DOM.getById('contactAddress').value = '';
+        nameInput.value = '';
+        addrInput.value = '';
         await loadContacts();
         window.NotificationManager?.showToast('Contact added', 'success');
         return true;
       } else {
-        window.NotificationManager?.showToast(data.error || 'Failed to add', 'error');
+        window.NotificationManager?.showToast(data.error || 'Failed to add contact', 'error');
         return false;
       }
     } catch (error) {
       console.error('Add contact error:', error);
-      window.NotificationManager?.showToast('Network error', 'error');
       return false;
+    }
+  }
+
+  // === Edit Contact Name ===
+  async function editContact(address, currentName, btn) {
+    if (!isValidAddress(address)) {
+      window.NotificationManager?.showToast('Invalid contact', 'error');
+      return;
+    }
+
+    const newName = prompt('Edit contact name:', currentName);
+    if (newName === null) return; // отмена
+    const trimmed = newName.trim();
+
+    if (!isValidName(trimmed)) {
+      window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning');
+      return;
+    }
+    if (trimmed === currentName) return; // без изменений
+
+    try {
+      btn.disabled = true;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳';
+
+      const res = await secureFetch('/edit_contact', {
+        method: 'POST',
+        body: JSON.stringify({ address, name: trimmed })
+      });
+      if (!res) return;
+
+      const data = await res.json();
+      if (res.ok) {
+        // Обновляем в интерфейсе
+        const item = btn.closest('.list-item');
+        const nameEl = item?.querySelector('.name');
+        if (nameEl) nameEl.textContent = escapeHtml(trimmed);
+
+        // Обновляем кэш
+        const idx = allContacts.findIndex(c => c.address.toLowerCase() === address.toLowerCase());
+        if (idx !== -1) allContacts[idx].name = trimmed;
+
+        window.NotificationManager?.showToast('Name updated', 'success');
+      } else {
+        window.NotificationManager?.showToast(data.error || 'Failed to update', 'error');
+      }
+    } catch (error) {
+      console.error('Edit contact error:', error);
+      window.NotificationManager?.showToast('Network error', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '✏️';
     }
   }
 
   // === Delete Contact ===
   async function deleteContact(address, btn) {
-    if (!confirm('Delete this contact?')) return;
+    if (!isValidAddress(address)) return;
+
+    if (!confirm('Delete this contact?\n\n' + address)) return;
 
     try {
       btn.disabled = true;
-      const res = await fetch('/delete_contact', {
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳';
+
+      const res = await secureFetch('/delete_contact', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address })
       });
+      if (!res) return;
 
       if (res.ok) {
-        btn.closest('.list-item')?.remove();
+        const item = btn.closest('.list-item');
+        item?.remove();
+
+        // Обновляем кэш
+        allContacts = allContacts.filter(c => c.address.toLowerCase() !== address.toLowerCase());
+
         window.NotificationManager?.showToast('Contact deleted', 'success');
-        if (!document.querySelector('.list-item')) {
-          DOM.getById('contactsList').innerHTML = `
+
+        if (allContacts.length === 0) {
+          $('contactsList').innerHTML = `
             <div class="empty-state">
               <div class="icon">👥</div>
               <p>No contacts</p>
+              <p class="text-muted">Add a contact to get started</p>
             </div>
           `;
         }
       } else {
         const data = await res.json();
         window.NotificationManager?.showToast(data.error || 'Delete failed', 'error');
-        btn.disabled = false;
       }
     } catch (error) {
       console.error('Delete error:', error);
       window.NotificationManager?.showToast('Network error', 'error');
+    } finally {
       btn.disabled = false;
+      btn.innerHTML = '✕';
     }
   }
 
@@ -235,27 +387,35 @@
   document.addEventListener('DOMContentLoaded', function() {
     loadContacts();
 
-    DOM.getById('contactAddress')?.addEventListener('keydown', e => {
+    // Enter в поле адреса → добавить контакт
+    $('contactAddress')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         addContact();
       }
     });
 
+    // Автофокус на поле имени при загрузке
+    setTimeout(() => $('contactName')?.focus(), 300);
+
+    // Обработка параметров из строки поиска (переход из другого раздела)
     const params = new URLSearchParams(window.location.search);
     const startWith = params.get('start_with');
     const startName = params.get('name');
-    if (startWith && startName) {
-      setTimeout(() => startChat(decodeURIComponent(startWith), decodeURIComponent(startName)), 100);
+    if (startWith && isValidAddress(startWith) && startName) {
+      setTimeout(() => {
+        startChat(decodeURIComponent(startWith), decodeURIComponent(startName));
+      }, 200);
     }
   });
 
-  // ✅ ЭКСПОРТ ФУНКЦИЙ В ГЛОБАЛЬНУЮ ОБЛАСТЬ (для common.js)
+  // ✅ Экспорт функций в глобальную область (для onclick в HTML)
   window.addContact = addContact;
   window.startChat = startChat;
   window.loadContacts = loadContacts;
-  window.copyAddress = copyAddress;      // ← ДОБАВИТЬ
-  window.deleteContact = deleteContact;  // ← ДОБАВИТЬ
+  window.copyAddress = copyAddress;
+  window.editContact = editContact;
+  window.deleteContact = deleteContact;
 
 })();
 </script>
