@@ -30,7 +30,7 @@
       <button class="btn btn-primary" onclick="openCreateModal()">+ New Group</button>
     </header>
 
-       <div class="list-container groups-grid" id="groupsList">
+    <div class="list-container groups-grid" id="groupsList">
       <div class="loading">Loading groups…</div>
     </div>
   </main>
@@ -38,7 +38,9 @@
 
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
-<!-- Create Group Modal -->
+<!-- ══════════════════════════════════════════════════════════
+     CREATE GROUP MODAL
+═══════════════════════════════════════════════════════════ -->
 <div id="createModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
@@ -84,36 +86,88 @@
   </div>
 </div>
 
-<!-- Group Details Modal -->
+<!-- ══════════════════════════════════════════════════════════
+     GROUP DETAILS MODAL (with manage tab for creators)
+═══════════════════════════════════════════════════════════ -->
 <div id="detailModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
-  <div class="modal">
+  <div class="modal" style="max-width: 480px;">
     <header class="modal-header">
       <h3 id="detailTitle">Group Details</h3>
       <button class="modal-close" onclick="ModalManager.close('detailModal')" aria-label="Close">&times;</button>
     </header>
 
+    <!-- Tabs (visible only to creator) -->
+    <div id="detailTabs" class="hidden" style="display: flex; border-bottom: 1px solid var(--border-color); padding: 0 var(--space-md);">
+      <button class="detail-tab active" id="tabInfo"    onclick="switchTab('info')"   style="flex:1; padding: var(--space-sm); background: none; border: none; border-bottom: 2px solid var(--accent); color: var(--accent); cursor: pointer; font-size: 13px;">Info</button>
+      <button class="detail-tab"        id="tabManage" onclick="switchTab('manage')" style="flex:1; padding: var(--space-sm); background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px;">Manage</button>
+    </div>
+
     <div class="modal-body">
-      <div style="display: flex; justify-content: space-between; padding: var(--space-xs) 0; border-bottom: 1px solid var(--border-color);">
-        <span class="text-secondary" style="font-size: 12px;">Group ID</span>
-        <span class="font-mono" style="font-size: 11px;" id="detailId"></span>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: var(--space-xs) 0; border-bottom: 1px solid var(--border-color);">
-        <span class="text-secondary" style="font-size: 12px;">Created by</span>
-        <span class="font-mono" style="font-size: 11px;" id="detailCreator"></span>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: var(--space-xs) 0; border-bottom: 1px solid var(--border-color);">
-        <span class="text-secondary" style="font-size: 12px;">Created</span>
-        <span style="font-size: 12px;" id="detailDate"></span>
+
+      <!-- ── INFO PANEL ─────────────────────────────────── -->
+      <div id="panelInfo">
+        <div style="display: flex; justify-content: space-between; padding: var(--space-xs) 0; border-bottom: 1px solid var(--border-color);">
+          <span class="text-secondary" style="font-size: 12px;">Group ID</span>
+          <span class="font-mono" style="font-size: 11px;" id="detailId"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: var(--space-xs) 0; border-bottom: 1px solid var(--border-color);">
+          <span class="text-secondary" style="font-size: 12px;">Created by</span>
+          <span class="font-mono" style="font-size: 11px;" id="detailCreator"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: var(--space-xs) 0; border-bottom: 1px solid var(--border-color);">
+          <span class="text-secondary" style="font-size: 12px;">Created</span>
+          <span style="font-size: 12px;" id="detailDate"></span>
+        </div>
+
+        <div class="form-group" style="margin-top: var(--space-md);">
+          <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">
+            Members (<span id="detailCount">0</span>)
+          </label>
+          <div id="detailMembers" style="max-height: 200px; overflow-y: auto;"></div>
+        </div>
+
+        <button class="btn btn-primary" style="width: 100%; margin-top: var(--space-sm);" onclick="openGroupChat()">💬 Open Chat</button>
       </div>
 
-      <div class="form-group" style="margin-top: var(--space-md);">
-        <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">
-          Members (<span id="detailCount">0</span>)
-        </label>
-        <div id="detailMembers" style="max-height: 200px; overflow-y: auto;"></div>
+      <!-- ── MANAGE PANEL (creator only) ───────────────── -->
+      <div id="panelManage" class="hidden">
+
+        <!-- Rename group -->
+        <div class="form-group">
+          <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Rename Group</label>
+          <div style="display: flex; gap: var(--space-xs);">
+            <input type="text" id="renameInput" class="input" placeholder="New name…" maxlength="100" style="flex: 1;">
+            <button class="btn btn-primary" onclick="submitRename()">Save</button>
+          </div>
+        </div>
+
+        <!-- Add member -->
+        <div class="form-group">
+          <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Add Member from Contacts</label>
+          <div id="addContactsList" style="max-height: 130px; overflow-y: auto; background: var(--bg-tertiary); border-radius: var(--radius-sm); padding: var(--space-xs);">
+            <p class="text-muted" style="font-size: 12px; padding: var(--space-xs);">Loading…</p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Or Add by Address</label>
+          <div style="display: flex; gap: var(--space-xs);">
+            <input type="text" id="addMemberInput" class="input input-monospace" placeholder="64-char hex" maxlength="64" style="flex: 1;">
+            <button class="btn" onclick="submitAddMember()">Add</button>
+          </div>
+        </div>
+
+        <!-- Members list with remove buttons -->
+        <div class="form-group" style="margin-top: var(--space-md);">
+          <label class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">
+            Current Members (<span id="manageCount">0</span>)
+          </label>
+          <div id="manageMembers" style="max-height: 200px; overflow-y: auto;"></div>
+        </div>
+
+        <div id="manageError" class="hidden error" style="margin-top: var(--space-sm);"></div>
       </div>
 
-      <button class="btn btn-primary" style="width: 100%;" onclick="openGroupChat()">💬 Open Chat</button>
     </div>
   </div>
 </div>
@@ -121,21 +175,24 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
 <script>
-// === Groups-Specific State ===
+// ═══════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════
 const MY_ADDR = "{{ address|default('', true) }}";
-let allContacts = [];
+let allContacts   = [];
 let selectedMembers = {};
-let currentGroup = null;
+let currentGroup  = null;
 
-// === Load Groups ===
+// ═══════════════════════════════════════════════════════════
+// Load Groups
+// ═══════════════════════════════════════════════════════════
 async function loadGroups() {
   const container = DOM.getById('groupsList');
   if (!container) return;
-
   container.innerHTML = '<div class="loading">Loading…</div>';
 
   try {
-    const res = await fetch('/get_groups');
+    const res  = await fetch('/get_groups');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
@@ -145,8 +202,7 @@ async function loadGroups() {
           <div class="icon">👥</div>
           <p>No groups yet</p>
           <button class="btn btn-primary" onclick="openCreateModal()">Create one</button>
-        </div>
-      `;
+        </div>`;
       return;
     }
 
@@ -154,48 +210,47 @@ async function loadGroups() {
     container.style.display = 'grid';
 
     data.groups.forEach(g => {
-      const card = DOM.createElement('div', {
-        className: 'list-item',
-        dataset: { id: g.id }
-      });
-
+      const card      = DOM.createElement('div', { className: 'list-item', dataset: { id: g.id } });
       const isCreator = g.creator === MY_ADDR;
-      const initials = g.name.slice(0, 2).toUpperCase();
-      const date = g.created_at ? new Date(g.created_at * 1000).toLocaleDateString() : '—';
+      const initials  = g.name.slice(0, 2).toUpperCase();
+      const date      = g.created_at ? new Date(g.created_at * 1000).toLocaleDateString() : '—';
 
       card.innerHTML = `
-  <div class="group-card-header">
-    <div class="group-card-avatar">${Utils.escapeHtml(initials)}</div>
-    <div class="group-card-title">
-      <div class="group-card-name truncate">${Utils.escapeHtml(g.name)}</div>
-      <div class="group-card-id">ID: ${Utils.escapeHtml(g.id.slice(0, 12))}…</div>
-    </div>
-  </div>
-
-  ${isCreator ? `<span class="group-card-creator-badge">Creator</span>` : ''}
-
-  <div class="group-card-meta">
-    ${g.members.length} member${g.members.length !== 1 ? 's' : ''} · ${date}
-  </div>
-
-  <div class="group-card-actions">
-    <button class="btn btn-primary" onclick="openGroupChatById('group:${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')">💬 Chat</button>
-    <button class="btn" onclick="openDetail('${Utils.escapeAttr(JSON.stringify(g))}')">Info</button>
-    ${isCreator ? `<button class="btn btn-icon" style="color: var(--status-error);" onclick="deleteGroup('${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')" title="Delete">🗑</button>` : ''}
-  </div>
-      `;
+        <div class="group-card-header">
+          <div class="group-card-avatar">${Utils.escapeHtml(initials)}</div>
+          <div class="group-card-title">
+            <div class="group-card-name truncate">${Utils.escapeHtml(g.name)}</div>
+            <div class="group-card-id">ID: ${Utils.escapeHtml(g.id.slice(0, 12))}…</div>
+          </div>
+        </div>
+        ${isCreator ? `<span class="group-card-creator-badge">Creator</span>` : ''}
+        <div class="group-card-meta">
+          ${g.members.length} member${g.members.length !== 1 ? 's' : ''} · ${date}
+        </div>
+        <div class="group-card-actions">
+          <button class="btn btn-primary"
+            onclick="openGroupChatById('group:${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')">💬 Chat</button>
+          <button class="btn"
+            onclick="openDetail('${Utils.escapeAttr(JSON.stringify(g))}')">Info</button>
+          ${isCreator ? `
+          <button class="btn btn-icon" style="color: var(--status-error);"
+            onclick="deleteGroup('${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')"
+            title="Delete">🗑</button>` : ''}
+        </div>`;
       container.appendChild(card);
     });
-  } catch (error) {
-    console.error('Load groups error:', error);
+  } catch (err) {
+    console.error('Load groups error:', err);
     container.innerHTML = '<p class="text-muted text-center">Failed to load</p>';
   }
 }
 
-// === Create Modal ===
+// ═══════════════════════════════════════════════════════════
+// Create Modal
+// ═══════════════════════════════════════════════════════════
 async function openCreateModal() {
   selectedMembers = {};
-  DOM.getById('groupName').value = '';
+  DOM.getById('groupName').value    = '';
   DOM.getById('manualAddress').value = '';
   DOM.hide(DOM.getById('createError'));
   renderSelected();
@@ -203,9 +258,8 @@ async function openCreateModal() {
 
   const list = DOM.getById('contactsList');
   list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs);">Loading…</p>';
-
   try {
-    const res = await fetch('/get_contacts');
+    const res  = await fetch('/get_contacts');
     const data = await res.json();
     allContacts = res.ok ? data.contacts : [];
     renderContacts();
@@ -217,7 +271,7 @@ async function openCreateModal() {
 function renderContacts() {
   const list = DOM.getById('contactsList');
   if (!allContacts.length) {
-    list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs); font-size: 12px;">No contacts. Add some first or use manual address.</p>';
+    list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs); font-size: 12px;">No contacts yet.</p>';
     return;
   }
   list.innerHTML = '';
@@ -234,8 +288,7 @@ function renderContacts() {
       <div style="flex: 1; min-width: 0;">
         <div style="font-size: 13px;">${Utils.escapeHtml(c.name)}</div>
         <div class="text-muted font-mono" style="font-size: 10px;">${Utils.escapeHtml(c.address.slice(0, 20))}…</div>
-      </div>
-    `;
+      </div>`;
     list.appendChild(item);
   });
 }
@@ -247,17 +300,12 @@ function toggleMember(addr, name, checked) {
 }
 
 function addManualAddress() {
-  const input = DOM.getById('manualAddress');
-  const addr = input.value.trim();
+  const input      = DOM.getById('manualAddress');
+  const addr       = input.value.trim();
   const validation = FormHelpers.validateAddress(addr);
-
-  if (!validation.valid) {
-    showError(validation.error);
-    return;
-  }
-  if (addr === MY_ADDR) { showError('You are included automatically'); return; }
-  if (selectedMembers[addr]) { showError('Already added'); return; }
-
+  if (!validation.valid) { showError(validation.error); return; }
+  if (addr === MY_ADDR)         { showError('You are included automatically'); return; }
+  if (selectedMembers[addr])    { showError('Already added'); return; }
   selectedMembers[addr] = addr.slice(0, 10) + '…';
   input.value = '';
   DOM.hide(DOM.getById('createError'));
@@ -272,19 +320,17 @@ function removeMember(addr) {
 }
 
 function renderSelected() {
-  const count = Object.keys(selectedMembers).length;
+  const count   = Object.keys(selectedMembers).length;
   const section = DOM.getById('selectedSection');
-  const list = DOM.getById('selectedList');
+  const list    = DOM.getById('selectedList');
   DOM.getById('memberCount').textContent = count;
-
   if (count === 0) { DOM.hide(section); return; }
   DOM.show(section);
   list.innerHTML = '';
-
   Object.entries(selectedMembers).forEach(([addr, name]) => {
     const tag = DOM.createElement('span', {
       style: 'display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); color: var(--accent); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 12px;',
-      html: `${Utils.escapeHtml(name)}<button onclick="removeMember('${Utils.escapeAttr(addr)}')" style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; line-height: 1;">&times;</button>`
+      html: `${Utils.escapeHtml(name)}<button onclick="removeMember('${Utils.escapeAttr(addr)}')" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:1;">&times;</button>`
     });
     list.appendChild(tag);
   });
@@ -297,76 +343,248 @@ function showError(msg) {
 }
 
 async function submitCreate() {
-  const name = DOM.getById('groupName').value.trim();
+  const name    = DOM.getById('groupName').value.trim();
   const members = Object.keys(selectedMembers);
-
-  const nameValid = FormHelpers.validateName(name);
-  if (!nameValid.valid) { showError(nameValid.error); return; }
+  const nameV   = FormHelpers.validateName(name);
+  if (!nameV.valid)    { showError(nameV.error); return; }
   if (!members.length) { showError('Add at least one member'); return; }
 
   const btn = DOM.getById('createSubmitBtn');
-  btn.disabled = true;
-  btn.textContent = 'Creating…';
-
+  btn.disabled = true; btn.textContent = 'Creating…';
   try {
-    const res = await fetch('/create_group', {
+    const res  = await fetch('/create_group', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, members })
     });
     const data = await res.json();
-
     if (!res.ok) { showError(data.error || 'Failed to create'); return; }
-
     ModalManager.close('createModal');
     await loadGroups();
-
     if (confirm(`Group "${name}" created!\nOpen chat now?`)) {
       openGroupChatById('group:' + data.group_id, name);
     }
   } catch (err) {
     showError('Network error');
-    console.error(err);
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Create';
+    btn.disabled = false; btn.textContent = 'Create';
   }
 }
 
-// === Detail Modal ===
-function openDetail(groupJson) {
+// ═══════════════════════════════════════════════════════════
+// Detail / Manage Modal
+// ═══════════════════════════════════════════════════════════
+function switchTab(tab) {
+  const isInfo = tab === 'info';
+  DOM.getById('panelInfo').classList.toggle('hidden', !isInfo);
+  DOM.getById('panelManage').classList.toggle('hidden', isInfo);
+
+  DOM.getById('tabInfo').style.borderBottomColor    = isInfo  ? 'var(--accent)' : 'transparent';
+  DOM.getById('tabInfo').style.color                = isInfo  ? 'var(--accent)' : 'var(--text-secondary)';
+  DOM.getById('tabManage').style.borderBottomColor  = !isInfo ? 'var(--accent)' : 'transparent';
+  DOM.getById('tabManage').style.color              = !isInfo ? 'var(--accent)' : 'var(--text-secondary)';
+
+  if (!isInfo && currentGroup) loadManagePanel(currentGroup);
+}
+
+async function openDetail(groupJson) {
   const g = JSON.parse(groupJson);
   currentGroup = g;
 
-  DOM.getById('detailTitle').textContent = g.name;
-  DOM.getById('detailId').textContent = g.id;
+  const isCreator = g.creator === MY_ADDR;
+
+  // Show / hide manage tab
+  const tabs = DOM.getById('detailTabs');
+  if (isCreator) DOM.show(tabs);
+  else           DOM.hide(tabs);
+
+  // Reset to Info tab
+  switchTab('info');
+
+  // Populate Info panel
+  DOM.getById('detailTitle').textContent   = g.name;
+  DOM.getById('detailId').textContent      = g.id;
   DOM.getById('detailCreator').textContent = g.creator === MY_ADDR ? g.creator + ' (You)' : g.creator;
-  DOM.getById('detailDate').textContent = g.created_at ? new Date(g.created_at * 1000).toLocaleString() : '—';
-  DOM.getById('detailCount').textContent = g.members.length;
+  DOM.getById('detailDate').textContent    = g.created_at ? new Date(g.created_at * 1000).toLocaleString() : '—';
+  DOM.getById('detailCount').textContent   = g.members.length;
 
-  const list = DOM.getById('detailMembers');
-  list.innerHTML = '';
-  g.members.forEach(addr => {
-    const isMe = addr === MY_ADDR;
-    const name = isMe ? 'You' : addr.slice(0, 16) + '…';
-    const row = DOM.createElement('div', {
-      style: 'display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs); border-bottom: 1px solid var(--border-color);',
-      html: `
-        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">${Utils.escapeHtml(name[0])}</div>
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-size: 13px;">${Utils.escapeHtml(isMe ? 'You' : addr.slice(0, 16) + '…')}</div>
-          <div class="text-muted font-mono" style="font-size: 10px;">${Utils.escapeHtml(addr)}</div>
-        </div>
-        ${isMe ? '<span style="font-size: 10px; background: var(--accent-soft); color: var(--accent); padding: 2px 6px; border-radius: 4px;">ME</span>' : ''}
-      `
-    });
-    list.appendChild(row);
-  });
-
+  renderMemberList(g.members, DOM.getById('detailMembers'), false);
   ModalManager.open('detailModal');
 }
 
-// === Chat Navigation ===
+/** Render a member list row. removeBtn=true adds a ✕ for creator. */
+function renderMemberList(members, container, removeBtn) {
+  container.innerHTML = '';
+  members.forEach(addr => {
+    const isMe   = addr === MY_ADDR;
+    const label  = isMe ? 'You' : addr.slice(0, 16) + '…';
+    const row    = DOM.createElement('div', {
+      style: 'display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs); border-bottom: 1px solid var(--border-color);'
+    });
+    const isCreator = currentGroup && addr === currentGroup.creator;
+    row.innerHTML = `
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--bg-tertiary);
+                  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">
+        ${Utils.escapeHtml(label[0])}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;">${Utils.escapeHtml(label)}</div>
+        <div class="text-muted font-mono" style="font-size:10px;">${Utils.escapeHtml(addr)}</div>
+      </div>
+      ${isMe       ? '<span style="font-size:10px;background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;">ME</span>'      : ''}
+      ${isCreator  ? '<span style="font-size:10px;background:var(--bg-tertiary);color:var(--text-secondary);padding:2px 6px;border-radius:4px;">owner</span>' : ''}
+      ${removeBtn && !isMe && !isCreator
+        ? `<button class="btn btn-icon" style="color:var(--status-error);flex-shrink:0;"
+             onclick="submitRemoveMember('${Utils.escapeAttr(addr)}')" title="Remove">✕</button>`
+        : ''}`;
+    container.appendChild(row);
+  });
+}
+
+// ── Manage panel ─────────────────────────────────────────
+async function loadManagePanel(g) {
+  // Pre-fill rename input
+  DOM.getById('renameInput').value = g.name;
+  DOM.getById('manageCount').textContent = g.members.length;
+  renderMemberList(g.members, DOM.getById('manageMembers'), true);
+  DOM.hide(DOM.getById('manageError'));
+  await loadAddContactsList(g.members);
+}
+
+async function loadAddContactsList(currentMembers) {
+  const list = DOM.getById('addContactsList');
+  try {
+    let contacts = allContacts;
+    if (!contacts.length) {
+      const res  = await fetch('/get_contacts');
+      const data = await res.json();
+      contacts   = res.ok ? data.contacts : [];
+      allContacts = contacts;
+    }
+    const available = contacts.filter(c => !currentMembers.includes(c.address));
+    if (!available.length) {
+      list.innerHTML = '<p class="text-muted" style="font-size:12px;padding:var(--space-xs);">All contacts are already in the group.</p>';
+      return;
+    }
+    list.innerHTML = '';
+    available.forEach(c => {
+      const item = DOM.createElement('div', {
+        style: 'display:flex;align-items:center;justify-content:space-between;gap:var(--space-xs);padding:var(--space-xs);border-radius:var(--radius-sm);'
+      });
+      item.onmouseenter = () => item.style.background = 'var(--bg-hover)';
+      item.onmouseleave = () => item.style.background = '';
+      item.innerHTML = `
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;">${Utils.escapeHtml(c.name)}</div>
+          <div class="text-muted font-mono" style="font-size:10px;">${Utils.escapeHtml(c.address.slice(0, 20))}…</div>
+        </div>
+        <button class="btn" style="font-size:11px;padding:3px 10px;"
+          onclick="submitAddMemberAddr('${Utils.escapeAttr(c.address)}')">+ Add</button>`;
+      list.appendChild(item);
+    });
+  } catch {
+    list.innerHTML = '<p class="text-muted" style="font-size:12px;padding:var(--space-xs);">Could not load contacts.</p>';
+  }
+}
+
+function showManageError(msg) {
+  const el = DOM.getById('manageError');
+  el.textContent = Utils.escapeHtml(msg);
+  DOM.show(el);
+}
+
+// ── Rename ────────────────────────────────────────────────
+async function submitRename() {
+  if (!currentGroup) return;
+  const name = DOM.getById('renameInput').value.trim();
+  if (!name || name.length > 100) { showManageError('Name must be 1–100 characters'); return; }
+
+  try {
+    const res  = await fetch('/rename_group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id: currentGroup.id, name })
+    });
+    const data = await res.json();
+    if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+
+    // Update local state & UI
+    currentGroup.name = name;
+    DOM.getById('detailTitle').textContent = name;
+    window.NotificationManager?.showToast('Group renamed', 'success');
+    DOM.hide(DOM.getById('manageError'));
+    await loadGroups();
+  } catch {
+    showManageError('Network error');
+  }
+}
+
+// ── Add member ────────────────────────────────────────────
+async function submitAddMember() {
+  const addr = DOM.getById('addMemberInput').value.trim();
+  if (!addr || addr.length !== 64) { showManageError('Invalid address (64 hex chars required)'); return; }
+  await submitAddMemberAddr(addr);
+  DOM.getById('addMemberInput').value = '';
+}
+
+async function submitAddMemberAddr(addr) {
+  if (!currentGroup) return;
+
+  try {
+    const res  = await fetch('/add_group_member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id: currentGroup.id, address: addr })
+    });
+    const data = await res.json();
+    if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+
+    // Update local state
+    currentGroup.members = data.members;
+    DOM.getById('manageCount').textContent  = currentGroup.members.length;
+    DOM.getById('detailCount').textContent  = currentGroup.members.length;
+    renderMemberList(currentGroup.members, DOM.getById('manageMembers'), true);
+    renderMemberList(currentGroup.members, DOM.getById('detailMembers'), false);
+    await loadAddContactsList(currentGroup.members);
+    DOM.hide(DOM.getById('manageError'));
+    window.NotificationManager?.showToast('Member added', 'success');
+    await loadGroups();
+  } catch {
+    showManageError('Network error');
+  }
+}
+
+// ── Remove member ─────────────────────────────────────────
+async function submitRemoveMember(addr) {
+  if (!currentGroup) return;
+  if (!confirm(`Remove ${addr.slice(0, 16)}… from the group?`)) return;
+
+  try {
+    const res  = await fetch('/remove_group_member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id: currentGroup.id, address: addr })
+    });
+    const data = await res.json();
+    if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+
+    currentGroup.members = data.members;
+    DOM.getById('manageCount').textContent  = currentGroup.members.length;
+    DOM.getById('detailCount').textContent  = currentGroup.members.length;
+    renderMemberList(currentGroup.members, DOM.getById('manageMembers'), true);
+    renderMemberList(currentGroup.members, DOM.getById('detailMembers'), false);
+    await loadAddContactsList(currentGroup.members);
+    DOM.hide(DOM.getById('manageError'));
+    window.NotificationManager?.showToast('Member removed', 'success');
+    await loadGroups();
+  } catch {
+    showManageError('Network error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Chat Navigation
+// ═══════════════════════════════════════════════════════════
 function openGroupChatById(addr, name) {
   const params = new URLSearchParams({ start_with: addr, name });
   location.href = '/chat?' + params;
@@ -376,23 +594,23 @@ function openGroupChat() {
   openGroupChatById('group:' + currentGroup.id, currentGroup.name);
 }
 
-// === Delete Group ===
+// ═══════════════════════════════════════════════════════════
+// Delete Group
+// ═══════════════════════════════════════════════════════════
 async function deleteGroup(id, name) {
   if (!confirm(`Delete group "${name}"?\n\n⚠️ This cannot be undone.`)) return;
-  const confirmInput = prompt(`Type "DELETE" to confirm:`);
+  const confirmInput = prompt('Type "DELETE" to confirm:');
   if (!confirmInput || confirmInput.trim().toUpperCase() !== 'DELETE') {
     window.NotificationManager?.showToast('Cancelled', 'warning');
     return;
   }
-
   try {
-    const res = await fetch('/delete_group', {
+    const res  = await fetch('/delete_group', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ group_id: id })
     });
     const data = await res.json();
-
     if (res.ok) {
       window.NotificationManager?.showToast('Group deleted', 'success');
       await loadGroups();
@@ -401,27 +619,35 @@ async function deleteGroup(id, name) {
     } else {
       window.NotificationManager?.showToast(data.error || 'Failed to delete', 'error');
     }
-  } catch (error) {
-    console.error('Delete error:', error);
+  } catch (err) {
+    console.error('Delete error:', err);
     window.NotificationManager?.showToast('Network error', 'error');
   }
 }
 
-// === Init ===
-document.addEventListener('DOMContentLoaded', function() {
+// ═══════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function () {
   loadGroups();
 
-  // Валидация полей
   const nameInput = DOM.getById('groupName');
   const addrInput = DOM.getById('manualAddress');
-  const errorEl = DOM.getById('createError');
+  const errorEl   = DOM.getById('createError');
 
-  if (nameInput) FormHelpers.attachValidation(nameInput, (v) => FormHelpers.validateName(v), errorEl);
-  if (addrInput) FormHelpers.attachValidation(addrInput, (v) => FormHelpers.validateAddress(v), errorEl);
+  if (nameInput) FormHelpers.attachValidation(nameInput, v => FormHelpers.validateName(v), errorEl);
+  if (addrInput) FormHelpers.attachValidation(addrInput, v => FormHelpers.validateAddress(v), errorEl);
 
-  // Enter для manual address
-  addrInput?.addEventListener('keydown', (e) => {
+  addrInput?.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); addManualAddress(); }
+  });
+
+  DOM.getById('addMemberInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitAddMember(); }
+  });
+
+  DOM.getById('renameInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
   });
 });
 </script>
