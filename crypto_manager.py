@@ -34,17 +34,26 @@ logger = logging.getLogger(__name__)
 # 🔑 Часть 1: Деривация асимметричных ключей из мнемоники (УСИЛЕННАЯ)
 # =============================================================================
 
+# ✅ СТАЛО — PBKDF2 делает брутфорс в ~600 000 раз дороже
+# Меняем сигнатуру: принимаем сырую мнемонику, хэшируем внутри с усилением
+
 @lru_cache(maxsize=CACHE_SIZE)
 def _derive_private_key_cached(mnemonic_hash: str) -> ec.EllipticCurvePrivateKey:
-    """Кэшированная деривация приватного ключа с усиленной защитой."""
-    private_scalar = int.from_bytes(
-        hashlib.sha256(mnemonic_hash.encode('utf-8')).digest()[:32],
-        'big'
-    )
-    # Корректное приведение к диапазону [1, order-1]
+    """
+    mnemonic_hash — hex SHA256 от мнемоники (для кэш-ключа).
+    Внутри — PBKDF2 поверх него для защиты от брутфорса.
+    """
+    key_material = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'BiChat:private-key-v1',
+        iterations=PBKDF2_ITERATIONS,
+        backend=default_backend()
+    ).derive(mnemonic_hash.encode('utf-8'))
+
+    private_scalar = int.from_bytes(key_material, 'big')
     private_scalar = (private_scalar % (_P256_ORDER - 1)) + 1
     return ec.derive_private_key(private_scalar, CURVE, default_backend())
-
 
 def derive_private_key(mnemonic_phrase: str) -> ec.EllipticCurvePrivateKey:
     """Деривация приватного ключа с валидацией ввода."""
@@ -121,27 +130,36 @@ def _derive_key_material(password: bytes, salt: bytes, info: bytes, length: int 
     ).derive(password + info)
 
 
+# ✅ СТАЛО — мнемоника участвует в деривации как секретный компонент
 def generate_symmetric_key(sender: str, recipient: str, mnemonic_phrase: str) -> bytes:
     """
-    🔧 ИСПРАВЛЕНО: Детерминированный ключ для пары участников.
-
-    Ключ зависит ТОЛЬКО от отсортированной пары адресов + соли домена.
-    Все участники вычислят ОДИНАКОВЫЙ ключ.
-
-    Аутентификация отправителя обеспечивается через AAD в AES-GCM.
+    Симметричный ключ для пары адресов.
+    Ключ вычислим только тем, у кого есть мнемоника одного из участников.
+    Используется HKDF чтобы мнемоника не была напрямую в ключевом материале.
     """
-    # mnemonic_phrase не используется для ключа, но оставляем в сигнатуре для совместимости
-    _ = mnemonic_phrase
+    if not mnemonic_phrase:
+        raise ValueError("mnemonic_phrase is required for key derivation")
 
-    # Детерминированная комбинация адресов (порядок не важен)
     combined = ':'.join(sorted([sender.strip(), recipient.strip()]))
-    domain_separator = f"{DOMAIN_SEPARATOR}:group-symmetric-v3"
+    domain = f"{DOMAIN_SEPARATOR}:group-symmetric-v4"
 
-    # Простая и безопасная деривация
-    return hashlib.sha256(
-        f"{domain_separator}:{combined}".encode('utf-8')
-    ).digest()[:32]
+    # Мнемоника → стойкий секрет через PBKDF2
+    secret = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=GROUP_KEY_SALT,
+        iterations=100_000,   # меньше чем для логина, т.к. вызывается часто
+        backend=default_backend()
+    ).derive(mnemonic_phrase.encode('utf-8'))
 
+    # Смешиваем секрет с парой адресов через HKDF
+    return HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=combined.encode('utf-8'),
+        info=domain.encode('utf-8'),
+        backend=default_backend()
+    ).derive(secret)
 
 # =============================================================================
 # 🔐 Часть 3: ECDH — вычисление общего секрета (с валидацией)
@@ -243,33 +261,22 @@ def decrypt_message_aead(key: bytes, encrypted_data: Optional[str],
 # 🎁 Часть 5: Гибридное шифрование (ECDH + AES-GCM ephemeral session key)
 # =============================================================================
 
+# ✅ СТАЛО — убираем peer_address из payload
 def encrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str,
                    plaintext: str, image_data: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Гибридное шифрование:
-    1. Генерируем случайный session key
-    2. Шифруем контент через AES-GCM с session key
-    3. Шифруем session key через ECDH+AES-GCM с публичным ключом получателя
-    """
     if not plaintext and not image_data:
         return {
             'content': '', 'image': None,
             'enc_session_key': '', 'nonce': '',
-            'version': 'hybrid-v2', 'peer_address': peer_address
+            'version': 'hybrid-v2'
         }
 
-    # 🔒 Передаём peer_address для валидации ключа
     shared_key = compute_shared_key_b64(my_mnemonic, peer_public_key_b64, peer_address)
     session_key = os.urandom(32)
 
-    # Шифруем контент сессионным ключом
     enc_content = encrypt_message_aead(session_key, plaintext) if plaintext else ""
     enc_image = encrypt_message_aead(session_key, image_data) if image_data else None
-
-    # Шифруем сессионный ключ общим секретом
     enc_session_key = encrypt_message_aead(shared_key, base64.b64encode(session_key).decode())
-
-    # 🔒 Добавляем nonce для дополнительной верификации (опционально)
     nonce = base64.b64encode(os.urandom(16)).decode()
 
     return {
@@ -277,10 +284,9 @@ def encrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
         'image': enc_image,
         'enc_session_key': enc_session_key,
         'nonce': nonce,
-        'version': 'hybrid-v2',
-        'peer_address': peer_address  # Для верификации на стороне получателя
+        'version': 'hybrid-v2'
+        # peer_address убран — он уже есть в поле recipient транзакции
     }
-
 
 
 
