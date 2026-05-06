@@ -124,12 +124,9 @@ if (typeof window.MnemonicManager !== 'undefined') {
         if (this._clearTimer) { clearInterval(this._clearTimer); this._clearTimer = null; }
       },
 
+      // ✅ СТАЛО — просто обнуляем ссылку (GC сделает остальное)
       _wipe() {
-        if (this._mnemonic) {
-          this._mnemonic = typeof this._mnemonic === 'string'
-            ? this._mnemonic.split('').map(() => '\0').join('')
-            : null;
-        }
+        this._mnemonic = null;
       },
 
       _preventEscClose(modalId, prevent) {

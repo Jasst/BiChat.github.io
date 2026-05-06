@@ -14,39 +14,21 @@
         font-size: 28px; color: var(--text-inverse);
         box-shadow: 0 4px 20px rgba(255,255,255,0.15);
       ">🔐</div>
-      <h1 style="
-        font-size: 24px; font-weight: 600; margin: 0;
-        letter-spacing: -0.5px;
-      ">Dark Messenger</h1>
-      <p class="subtitle" style="
-        color: var(--text-secondary); font-size: 14px;
-        margin-top: var(--space-xs); line-height: 1.5;
-      ">Decentralized • End-to-end encrypted • Your keys, your messages</p>
+      <h1 style="font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.5px;">Dark Messenger</h1>
+      <p class="subtitle" style="color: var(--text-secondary); font-size: 14px; margin-top: var(--space-xs); line-height: 1.5;">Decentralized • End-to-end encrypted • Your keys, your messages</p>
     </div>
 
     <!-- Action Buttons -->
     <div class="auth-form">
-      <button class="btn btn-primary" onclick="location.href='/login'" style="width: 100%;">
-        🔑 Login with Mnemonic
-      </button>
-
-      <button class="btn" id="createWalletBtn" onclick="createWallet()" style="width: 100%;">
-        ✨ Create New Wallet
-      </button>
+      <button class="btn btn-primary" onclick="location.href='/login'" style="width: 100%;">🔑 Login with Mnemonic</button>
+      <button class="btn" id="createWalletBtn" onclick="createWallet()" style="width: 100%;">✨ Create New Wallet</button>
     </div>
 
     <!-- Footer Info -->
-    <div class="auth-footer" style="
-      margin-top: var(--space-xl); text-align: center;
-      color: var(--text-muted); font-size: 12px;
-    ">
+    <div class="auth-footer" style="margin-top: var(--space-xl); text-align: center; color: var(--text-muted); font-size: 12px;">
       <p>🔐 No central server • No data collection</p>
       <p style="margin-top: var(--space-xs);">
-        <a href="#" onclick="return false;" style="
-          color: var(--text-secondary); text-decoration: none;
-          transition: color var(--transition-fast);
-        " onmouseover="this.style.color='var(--text-primary)'"
-           onmouseout="this.style.color='var(--text-secondary)'">
+        <a href="#" onclick="return false;" style="color: var(--text-secondary); text-decoration: none; transition: color var(--transition-fast);" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">
           Learn more about security →
         </a>
       </p>
@@ -59,20 +41,14 @@
   <div class="modal animate-slide" style="max-width: 520px;">
     <header class="modal-header">
       <h3 id="mnemonicTitle" style="margin: 0; color: var(--accent);">✅ Wallet Created</h3>
-      <button class="modal-close" onclick="closeMnemonicModal()" aria-label="Close">&times;</button>
+      <button class="modal-close" onclick="document.getElementById('mnemonicModal').classList.add('hidden')" aria-label="Close">&times;</button>
     </header>
 
     <div class="modal-body">
-      <p style="
-        color: var(--status-warning); font-weight: 500;
-        margin: 0 0 var(--space-md); padding: var(--space-sm);
-        background: rgba(170, 170, 170, 0.1);
-        border-radius: var(--radius-sm);
-      ">
+      <p style="color: var(--status-warning); font-weight: 500; margin: 0 0 var(--space-md); padding: var(--space-sm); background: rgba(170, 170, 170, 0.1); border-radius: var(--radius-sm);">
         ⚠️ Save this phrase securely. It cannot be recovered if lost!
       </p>
 
-      <!-- Mnemonic Display -->
       <div id="mnemonicDisplay" class="input-monospace" style="
         background: var(--bg-tertiary); padding: var(--space-md);
         border-radius: var(--radius-md); border: 1px solid var(--border-color);
@@ -82,18 +58,12 @@
         font-size: 13px; line-height: 1.6;
       "></div>
 
-      <!-- Action Buttons -->
       <div style="display: flex; gap: var(--space-sm); margin: var(--space-md) 0;">
-        <button class="btn" onclick="copyMnemonic()" style="flex: 1;">📋 Copy</button>
-        <button class="btn" onclick="downloadMnemonic()" style="flex: 1;">📥 Download</button>
+        <button class="btn" onclick="MnemonicManager.copy(() => NotificationManager?.showToast('✓ Copied!', 'success'))" style="flex: 1;">📋 Copy</button>
+        <button class="btn" onclick="MnemonicManager.download()" style="flex: 1;">📥 Download</button>
       </div>
 
-      <!-- Security Tips -->
-      <div style="
-        background: var(--bg-tertiary); padding: var(--space-md);
-        border-radius: var(--radius-md); font-size: 12px;
-        color: var(--text-secondary);
-      ">
+      <div style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary);">
         <strong style="color: var(--text-primary);">🔒 Security tips:</strong>
         <ul style="margin: var(--space-xs) 0 0 var(--space-md); padding: 0;">
           <li style="margin: var(--space-xs) 0;">Write it down on paper</li>
@@ -102,84 +72,26 @@
         </ul>
       </div>
 
-      <!-- Countdown -->
-      <p style="
-        color: var(--text-muted); font-size: 11px;
-        text-align: center; margin-top: var(--space-md);
-      ">
-        Auto-clear in <span id="countdown" style="font-weight: 600; color: var(--accent);">30</span>s for security
+      <p style="color: var(--text-muted); font-size: 11px; text-align: center; margin-top: var(--space-md);">
+         <span id="clearCountdown" style="font-weight: 600; color: var(--accent);">30</span>
       </p>
     </div>
 
     <footer class="modal-footer">
-      <button class="btn btn-primary" onclick="proceedToChat()" style="width: 100%;">
-        ✓ I've Saved It — Continue
-      </button>
+      <button class="btn btn-primary" onclick="proceedToChat()" style="width: 100%;">✓ I've Saved It — Continue</button>
     </footer>
   </div>
 </div>
 
 {% block scripts %}
+<!-- Подключаем менеджер мнемоник -->
+<script src="{{ url_for('static', filename='js/mnemonic-manager.js') }}"></script>
+
 <script>
-// =============================================================================
-// === State ===
-// =============================================================================
 let createdMnemonic = null;
-let countdownTimer = null;
 
-// =============================================================================
-// === Utilities ===
-// =============================================================================
-const Utils = {
-  /**
-   * Escape HTML to prevent XSS
-   * @param {string} str - Input string
-   * @returns {string} Escaped HTML
-   */
-  escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  },
-
-  /**
-   * Copy text to clipboard with feedback
-   * @param {string} text - Text to copy
-   * @param {Function} [onSuccess] - Callback on success
-   */
-  async copyToClipboard(text, onSuccess) {
-    try {
-      await navigator.clipboard.writeText(text);
-      if (typeof onSuccess === 'function') onSuccess();
-      return true;
-    } catch (e) {
-      // Fallback for older browsers
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-
-      try {
-        document.execCommand('copy');
-        if (typeof onSuccess === 'function') onSuccess();
-        return true;
-      } finally {
-        document.body.removeChild(textarea);
-      }
-    }
-  }
-};
-
-// =============================================================================
-// === Wallet Creation ===
-// =============================================================================
 async function createWallet() {
-  const btn = document.getElementById('createWalletBtn');
-
-  // Disable button during request
+  const btn = DOM.getById('createWalletBtn');
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Creating…';
@@ -191,30 +103,15 @@ async function createWallet() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });
-
     const data = await response.json();
 
     if (response.ok) {
-      // ✅ Store mnemonic ONLY in memory (never in DOM)
       createdMnemonic = data.mnemonic_phrase;
-
-      // Show secure modal
-      showMnemonicModal(data.mnemonic_phrase, data.address);
-
-      // Track event (optional analytics)
+      // Используем общий менеджер вместо ручного showModal
+      MnemonicManager.showInModal(data.mnemonic_phrase, 'mnemonicModal', 'mnemonicDisplay');
       console.log('✅ Wallet created for:', data.address?.slice(0, 16) + '…');
     } else {
-      // Show error via NotificationManager if available
-      if (window.NotificationManager?.showToast) {
-        window.NotificationManager.showToast(
-          data.error || 'Wallet creation failed',
-          'error'
-        );
-      } else {
-        alert('❌ Error: ' + (data.error || 'Wallet creation failed'));
-      }
-
-      // Reset button state
+      window.NotificationManager?.showToast(data.error || 'Wallet creation failed', 'error');
       if (btn) {
         btn.disabled = false;
         btn.textContent = '✨ Create New Wallet';
@@ -223,13 +120,7 @@ async function createWallet() {
     }
   } catch (error) {
     console.error('Network error:', error);
-
-    if (window.NotificationManager?.showToast) {
-      window.NotificationManager.showToast('Network error. Please try again.', 'error');
-    } else {
-      alert('❌ Network error. Please check your connection.');
-    }
-
+    window.NotificationManager?.showToast('Network error. Please try again.', 'error');
     if (btn) {
       btn.disabled = false;
       btn.textContent = '✨ Create New Wallet';
@@ -238,226 +129,17 @@ async function createWallet() {
   }
 }
 
-// =============================================================================
-// === Mnemonic Modal ===
-// =============================================================================
-function showMnemonicModal(mnemonic, address) {
-  const modal = document.getElementById('mnemonicModal');
-  const display = document.getElementById('mnemonicDisplay');
-  const countdown = document.getElementById('countdown');
-
-  if (!modal || !display) {
-    console.error('❌ Modal elements not found');
-    return;
-  }
-
-  // ✅ Safe insertion via textContent (prevents XSS)
-  display.textContent = mnemonic;
-
-  // Show modal with animation
-  modal.classList.remove('hidden');
-
-  // Start security countdown
-  let seconds = 30;
-  if (countdownTimer) clearInterval(countdownTimer);
-
-  countdownTimer = setInterval(() => {
-    seconds--;
-    if (countdown) countdown.textContent = seconds;
-
-    if (seconds <= 0) {
-      clearInterval(countdownTimer);
-      autoCloseModal();
-    }
-  }, 1000);
-
-  // Prevent accidental close via ESC (security measure)
-  const preventEsc = (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      // Optional: show subtle warning instead
-      if (window.NotificationManager?.showToast) {
-        window.NotificationManager.showToast('Please save your mnemonic first', 'warning');
-      }
-    }
-  };
-
-  document.addEventListener('keydown', preventEsc, { passive: false });
-  modal.dataset.preventEsc = 'true';
-
-  // Focus management for accessibility
-  setTimeout(() => {
-    const closeBtn = modal.querySelector('.modal-close');
-    closeBtn?.focus();
-  }, 100);
-}
-
-function closeMnemonicModal() {
-  const modal = document.getElementById('mnemonicModal');
-
-  if (modal) {
-    modal.classList.add('hidden');
-
-    // Remove ESC handler
-    if (modal.dataset.preventEsc) {
-      document.removeEventListener('keydown', (e) => {
-        if (e.key === 'Escape') e.preventDefault();
-      });
-      delete modal.dataset.preventEsc;
-    }
-  }
-
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-  }
-  // Keep mnemonic in memory for copying until explicit action
-}
-
-// =============================================================================
-// === Mnemonic Actions ===
-// =============================================================================
-async function copyMnemonic() {
-  if (!createdMnemonic) {
-    if (window.NotificationManager?.showToast) {
-      window.NotificationManager.showToast('Mnemonic not available', 'error');
-    } else {
-      alert('Mnemonic not available');
-    }
-    return;
-  }
-
-  const success = await Utils.copyToClipboard(createdMnemonic, () => {
-    if (window.NotificationManager?.showToast) {
-      window.NotificationManager.showToast('✓ Copied! Save it securely', 'success');
-    }
-  });
-
-  if (!success) {
-    if (window.NotificationManager?.showToast) {
-      window.NotificationManager.showToast('✗ Copy failed', 'error');
-    }
-  }
-}
-
-function downloadMnemonic() {
-  if (!createdMnemonic) return;
-
-  try {
-    const blob = new Blob([createdMnemonic], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-
-    link.href = url;
-    link.download = `mnemonic-${Date.now()}.txt`;
-    link.setAttribute('rel', 'noopener');
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Clean up object URL
-    setTimeout(() => URL.revokeObjectURL(url), 100);
-
-    if (window.NotificationManager?.showToast) {
-      window.NotificationManager.showToast('✓ Downloaded! Store securely', 'success');
-    }
-  } catch (e) {
-    console.error('Download error:', e);
-    if (window.NotificationManager?.showToast) {
-      window.NotificationManager.showToast('✗ Download failed', 'error');
-    }
-  }
-}
-
-// =============================================================================
-// === Navigation ===
-// =============================================================================
 function proceedToChat() {
-  // 🔒 Secure wipe before navigation
-  secureWipeMnemonic();
-
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-  }
-
-  // Navigate to chat
+  MnemonicManager.hide(); // Безопасная очистка + закрытие
   window.location.href = '/chat';
 }
 
-// =============================================================================
-// === Security ===
-// =============================================================================
-function secureWipeMnemonic() {
-  if (createdMnemonic) {
-    // Overwrite with zeros before nullifying (defense in depth)
-    createdMnemonic = createdMnemonic.split('').map(() => '0').join('');
-    createdMnemonic = null;
-    console.log('🔒 Mnemonic securely wiped from memory');
-  }
-}
-
-function autoCloseModal() {
-  closeMnemonicModal();
-  secureWipeMnemonic();
-
-  if (window.NotificationManager?.showToast) {
-    window.NotificationManager.showToast('🧹 Mnemonic cleared from memory', 'success');
-  }
-}
-
-// =============================================================================
-// === Event Listeners ===
-// =============================================================================
+// Инициализация
 document.addEventListener('DOMContentLoaded', function() {
-  // Initialize notifications if available
-  if (window.NotificationManager?.init) {
-    window.NotificationManager.init();
-  }
-
-  // Close modal on backdrop click
-  const modal = document.getElementById('mnemonicModal');
-  if (modal) {
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        // Don't allow backdrop close for security
-        if (window.NotificationManager?.showToast) {
-          window.NotificationManager.showToast('Please use the button to continue', 'warning');
-        }
-      }
-    });
-  }
-
-  // Keyboard navigation
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const modal = document.getElementById('mnemonicModal');
-      if (modal && !modal.classList.contains('hidden')) {
-        e.preventDefault(); // Security: don't allow ESC close
-      }
-    }
-  });
+  if (window.NotificationManager?.init) window.NotificationManager.init();
 });
 
-// =============================================================================
-// === Cleanup ===
-// =============================================================================
-window.addEventListener('beforeunload', function() {
-  secureWipeMnemonic();
-
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-  }
-
-  // Cleanup notifications
-  if (window.NotificationManager?.destroy) {
-    window.NotificationManager.destroy();
-  }
-});
-
-// Export for external use (if needed)
+// Экспорт
 window.createWallet = createWallet;
 window.proceedToChat = proceedToChat;
 </script>

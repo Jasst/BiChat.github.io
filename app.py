@@ -655,6 +655,7 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 FROM transactions
                 WHERE sender = :addr OR recipient = :addr
                 ORDER BY timestamp DESC
+                LIMIT 500
             ''', {'addr': user_address})
 
             seen_partners = set()
@@ -1203,7 +1204,26 @@ def get_conversation():
                 for r in cursor.fetchall()
             ]
 
-        # 🔐 Расшифровка сообщений
+        peer_addresses = set()
+        for msg in messages:
+            peer_addresses.add(msg['sender'])
+            peer_addresses.add(msg['recipient'])
+        peer_addresses.discard(user_addr)
+
+        # Один запрос вместо N
+        if peer_addresses:
+            placeholders = ','.join('?' * len(peer_addresses))
+            with get_db_cursor(blockchain.db_path) as cursor:
+                cursor.execute(
+                    f'SELECT address, public_key_b64, verified FROM pubkey_cache WHERE address IN ({placeholders})',
+                    list(peer_addresses)
+                )
+                for row in cursor.fetchall():
+                    # Прогреваем lru_cache вручную через cache_public_key
+                    # (get_cached_public_key уже будет попадать в кэш)
+                    cache_public_key(row[0], row[1], verified=bool(row[2]))
+
+        # Теперь цикл расшифровки — все pubkey уже в lru_cache, БД не трогается
         decrypted = []
         for msg in messages:
             dec = process_message_decryption(msg, user_addr, mnemonic)
@@ -1425,7 +1445,6 @@ def edit_contact_route():
 def get_groups():
     if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
     try:
-        get_user_groups_cached.cache_clear()
         groups = get_user_groups_cached(session['address'])
         return jsonify({'groups': groups}), 200
     except Exception as e:
@@ -1911,11 +1930,10 @@ def decrypt_message_api():
         return jsonify({'content': '[Decryption failed]'}), 200  # 200, чтобы не триггерить повторные запросы
 
 
-
 @app.route('/p2p-poll')
 def p2p_poll():
     if 'address' not in session:
-        return jsonify([]), 401
+        return jsonify({'error': 'Unauthorized'}), 401
 
     chat_id = request.args.get('chat', '')
     since = float(request.args.get('since', 0))

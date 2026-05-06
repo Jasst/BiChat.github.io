@@ -6,7 +6,10 @@
 (function() {
   'use strict';
 
-  const DEBUG = process.env.NODE_ENV !== 'production';
+  // ✅ ИСПРАВИТЬ на
+  const DEBUG = window.location.hostname === 'localhost' ||
+              window.location.hostname === '127.0.0.1' ||
+              window.location.port === '5000';
 
   class P2PSync {
     constructor() {

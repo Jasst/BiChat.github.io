@@ -25,6 +25,17 @@ _P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 PBKDF2_ITERATIONS = 600_000  # NIST рекомендация для 2024+
 DOMAIN_SEPARATOR = "BiChat:crypto:v3.3"
 GROUP_KEY_SALT = b"group-symmetric-salt-v2"
+# ✅ ДОБАВИТЬ новую функцию после GROUP_KEY_SALT
+@lru_cache(maxsize=32)
+def _derive_mnemonic_secret_cached(mnemonic_hash: str) -> bytes:
+    """Кэшируем дорогой PBKDF2 по хэшу мнемоники."""
+    return PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=GROUP_KEY_SALT,
+        iterations=100_000,
+        backend=default_backend()
+    ).derive(mnemonic_hash.encode('utf-8'))
 
 # === Логирование ===
 logger = logging.getLogger(__name__)
@@ -130,29 +141,16 @@ def _derive_key_material(password: bytes, salt: bytes, info: bytes, length: int 
     ).derive(password + info)
 
 
-# ✅ СТАЛО — мнемоника участвует в деривации как секретный компонент
 def generate_symmetric_key(sender: str, recipient: str, mnemonic_phrase: str) -> bytes:
-    """
-    Симметричный ключ для пары адресов.
-    Ключ вычислим только тем, у кого есть мнемоника одного из участников.
-    Используется HKDF чтобы мнемоника не была напрямую в ключевом материале.
-    """
     if not mnemonic_phrase:
         raise ValueError("mnemonic_phrase is required for key derivation")
 
     combined = ':'.join(sorted([sender.strip(), recipient.strip()]))
     domain = f"{DOMAIN_SEPARATOR}:group-symmetric-v4"
 
-    # Мнемоника → стойкий секрет через PBKDF2
-    secret = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=GROUP_KEY_SALT,
-        iterations=100_000,   # меньше чем для логина, т.к. вызывается часто
-        backend=default_backend()
-    ).derive(mnemonic_phrase.encode('utf-8'))
+    mnemonic_hash = hashlib.sha256(mnemonic_phrase.encode('utf-8')).hexdigest()
+    secret = _derive_mnemonic_secret_cached(mnemonic_hash)  # ← из кэша
 
-    # Смешиваем секрет с парой адресов через HKDF
     return HKDF(
         algorithm=hashes.SHA256(),
         length=32,
@@ -343,7 +341,7 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
 def clear_key_cache():
     """Очистка всех кэшей ключей."""
     _derive_private_key_cached.cache_clear()
-
+    _derive_mnemonic_secret_cached.cache_clear()
 
 def get_cache_info() -> dict:
     """Статистика кэша приватных ключей."""

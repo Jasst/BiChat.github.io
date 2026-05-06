@@ -317,6 +317,8 @@ const QRScanner = {
   stream: null,
   animationFrame: null,
   active: false,
+  _canvas: null,    // ← добавить
+  _ctx: null,
   config: {
     videoWidth: 1280,
     videoHeight: 720,
@@ -383,6 +385,8 @@ const QRScanner = {
     this.active = false;
     if (this.animationFrame) { cancelAnimationFrame(this.animationFrame); this.animationFrame = null; }
     if (this.stream) { this._stopStream(this.stream); this.stream = null; }
+    this._canvas = null;   // ← добавить
+    this._ctx = null;      // ← добавить
     if (containerEl) { DOM.hide(containerEl); containerEl.classList.remove('scanning'); }
     if (videoEl) { videoEl.pause(); videoEl.srcObject = null; }
     if (resultEl) DOM.hide(resultEl);
@@ -404,8 +408,14 @@ const QRScanner = {
 
   _startScanning({ videoEl, resultEl, onScan, containerEl }) {
     if (!this.active || !videoEl) return;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!this._canvas) {
+        this._canvas = document.createElement('canvas');
+        this._canvas.width = this.config.scanSize;
+        this._canvas.height = this.config.scanSize;
+        this._ctx = this._canvas.getContext('2d', { willReadFrequently: true });
+    }
+    const canvas = this._canvas;
+    const ctx = this._ctx;
     const { scanSize, inversionAttempts } = this.config;
     let lastScanTime = 0;
 
@@ -476,7 +486,9 @@ if (typeof window.toggleSidebar !== 'function') {
     const sidebar = DOM.getById('sidebar');
     const overlay = DOM.getById('sidebarOverlay');
     DOM.toggleClass(sidebar, 'open');
-    DOM.toggleClass(overlay, 'active');
+    const isOpen = sidebar?.classList.contains('open');
+    DOM.toggleClass(overlay, 'active', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
   };
 }
 if (typeof window.closeSidebar !== 'function') {
@@ -485,6 +497,7 @@ if (typeof window.closeSidebar !== 'function') {
     const overlay = DOM.getById('sidebarOverlay');
     sidebar?.classList.remove('open');
     overlay?.classList.remove('active');
+    document.body.style.overflow = '';
   };
 }
 

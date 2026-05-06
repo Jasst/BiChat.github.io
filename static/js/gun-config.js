@@ -8,7 +8,10 @@
 
   // 🔥 Global flags
   const P2P_OVERRIDE = new URLSearchParams(window.location.search).get('p2p') === 'force';
-  const DEBUG = process.env.NODE_ENV !== 'production';
+   // ✅ СТАЛО
+  const DEBUG = window.location.hostname === 'localhost' ||
+              window.location.hostname === '127.0.0.1' ||
+              window.location.port === '5000';
 
   const GunConfig = {
     peers: [],
