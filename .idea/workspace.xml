@@ -7,18 +7,6 @@
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crypto_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/crypto_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/common.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/common.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/gun-config.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/gun-config.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/mnemonic-manager.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/mnemonic-manager.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/mobile-sidebar.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/p2p-sync.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/p2p-sync.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/auth.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/base.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/base.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/test-relays.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/test-socket.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/welcome.html" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,7 +43,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATE4" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATE6" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -119,7 +107,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "mainUPDATE6",
+    "git-widget-placeholder": "mainUPDATE7",
     "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -642,7 +630,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/app.py</url>
-          <line>1758</line>
+          <line>1462</line>
           <option name="timeStamp" value="62" />
         </line-breakpoint>
       </breakpoints>
