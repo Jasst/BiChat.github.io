@@ -296,6 +296,15 @@ class Blockchain:
         _create_contacts_table(cursor)
         _create_group_table(cursor)
         _create_pubkey_cache_table(cursor)
+        # ✅ Новая таблица статуса прочтения
+        cursor.execute('''CREATE TABLE IF NOT EXISTS read_status (
+                    user_address TEXT NOT NULL,
+                    chat_id TEXT NOT NULL,
+                    last_read_message_id INTEGER NOT NULL DEFAULT 0,
+                    read_at REAL,
+                    PRIMARY KEY (user_address, chat_id)
+                )''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_read_status_user ON read_status(user_address)')
 
     def _create_indexes(self, cursor):
         for sql in [
@@ -739,50 +748,79 @@ def get_user_groups_cached(address: str, cache_version: int = 0) -> tuple:
 
 
 def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
-    """Возвращает список диалогов с простым превью."""
     conversations: Dict[str, Dict] = {}
     try:
         with get_db_cursor(blockchain.db_path) as cursor:
             cursor.execute('''
                 SELECT 
                     CASE WHEN sender = :addr THEN recipient ELSE sender END AS partner,
-                    content, image, timestamp, sender
+                    content, image, timestamp, sender, id
                 FROM transactions
-                WHERE sender = :addr OR recipient = :addr
-                ORDER BY timestamp DESC LIMIT 500
+                WHERE (sender = :addr OR recipient = :addr)
+                  AND NOT (sender = :addr AND recipient = :addr)
+                ORDER BY timestamp DESC
             ''', {'addr': user_address})
+
             seen_partners = set()
             for row in cursor.fetchall():
-                partner, raw_content, raw_image, ts, msg_sender = row
+                partner, raw_content, raw_image, ts, msg_sender, msg_id = row
                 if partner == user_address or partner in seen_partners:
                     continue
                 seen_partners.add(partner)
-                if msg_sender == user_address:
-                    preview = "Вы"
+
+                # Получаем ID последнего прочитанного сообщения
+                cursor.execute(
+                    'SELECT last_read_message_id FROM read_status '
+                    'WHERE user_address = ? AND chat_id = ?',
+                    (user_address, partner)
+                )
+                read_row = cursor.fetchone()
+                last_read_id = read_row[0] if read_row else 0
+
+                # ---------- УНИФИЦИРОВАННЫЕ ПРЕВЬЮ ----------
+                if last_read_id >= msg_id:
+                    # Сообщение прочитано (всегда одинаковый вид)
+                    preview = "✓ Прочитано"
                 else:
-                    if raw_image:
-                        preview = "📷 Фото"
-                    elif raw_content:
-                        try:
-                            data = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
-                            v = data.get('version') if isinstance(data, dict) else None
-                            preview = "🔑 Обмен ключами" if v == 'key_exchange' else "💬 Новое сообщение"
-                        except:
-                            preview = "💬 Новое сообщение"
+                    # Не прочитано
+                    if msg_sender == user_address:
+                        # Ваше отправленное, но ещё не прочитано собеседником
+                        preview = "Вы: 💬 Сообщение"
                     else:
+                        # Входящее непрочитанное – используем одну и ту же иконку,
+                        # чтобы строка не меняла ширину при переключении статуса
                         preview = "💬 Новое сообщение"
+
+                # ---------- ОПРЕДЕЛЕНИЕ ИМЕНИ (без изменений) ----------
                 if partner.startswith('group:'):
                     group_id = partner.split(':', 1)[1]
-                    groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
+                    groups = get_user_groups_cached(
+                        user_address,
+                        cache_version=get_groups_cache_version()
+                    )
                     group = next((g for g in groups if g['id'] == group_id), None)
                     name = group['name'] if group else f'Группа {group_id[:8]}...'
-                    conversations[partner] = {'address': partner, 'name': name, 'is_group': True, 'last_preview': preview, 'last_ts': ts}
+                    is_group = True
                 else:
-                    name = get_contact_name_cached(user_address, partner, cache_version=get_contact_cache_version()) or partner[:10] + "..."
-                    conversations[partner] = {'address': partner, 'name': name, 'is_group': False, 'last_preview': preview, 'last_ts': ts}
+                    name = get_contact_name_cached(
+                        user_address, partner,
+                        cache_version=get_contact_cache_version()
+                    ) or partner[:10] + "..."
+                    is_group = False
+
+                conversations[partner] = {
+                    'address': partner,
+                    'name': name,
+                    'is_group': is_group,
+                    'last_preview': preview,
+                    'last_ts': ts
+                }
     except Exception as e:
         logger.error(f"Get conversations error: {e}")
-    return sorted(conversations.values(), key=lambda x: x.get('last_ts', 0), reverse=True)
+
+    return sorted(conversations.values(),
+                  key=lambda x: x.get('last_ts', 0), reverse=True)
+
 
 
 # =============================================================================
@@ -895,6 +933,7 @@ def get_public_key_route(address: str):
     if pubkey:
         return jsonify({'address': address, 'public_key': pubkey, 'verified': verified}), 200
     return jsonify({'error': 'Public key not found'}), 404
+
 
 
 # =============================================================================
@@ -1087,17 +1126,126 @@ def get_conversations_route():
 def mark_conversation_read():
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+
+    user_addr = session['address']
+    data = request.get_json() or {}
+    chat_with = data.get('chat_with', '').strip()
+    last_message_id = data.get('last_message_id', None)
+
+    if not chat_with:
+        return jsonify({'error': 'Missing chat_with'}), 400
+
     try:
-        data = request.get_json() or {}
-        chat_with = data.get('chat_with', '').strip()
-        if not chat_with:
-            return jsonify({'error': 'Missing chat_with'}), 400
-        logger.debug(f"👁️ Read mark: {session['address'][:16]}... -> {chat_with[:20]}... at {time.time():.0f}")
-        return jsonify({'status': 'ok'}), 200
+        # Если last_message_id не передан, вычисляем его из последнего ID в диалоге
+        if last_message_id is None:
+            with get_db_cursor(blockchain.db_path) as cursor:
+                if chat_with.startswith('group:'):
+                    cursor.execute(
+                        'SELECT MAX(id) FROM transactions WHERE recipient = ?',
+                        (chat_with,)
+                    )
+                else:
+                    cursor.execute(
+                        'SELECT MAX(id) FROM transactions WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)',
+                        (user_addr, chat_with, chat_with, user_addr)
+                    )
+                row = cursor.fetchone()
+                last_message_id = row[0] if row and row[0] else 0
+
+        # Сохраняем статус прочтения только если новый ID больше предыдущего
+        with get_db_cursor(blockchain.db_path) as cursor:
+            cursor.execute(
+                '''INSERT INTO read_status (user_address, chat_id, last_read_message_id, read_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(user_address, chat_id) DO UPDATE
+                   SET last_read_message_id = excluded.last_read_message_id,
+                       read_at = excluded.read_at
+                   WHERE excluded.last_read_message_id > read_status.last_read_message_id''',
+                (user_addr, chat_with, last_message_id, time.time())
+            )
+            updated = cursor.rowcount  # 1 если обновлено, 0 если не изменилось
+
+        if updated:
+            logger.info(f"👁️ Read status updated: {user_addr[:16]}... -> {chat_with[:20]}... at msg #{last_message_id}")
+        else:
+            logger.debug(f"ℹ️ Read status unchanged for {user_addr[:16]}... -> {chat_with[:20]}... (already at msg #{last_message_id})")
+        return jsonify({'status': 'ok', 'last_read_message_id': last_message_id, 'updated': bool(updated)}), 200
+
     except Exception as e:
         logger.error(f"Mark read error: {e}")
-        return jsonify({'error': 'Failed'}), 500
+        return jsonify({'error': 'Failed to update read status'}), 500
 
+
+# =============================================================================
+
+
+# === Получение уведомлений ===
+# =============================================================================
+@app.route('/check_new_messages')
+def check_new_messages():
+    """Возвращает новые сообщения (превью) для всех диалогов пользователя."""
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    user_addr = session['address']
+    mnemonic = session.get('mnemonic')
+
+    try:
+        since = request.args.get('since', type=float) or 0
+    except ValueError:
+        since = 0
+
+    messages = []
+    try:
+        with get_db_cursor(blockchain.db_path) as cursor:
+            # Получаем последние сообщения для всех диалогов, где пользователь - получатель
+            cursor.execute('''
+                SELECT id, sender, recipient, content, image, timestamp
+                FROM transactions
+                WHERE (recipient = ? OR recipient LIKE ?)
+                  AND timestamp > ?
+                  AND sender != ?
+                ORDER BY timestamp DESC
+                LIMIT 50
+            ''', (user_addr, f'group:%', since, user_addr))
+            rows = cursor.fetchall()
+
+        for row in rows:
+            msg = {
+                'id': row[0],
+                'sender': row[1],
+                'recipient': row[2],
+                'content': row[3],
+                'image': row[4],
+                'timestamp': row[5]
+            }
+
+            # Расшифровываем превью (только текст)
+            if mnemonic:
+                dec = process_message_decryption(msg, user_addr, mnemonic)
+                preview = ''
+                if dec.get('image'):
+                    preview = '📷 Изображение'
+                elif dec.get('content'):
+                    preview = dec['content'][:60] + ('…' if len(dec['content'] or '') > 60 else '')
+                else:
+                    preview = '💬 Новое сообщение'
+            else:
+                preview = '💬 Новое сообщение'
+
+            messages.append({
+                'id': msg['id'],
+                'sender': msg['sender'],
+                'chatId': msg['recipient'] if msg['recipient'].startswith('group:') else msg['sender'],
+                'preview': preview,
+                'isGroup': msg['recipient'].startswith('group:'),
+                'timestamp': msg['timestamp']
+            })
+    except Exception as e:
+        logger.error(f"check_new_messages error: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+    return jsonify({'messages': messages}), 200
 
 # =============================================================================
 # === Контакты: маршруты ===

@@ -262,17 +262,45 @@ async function loadConversations() {
       container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>No conversations yet</p><button class="btn btn-primary" onclick="openNewChatModal()">Start one</button></div>';
       return;
     }
+    // НЕ очищаем контейнер полностью — будем обновлять выборочно,
+    // чтобы не терять оптимистичный статус "✓ Прочитано".
+    // Для простоты можно всё же очищать, но перед вставкой проверять старый статус.
     container.innerHTML = '';
+
     data.conversations.forEach(conv => {
       const item = document.createElement('div');
       item.className = 'conversation-item';
       item.dataset.address = conv.address || '';
       item.dataset.isGroup = conv.is_group ? '1' : '0';
       item.setAttribute('role', 'option');
+
       const displayName = conv.name || conv.address || 'Unknown';
       const shortName = displayName.length > 25 ? displayName.slice(0, 22) + '…' : displayName;
       const initials = displayName.slice(0, 2).toUpperCase();
-      item.innerHTML = `<div class="avatar ${conv.is_group ? 'group' : ''}">${Utils.escapeHtml(initials)}</div><div class="info"><div class="name truncate">${Utils.escapeHtml(shortName)}</div><div class="meta"><span class="status"></span><span class="truncate">${Utils.escapeHtml(conv.last_preview || 'No messages')}</span></div></div>`;
+
+      // === ЗАЩИТА ОТ ПЕРЕЗАПИСИ СТАТУСА ===
+      let previewText = Utils.escapeHtml(conv.last_preview || 'No messages');
+
+      // Ищем существующий элемент в ДОМ (если остался — не страшно, контейнер всё равно пуст)
+      const existingItem = container.querySelector(`.conversation-item[data-address="${conv.address}"]`);
+      if (existingItem) {
+        const existingPreviewEl = existingItem.querySelector('.truncate');
+        if (existingPreviewEl && existingPreviewEl.textContent.trim() === '✓ Прочитано' && previewText !== '✓ Прочитано') {
+          // Сохраняем "Прочитано", которое было отображено ранее
+          previewText = '✓ Прочитано';
+        }
+      }
+      // ==================================
+
+      item.innerHTML = `<div class="avatar ${conv.is_group ? 'group' : ''}">${Utils.escapeHtml(initials)}</div>
+        <div class="info">
+          <div class="name truncate">${Utils.escapeHtml(shortName)}</div>
+          <div class="meta">
+            <span class="status"></span>
+            <span class="truncate">${previewText}</span>
+          </div>
+        </div>`;
+
       item.onclick = () => selectConversation(conv.address, conv.name || conv.address, !!conv.is_group);
       container.appendChild(item);
     });
@@ -301,18 +329,18 @@ function selectConversation(address, name, isGroup) {
   State.lastKnownMessageId = 0;
   State.lastMessageTimestamp = 0;
   State.pendingImageData = null;
-  loadMessagesForConversation(address, false);
+  loadMessagesForConversation(address, false);   // тут внутри произойдёт markConversationAsRead
   _subscribeToCurrentChat(address);
-    // ✅ ДОБАВИТЬ: помечаем чат как прочитанный в интерфейсе
   updateConversationPreview(address, '✓ Прочитано');
-   // ✅ Гибридное обновление превью: мгновенно + фоновая синхронизация
-  markConversationAsRead(address);
   setTimeout(() => { if (State.currentChatAddress === address) startPolling(); }, 500);
   if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
 }
 
 function _subscribeToCurrentChat(chatId) {
-  if (!window.p2p || typeof window.p2p.subscribe !== 'function') { console.warn('⚠️ P2P not available'); return; }
+  if (!window.p2p || typeof window.p2p.subscribe !== 'function') {
+    console.warn('⚠️ P2P not available');
+    return;
+  }
   console.log('🔗 Subscribing to:', chatId.slice(0, 16) + '…');
   State.currentChatUnsub = window.p2p.subscribe(chatId, async function(msg) {
     console.log('📥 P2P message via', msg.via);
@@ -332,7 +360,7 @@ function _subscribeToCurrentChat(chatId) {
           timestamp: msg.timestamp ? (msg.timestamp > 1e10 ? msg.timestamp / 1000 : msg.timestamp) : Date.now() / 1000,
           is_mine: false,
           id: 'p2p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-          chatId: chatId
+          chatId: chatId                  // ← добавлено
         });
       } else {
         console.warn('⚠️ Decrypt failed:', decrypted.error);
@@ -449,23 +477,36 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
       fragment.appendChild(messageDiv);
       if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
+
+      // ✅ Notifications for polled messages
+      if (!msg.is_mine && isNewMessage) {
+        if (window.NotificationManager?.handleIncomingMessage) {
+          window.NotificationManager.handleIncomingMessage({
+            sender: msg.sender,
+            chatId: chatWithAddress,
+            content: msg.content,
+            image: msg.image,
+            timestamp: (msg.timestamp || Date.now()/1000) * 1000
+          });
+        }
+      }
     });
 
-     container.appendChild(fragment);
+    container.appendChild(fragment);
     State.lastMessageTimestamp = maxTimestamp;
 
-    // ✅ ИСПРАВЛЕНИЕ: Надёжная прокрутка с двойным setTimeout
+    // ✅ Помечаем диалог прочитанным с точным ID последнего сообщения
+    if (messages.length > 0) {
+      const lastId = messages[messages.length - 1].id;
+      markConversationAsRead(chatWithAddress, lastId);
+    }
+
     const scrollToBottom = () => {
       if (!container) return;
-      // Принудительный reflow для корректного scrollHeight
       void container.offsetHeight;
-
       if (!isNewMessage) {
-        // 📜 При открытии чата — мгновенно в самый низ
         container.scrollTop = container.scrollHeight;
       } else {
-        // 💬 При новых сообщениях — всегда вниз (если пользователь не ушёл вверх сознательно)
-        // Проверяем с небольшим допуском, чтобы не дёргать скролл
         const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
         if (isNearBottom) {
           container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
@@ -475,7 +516,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       }
     };
 
-    // Двойной setTimeout: первый — отдаёт управление браузеру, второй — ждёт отрисовку
     setTimeout(() => { setTimeout(scrollToBottom, 10); }, 0);
 
     _enableChatControls();
@@ -510,8 +550,11 @@ function appendMessageToUI(msg) {
   const timeStr = Utils.formatTimestamp(msg.timestamp);
   messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span></div></div>`;
   container.appendChild(messageDiv);
-  const shouldNotify = document.visibilityState !== 'visible' ||
-    !window.NotificationManager?._isInActiveChat?.(msg.chatId);
+
+  // ✅ Используем публичный метод вместо _isInActiveChat
+  const isActive = window.NotificationManager?.isActiveChat?.(msg.chatId || State.currentChatAddress);
+  const shouldNotify = !isActive || document.visibilityState !== 'visible';
+
   if (shouldNotify && window.NotificationManager?.handleIncomingMessage) {
     window.NotificationManager.handleIncomingMessage({
       sender: msg.sender,
@@ -521,6 +564,7 @@ function appendMessageToUI(msg) {
       timestamp: (msg.timestamp || Date.now()/1000) * 1000
     });
   }
+
   if (wasAtBottom) smartScrollToBottom(container, false);
   else showNewMessagesBadge();
 }
@@ -766,30 +810,39 @@ async function startNewChat() {
 /**
  * Мгновенно обновляет превью в сайдбаре + синхронизирует с сервером
  */
-async function markConversationAsRead(chatId) {
-  // 1️⃣ Мгновенное обновление DOM (Вариант 1)
-  const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
-  if (item) {
-    const meta = item.querySelector('.meta .truncate');
-    if (meta) {
-      meta.textContent = '✓ Прочитано';
-      meta.style.color = 'var(--text-secondary)';
-      meta.style.fontStyle = 'italic';
+async function markConversationAsRead(chatId, explicitLastMessageId = undefined) {
+    // Мгновенное обновление DOM (опционально)
+    const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+    if (item) {
+        const meta = item.querySelector('.meta .truncate');
+        if (meta) {
+            meta.textContent = '✓ Прочитано';
+            meta.style.color = 'var(--text-secondary)';
+            meta.style.fontStyle = 'italic';
+        }
     }
-  }
 
-  // 2️⃣ Фоновая синхронизация (Вариант 2) — не блокирует UI
-  try {
-    await fetch('/mark_conversation_read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_with: chatId }),
-      // 🔥 Отключаем retry и кэш, чтобы не грузить сеть при плохом соединении
-      cache: 'no-store'
-    });
-  } catch (e) {
-    console.debug('ℹ️ Read sync skipped (offline or network error)');
-  }
+    // Определяем ID последнего сообщения
+    let lastMessageId = explicitLastMessageId;
+    if (lastMessageId === undefined) {
+        // Если не передан, вычисляем из DOM (на случай ручного вызова)
+        const lastMsg = document.querySelector('#messagesContainer .message:last-of-type');
+        lastMessageId = lastMsg ? parseInt(lastMsg.dataset.messageId) : 0;
+    }
+
+    try {
+        await fetch('/mark_conversation_read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_with: chatId,
+                last_message_id: lastMessageId
+            }),
+            cache: 'no-store'
+        });
+    } catch (e) {
+        console.debug('ℹ️ Read sync skipped (offline or network error)');
+    }
 }
 
 function updateConversationPreview(chatId, newPreview) {

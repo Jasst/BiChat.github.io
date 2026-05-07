@@ -1,19 +1,20 @@
 /**
- * notification-manager.js — Fixed Notification System
- * 🔔 Handles desktop notifications, sounds, and title blinking
+ * notification-manager.js — Полная система уведомлений
+ * 🔔 Звук (без файлов), баннеры, нативные уведомления
  */
-
 (function() {
   'use strict';
 
   const NotificationManager = {
     // State
     audioCtx: null,
+    userInteracted: false,          // ← флаг взаимодействия
     originalTitle: document.title,
     blinkInterval: null,
     initialized: false,
     lastNotificationTime: new Map(),
     activeChatId: null,
+    processedMessageIds: new Set(),
 
     // Config
     config: {
@@ -22,90 +23,84 @@
       blinkEnabled: true,
       throttleMs: 2000,
       maxTracked: 50,
-      notificationTimeout: 8000
+      notificationTimeout: 8000,
+      toastDuration: 5000
     },
 
-    /**
-     * Initialize notification system
-     */
+    /** Инициализация (не требует взаимодействия) */
     async init() {
       if (this.initialized) return;
       this.initialized = true;
 
-      // Initialize audio context on first interaction
-      const initAudio = () => {
-        if (this.audioCtx) return;
-        try {
-          this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          console.log('🔊 AudioContext initialized');
-        } catch (e) {
-          console.debug('ℹ️ Web Audio not available');
-        }
+      // Отслеживаем первое взаимодействие пользователя – после него можно играть звук
+      const markInteraction = () => {
+        this.userInteracted = true;
+        document.removeEventListener('click', markInteraction);
+        document.removeEventListener('touchstart', markInteraction);
       };
+      document.addEventListener('click', markInteraction, { once: true, passive: true });
+      document.addEventListener('touchstart', markInteraction, { once: true, passive: true });
 
-      document.addEventListener('click', initAudio, { once: true, passive: true });
-      document.addEventListener('touchstart', initAudio, { once: true, passive: true });
-
-      // Request notification permission
+      // Запрос нативных уведомлений (можно без звука)
       if ('Notification' in window && Notification.permission === 'default') {
         try {
-          const result = await Notification.requestPermission();
-          console.log('🔔 Notification permission:', result);
-        } catch (e) {
-          console.debug('ℹ️ Notification request failed:', e);
-        }
+          await Notification.requestPermission();
+        } catch (e) { /* ignore */ }
       }
-
-      console.log('✅ NotificationManager initialized');
     },
 
-    /**
-     * Set active chat to suppress notifications
-     * @param {string|null} chatId - Chat identifier
-     */
+    /** Гарантирует наличие AudioContext и его активное состояние */
+    _ensureAudioContext() {
+      if (!this.audioCtx) {
+        try {
+          this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+          console.debug('ℹ️ Web Audio not available');
+          return false;
+        }
+      }
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => {});
+      }
+      return this.audioCtx.state !== 'closed';
+    },
+
     setActiveChat(chatId) {
       this.activeChatId = chatId ? this._normalizeChatId(chatId) : null;
-
-      if (this.activeChatId) {
-        console.log('✅ Active chat:', this.activeChatId.slice(0, 16) + '...');
-      }
-
       this.stopBlink();
     },
 
-    /**
-     * Play notification sound
-     * @param {string} type - Sound type: 'received' | 'sent' | 'default'
-     */
-    playSound(type = 'default') {
+    isActiveChat(chatId) {
+      if (document.visibilityState !== 'visible') return false;
+      const current = this.activeChatId;
+      const target = this._normalizeChatId(chatId);
+      return !!(current && target && current === target);
+    },
+
+    /** Проигрывание короткого звукового сигнала (без файлов) */
+    playSound(type = 'received') {
+      // Без взаимодействия пользователя звук блокируется браузером
+      if (!this.userInteracted) return;
       if (!this.config.soundEnabled) return;
+      if (!this._ensureAudioContext()) return;
 
       try {
-        if (!this.audioCtx) return;
-        if (this.audioCtx.state === 'suspended') {
-          this.audioCtx.resume().catch(() => {});
-        }
-
         const osc = this.audioCtx.createOscillator();
         const gain = this.audioCtx.createGain();
-
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
 
-        // Sound profiles
         const profiles = {
           received: { freq: 1000, duration: 0.15, gain: 0.08 },
           sent: { freq: 600, duration: 0.1, gain: 0.05 },
           default: { freq: 800, duration: 0.2, gain: 0.1 }
         };
-
-        const { freq, duration, gain: gainVal } = profiles[type] || profiles.default;
+        const { freq, duration, gain: g } = profiles[type] || profiles.default;
 
         osc.frequency.value = freq;
         osc.type = 'sine';
-        gain.gain.setValueAtTime(gainVal, this.audioCtx.currentTime);
+        gain.gain.setValueAtTime(g, this.audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + duration);
-
         osc.start();
         osc.stop(this.audioCtx.currentTime + duration);
       } catch (e) {
@@ -113,302 +108,183 @@
       }
     },
 
-    /**
-     * Normalize chat ID for comparison
-     * @private
-     */
     _normalizeChatId(chatId) {
       if (!chatId) return '';
       return chatId.startsWith('group:') ? chatId.slice(6) : chatId;
     },
 
     /**
-     * Check if user is in the target chat
-     * @private
+     * Главный обработчик входящего сообщения.
+     * Показывает баннер, звук и опционально нативное уведомление.
      */
-    _isInActiveChat(chatId) {
-      if (document.visibilityState !== 'visible') return false;
+    handleIncomingMessage(msg) {
+      if (!msg?.sender || !msg?.chatId) return;
 
-      const current = this.activeChatId;
-      const target = this._normalizeChatId(chatId);
-
-      return !!(current && target && current === target);
-    },
-
-    /**
-     * Check if notification should be shown (throttling)
-     * @private
-     */
-    _shouldNotify(chatId, sender, timestamp) {
-      const key = `${this._normalizeChatId(chatId)}:${sender}`;
-      const now = Date.now();
-      const lastTime = this.lastNotificationTime.get(key) || 0;
-
-      // Throttle duplicate notifications
-      if (now - lastTime < this.config.throttleMs) {
-        return false;
-      }
-
-      this.lastNotificationTime.set(key, now);
-
-      // Cleanup old entries
-      if (this.lastNotificationTime.size > this.config.maxTracked) {
-        for (const [k, t] of this.lastNotificationTime) {
-          if (now - t > 60000) {
-            this.lastNotificationTime.delete(k);
-          }
+      // Защита от повторной обработки одного и того же сообщения
+      if (msg.messageId) {
+        if (this.processedMessageIds.has(msg.messageId)) return;
+        this.processedMessageIds.add(msg.messageId);
+        if (this.processedMessageIds.size > 1000) {
+          const iter = this.processedMessageIds.values();
+          for (let i = 0; i < 500; i++) this.processedMessageIds.delete(iter.next().value);
         }
       }
 
-      return true;
+      // Не показываем баннер и не играем звук, если пользователь прямо сейчас в этом чате
+      if (this.isActiveChat(msg.chatId)) return;
+
+      // Всегда играем звук (если было взаимодействие)
+      this.playSound('received');
+
+      // Всегда показываем внутренний баннер (toast)
+      this.showToastForMessage(msg);
+
+      // Нативное уведомление — только когда вкладка скрыта
+      if (document.visibilityState !== 'visible') {
+        this._showNative(msg);
+        if (this.config.blinkEnabled) {
+          this.startBlink(msg.preview || 'Новое сообщение');
+        }
+      }
     },
 
-    /**
-     * Show desktop notification
-     * @param {Object} options - Notification options
-     */
-    show({ sender, chatId, isGroup = false, preview, timestamp = Date.now() }) {
-      if (!sender || !chatId) {
-        console.warn('⚠️ NotificationManager.show: missing params');
-        return;
-      }
+    showToastForMessage(msg) {
+      const senderName = msg.sender?.slice(0, 12) + '…' || '';
+      const preview = msg.content || 'Новое сообщение';
+      const chatId = msg.chatId;
+      const isGroup = msg.isGroup;
 
+      document.querySelectorAll('.in-app-notification').forEach(el => el.remove());
+
+      const toast = document.createElement('div');
+      toast.className = 'in-app-notification';
+      toast.innerHTML = `
+        <div class="in-app-notification-content" style="cursor:pointer;">
+          <div class="in-app-avatar">${(senderName[0] || '?').toUpperCase()}</div>
+          <div class="in-app-body">
+            <div class="in-app-sender">${this._escapeHtml(senderName)}</div>
+            <div class="in-app-preview">${this._escapeHtml(preview)}</div>
+          </div>
+          <button class="in-app-close" aria-label="Close">&times;</button>
+        </div>
+      `;
+
+      toast.querySelector('.in-app-notification-content').onclick = () => {
+        if (typeof window.selectConversation === 'function') {
+          window.selectConversation(chatId, senderName, isGroup);
+        } else {
+          const params = new URLSearchParams({ start_with: chatId, name: senderName });
+          window.location.href = '/chat?' + params;
+        }
+        toast.remove();
+      };
+      toast.querySelector('.in-app-close').onclick = (e) => {
+        e.stopPropagation();
+        toast.remove();
+      };
+
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        if (toast.parentNode) toast.remove();
+      }, this.config.toastDuration);
+    },
+
+    _showNative(msg) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
       if (!this.config.notificationEnabled) return;
 
-      // Play sound if tab is hidden
-      if (document.visibilityState !== 'visible') {
-        this.playSound('received');
-      }
+      const senderName = msg.sender?.slice(0, 12) + '…' || '';
+      const title = msg.isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
+      const body = msg.content || 'Новое сообщение';
 
-      // Suppress if user is in active chat
-      if (this._isInActiveChat(chatId)) {
-        return;
-      }
-
-      // Throttle check
-      if (!this._shouldNotify(chatId, sender, timestamp)) {
-        return;
-      }
-
-      const senderName = sender.slice(0, 12) + (sender.length > 12 ? '…' : '');
-      const title = isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
-      const normalizedChatId = this._normalizeChatId(chatId);
-
-      // Desktop notification
-      if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-          const notification = new Notification(title, {
-            body: preview,
-            icon: '/static/favicon.ico',
-            tag: `msg-${normalizedChatId}`,
-            requireInteraction: true,
-            silent: true
-          });
-
-          notification.onclick = () => {
-            window.focus();
-
-            // Try to switch chat via global function
-            if (typeof window.selectConversation === 'function') {
-              window.selectConversation(chatId, senderName, isGroup);
-            } else {
-              const params = new URLSearchParams({
-                start_with: chatId,
-                name: senderName
-              });
-              window.location.href = `/chat?${params}`;
-            }
-
-            notification.close();
-          };
-
-          notification.onerror = (e) => console.debug('ℹ️ Notification error:', e);
-
-          // Auto-close after timeout
-          setTimeout(() => notification.close(), this.config.notificationTimeout);
-        } catch (e) {
-          console.debug('ℹ️ Notification failed:', e);
-        }
-      }
-
-      // Start title blinking if tab is hidden
-      if (this.config.blinkEnabled && document.visibilityState !== 'visible') {
-        this.startBlink(title);
-      }
+      try {
+        const notif = new Notification(title, {
+          body,
+          icon: '/static/favicon.ico',
+          tag: `msg-${this._normalizeChatId(msg.chatId)}`,
+          requireInteraction: true,
+          silent: true
+        });
+        notif.onclick = () => {
+          window.focus();
+          if (typeof window.selectConversation === 'function') {
+            window.selectConversation(msg.chatId, senderName, msg.isGroup);
+          } else {
+            const params = new URLSearchParams({ start_with: msg.chatId, name: senderName });
+            window.location.href = '/chat?' + params;
+          }
+          notif.close();
+        };
+        setTimeout(() => notif.close(), this.config.notificationTimeout);
+      } catch (e) { /* ignore */ }
     },
 
-    /**
-     * Start title blinking animation
-     * @param {string} text - Text to display
-     */
     startBlink(text) {
-      if (this.blinkInterval) {
-        clearInterval(this.blinkInterval);
-      }
-
+      if (this.blinkInterval) clearInterval(this.blinkInterval);
       let toggle = true;
-      const original = this.originalTitle;
-
+      const orig = this.originalTitle;
       this.blinkInterval = setInterval(() => {
         if (document.visibilityState === 'visible') {
           this.stopBlink();
           return;
         }
-
-        document.title = toggle ? `🔔 ${text}` : original;
+        document.title = toggle ? `🔔 ${text}` : orig;
         toggle = !toggle;
       }, 1000);
-
-      console.log('✨ Title blink started');
     },
 
-    /**
-     * Stop title blinking
-     */
     stopBlink() {
       if (this.blinkInterval) {
         clearInterval(this.blinkInterval);
         this.blinkInterval = null;
       }
       document.title = this.originalTitle;
-      console.log('✨ Title blink stopped');
     },
 
-    /**
-     * Handle incoming message for notifications
-     * @param {Object} msg - Message object
-     */
-    handleIncomingMessage(msg) {
-      if (!msg?.sender || !msg?.chatId) {
-        console.warn('⚠️ handleIncomingMessage: invalid message');
-        return;
-      }
-
-      const isGroup = msg.chatId.startsWith('group:');
-
-      // Generate preview
-      let preview = '🔐 Новое сообщение';
-      if (msg.image) {
-        preview = '📷 Изображение';
-      } else if (msg.content) {
-        preview = msg.content.slice(0, 50) + (msg.content.length > 50 ? '…' : '');
-      }
-
-      this.show({
-        sender: msg.sender,
-        chatId: msg.chatId,
-        isGroup,
-        preview,
-        timestamp: msg.timestamp || Date.now()
-      });
-    },
-
-    /**
-     * Show in-app toast notification
-     * @param {string} message - Message text
-     * @param {string} type - Type: 'success' | 'error' | 'warning' | 'info'
-     * @param {number} duration - Duration in ms
-     */
     showToast(message, type = 'info', duration = 4000) {
-      // Remove existing toasts
-      document.querySelectorAll('.notification').forEach(n => n.remove());
-
+      document.querySelectorAll('.system-toast').forEach(n => n.remove());
       const toast = document.createElement('div');
-      toast.className = `notification ${type} animate-slide`;
+      toast.className = `system-toast ${type}`;
       toast.setAttribute('role', 'alert');
-      toast.innerHTML = `
-        <span class="icon">${this._getToastIcon(type)}</span>
-        <div class="content">
-          <div class="message">${this._escapeHtml(message)}</div>
-        </div>
-        <button class="close" aria-label="Close">&times;</button>
-      `;
-
-      // Close handler
-      const close = () => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(16px)';
-        setTimeout(() => toast.remove(), 200);
-      };
-
+      toast.innerHTML = `<span class="icon">${this._getToastIcon(type)}</span>
+                         <span>${this._escapeHtml(message)}</span>
+                         <button class="close">&times;</button>`;
+      const close = () => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 200); };
       toast.querySelector('.close').onclick = close;
-
-      // Auto-dismiss
-      const timeout = setTimeout(close, duration);
-      toast.dataset.timeout = timeout;
-
       document.body.appendChild(toast);
+      setTimeout(close, duration);
     },
 
-    /**
-     * Get icon for toast type
-     * @private
-     */
     _getToastIcon(type) {
-      const icons = {
-        success: '✓',
-        error: '✕',
-        warning: '⚠',
-        info: 'ℹ'
-      };
+      const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
       return icons[type] || icons.info;
     },
 
-    /**
-     * Escape HTML to prevent XSS
-     * @private
-     */
     _escapeHtml(str) {
-      if (!str) return '';
       const div = document.createElement('div');
-      div.textContent = str;
+      div.textContent = str || '';
       return div.innerHTML;
     },
 
-    /**
-     * Update configuration
-     * @param {Object} newConfig - Config overrides
-     */
-    configure(newConfig) {
-      this.config = { ...this.config, ...newConfig };
-      console.log('🔧 NotificationManager config updated');
-    },
+    configure(cfg) { this.config = { ...this.config, ...cfg }; },
 
-    /**
-     * Cleanup resources
-     */
     destroy() {
       this.stopBlink();
-
-      if (this.audioCtx?.state !== 'closed') {
-        this.audioCtx?.close().catch(() => {});
-      }
-
-      // Clear all timeouts
-      document.querySelectorAll('.notification[data-timeout]').forEach(el => {
-        clearTimeout(parseInt(el.dataset.timeout));
-        el.remove();
-      });
-
+      if (this.audioCtx?.state !== 'closed') this.audioCtx?.close().catch(() => {});
+      this.processedMessageIds.clear();
       this.initialized = false;
-      this.activeChatId = null;
-      this.lastNotificationTime.clear();
-
-      console.log('🧹 NotificationManager destroyed');
     }
   };
 
-  // Export to global scope
   window.NotificationManager = NotificationManager;
 
-  // Auto-init on DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => NotificationManager.init());
   } else {
     NotificationManager.init();
   }
 
-  // Handle visibility changes
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       NotificationManager.stopBlink();
@@ -416,9 +292,5 @@
     }
   });
 
-  // Cleanup on page unload
-  window.addEventListener('beforeunload', () => {
-    NotificationManager.destroy();
-  });
-
+  window.addEventListener('beforeunload', () => NotificationManager.destroy());
 })();

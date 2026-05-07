@@ -399,6 +399,101 @@ body {
   opacity: 0.9;
 }
 
+/* ===== In‑App Notification Banner (WhatsApp‑style) ===== */
+.in-app-notification {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  width: calc(100% - 32px);
+  max-width: 420px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: slideDown var(--transition-normal) ease-out;
+  overflow: hidden;
+}
+
+.in-app-notification-content {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.in-app-notification-content:hover {
+  background: var(--bg-hover);
+}
+
+.in-app-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.in-app-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.in-app-sender {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.in-app-preview {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.in-app-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.in-app-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-active);
+}
+
+/* Анимация появления */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+
 /* ===== Tabs ===== */
 .tabs {
   display: flex;
