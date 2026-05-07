@@ -1,6 +1,6 @@
 """
 crypto_manager.py — Гибридное шифрование ECDH + AES-GCM
-Версия: 3.3 (исправлены уязвимости: групповые ключи, аутентификация, валидация)
+Версия: 3.4 (TTLCache вместо lru_cache — ключи живут 30 секунд)
 """
 import hashlib
 import base64
@@ -8,7 +8,6 @@ import os
 import json
 import logging
 import hmac
-from functools import lru_cache
 from typing import Optional, Dict, Any, Tuple
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -18,6 +17,9 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.backends import default_backend
 
+# Новый импорт для TTL-кэша
+from cachetools import TTLCache, cached
+
 # === Конфигурация ===
 CACHE_SIZE = 128
 CURVE = ec.SECP256R1()  # NIST P-256
@@ -25,10 +27,13 @@ _P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 PBKDF2_ITERATIONS = 600_000  # NIST рекомендация для 2024+
 DOMAIN_SEPARATOR = "BiChat:crypto:v3.3"
 GROUP_KEY_SALT = b"group-symmetric-salt-v2"
-# ✅ ДОБАВИТЬ новую функцию после GROUP_KEY_SALT
-@lru_cache(maxsize=32)
+
+# TTL-кэш для симметричного секрета (макс. 32 элемента, живут 30 секунд)
+_mnemonic_secret_cache = TTLCache(maxsize=32, ttl=30)
+
+@cached(_mnemonic_secret_cache)
 def _derive_mnemonic_secret_cached(mnemonic_hash: str) -> bytes:
-    """Кэшируем дорогой PBKDF2 по хэшу мнемоники."""
+    """Кэшируем дорогой PBKDF2 по хэшу мнемоники (TTL=30s)."""
     return PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -40,19 +45,14 @@ def _derive_mnemonic_secret_cached(mnemonic_hash: str) -> bytes:
 # === Логирование ===
 logger = logging.getLogger(__name__)
 
+# TTL-кэш для приватного ключа (макс. 128 элементов, живут 30 секунд)
+_private_key_cache = TTLCache(maxsize=CACHE_SIZE, ttl=30)
 
-# =============================================================================
-# 🔑 Часть 1: Деривация асимметричных ключей из мнемоники (УСИЛЕННАЯ)
-# =============================================================================
-
-# ✅ СТАЛО — PBKDF2 делает брутфорс в ~600 000 раз дороже
-# Меняем сигнатуру: принимаем сырую мнемонику, хэшируем внутри с усилением
-
-@lru_cache(maxsize=CACHE_SIZE)
+@cached(_private_key_cache)
 def _derive_private_key_cached(mnemonic_hash: str) -> ec.EllipticCurvePrivateKey:
     """
-    mnemonic_hash — hex SHA256 от мнемоники (для кэш-ключа).
-    Внутри — PBKDF2 поверх него для защиты от брутфорса.
+    mnemonic_hash — hex SHA256 от мнемоники.
+    Результат хранится в памяти не дольше 30 секунд.
     """
     key_material = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -66,13 +66,14 @@ def _derive_private_key_cached(mnemonic_hash: str) -> ec.EllipticCurvePrivateKey
     private_scalar = (private_scalar % (_P256_ORDER - 1)) + 1
     return ec.derive_private_key(private_scalar, CURVE, default_backend())
 
+
 def derive_private_key(mnemonic_phrase: str) -> ec.EllipticCurvePrivateKey:
     """Деривация приватного ключа с валидацией ввода."""
     if not mnemonic_phrase or not isinstance(mnemonic_phrase, str):
         raise ValueError("mnemonic_phrase is required and must be a non-empty string")
 
     mnemonic_phrase = mnemonic_phrase.strip()
-    if len(mnemonic_phrase) < 24:  # Минимальная длина для 256-битной мнемоники
+    if len(mnemonic_phrase) < 24:
         raise ValueError("mnemonic_phrase appears too short")
 
     mnemonic_hash = hashlib.sha256(mnemonic_phrase.encode('utf-8')).hexdigest()
@@ -94,15 +95,11 @@ def get_public_key_b64(mnemonic_phrase: str) -> str:
 
 
 def load_public_key_from_bytes(pubkey_bytes: bytes) -> ec.EllipticCurvePublicKey:
-    """Загрузка публичного ключа с валидацией (совместимо с cryptography >= 2.5)."""
+    """Загрузка публичного ключа с валидацией."""
     try:
         public_key = ec.EllipticCurvePublicKey.from_encoded_point(CURVE, pubkey_bytes)
-
-        # 🔒 Валидация: проверяем наличие метода (cryptography >= 3.4)
         if hasattr(public_key, 'check_valid'):
             public_key.check_valid()
-        # Для старых версий: from_encoded_point уже выполняет базовую проверку
-
         return public_key
     except Exception as e:
         raise ValueError(f"Invalid public key: {e}")
@@ -114,10 +111,7 @@ def load_public_key_from_b64(pubkey_b64: str) -> ec.EllipticCurvePublicKey:
 
 
 def verify_address_matches_pubkey(address: str, pubkey_b64: str) -> bool:
-    """
-    Проверка: соответствует ли адрес данному публичному ключу.
-    Адрес должен быть SHA256(public_key_compressed).
-    """
+    """Проверка: соответствует ли адрес данному публичному ключу."""
     try:
         pubkey_bytes = base64.b64decode(pubkey_b64)
         computed_address = hashlib.sha256(pubkey_bytes).hexdigest()
@@ -149,7 +143,7 @@ def generate_symmetric_key(sender: str, recipient: str, mnemonic_phrase: str) ->
     domain = f"{DOMAIN_SEPARATOR}:group-symmetric-v4"
 
     mnemonic_hash = hashlib.sha256(mnemonic_phrase.encode('utf-8')).hexdigest()
-    secret = _derive_mnemonic_secret_cached(mnemonic_hash)  # ← из кэша
+    secret = _derive_mnemonic_secret_cached(mnemonic_hash)  # берётся из TTL-кэша
 
     return HKDF(
         algorithm=hashes.SHA256(),
@@ -159,6 +153,7 @@ def generate_symmetric_key(sender: str, recipient: str, mnemonic_phrase: str) ->
         backend=default_backend()
     ).derive(secret)
 
+
 # =============================================================================
 # 🔐 Часть 3: ECDH — вычисление общего секрета (с валидацией)
 # =============================================================================
@@ -167,13 +162,11 @@ def compute_shared_key(my_mnemonic: str, peer_public_key: bytes,
                        peer_address: Optional[str] = None) -> bytes:
     """
     Вычисление общего секрета ECDH с валидацией публичного ключа.
-
-    🔒 Если передан peer_address — проверяем соответствие ключа адресу.
+    Если передан peer_address — проверяем соответствие ключа адресу.
     """
     my_private = derive_private_key(my_mnemonic)
     peer_public = load_public_key_from_bytes(peer_public_key)
 
-    # 🔒 Проверка соответствия ключа адресу (защита от MITM)
     if peer_address is not None:
         pubkey_b64 = base64.b64encode(peer_public_key).decode('ascii')
         if not verify_address_matches_pubkey(peer_address, pubkey_b64):
@@ -205,8 +198,7 @@ def compute_shared_key_b64(my_mnemonic: str, peer_public_key_b64: str,
 
 def encrypt_message_aead(key: bytes, plaintext: str, associated_data: Optional[bytes] = None) -> str:
     """
-    🔧 ИСПРАВЛЕНО: Шифрование с аутентификацией (AES-GCM).
-
+    Шифрование с аутентификацией (AES-GCM).
     Возвращает: base64(nonce + ciphertext + tag)
     """
     if not plaintext:
@@ -216,9 +208,8 @@ def encrypt_message_aead(key: bytes, plaintext: str, associated_data: Optional[b
 
     try:
         aesgcm = AESGCM(key)
-        nonce = os.urandom(12)  # 96-bit nonce для GCM
+        nonce = os.urandom(12)
         ciphertext = aesgcm.encrypt(nonce, plaintext.encode('utf-8'), associated_data)
-        # GCM автоматически добавляет 16-байтный тег в конец ciphertext
         return base64.b64encode(nonce + ciphertext).decode('ascii')
     except Exception as e:
         logger.error(f"AEAD encryption error: {e}")
@@ -230,8 +221,7 @@ def decrypt_message_aead(key: bytes, encrypted_data: Optional[str],
                          fallback: str = "[Decryption Failed]") -> Optional[str]:
     """
     Расшифровка AES-GCM с унифицированной обработкой ошибок.
-
-    🔒 Все ошибки возвращают fallback — защита от padding oracle.
+    Все ошибки возвращают fallback — защита от padding oracle.
     """
     if not encrypted_data:
         return None
@@ -248,9 +238,7 @@ def decrypt_message_aead(key: bytes, encrypted_data: Optional[str],
         aesgcm = AESGCM(key)
         plaintext = aesgcm.decrypt(nonce, ciphertext_with_tag, associated_data)
         return plaintext.decode('utf-8')
-
     except Exception as e:
-        # 🔒 Унифицированный ответ при любой ошибке — защита от oracle-атак
         logger.debug(f"AEAD decryption failed: {type(e).__name__}")
         return fallback
 
@@ -259,7 +247,6 @@ def decrypt_message_aead(key: bytes, encrypted_data: Optional[str],
 # 🎁 Часть 5: Гибридное шифрование (ECDH + AES-GCM ephemeral session key)
 # =============================================================================
 
-# ✅ СТАЛО — убираем peer_address из payload
 def encrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str,
                    plaintext: str, image_data: Optional[str] = None) -> Dict[str, Any]:
     if not plaintext and not image_data:
@@ -283,9 +270,7 @@ def encrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
         'enc_session_key': enc_session_key,
         'nonce': nonce,
         'version': 'hybrid-v2'
-        # peer_address убран — он уже есть в поле recipient транзакции
     }
-
 
 
 def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str,
@@ -293,9 +278,8 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
     result: Dict[str, Optional[str]] = {'content': None, 'image': None}
 
     try:
-        # 🔒 Валидация входных данных
         if not peer_public_key_b64 or not peer_address:
-            logger.error(f"❌ decrypt_hybrid: missing peer_public_key_b64 or peer_address")
+            logger.error("❌ decrypt_hybrid: missing peer_public_key_b64 or peer_address")
             return result
 
         enc_session_key = encrypted_payload.get('enc_session_key')
@@ -303,10 +287,8 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
             logger.warning("❌ Missing enc_session_key in payload")
             return result
 
-        # 🔍 Лог для отладки
         logger.debug(f"🔓 Decrypt attempt: peer={peer_address[:16]}...")
 
-        # 🔒 Вычисляем общий секрет (проверка адреса встроена)
         shared_key = compute_shared_key_b64(my_mnemonic, peer_public_key_b64, peer_address)
 
         session_key_b64 = decrypt_message_aead(shared_key, enc_session_key)
@@ -323,7 +305,6 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
             logger.warning(f"❌ Content decryption failed for message from {peer_address[:16]}...")
 
         return result
-
     except ValueError as e:
         if "Public key does not match" in str(e):
             logger.error(f"❌ Key verification failed: {e}")
@@ -334,24 +315,22 @@ def decrypt_hybrid(my_mnemonic: str, peer_public_key_b64: str, peer_address: str
         logger.error(f"❌ Hybrid decryption unexpected error: {type(e).__name__}: {e}", exc_info=True)
         return result
 
+
 # =============================================================================
 # 🔄 Часть 6: Утилиты и кэширование
 # =============================================================================
 
 def clear_key_cache():
     """Очистка всех кэшей ключей."""
-    _derive_private_key_cached.cache_clear()
-    _derive_mnemonic_secret_cached.cache_clear()
+    _private_key_cache.clear()
+    _mnemonic_secret_cache.clear()
+
 
 def get_cache_info() -> dict:
-    """Статистика кэша приватных ключей."""
-    info = _derive_private_key_cached.cache_info()
-    total = info.hits + info.misses
+    """Информация о текущем состоянии кэшей."""
     return {
-        'private_key_hits': info.hits,
-        'private_key_misses': info.misses,
-        'private_key_size': info.currsize,
-        'hit_rate': round(info.hits / total * 100, 1) if total > 0 else 0.0
+        'private_key_cache_size': len(_private_key_cache),
+        'mnemonic_secret_cache_size': len(_mnemonic_secret_cache),
     }
 
 

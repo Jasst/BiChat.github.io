@@ -1,6 +1,7 @@
+
 """
 app.py — Децентрализованный мессенджер с безопасным шифрованием
-Версия: 3.4 (оптимизации: WAL, кэш-версионирование, производительность)
+Версия: 3.5 (ускорение: WebSocket, UNION ALL, композитные индексы, TTL-кэш)
 """
 import hashlib
 import os
@@ -14,13 +15,15 @@ import json
 import uuid
 import threading
 import secrets
-from functools import lru_cache, wraps
+from functools import lru_cache
 from contextlib import contextmanager
-from typing import List, Dict, Any, Optional, Callable, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import timedelta
 
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, send_from_directory, g
 from flask.sessions import SecureCookieSessionInterface
+from flask_socketio import SocketIO, emit, join_room          # 🔥 NEW
+from flask_compress import Compress                           # 🔥 NEW
 from mnemonic import Mnemonic
 from marshmallow import Schema, fields, ValidationError, post_load
 from werkzeug.utils import secure_filename
@@ -32,12 +35,10 @@ from crypto_manager import (
     clear_key_cache, get_cache_info
 )
 
-
 # 🔧 Загрузка переменных из .env (для локальной разработки)
 try:
     from dotenv import load_dotenv
     import pathlib
-    # Ищем .env рядом с app.py, независимо от рабочей директории
     _env_path = pathlib.Path(__file__).parent / '.env'
     load_dotenv(dotenv_path=_env_path, override=False)
 except ImportError:
@@ -58,11 +59,9 @@ CONFIG = {
     'MAX_UPLOAD_SIZE': 16 * 1024 * 1024,
 }
 
-# 🔧 Пути из .env или дефолты
 DATABASE_PATH = os.getenv('DATABASE_PATH', 'blockchain.db')
 UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
 
-# 🔧 Адаптация путей под ОС
 import sys
 if sys.platform == 'win32':
     if DATABASE_PATH.startswith('/var/www/'):
@@ -70,7 +69,6 @@ if sys.platform == 'win32':
     if UPLOAD_FOLDER.startswith('/var/www/'):
         UPLOAD_FOLDER = 'uploads'
 
-# 🔧 Создаём директории
 os.makedirs(os.path.dirname(os.path.abspath(DATABASE_PATH)) or '.', exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 STATIC_FOLDER = 'static'
@@ -86,9 +84,7 @@ else:
 
 MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
-# =============================================================================
-# === Глобальные переменные для версионирования кэша ===
-# =============================================================================
+# Глобальные переменные для версионирования кэша
 _pubkey_cache_version = 0
 _pubkey_version_lock = threading.Lock()
 _contact_cache_version = 0
@@ -96,9 +92,7 @@ _contact_version_lock = threading.Lock()
 _groups_cache_version = 0
 _groups_version_lock = threading.Lock()
 
-# =============================================================================
 # === Логирование ===
-# =============================================================================
 def setup_logging():
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messenger.log')
     file_handler = logging.handlers.RotatingFileHandler(
@@ -126,15 +120,8 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
 # === Оптимизация SQLite: WAL + PRAGMA ===
-# =============================================================================
 def init_sqlite_optimizations(db_path: str) -> None:
-    """
-    Применяет PRAGMA-настройки для повышения производительности.
-    Вызывается один раз при старте приложения.
-    """
     try:
         conn = sqlite3.connect(db_path, timeout=CONFIG['DB_TIMEOUT'])
         cursor = conn.cursor()
@@ -154,9 +141,7 @@ def init_sqlite_optimizations(db_path: str) -> None:
     except Exception as e:
         logger.error(f"❌ Failed to apply SQLite optimizations: {e}")
 
-
 def warmup_database(db_path: str) -> None:
-    """Прогрев БД: создаёт WAL-файлы и проверяет подключение."""
     try:
         with get_db_cursor(db_path) as cursor:
             cursor.execute("SELECT 1")
@@ -164,10 +149,6 @@ def warmup_database(db_path: str) -> None:
     except Exception as e:
         logger.warning(f"⚠️ Database warmup skipped: {e}")
 
-
-# =============================================================================
-# === Утилиты БД с PRAGMA на каждое соединение ===
-# =============================================================================
 @contextmanager
 def get_db_cursor(db_path: str):
     conn = None
@@ -180,7 +161,6 @@ def get_db_cursor(db_path: str):
         )
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        # Применяем настройки для ЭТОГО соединения
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.execute("PRAGMA cache_size = -64000")
@@ -195,14 +175,7 @@ def get_db_cursor(db_path: str):
         if conn:
             conn.close()
 
-
-# =============================================================================
-# === Функции управления версиями кэша ===
-# =============================================================================
-# =============================================================================
-# === Функции управления версиями кэша ===
-# =============================================================================
-def bump_pubkey_cache_version() -> None:
+def bump_pubkey_cache_version():
     global _pubkey_cache_version
     with _pubkey_version_lock:
         _pubkey_cache_version += 1
@@ -212,29 +185,24 @@ def get_pubkey_cache_version() -> int:
     with _pubkey_version_lock:
         return _pubkey_cache_version
 
-# ✅ ДОБАВЬТЕ ЭТИ ДВЕ ФУНКЦИИ:
-def bump_contact_cache_version() -> None:
+def bump_contact_cache_version():
     global _contact_cache_version
     with _contact_version_lock:
         _contact_cache_version += 1
 
-def get_contact_cache_version() -> int:  # ← БЫЛА ПРОПУЩЕНА!
+def get_contact_cache_version() -> int:
     with _contact_version_lock:
         return _contact_cache_version
 
-def bump_groups_cache_version() -> None:
+def bump_groups_cache_version():
     global _groups_cache_version
     with _groups_version_lock:
         _groups_cache_version += 1
 
-def get_groups_cache_version() -> int:  # ← БЫЛА ПРОПУЩЕНА!
+def get_groups_cache_version() -> int:
     with _groups_version_lock:
         return _groups_cache_version
 
-
-# =============================================================================
-# === Создание таблиц ===
-# =============================================================================
 def _create_contacts_table(cursor):
     cursor.execute('''CREATE TABLE IF NOT EXISTS contacts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,9 +221,9 @@ def _create_group_table(cursor):
 def _create_pubkey_cache_table(cursor):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS pubkey_cache (
-            address TEXT PRIMARY KEY, 
+            address TEXT PRIMARY KEY,
             public_key_b64 TEXT NOT NULL,
-            updated_at REAL, 
+            updated_at REAL,
             source TEXT DEFAULT 'blockchain',
             verified INTEGER DEFAULT 0
         )
@@ -263,18 +231,14 @@ def _create_pubkey_cache_table(cursor):
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_updated ON pubkey_cache(updated_at)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_verified ON pubkey_cache(verified)')
 
-
-# =============================================================================
-# === Blockchain ===
-# =============================================================================
 class Blockchain:
-    def __init__(self, db_path: str = DATABASE_PATH):
+    def __init__(self, db_path=DATABASE_PATH):
         self.db_path = db_path
         self._init_lock = threading.Lock()
         self.initialize_blockchain()
         logger.info("Blockchain initialized")
 
-    def initialize_blockchain(self) -> None:
+    def initialize_blockchain(self):
         with self._init_lock:
             with get_db_cursor(self.db_path) as cursor:
                 self._create_tables(cursor)
@@ -296,14 +260,13 @@ class Blockchain:
         _create_contacts_table(cursor)
         _create_group_table(cursor)
         _create_pubkey_cache_table(cursor)
-        # ✅ Новая таблица статуса прочтения
         cursor.execute('''CREATE TABLE IF NOT EXISTS read_status (
-                    user_address TEXT NOT NULL,
-                    chat_id TEXT NOT NULL,
-                    last_read_message_id INTEGER NOT NULL DEFAULT 0,
-                    read_at REAL,
-                    PRIMARY KEY (user_address, chat_id)
-                )''')
+            user_address TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            last_read_message_id INTEGER NOT NULL DEFAULT 0,
+            read_at REAL,
+            PRIMARY KEY (user_address, chat_id)
+        )''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_read_status_user ON read_status(user_address)')
 
     def _create_indexes(self, cursor):
@@ -312,8 +275,11 @@ class Blockchain:
             'CREATE INDEX IF NOT EXISTS idx_tx_recipient ON transactions(recipient)',
             'CREATE INDEX IF NOT EXISTS idx_tx_timestamp ON transactions(timestamp)',
         ]: cursor.execute(sql)
+        # 🔥 NEW: составные индексы для направлений
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_tx_sender_recipient ON transactions(sender, recipient)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_tx_recipient_sender ON transactions(recipient, sender)')
 
-    def _new_block_raw(self, cursor, proof: int, previous_hash: Optional[str] = None) -> None:
+    def _new_block_raw(self, cursor, proof, previous_hash=None):
         last = self._last_block_raw(cursor)
         block_index = last.get('index', 0) + 1
         block = {
@@ -323,15 +289,14 @@ class Blockchain:
         }
         cursor.execute(
             'INSERT INTO blockchain (block_index, timestamp, transactions, proof, previous_hash) VALUES (?, ?, ?, ?, ?)',
-            (block['index'], block['timestamp'], json.dumps(block['transactions']),
-             block['proof'], block['previous_hash'])
+            (block['index'], block['timestamp'], json.dumps(block['transactions']), block['proof'], block['previous_hash'])
         )
 
-    def _hash_block(self, block: Dict[str, Any]) -> str:
+    def _hash_block(self, block):
         if not block: return '0' * 64
         return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
 
-    def _last_block_raw(self, cursor) -> Dict[str, Any]:
+    def _last_block_raw(self, cursor):
         cursor.execute('SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1')
         row = cursor.fetchone()
         if row:
@@ -339,14 +304,12 @@ class Blockchain:
                     'proof': row[3], 'previous_hash': row[4]}
         return {}
 
-    def _get_chain_raw(self, cursor) -> List[Dict[str, Any]]:
+    def _get_chain_raw(self, cursor):
         cursor.execute('SELECT * FROM blockchain ORDER BY block_index ASC')
         return [{'index': r[0], 'timestamp': r[1], 'transactions': json.loads(r[2]),
                  'proof': r[3], 'previous_hash': r[4]} for r in cursor.fetchall()]
 
-    def new_transaction(self, cursor, sender: str, recipient: str, content: str,
-                        image: Optional[str] = None, sender_pubkey: Optional[str] = None,
-                        metadata: Optional[Dict] = None) -> int:
+    def new_transaction(self, cursor, sender, recipient, content, image=None, sender_pubkey=None, metadata=None):
         cursor.execute(
             'INSERT INTO transactions (sender, recipient, content, image, timestamp, sender_pubkey, metadata) '
             'VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -355,7 +318,7 @@ class Blockchain:
         )
         return cursor.lastrowid
 
-    def proof_of_work(self, last_proof: int) -> int:
+    def proof_of_work(self, last_proof):
         proof = 0
         target = "0" * CONFIG['POW_DIFFICULTY']
         while proof < CONFIG['POW_MAX_ITERATIONS']:
@@ -364,14 +327,9 @@ class Blockchain:
             proof += 1
         raise RuntimeError(f"PoW failed after {CONFIG['POW_MAX_ITERATIONS']} iterations")
 
-
-# =============================================================================
-# === Фоновый майнинг ===
-# =============================================================================
 _pow_lock = threading.Lock()
 
-def _mine_block_async(db_path: str, last_proof: int) -> None:
-    """PoW в отдельном потоке — пользователь не ждёт."""
+def _mine_block_async(db_path, last_proof):
     if not _pow_lock.acquire(blocking=False):
         logger.debug("PoW already running, skipping")
         return
@@ -385,14 +343,10 @@ def _mine_block_async(db_path: str, last_proof: int) -> None:
     finally:
         _pow_lock.release()
 
-
 _p2p_buffer: Dict[str, List[Dict]] = {}
 _p2p_buffer_lock = threading.Lock()
 
-
-# =============================================================================
 # === Flask app ===
-# =============================================================================
 app = Flask(__name__, static_folder=STATIC_FOLDER, template_folder=TEMPLATE_FOLDER)
 app.config.update(
     SECRET_KEY=SECRET_KEY,
@@ -406,18 +360,33 @@ app.config.update(
 )
 app.session_interface = SecureCookieSessionInterface()
 
+# 🔥 NEW: сжатие ответов и WebSocket
+Compress(app)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
 mnemonic_gen = Mnemonic('english')
 
-# 🔧 Применяем оптимизации БД ПЕРЕД инициализацией блокчейна
 init_sqlite_optimizations(DATABASE_PATH)
 blockchain = Blockchain(DATABASE_PATH)
 warmup_database(DATABASE_PATH)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# 🔥 WebSocket аутентификация и уведомления
+@socketio.on('connect')
+def handle_connect():
+    if 'address' not in session:
+        return False
+    join_room(session['address'])
+    return True
 
-# =============================================================================
+def notify_new_message(recipient, tx_id, sender=None):
+    socketio.emit('new_message', {
+        'chat_id': sender if sender else recipient,   # для получателя чат идентифицируется по отправителю
+        'tx_id': tx_id,
+        'sender': sender
+    }, room=recipient)
+
 # === Схемы валидации ===
-# =============================================================================
 class WalletSchema(Schema):
     mnemonic_phrase = fields.Str(required=True, load_only=True, validate=lambda x: len(x.strip()) >= 24)
     @post_load
@@ -452,16 +421,9 @@ class EditContactSchema(Schema):
 class DeleteMessageSchema(Schema):
     message_id = fields.Int(required=True, validate=lambda x: x > 0)
 
-
-# =============================================================================
-# === Кэш публичных ключей (с версионированием) ===
-# =============================================================================
+# === Кэш публичных ключей ===
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_PUBKEYS'])
 def get_cached_public_key(address: str, cache_version: int = 0) -> Optional[Tuple[str, bool]]:
-    """
-    Возвращает (pubkey_b64, is_verified).
-    Параметр cache_version позволяет инвалидировать кэш без очистки.
-    """
     with get_db_cursor(blockchain.db_path) as cursor:
         cursor.execute(
             'SELECT public_key_b64, verified FROM pubkey_cache WHERE address = ?',
@@ -470,12 +432,7 @@ def get_cached_public_key(address: str, cache_version: int = 0) -> Optional[Tupl
         row = cursor.fetchone()
         return (row[0], bool(row[1])) if row else (None, False)
 
-
-def cache_public_key(address: str, pubkey_b64: str, source: str = 'message',
-                     verified: Optional[bool] = None) -> bool:
-    """
-    Кэширование публичного ключа БЕЗ очистки всего кэша.
-    """
+def cache_public_key(address: str, pubkey_b64: str, source: str = 'message', verified: Optional[bool] = None) -> bool:
     try:
         if verified is None:
             verified = verify_address_matches_pubkey(address, pubkey_b64)
@@ -487,16 +444,13 @@ def cache_public_key(address: str, pubkey_b64: str, source: str = 'message',
                 'VALUES (?, ?, ?, ?, ?)',
                 (address, pubkey_b64, time.time(), source, 1 if verified else 0)
             )
-        # ✅ Инвалидируем через версию, а не cache_clear()
         bump_pubkey_cache_version()
         return True
     except Exception as e:
         logger.error(f"Cache pubkey error: {e}")
         return False
 
-
 def fetch_public_key_from_chain(address: str) -> Optional[Tuple[str, bool]]:
-    """Получение публичного ключа из блокчейна с верификацией."""
     with get_db_cursor(blockchain.db_path) as cursor:
         cursor.execute(
             'SELECT sender_pubkey, metadata FROM transactions '
@@ -518,10 +472,7 @@ def fetch_public_key_from_chain(address: str) -> Optional[Tuple[str, bool]]:
             except Exception: pass
     return None, False
 
-
-# =============================================================================
 # === Контакты ===
-# =============================================================================
 def add_contact(user_address: str, contact_address: str, contact_name: str) -> bool:
     if not contact_name or not contact_name.strip():
         contact_name = contact_address[:10] + "..."
@@ -532,13 +483,11 @@ def add_contact(user_address: str, contact_address: str, contact_name: str) -> b
                 'VALUES (?, ?, ?, ?)',
                 (user_address, contact_address, contact_name.strip(), time.time())
             )
-        # ✅ Не очищаем кэш, используем версионирование
         bump_contact_cache_version()
         return True
     except Exception as e:
         logger.error(f"Add contact DB error: {e}")
         return False
-
 
 def get_contacts(user_address: str) -> List[Dict[str, Any]]:
     with get_db_cursor(blockchain.db_path) as cursor:
@@ -550,9 +499,7 @@ def get_contacts(user_address: str) -> List[Dict[str, Any]]:
         return [{'address': row[0], 'name': row[1], 'pubkey': row[2], 'created_at': row[3]}
                 for row in cursor.fetchall()]
 
-
 def update_contact_name(user_address: str, contact_address: str, new_name: str) -> bool:
-    """Обновляет имя контакта в БД с валидацией."""
     if not new_name or not new_name.strip():
         return False
     clean_name = ''.join(c for c in new_name.strip() if ord(c) >= 32 and ord(c) != 127)
@@ -566,7 +513,6 @@ def update_contact_name(user_address: str, contact_address: str, new_name: str) 
             )
             updated = cursor.rowcount
         if updated:
-            # ✅ Версионирование вместо cache_clear()
             bump_contact_cache_version()
             logger.info(f"Contact name updated: {contact_address[:16]}... -> '{clean_name}'")
         return bool(updated)
@@ -574,20 +520,14 @@ def update_contact_name(user_address: str, contact_address: str, new_name: str) 
         logger.error(f"Update contact name DB error: {e}")
         return False
 
-
-# =============================================================================
-# === Расшифровка сообщений ===
-# =============================================================================
-def decrypt_message_safe(key: bytes, encrypted_data: Optional[str],
-                         fallback: str = "[Decryption Failed]") -> Optional[str]:
+# === Расшифровка сообщений (оставлена на сервере, но ключи теперь с TTL) ===
+def decrypt_message_safe(key: bytes, encrypted_data: Optional[str], fallback: str = "[Decryption Failed]") -> Optional[str]:
     if not encrypted_data: return None
     return decrypt_message_aead(key, encrypted_data, fallback=fallback)
-
 
 def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> Dict:
     result = msg.copy()
     try:
-        # === ГРУППОВЫЕ СООБЩЕНИЯ ===
         if msg['recipient'].startswith('group:'):
             group_id = msg['recipient'].split(':', 1)[1]
             groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
@@ -627,7 +567,6 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
             result['group_id'] = group_id
             return result
 
-        # === ПРЯМЫЕ СООБЩЕНИЯ ===
         payload = None
         raw_content = msg['content']
         if isinstance(raw_content, str):
@@ -635,22 +574,19 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                 parsed = json.loads(raw_content)
                 if isinstance(parsed, dict) and parsed.get('version') in ('hybrid-v1', 'hybrid-v2', 'key_exchange'):
                     payload = parsed
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError: pass
         elif isinstance(raw_content, dict):
             if raw_content.get('version') in ('hybrid-v1', 'hybrid-v2', 'key_exchange'):
                 payload = raw_content
 
         if payload and payload.get('version') == 'key_exchange':
-            result['content'] = "[Key exchange request — waiting for response]"
-            result['image'] = None
-            result['encryption_type'] = 'key_exchange'
-            result['peer_pubkey'] = payload.get('my_pubkey')
+            result.update({'content': "[Key exchange request — waiting for response]", 'image': None,
+                           'encryption_type': 'key_exchange', 'peer_pubkey': payload.get('my_pubkey')})
             return result
 
         if payload and payload.get('version') in ('hybrid-v1', 'hybrid-v2'):
             if not payload.get('enc_session_key'):
-                logger.warning(f"⚠️ Hybrid payload missing enc_session_key! msg_id={msg.get('id')}, sender={msg.get('sender', '')[:16]}...")
+                logger.warning(f"⚠️ Hybrid payload missing enc_session_key!")
                 payload = None
             else:
                 if msg['sender'] == user_address:
@@ -669,9 +605,8 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                         if not peer_pubkey:
                             peer_pubkey, peer_verified = fetch_public_key_from_chain(peer_address)
                 if not peer_pubkey:
-                    result['content'] = "[Waiting for key exchange...]"
-                    result['image'] = None
-                    result['encryption_type'] = payload.get('version')
+                    result.update({'content': "[Waiting for key exchange...]", 'image': None,
+                                   'encryption_type': payload.get('version')})
                     return result
                 cache_public_key(peer_address, peer_pubkey, verified=peer_verified)
                 try:
@@ -686,7 +621,7 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                     result['image'] = None
                 return result
 
-        # === LEGACY FALLBACK ===
+        # LEGACY FALLBACK
         peer_addr = msg['sender'] if msg['sender'] != user_address else msg['recipient']
         peer_pubkey, _ = get_cached_public_key(peer_addr, cache_version=get_pubkey_cache_version())
         if peer_pubkey:
@@ -698,29 +633,22 @@ def process_message_decryption(msg: Dict, user_address: str, mnemonic: str) -> D
                     result['image'] = decrypt_message_aead(shared_key, msg['image']) if msg.get('image') else None
                     result['encryption_type'] = 'legacy-ecdh'
                     return result
-            except Exception:
-                pass
+            except: pass
         try:
             key = generate_symmetric_key(msg['sender'], msg['recipient'], mnemonic)
             result['content'] = decrypt_message_safe(key, msg['content'])
             result['image'] = decrypt_message_safe(key, msg['image'])
             result['encryption_type'] = 'legacy-symmetric'
             return result
-        except Exception:
-            pass
-        result['content'] = "[Decryption Failed]"
-        result['image'] = None
-        result['encryption_type'] = 'unknown'
+        except: pass
+        result.update({'content': "[Decryption Failed]", 'image': None, 'encryption_type': 'unknown'})
         return result
     except Exception as e:
-        logger.error(f"❌ process_message_decryption CRITICAL: {type(e).__name__}: {e}", exc_info=app.debug)
+        logger.error(f"❌ CRITICAL: {type(e).__name__}: {e}", exc_info=app.debug)
         result.update({'content': '[System Error]', 'image': None, 'error': str(e)[:100]})
         return result
 
-
-# =============================================================================
-# === Кэшированные функции с версионированием ===
-# =============================================================================
+# === Кэшированные функции ===
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_CONTACTS'])
 def get_contact_name_cached(user_address: str, contact_address: str, cache_version: int = 0) -> Optional[str]:
     with get_db_cursor(blockchain.db_path) as cursor:
@@ -730,7 +658,6 @@ def get_contact_name_cached(user_address: str, contact_address: str, cache_versi
         )
         row = cursor.fetchone()
         return row[0] if row else None
-
 
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_GROUPS'])
 def get_user_groups_cached(address: str, cache_version: int = 0) -> tuple:
@@ -746,7 +673,6 @@ def get_user_groups_cached(address: str, cache_version: int = 0) -> tuple:
                 })
         return tuple(groups)
 
-
 def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     conversations: Dict[str, Dict] = {}
     try:
@@ -760,88 +686,49 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                   AND NOT (sender = :addr AND recipient = :addr)
                 ORDER BY timestamp DESC
             ''', {'addr': user_address})
-
             seen_partners = set()
             for row in cursor.fetchall():
                 partner, raw_content, raw_image, ts, msg_sender, msg_id = row
                 if partner == user_address or partner in seen_partners:
                     continue
                 seen_partners.add(partner)
-
-                # Получаем ID последнего прочитанного сообщения
                 cursor.execute(
-                    'SELECT last_read_message_id FROM read_status '
-                    'WHERE user_address = ? AND chat_id = ?',
+                    'SELECT last_read_message_id FROM read_status WHERE user_address = ? AND chat_id = ?',
                     (user_address, partner)
                 )
                 read_row = cursor.fetchone()
                 last_read_id = read_row[0] if read_row else 0
-
-                # ---------- УНИФИЦИРОВАННЫЕ ПРЕВЬЮ ----------
-                if last_read_id >= msg_id:
-                    # Сообщение прочитано (всегда одинаковый вид)
-                    preview = "✓ Прочитано"
-                else:
-                    # Не прочитано
-                    if msg_sender == user_address:
-                        # Ваше отправленное, но ещё не прочитано собеседником
-                        preview = "Вы: 💬 Сообщение"
-                    else:
-                        # Входящее непрочитанное – используем одну и ту же иконку,
-                        # чтобы строка не меняла ширину при переключении статуса
-                        preview = "💬 Новое сообщение"
-
-                # ---------- ОПРЕДЕЛЕНИЕ ИМЕНИ (без изменений) ----------
+                preview = "✓ Прочитано" if last_read_id >= msg_id else ("Вы: 💬 Сообщение" if msg_sender == user_address else "💬 Новое сообщение")
                 if partner.startswith('group:'):
                     group_id = partner.split(':', 1)[1]
-                    groups = get_user_groups_cached(
-                        user_address,
-                        cache_version=get_groups_cache_version()
-                    )
+                    groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
                     group = next((g for g in groups if g['id'] == group_id), None)
                     name = group['name'] if group else f'Группа {group_id[:8]}...'
                     is_group = True
                 else:
-                    name = get_contact_name_cached(
-                        user_address, partner,
-                        cache_version=get_contact_cache_version()
-                    ) or partner[:10] + "..."
+                    name = get_contact_name_cached(user_address, partner, cache_version=get_contact_cache_version()) or partner[:10] + "..."
                     is_group = False
-
                 conversations[partner] = {
-                    'address': partner,
-                    'name': name,
-                    'is_group': is_group,
-                    'last_preview': preview,
-                    'last_ts': ts
+                    'address': partner, 'name': name, 'is_group': is_group,
+                    'last_preview': preview, 'last_ts': ts
                 }
     except Exception as e:
         logger.error(f"Get conversations error: {e}")
+    return sorted(conversations.values(), key=lambda x: x.get('last_ts', 0), reverse=True)
 
-    return sorted(conversations.values(),
-                  key=lambda x: x.get('last_ts', 0), reverse=True)
-
-
-
-# =============================================================================
 # === Маршруты ===
-# =============================================================================
 @app.before_request
 def log_request():
     if 'address' in session:
         session.modified = True
-    if app.debug:
-        logger.debug(f"{request.method} {request.path}")
-    if request.endpoint and request.endpoint not in ('index', 'login', 'create_wallet', 'static', 'serve_upload', 'test_socket'):
+    if request.endpoint and request.endpoint not in ('index', 'login', 'create_wallet', 'static', 'serve_upload'):
         if 'address' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
-
 
 @app.route('/')
 def index():
     if 'address' in session: return redirect(url_for('chat'))
     return render_template('index.html')
-
 
 @app.route('/create_wallet', methods=['POST'])
 def create_wallet():
@@ -853,7 +740,6 @@ def create_wallet():
         session.permanent = True
         my_pubkey = get_public_key_b64(phrase)
         cache_public_key(address, my_pubkey, source='self', verified=True)
-        logger.info(f"Wallet created: {address[:16]}...")
         return jsonify({
             'mnemonic_phrase': phrase, 'address': address, 'public_key': my_pubkey,
             'warning': 'Save your mnemonic phrase securely. It will not be shown again.'
@@ -861,7 +747,6 @@ def create_wallet():
     except Exception as e:
         logger.error(f"Create wallet error: {e}")
         return jsonify({'error': 'Wallet creation failed'}), 500
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -872,15 +757,13 @@ def login():
             try:
                 if not mnemonic_gen.check(phrase):
                     return jsonify({'error': 'Invalid mnemonic phrase'}), 400
-            except Exception:
-                pass
+            except: pass
             address = generate_address(phrase)
             session['address'] = address
             session['mnemonic'] = phrase
             session.permanent = True
             my_pubkey = get_public_key_b64(phrase)
             cache_public_key(address, my_pubkey, source='self', verified=True)
-            logger.info(f"Login: {address[:16]}...")
             return jsonify({'address': address, 'public_key': my_pubkey}), 200
         except ValidationError as err:
             return jsonify({'error': err.messages}), 400
@@ -889,41 +772,35 @@ def login():
             return jsonify({'error': 'Login failed'}), 500
     return render_template('login.html')
 
-
 @app.route('/logout')
 def logout():
     clear_key_cache()
-    # ✅ Очистка кэша при логауте — это ок, сессия завершается
     get_contact_name_cached.cache_clear()
     get_user_groups_cached.cache_clear()
     get_cached_public_key.cache_clear()
     session.clear()
     return redirect(url_for('index'))
 
-
 @app.route('/chat')
 def chat():
     if 'address' not in session: return redirect(url_for('index'))
     return render_template('chat.html', address=session['address'])
-
 
 @app.route('/contacts')
 def contacts():
     if 'address' not in session: return redirect(url_for('index'))
     return render_template('contacts.html', address=session['address'])
 
-
 @app.route('/groups')
 def groups_page():
     if 'address' not in session: return redirect(url_for('index'))
     return render_template('groups.html', address=session['address'])
 
-
 @app.route('/profile')
 def profile():
     if 'address' not in session: return redirect(url_for('index'))
-    return render_template('profile.html', address=session.get('address'), cache_stats=get_cache_info() if app.debug else None)
-
+    return render_template('profile.html', address=session.get('address'),
+                           cache_stats=get_cache_info() if app.debug else None)
 
 @app.route('/get_public_key/<string:address>')
 def get_public_key_route(address: str):
@@ -934,15 +811,10 @@ def get_public_key_route(address: str):
         return jsonify({'address': address, 'public_key': pubkey, 'verified': verified}), 200
     return jsonify({'error': 'Public key not found'}), 404
 
-
-
-# =============================================================================
 # === Отправка сообщений ===
-# =============================================================================
 @app.route('/send_message', methods=['POST'])
 def send_message():
     if 'address' not in session:
-        logger.warning(f"⚠️ Unauthorized send_message attempt from {request.remote_addr}")
         return jsonify({'error': 'Unauthorized'}), 401
     try:
         data = MessageSchema().load(request.get_json())
@@ -954,29 +826,24 @@ def send_message():
         group_id = data.get('group_id')
         mnemonic = session.get('mnemonic')
         if not mnemonic:
-            logger.warning(f"⚠️ No mnemonic in session for {sender[:16]}...")
             return jsonify({'error': 'Session expired. Please login again.'}), 401
         expected_address = generate_address(mnemonic)
         if not hmac.compare_digest(expected_address, sender):
-            logger.critical(f"🚫 Mnemonic/address mismatch!")
             return jsonify({'error': 'Authentication failed'}), 403
         my_pubkey = get_public_key_b64(mnemonic)
 
-        # === ГРУППОВЫЕ СООБЩЕНИЯ ===
         if msg_type == 'group' and group_id:
             groups = get_user_groups_cached(sender, cache_version=get_groups_cache_version())
             group = next((g for g in groups if g['id'] == group_id), None)
             if not group or sender not in group['members']:
                 return jsonify({'error': 'Group not found or no access'}), 404
-            encrypted_map: Dict[str, Any] = {}
+            encrypted_map = {}
             for member in group['members']:
                 try:
                     member_pubkey, _ = get_cached_public_key(member, cache_version=get_pubkey_cache_version())
                     if not member_pubkey:
                         member_pubkey, _ = fetch_public_key_from_chain(member)
-                    if not member_pubkey:
-                        logger.warning(f"⚠️ No pubkey for member {member[:10]}..., skipping")
-                        continue
+                    if not member_pubkey: continue
                     key = compute_shared_key_b64(mnemonic, member_pubkey, member)
                     aad = sender.encode('utf-8')
                     encrypted_map[member] = {
@@ -986,83 +853,76 @@ def send_message():
                     }
                 except Exception as e:
                     logger.warning(f"⚠️ Encrypt for {member[:10]}... failed: {type(e).__name__}")
-                    continue
             if not encrypted_map:
-                return jsonify({'error': 'Encryption failed for all members — pubkeys missing?'}), 500
+                return jsonify({'error': 'Encryption failed for all members'}), 500
             with get_db_cursor(blockchain.db_path) as cursor:
-                tx_id = blockchain.new_transaction(cursor, sender, f"group:{group_id}", json.dumps(encrypted_map), None, sender_pubkey=my_pubkey, metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id, 'sender_verified': True, 'member_count': len(encrypted_map)})
+                tx_id = blockchain.new_transaction(cursor, sender, f"group:{group_id}", json.dumps(encrypted_map),
+                                                   None, sender_pubkey=my_pubkey,
+                                                   metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id})
                 last_proof = blockchain._last_block_raw(cursor)['proof']
                 threading.Thread(target=_mine_block_async, args=(blockchain.db_path, last_proof), daemon=True).start()
-            try:
-                with _p2p_buffer_lock:
-                    for member in group['members']:
-                        _p2p_buffer.setdefault(member, []).append({'sender': sender, 'recipient': f"group:{group_id}", 'content': json.dumps(encrypted_map), 'image': None, 'ts': time.time(), 'tx_id': tx_id, 'id': f"group_{tx_id}_{member[:8]}", 'is_group': True})
-                        if len(_p2p_buffer[member]) > 100:
-                            _p2p_buffer[member] = _p2p_buffer[member][-100:]
-            except Exception as e:
-                logger.debug(f"ℹ️ P2P buffer update skipped: {e}")
-            return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': f"group:{group_id}", 'type': 'group', 'encryption': 'group-ecdh-v4', 'members_encrypted': len(encrypted_map)}), 201
+            # 🔥 уведомляем всех участников
+            for member in group['members']:
+                socketio.emit('new_message', {'chat_id': f"group:{group_id}", 'tx_id': tx_id}, room=member)
+            return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': f"group:{group_id}", 'type': 'group',
+                            'encryption': 'group-ecdh-v4', 'members_encrypted': len(encrypted_map)}), 201
 
-        # === ПРЯМЫЕ СООБЩЕНИЯ ===
         if sender == recipient:
             return jsonify({'error': 'Cannot message yourself'}), 400
+
         recipient_pubkey, recipient_verified = get_cached_public_key(recipient, cache_version=get_pubkey_cache_version())
         if not recipient_pubkey:
             recipient_pubkey, recipient_verified = fetch_public_key_from_chain(recipient)
         if recipient_pubkey:
             payload = encrypt_hybrid(mnemonic, recipient_pubkey, recipient, content, image_data=image)
             with get_db_cursor(blockchain.db_path) as cursor:
-                tx_id = blockchain.new_transaction(cursor, sender, recipient, json.dumps(payload), None, sender_pubkey=my_pubkey, metadata={'encryption': 'hybrid-v2', 'key_verified': recipient_verified})
+                tx_id = blockchain.new_transaction(cursor, sender, recipient, json.dumps(payload),
+                                                   None, sender_pubkey=my_pubkey,
+                                                   metadata={'encryption': 'hybrid-v2', 'key_verified': recipient_verified})
                 last_proof = blockchain._last_block_raw(cursor)['proof']
                 threading.Thread(target=_mine_block_async, args=(blockchain.db_path, last_proof), daemon=True).start()
-            try:
-                with _p2p_buffer_lock:
-                    _p2p_buffer.setdefault(recipient, []).append({'sender': sender, 'recipient': recipient, 'content': json.dumps(payload), 'sender_pubkey': my_pubkey, 'image': None, 'ts': time.time(), 'tx_id': tx_id, 'id': tx_id, 'is_group': False})
-                    if len(_p2p_buffer[recipient]) > 100:
-                        _p2p_buffer[recipient] = _p2p_buffer[recipient][-100:]
-            except Exception as e:
-                logger.debug(f"ℹ️ P2P buffer update skipped: {e}")
-            return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient, 'type': 'direct', 'encryption': 'hybrid-v2', 'key_verified': recipient_verified}), 201
+            notify_new_message(recipient, tx_id, sender=sender)
+            return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient, 'type': 'direct',
+                            'encryption': 'hybrid-v2', 'key_verified': recipient_verified}), 201
         else:
-            key_exchange_payload = {'my_pubkey': my_pubkey, 'message': 'key_exchange_request', 'version': 'key_exchange', 'sender_address': sender, 'timestamp': time.time()}
+            key_exchange_payload = {'my_pubkey': my_pubkey, 'message': 'key_exchange_request', 'version': 'key_exchange',
+                                    'sender_address': sender, 'timestamp': time.time()}
             with get_db_cursor(blockchain.db_path) as cursor:
-                tx_id = blockchain.new_transaction(cursor, sender, recipient, json.dumps(key_exchange_payload), None, sender_pubkey=my_pubkey, metadata={'encryption': 'key_exchange', 'note': 'Content will be sent after key exchange'})
+                tx_id = blockchain.new_transaction(cursor, sender, recipient, json.dumps(key_exchange_payload),
+                                                   None, sender_pubkey=my_pubkey,
+                                                   metadata={'encryption': 'key_exchange'})
                 last_proof = blockchain._last_block_raw(cursor)['proof']
                 threading.Thread(target=_mine_block_async, args=(blockchain.db_path, last_proof), daemon=True).start()
             cache_public_key(sender, my_pubkey, source='outgoing', verified=True)
-            logger.info(f"🔑 Key exchange sent: {sender[:16]}... -> {recipient[:16]}...")
-            return jsonify({'message': 'Key exchange sent. Please ask recipient to fetch your public key.', 'tx_id': tx_id, 'recipient': recipient, 'key_exchange': True, 'my_pubkey': my_pubkey}), 201
+            notify_new_message(recipient, tx_id, sender=sender)
+            return jsonify({'message': 'Key exchange sent.', 'tx_id': tx_id, 'recipient': recipient,
+                            'key_exchange': True, 'my_pubkey': my_pubkey}), 201
     except ValidationError as err:
-        logger.warning(f"⚠️ Validation error in send_message: {err.messages}")
         return jsonify({'error': err.messages}), 400
     except Exception as e:
         logger.error(f"❌ send_message error: {type(e).__name__}", exc_info=os.getenv('FLASK_ENV') != 'production')
         return jsonify({'error': 'Internal server error'}), 500
 
-
-# =============================================================================
 # === Получение сообщений ===
-# =============================================================================
 @app.route('/get_conversation', methods=['GET'])
 def get_conversation():
     if 'address' not in session:
-        logger.warning(f"⚠️ Unauthorized get_conversation attempt from {request.remote_addr}")
         return jsonify({'error': 'Unauthorized'}), 401
     try:
         user_addr = session['address']
         mnemonic = session.get('mnemonic')
         if not mnemonic:
-            logger.warning(f"⚠️ No mnemonic in session for {user_addr[:16]}...")
             return jsonify({'error': 'Session expired. Please login again.'}), 401
         expected_address = generate_address(mnemonic)
         if not hmac.compare_digest(expected_address, user_addr):
-            logger.critical(f"🚫 Mnemonic/address mismatch in get_conversation!")
             return jsonify({'error': 'Authentication failed'}), 403
         chat_with = request.args.get('with')
         if not chat_with:
             return jsonify({'error': 'Missing "with" parameter'}), 400
         last_message_id = request.args.get('last_message_id', type=int)
-        limit = min(int(request.args.get('limit', 50)), 100)
+        limit = min(int(request.args.get('limit', 30)), 50)          # 🔥 30 по умолчанию
+        before_id = request.args.get('before_id', type=int)          # 🔥 пагинация вверх
+
         with get_db_cursor(blockchain.db_path) as cursor:
             if chat_with.startswith('group:'):
                 group_id = chat_with.split(':', 1)[1]
@@ -1072,24 +932,49 @@ def get_conversation():
                     return jsonify({'error': 'No access to this group'}), 403
                 query = 'SELECT id, sender, recipient, content, image, timestamp, sender_pubkey, metadata FROM transactions WHERE recipient = ?'
                 params = [chat_with]
+                if last_message_id:
+                    query += ' AND id > ?'
+                    params.append(last_message_id)
+                if before_id:
+                    query += ' AND id < ?'
+                    params.append(before_id)
+                query += ' ORDER BY timestamp ASC LIMIT ?'   # хронологический порядок
+                params.append(limit)
             else:
-                query = 'SELECT id, sender, recipient, content, image, timestamp, sender_pubkey, metadata FROM transactions WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)'
+                # 🔥 UNION ALL вместо OR
+                query = '''
+                    SELECT id, sender, recipient, content, image, timestamp, sender_pubkey, metadata
+                    FROM (
+                        SELECT * FROM transactions
+                        WHERE sender = ? AND recipient = ?
+                        UNION ALL
+                        SELECT * FROM transactions
+                        WHERE sender = ? AND recipient = ?
+                    )
+                '''
                 params = [user_addr, chat_with, chat_with, user_addr]
-            if last_message_id:
-                query += ' AND id > ?'
-                params.append(last_message_id)
-            query += ' ORDER BY timestamp ASC LIMIT ?'
-            params.append(limit)
+                filters = []
+                if last_message_id:
+                    filters.append('id > ?')
+                    params.append(last_message_id)
+                if before_id:
+                    filters.append('id < ?')
+                    params.append(before_id)
+                if filters:
+                    query += ' WHERE ' + ' AND '.join(filters)
+                query += ' ORDER BY timestamp DESC LIMIT ?'
+                params.append(limit)
             cursor.execute(query, params)
-            messages = [{'id': r[0], 'sender': r[1], 'recipient': r[2], 'content': r[3], 'image': r[4], 'timestamp': r[5], 'sender_pubkey': r[6], 'metadata': r[7]} for r in cursor.fetchall()]
-        peer_addresses = set(msg['sender'] for msg in messages) | set(msg['recipient'] for msg in messages)
-        peer_addresses.discard(user_addr)
-        if peer_addresses:
-            placeholders = ','.join('?' * len(peer_addresses))
-            with get_db_cursor(blockchain.db_path) as cursor:
-                cursor.execute(f'SELECT address, public_key_b64, verified FROM pubkey_cache WHERE address IN ({placeholders})', list(peer_addresses))
-                for row in cursor.fetchall():
-                    cache_public_key(row[0], row[1], verified=bool(row[2]))
+            rows = cursor.fetchall()
+            if chat_with.startswith('group:'):
+                messages = [{'id': r[0], 'sender': r[1], 'recipient': r[2], 'content': r[3],
+                             'image': r[4], 'timestamp': r[5], 'sender_pubkey': r[6], 'metadata': r[7]} for r in rows]
+            else:
+                # для UNION ALL результат идёт в порядке убывания timestamp, переворачиваем для хронологии
+                messages = list(reversed([{'id': r[0], 'sender': r[1], 'recipient': r[2], 'content': r[3],
+                                          'image': r[4], 'timestamp': r[5], 'sender_pubkey': r[6], 'metadata': r[7]} for r in rows]))
+
+        # Расшифровка
         decrypted = []
         for msg in messages:
             dec = process_message_decryption(msg, user_addr, mnemonic)
@@ -1103,10 +988,10 @@ def get_conversation():
                         dec['encryption_type'] = meta.get('encryption', 'unknown')
                     if dec.get('key_verified') is None:
                         dec['key_verified'] = meta.get('key_verified', False)
-                except Exception:
-                    pass
+                except: pass
             decrypted.append(dec)
-        return jsonify({'messages': decrypted, 'has_more': len(messages) == limit, 'chat_with': chat_with, 'last_message_id': messages[-1]['id'] if messages else None}), 200
+        return jsonify({'messages': decrypted, 'has_more': len(messages) == limit, 'chat_with': chat_with,
+                        'last_message_id': messages[-1]['id'] if messages else None}), 200
     except Exception as e:
         logger.error(f"❌ get_conversation error: {type(e).__name__}: {e}", exc_info=True)
         return jsonify({'error': f'Failed to load messages: {type(e).__name__}'}), 500
@@ -1754,28 +1639,9 @@ def p2p_poll():
                 del _p2p_buffer[addr]
     return jsonify(new_messages), 200
 
-
-# =============================================================================
-# === Обработчики ошибок ===
-# =============================================================================
-@app.errorhandler(404)
-def not_found(e): return jsonify({'error': 'Not found'}), 404
-@app.errorhandler(500)
-def server_error(e): return jsonify({'error': 'Internal server error'}), 500
-@app.errorhandler(413)
-def file_too_large(e): return jsonify({'error': 'File too large (max 16MB)'}), 413
-
-
 # =============================================================================
 # === Запуск приложения ===
 # =============================================================================
 if __name__ == '__main__':
-    if not SECRET_KEY or len(SECRET_KEY) < 32:
-        logger.critical("❌ SECRET_KEY too short or missing! Set it in .env")
     is_production = os.getenv('FLASK_ENV') == 'production'
-    if is_production:
-        logger.warning("🚀 Starting in PRODUCTION mode")
-        app.run(host='127.0.0.1', port=5000, debug=False, threaded=True)
-    else:
-        logger.info("🔧 Starting in DEVELOPMENT mode")
-        app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    socketio.run(app, host='127.0.0.1' if is_production else '0.0.0.0', port=5000, debug=not is_production)

@@ -1,13 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Chat — Dark Messenger{% endblock %}
+{% block title %}Dark Messenger{% endblock %}
 
 {% block content %}
-<!-- ✅ Передаём мнемонику безопасно через data-атрибут (только для отладки!) -->
-<!-- ⚠️ В продакшене мнемоника не должна попадать в HTML! -->
 <div id="app" data-user-address="{{ address }}"></div>
 <div class="chat-container">
-  <!-- Sidebar -->
   <aside class="sidebar" id="sidebar" aria-label="Navigation">
     <header class="sidebar-header">
       <div class="user-info">
@@ -16,94 +13,58 @@
         </span>
       </div>
     </header>
-
-    <!-- Tabs -->
     <nav class="tabs" role="tablist">
       <button class="tab active" role="tab" aria-selected="true" onclick="location.href='/chat'">Chat</button>
       <button class="tab" role="tab" onclick="location.href='/contacts'">Contacts</button>
       <button class="tab" role="tab" onclick="location.href='/groups'">Groups</button>
       <button class="tab" role="tab" onclick="location.href='/profile'">Profile</button>
     </nav>
-
-    <!-- Conversations -->
     <div id="chat-tab" class="tab-content active">
       <div class="conversations-header">
         <h3>Conversations</h3>
         <button id="newChatBtn" class="btn btn-icon" title="New chat" aria-label="Start new chat">＋</button>
       </div>
-
       <div class="conversations-list" id="conversationsList" role="listbox">
-        <div class="empty-state">
-          <div class="icon">💬</div>
-          <p>Select or start a conversation</p>
-        </div>
+        <div class="empty-state"><div class="icon">💬</div><p>Select or start a conversation</p></div>
       </div>
     </div>
   </aside>
 
-  <!-- Main Chat Area -->
   <main class="main-content" id="main" aria-label="Chat">
-    <!-- Chat Header -->
     <header class="chat-header">
-      <!-- ✅ Кнопка меню для мобильных (показывается через CSS) -->
-  <button class="btn btn-icon menu-toggle" id="menuToggle"
-          onclick="toggleSidebar()" aria-label="Toggle menu"
-          style="display: none;">☰</button>
+      <button class="btn btn-icon menu-toggle" id="menuToggle" onclick="toggleSidebar()" aria-label="Toggle menu" style="display: none;">☰</button>
       <div class="title">
         <span id="currentChatName">Select a conversation</span>
         <span class="subtitle" id="chatSubtitle"></span>
       </div>
       <div class="actions">
-        <button id="addToContactsBtn" class="btn btn-icon" onclick="addContactFromChat()"
-                disabled title="Add to contacts" aria-label="Add to contacts">＋</button>
-        <button id="clearConversationBtn" class="btn btn-icon" onclick="clearConversation()"
-                disabled title="Clear messages" aria-label="Clear conversation">🗑</button>
+        <button id="addToContactsBtn" class="btn btn-icon" onclick="addContactFromChat()" disabled title="Add to contacts">＋</button>
+        <button id="clearConversationBtn" class="btn btn-icon" onclick="clearConversation()" disabled title="Clear messages">🗑</button>
       </div>
     </header>
-
-    <!-- Messages -->
     <div class="messages" id="messagesContainer" role="log" aria-live="polite">
-      <div class="empty-state" id="emptyState">
-        <div class="icon">👋</div>
-        <p>Select a conversation to start chatting</p>
-      </div>
+      <div class="empty-state" id="emptyState"><div class="icon">👋</div><p>Select a conversation to start chatting</p></div>
     </div>
-
-    <!-- Input Area -->
     <form class="input-area" onsubmit="sendMessage(); return false;">
       <div class="input-wrapper">
-        <textarea
-          id="messageContent"
-          placeholder="Type a message…"
-          rows="1"
-          disabled
-          aria-label="Message input"
-        ></textarea>
+        <textarea id="messageContent" placeholder="Type a message…" rows="1" disabled aria-label="Message input"></textarea>
         <div class="input-actions">
-          <input type="file" id="imageInput" accept="image/*" class="sr-only"
-                 onchange="handleImageSelection(event)">
-          <button type="button" class="btn btn-icon"
-                  onclick="document.getElementById('imageInput').click()"
-                  id="attachImageButton" disabled title="Attach image" aria-label="Attach image">
-            📎
-          </button>
-          <button type="submit" class="btn btn-primary" id="sendButton" disabled aria-label="Send message">
-            ➤
-          </button>
+          <input type="file" id="imageInput" accept="image/*" class="sr-only" onchange="handleImageSelection(event)">
+          <button type="button" class="btn btn-icon" onclick="document.getElementById('imageInput').click()" id="attachImageButton" disabled title="Attach image">📎</button>
+          <button type="submit" class="btn btn-primary" id="sendButton" disabled>➤</button>
         </div>
       </div>
     </form>
   </main>
 </div>
 
-<!-- New Chat Modal -->
+<!-- Modal dialogs left unchanged (new chat, image preview) -->
 <div id="newChatModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="newChatTitle">
   <div class="modal">
     <header class="modal-header">
       <h3 id="newChatTitle">Start New Chat</h3>
       <button class="modal-close" onclick="closeNewChatModal()" aria-label="Close">&times;</button>
     </header>
-
     <div class="modal-body">
       <div class="text-center" style="margin-bottom: var(--space-md);">
         <button class="btn btn-ghost" onclick="openQRScannerInModal()" id="scanQRBtn">📷 Scan QR Code</button>
@@ -117,20 +78,17 @@
         </div>
         <div id="scanResultModal" class="hidden" style="margin-top: var(--space-sm); color: var(--status-success); font-weight: 500;"></div>
       </div>
-
       <div class="form-group">
         <label for="newChatSelect" class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Select from contacts</label>
         <select id="newChatSelect" class="input">
           <option value="">-- Choose a contact --</option>
         </select>
       </div>
-
       <div class="form-group">
         <label for="newChatAddress" class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Or enter address</label>
         <input type="text" id="newChatAddress" class="input input-monospace" placeholder="64-character hex address" maxlength="64">
       </div>
     </div>
-
     <footer class="modal-footer">
       <button class="btn btn-ghost" onclick="closeNewChatModal()">Cancel</button>
       <button class="btn btn-primary" id="startNewChatBtn">Start Chat</button>
@@ -138,7 +96,6 @@
   </div>
 </div>
 
-<!-- Image Preview Modal -->
 <div id="imageModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal" style="max-width: 90vw; max-height: 90vh; background: transparent; border: none; box-shadow: none;">
     <button class="modal-close" onclick="closeImageModal()" style="position: absolute; top: var(--space-md); right: var(--space-md); color: var(--text-primary); z-index: 1;" aria-label="Close">&times;</button>
@@ -148,35 +105,27 @@
     </div>
   </div>
 </div>
-<!-- ✅ Оверлей для закрытия сайдбара на мобильных -->
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+
 {% block scripts %}
-
-<!-- ✅ 1. Полифил для Node.js process (для gun-config.js / p2p-sync.js) -->
+<!-- Polyfill and common scripts -->
 <script>window.process = window.process || { env: {} };</script>
-
-<!-- ✅ 2. Подключаем common.js ПЕРЕД локальным скриптом -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
-<!-- Добавьте после common.js -->
 <script src="{{ url_for('static', filename='js/notification-manager.js') }}"></script>
-<!-- Ваши gun/p2p скрипты, если есть -->
-<!-- <script src="{{ url_for('static', filename='js/gun-config.js') }}"></script> -->
-<!-- <script src="{{ url_for('static', filename='js/p2p-sync.js') }}"></script> -->
 
 <script>
 // =============================================================================
-// === 🔐 Инициализация: получаем данные из data-атрибутов ===
+// === Инициализация ===
 // =============================================================================
-// ✅ СТАЛО:
 const AppData = {
     userAddress: document.getElementById('app')?.dataset.userAddress || "{{ address }}"
-    // mnemonic больше не нужен на фронтенде!
 };
 
+
 // =============================================================================
-// === Chat-Specific State ===
+// === Состояние чата (без polling) ===
 // =============================================================================
 const State = {
   currentChatAddress: '',
@@ -184,35 +133,13 @@ const State = {
   currentChatPartnerAddress: '',
   userAddress: AppData.userAddress,
   lastMessageTimestamp: 0,
-  pollInterval: null,
   allContacts: [],
   lastKnownMessageId: 0,
-  currentChatUnsub: null,
-  pendingImageData: null
+  pendingImageData: null,
+  topObserver: null   // для подгрузки старых сообщений
 };
 
-// =============================================================================
-// === Polling Functions ===
-// =============================================================================
-function stopPolling() {
-  if (State.pollInterval) {
-    clearInterval(State.pollInterval);
-    State.pollInterval = null;
-  }
-}
 
-function startPolling() {
-  if (State.pollInterval) clearInterval(State.pollInterval);
-  if (!State.currentChatAddress) return;
-  const chatAtStart = State.currentChatAddress;
-  State.pollInterval = setInterval(() => {
-    if (State.currentChatAddress === chatAtStart) {
-      loadMessagesForConversation(State.currentChatAddress, true);
-    } else {
-      stopPolling();
-    }
-  }, 3000);
-}
 
 // =============================================================================
 // === Smart Scroll ===
@@ -250,6 +177,69 @@ function showNewMessagesBadge() {
 }
 
 // =============================================================================
+// === Пагинация старых сообщений при скролле вверх ===
+// =============================================================================
+function setupTopObserver() {
+  if (State.topObserver) State.topObserver.disconnect();
+  const firstMsg = document.querySelector('#messagesContainer .message:first-of-type');
+  if (firstMsg) {
+    State.topObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && State.currentChatAddress) {
+        const oldestId = parseInt(firstMsg.dataset.messageId);
+        loadOlderMessages(State.currentChatAddress, oldestId);
+      }
+    }, { threshold: 0.1 });
+    State.topObserver.observe(firstMsg);
+  }
+}
+
+async function loadOlderMessages(chatId, beforeId) {
+  const container = document.getElementById('messagesContainer');
+  if (!container) return;
+  try {
+    const res = await fetch(`/get_conversation?with=${chatId}&before_id=${beforeId}&limit=30`);
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    if (data.messages?.length) {
+      const fragment = document.createDocumentFragment();
+      data.messages.forEach(msg => {
+        if (document.getElementById('msg-' + msg.id)) return;
+        const div = createMessageElement(msg);
+        fragment.appendChild(div);
+      });
+      container.insertBefore(fragment, container.firstChild);
+      // Обновляем ID самого раннего сообщения
+      State.lastKnownMessageId = Math.min(...data.messages.map(m => m.id));
+      setupTopObserver(); // переподключаем observer к новому первому элементу
+    }
+  } catch (e) { console.error('Older messages error:', e); }
+}
+
+// Вспомогательная функция создания элемента сообщения (избегаем дублирования)
+function createMessageElement(msg) {
+  const messageDiv = document.createElement('div');
+  messageDiv.id = 'msg-' + msg.id;
+  messageDiv.className = 'message ' + (msg.is_mine ? 'sent' : 'received') + ' animate-fade';
+  messageDiv.dataset.messageId = msg.id;
+
+  const initials = (msg.sender || 'U').slice(0, 1).toUpperCase();
+  const senderName = msg.is_mine || !State.currentChatIsGroup
+    ? ''
+    : '<strong>' + Utils.escapeHtml(msg.sender_name || (msg.sender ? msg.sender.slice(0, 10) + '…' : '')) + '</strong><br>';
+
+  let imageHtml = '';
+  if (msg.image) {
+    imageHtml = `<img src="${Utils.escapeHtml(msg.image)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(msg.image)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
+  }
+
+  const timeStr = Utils.formatTimestamp(msg.timestamp);
+  const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" title="Delete">🗑</button>` : '';
+
+  messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
+  return messageDiv;
+}
+
+// =============================================================================
 // === Chat Functions ===
 // =============================================================================
 async function loadConversations() {
@@ -262,11 +252,7 @@ async function loadConversations() {
       container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>No conversations yet</p><button class="btn btn-primary" onclick="openNewChatModal()">Start one</button></div>';
       return;
     }
-    // НЕ очищаем контейнер полностью — будем обновлять выборочно,
-    // чтобы не терять оптимистичный статус "✓ Прочитано".
-    // Для простоты можно всё же очищать, но перед вставкой проверять старый статус.
     container.innerHTML = '';
-
     data.conversations.forEach(conv => {
       const item = document.createElement('div');
       item.className = 'conversation-item';
@@ -278,19 +264,14 @@ async function loadConversations() {
       const shortName = displayName.length > 25 ? displayName.slice(0, 22) + '…' : displayName;
       const initials = displayName.slice(0, 2).toUpperCase();
 
-      // === ЗАЩИТА ОТ ПЕРЕЗАПИСИ СТАТУСА ===
       let previewText = Utils.escapeHtml(conv.last_preview || 'No messages');
-
-      // Ищем существующий элемент в ДОМ (если остался — не страшно, контейнер всё равно пуст)
       const existingItem = container.querySelector(`.conversation-item[data-address="${conv.address}"]`);
       if (existingItem) {
         const existingPreviewEl = existingItem.querySelector('.truncate');
         if (existingPreviewEl && existingPreviewEl.textContent.trim() === '✓ Прочитано' && previewText !== '✓ Прочитано') {
-          // Сохраняем "Прочитано", которое было отображено ранее
           previewText = '✓ Прочитано';
         }
       }
-      // ==================================
 
       item.innerHTML = `<div class="avatar ${conv.is_group ? 'group' : ''}">${Utils.escapeHtml(initials)}</div>
         <div class="info">
@@ -300,7 +281,6 @@ async function loadConversations() {
             <span class="truncate">${previewText}</span>
           </div>
         </div>`;
-
       item.onclick = () => selectConversation(conv.address, conv.name || conv.address, !!conv.is_group);
       container.appendChild(item);
     });
@@ -311,7 +291,7 @@ async function loadConversations() {
 }
 
 function selectConversation(address, name, isGroup) {
-  stopPolling();
+  // Очищаем предыдущие подписки
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   State.currentChatUnsub = null;
   State.currentChatAddress = address;
@@ -329,48 +309,9 @@ function selectConversation(address, name, isGroup) {
   State.lastKnownMessageId = 0;
   State.lastMessageTimestamp = 0;
   State.pendingImageData = null;
-  loadMessagesForConversation(address, false);   // тут внутри произойдёт markConversationAsRead
-  _subscribeToCurrentChat(address);
+  loadMessagesForConversation(address, false);
   updateConversationPreview(address, '✓ Прочитано');
-  setTimeout(() => { if (State.currentChatAddress === address) startPolling(); }, 500);
   if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
-}
-
-function _subscribeToCurrentChat(chatId) {
-  if (!window.p2p || typeof window.p2p.subscribe !== 'function') {
-    console.warn('⚠️ P2P not available');
-    return;
-  }
-  console.log('🔗 Subscribing to:', chatId.slice(0, 16) + '…');
-  State.currentChatUnsub = window.p2p.subscribe(chatId, async function(msg) {
-    console.log('📥 P2P message via', msg.via);
-    try {
-      const res = await fetch('/decrypt_message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encrypted_payload: msg.encryptedPayload, peer_address: msg.sender }),
-        cache: 'no-store'
-      });
-      const decrypted = await res.json();
-      if (res.ok && decrypted?.content !== undefined) {
-        appendMessageToUI({
-          sender: msg.sender,
-          content: decrypted.content,
-          image: decrypted.image,
-          timestamp: msg.timestamp ? (msg.timestamp > 1e10 ? msg.timestamp / 1000 : msg.timestamp) : Date.now() / 1000,
-          is_mine: false,
-          id: 'p2p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-          chatId: chatId                  // ← добавлено
-        });
-      } else {
-        console.warn('⚠️ Decrypt failed:', decrypted.error);
-        loadMessagesForConversation(chatId, true);
-      }
-    } catch (e) {
-      console.warn('⚠️ P2P error, falling back to polling:', e);
-      loadMessagesForConversation(chatId, true);
-    }
-  });
 }
 
 function _disableChatControls() {
@@ -400,13 +341,11 @@ function _enableChatControls() {
 async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
   const container = document.getElementById('messagesContainer');
   if (!container) return;
-
   if (!chatWithAddress) {
     if (!isNewMessage) container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">💬</div><p>Select a conversation to start chatting</p></div>';
     _enableChatControls();
     return;
   }
-
   const isGroup = chatWithAddress.startsWith('group:');
   const isPersonal = Security.isValidAddress(chatWithAddress);
   if (!isGroup && !isPersonal) {
@@ -415,7 +354,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     _enableChatControls();
     return;
   }
-
   if (!isNewMessage) {
     container.innerHTML = '<div class="loading">Loading messages…</div>';
     container.classList.add('loading');
@@ -438,7 +376,7 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     if (!res.ok) throw new Error(data.error || 'Failed to load');
 
     const messages = Array.isArray(data.messages) ? data.messages : [];
-    if (!messages?.length) {
+    if (!messages.length) {
       if (isNewMessage) { _enableChatControls(); return; }
       container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">👋</div><p>No messages yet</p><p class="text-muted" style="font-size:12px">Start the conversation!</p></div>';
       _enableChatControls();
@@ -449,76 +387,51 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 
     let maxTimestamp = 0;
     const fragment = document.createDocumentFragment();
-
     messages.forEach(msg => {
       if (document.getElementById('msg-' + msg.id)) return;
       if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
-
-      const messageDiv = document.createElement('div');
-      messageDiv.id = 'msg-' + msg.id;
-      messageDiv.className = 'message ' + (msg.is_mine ? 'sent' : 'received') + ' animate-fade';
-      messageDiv.dataset.messageId = msg.id;
-
-      const initials = (msg.sender || 'U').slice(0, 1).toUpperCase();
-      const senderName = msg.is_mine || !State.currentChatIsGroup
-        ? ''
-        : '<strong>' + Utils.escapeHtml(msg.sender_name || (msg.sender ? msg.sender.slice(0, 10) + '…' : '')) + '</strong><br>';
-
-      let imageHtml = '';
-      if (msg.image) {
-        imageHtml = `<img src="${Utils.escapeHtml(msg.image)}" alt="Image" onclick="openImageModal('${Utils.escapeHtml(msg.image)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
-      }
-
-      const timeStr = Utils.formatTimestamp(msg.timestamp);
-      const deleteBtn = msg.is_mine
-        ? `<button class="delete-btn" data-id="${msg.id}" title="Delete">🗑</button>`
-        : '';
-
-      messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
-      fragment.appendChild(messageDiv);
+      fragment.appendChild(createMessageElement(msg));
       if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
 
-      // ✅ Notifications for polled messages
       if (!msg.is_mine && isNewMessage) {
-        if (window.NotificationManager?.handleIncomingMessage) {
-          window.NotificationManager.handleIncomingMessage({
-            sender: msg.sender,
-            chatId: chatWithAddress,
-            content: msg.content,
-            image: msg.image,
-            timestamp: (msg.timestamp || Date.now()/1000) * 1000
-          });
-        }
+        window.NotificationManager?.handleIncomingMessage?.({
+          sender: msg.sender,
+          chatId: chatWithAddress,
+          content: msg.content,
+          image: msg.image,
+          timestamp: (msg.timestamp || Date.now()/1000) * 1000
+        });
       }
     });
 
     container.appendChild(fragment);
     State.lastMessageTimestamp = maxTimestamp;
 
-    // ✅ Помечаем диалог прочитанным с точным ID последнего сообщения
     if (messages.length > 0) {
-      const lastId = messages[messages.length - 1].id;
-      markConversationAsRead(chatWithAddress, lastId);
+      markConversationAsRead(chatWithAddress, messages[messages.length - 1].id);
     }
 
-    const scrollToBottom = () => {
-      if (!container) return;
-      void container.offsetHeight;
-      if (!isNewMessage) {
+        // === ПРОКРУТКА ВНИЗ (простая и надёжная) ===
+    if (!isNewMessage) {
+      // Первичная загрузка чата – мгновенно + повторные прокрутки
+      container.scrollTop = container.scrollHeight;
+      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 100);
+      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 350);
+      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 650);
+    } else {
+      // Новые сообщения – скроллим, только если пользователь был внизу
+      const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      if (wasNearBottom) {
         container.scrollTop = container.scrollHeight;
+        setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 100);
       } else {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-        if (isNearBottom) {
-          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-        } else {
-          showNewMessagesBadge();
-        }
+        showNewMessagesBadge();
       }
-    };
-
-    setTimeout(() => { setTimeout(scrollToBottom, 10); }, 0);
+    }
 
     _enableChatControls();
+    // Установить observer для подгрузки старых сообщений
+    if (!isNewMessage) setupTopObserver();
   } catch (error) {
     console.error('Load messages error:', error);
     container.classList.remove('loading');
@@ -535,42 +448,13 @@ function appendMessageToUI(msg) {
   const emptyState = container.querySelector('.empty-state');
   if (emptyState) emptyState.remove();
   const wasAtBottom = isUserAtBottom(container);
-  const messageDiv = document.createElement('div');
-  messageDiv.id = 'msg-' + msg.id;
-  messageDiv.className = 'message ' + (msg.is_mine ? 'sent' : 'received') + ' animate-fade';
-  messageDiv.dataset.messageId = msg.id;
-  const initials = (msg.sender || 'U').slice(0, 1).toUpperCase();
-  const senderName = msg.is_mine || !State.currentChatIsGroup
-    ? ''
-    : '<strong>' + Utils.escapeHtml(msg.sender_name || (msg.sender ? msg.sender.slice(0, 10) + '…' : '')) + '</strong><br>';
-  let imageHtml = '';
-  if (msg.image) {
-    imageHtml = `<img src="${Utils.escapeHtml(msg.image)}" alt="Image" onclick="openImageModal('${Utils.escapeHtml(msg.image)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
-  }
-  const timeStr = Utils.formatTimestamp(msg.timestamp);
-  messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span></div></div>`;
-  container.appendChild(messageDiv);
-
-  // ✅ Используем публичный метод вместо _isInActiveChat
-  const isActive = window.NotificationManager?.isActiveChat?.(msg.chatId || State.currentChatAddress);
-  const shouldNotify = !isActive || document.visibilityState !== 'visible';
-
-  if (shouldNotify && window.NotificationManager?.handleIncomingMessage) {
-    window.NotificationManager.handleIncomingMessage({
-      sender: msg.sender,
-      chatId: msg.chatId || State.currentChatAddress,
-      content: msg.content,
-      image: msg.image,
-      timestamp: (msg.timestamp || Date.now()/1000) * 1000
-    });
-  }
-
+  container.appendChild(createMessageElement(msg));
   if (wasAtBottom) smartScrollToBottom(container, false);
   else showNewMessagesBadge();
 }
 
 // =============================================================================
-// === ✅ sendMessage — ИСПРАВЛЕНО: добавлена передача мнемоники ===
+// === sendMessage (без передачи мнемоники) ===
 // =============================================================================
 async function sendMessage() {
   const contentEl = document.getElementById('messageContent');
@@ -585,14 +469,11 @@ async function sendMessage() {
   const messageType = isGroup ? 'group' : 'direct';
   const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
 
-  // ✅ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: передаём мнемонику для шифрования на бэкенде
-// ✅ СТАЛО:
-const payload = {
+  const payload = {
     recipient: recipient,
     content: content || '',
     message_type: messageType
-    // mnemonic НЕ передаём — бэкенд возьмёт из сессии
-};
+  };
   if (groupId) payload.group_id = groupId;
   if (State.pendingImageData) payload.image = State.pendingImageData;
 
@@ -607,17 +488,9 @@ const payload = {
       contentEl.value = '';
       contentEl.style.height = 'auto';
       State.pendingImageData = null;
-      loadMessagesForConversation(recipient, true);
-      loadConversations(); // ✅ ОБНОВЛЯЕМ САЙДБАР ПОСЛЕ ОТПРАВКИ
-
-
-    // ✅ КОНЕЦ ВСТАВКИ
-      // P2P-публикация (опционально)
-      if (window.p2p && window.GunConfig?.encryptMessage) {
-        const txId = 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-        const encrypted = await window.GunConfig.encryptMessage(content, recipient, State.pendingImageData);
-        window.p2p.send(recipient, encrypted, txId);
-      }
+      loadMessagesForConversation(recipient, true);   // ✅ ВОТ ЭТА СТРОКА – вернули
+      // Не вызываем loadMessagesForConversation здесь – WebSocket принесёт обновление мгновенно
+      loadConversations(); // обновление сайдбара
     } else {
       window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
     }
@@ -628,7 +501,7 @@ const payload = {
 }
 
 // =============================================================================
-// === Остальные функции (addContactFromChat, deleteMessage, etc.) ===
+// === Остальные функции (addContactFromChat, deleteMessage, etc.) без изменений ===
 // =============================================================================
 async function addContactFromChat() {
   if (!State.currentChatPartnerAddress || State.currentChatPartnerAddress === State.userAddress) {
@@ -693,8 +566,7 @@ async function clearConversation() {
     });
     const data = await res.json();
     if (res.ok) {
-      const container = document.getElementById('messagesContainer');
-      if (container) container.innerHTML = '<p class="text-muted text-center">Conversation cleared</p>';
+      document.getElementById('messagesContainer').innerHTML = '<p class="text-muted text-center">Conversation cleared</p>';
       window.NotificationManager?.showToast('Conversation cleared', 'success');
     } else {
       window.NotificationManager?.showToast(data.error || 'Clear failed', 'error');
@@ -724,38 +596,28 @@ function openImageModal(src) {
   if (modal && img) {
     img.src = src;
     modal.classList.remove('hidden');
-    const downloadBtn = document.getElementById('downloadImageBtn');
-    if (downloadBtn) {
-      downloadBtn.onclick = () => {
-        const a = document.createElement('a');
-        a.href = src;
-        a.download = 'image-' + Date.now() + '.png';
-        a.click();
-      };
-    }
+    document.getElementById('downloadImageBtn').onclick = () => {
+      const a = document.createElement('a');
+      a.href = src;
+      a.download = 'image-' + Date.now() + '.png';
+      a.click();
+    };
   }
 }
-function closeImageModal() {
-  const modal = document.getElementById('imageModal');
-  if (modal) modal.classList.add('hidden');
-}
+function closeImageModal() { document.getElementById('imageModal')?.classList.add('hidden'); }
 
 // =============================================================================
-// === Modal Controls ===
+// === Modal Controls (из исходного кода) ===
 // =============================================================================
 function openNewChatModal() {
-  const modal = document.getElementById('newChatModal');
-  if (modal) modal.classList.remove('hidden');
-  const select = document.getElementById('newChatSelect');
-  const address = document.getElementById('newChatAddress');
-  if (select) select.value = '';
-  if (address) address.value = '';
+  document.getElementById('newChatModal')?.classList.remove('hidden');
+  document.getElementById('newChatSelect').value = '';
+  document.getElementById('newChatAddress').value = '';
   loadContactsForModal();
   QRScanner.close();
 }
 function closeNewChatModal() {
-  const modal = document.getElementById('newChatModal');
-  if (modal) modal.classList.add('hidden');
+  document.getElementById('newChatModal')?.classList.add('hidden');
   QRScanner.close();
 }
 async function loadContactsForModal() {
@@ -807,42 +669,29 @@ async function startNewChat() {
   selectConversation(address, name, false);
 }
 
-/**
- * Мгновенно обновляет превью в сайдбаре + синхронизирует с сервером
- */
-async function markConversationAsRead(chatId, explicitLastMessageId = undefined) {
-    // Мгновенное обновление DOM (опционально)
-    const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
-    if (item) {
-        const meta = item.querySelector('.meta .truncate');
-        if (meta) {
-            meta.textContent = '✓ Прочитано';
-            meta.style.color = 'var(--text-secondary)';
-            meta.style.fontStyle = 'italic';
-        }
+async function markConversationAsRead(chatId, explicitLastMessageId) {
+  const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+  if (item) {
+    const meta = item.querySelector('.meta .truncate');
+    if (meta) {
+      meta.textContent = '✓ Прочитано';
+      meta.style.color = 'var(--text-secondary)';
+      meta.style.fontStyle = 'italic';
     }
-
-    // Определяем ID последнего сообщения
-    let lastMessageId = explicitLastMessageId;
-    if (lastMessageId === undefined) {
-        // Если не передан, вычисляем из DOM (на случай ручного вызова)
-        const lastMsg = document.querySelector('#messagesContainer .message:last-of-type');
-        lastMessageId = lastMsg ? parseInt(lastMsg.dataset.messageId) : 0;
-    }
-
-    try {
-        await fetch('/mark_conversation_read', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_with: chatId,
-                last_message_id: lastMessageId
-            }),
-            cache: 'no-store'
-        });
-    } catch (e) {
-        console.debug('ℹ️ Read sync skipped (offline or network error)');
-    }
+  }
+  let lastMessageId = explicitLastMessageId;
+  if (lastMessageId === undefined) {
+    const lastMsg = document.querySelector('#messagesContainer .message:last-of-type');
+    lastMessageId = lastMsg ? parseInt(lastMsg.dataset.messageId) : 0;
+  }
+  try {
+    await fetch('/mark_conversation_read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_with: chatId, last_message_id: lastMessageId }),
+      cache: 'no-store'
+    });
+  } catch (e) { console.debug('ℹ️ Read sync skipped'); }
 }
 
 function updateConversationPreview(chatId, newPreview) {
@@ -853,7 +702,6 @@ function updateConversationPreview(chatId, newPreview) {
       if (meta) {
         meta.textContent = newPreview;
         meta.classList.add('preview-read');
-        // Убираем визуальный акцент "нового" сообщения
         item.style.background = '';
         item.style.fontWeight = '';
       }
@@ -861,21 +709,27 @@ function updateConversationPreview(chatId, newPreview) {
     }
   }
 }
+
 // =============================================================================
 // === Init ===
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
-  if (window.NotificationManager?.init) window.NotificationManager.init();
-  if (State.currentChatAddress && window.NotificationManager?.setActiveChat) {
-    window.NotificationManager.setActiveChat(State.currentChatAddress);
-  }
-  loadConversations();
-    // ✅ Автообновление сайдбара — только ОДИН раз при загрузке
-  setInterval(() => {
-    if (document.visibilityState === 'visible') {
-      loadConversations();
+// Polling каждые 3 секунды (стабильно на shared-хостинге)
+  State.pollInterval = setInterval(() => {
+    if (State.currentChatAddress && document.visibilityState === 'visible') {
+      loadMessagesForConversation(State.currentChatAddress, true);
     }
+  }, 3000);
+
+  // Загрузка списка чатов и обновление каждые 5 секунд
+  loadConversations();
+  setInterval(() => {
+    if (document.visibilityState === 'visible') loadConversations();
   }, 5000);
+
+   // Инициализация уведомлений (‼️ ‼️ обязательно)
+  if (window.NotificationManager?.init) window.NotificationManager.init();
+
   const params = new URLSearchParams(window.location.search);
   const startWith = params.get('start_with');
   const startName = params.get('name');
@@ -895,49 +749,27 @@ document.addEventListener('DOMContentLoaded', function() {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
   }
-  const messagesContainer = document.getElementById('messagesContainer');
-  if (messagesContainer) {
-    messagesContainer.addEventListener('click', e => {
-      if (e.target.tagName === 'IMG' && e.target.closest('.message')) {
-        const fullSrc = e.target.dataset.fullSrc || e.target.src;
-        if (fullSrc) openImageModal(fullSrc);
-      }
-      if (e.target.classList.contains('delete-btn')) {
-        const id = parseInt(e.target.dataset.id, 10);
-        if (id) deleteMessage(id, e.target);
-      }
-    });
-  }
   document.getElementById('newChatBtn')?.addEventListener('click', openNewChatModal);
   document.getElementById('startNewChatBtn')?.addEventListener('click', startNewChat);
-  document.getElementById('imageModal')?.addEventListener('click', e => {
-    if (e.target.id === 'imageModal') closeImageModal();
-  });
-  window.addEventListener('click', e => {
-    if (e.target.classList.contains('modal-overlay')) {
-      e.target.classList.add('hidden');
-      QRScanner.close();
-    }
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); QRScanner.close(); }
-  });
+  document.getElementById('imageModal')?.addEventListener('click', e => { if (e.target.id === 'imageModal') closeImageModal(); });
+  window.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) { e.target.classList.add('hidden'); QRScanner.close(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); QRScanner.close(); } });
 });
+
+
 
 // =============================================================================
 // === Cleanup ===
 // =============================================================================
 window.addEventListener('beforeunload', () => {
   QRScanner.close();
-  stopPolling();
+  if (State.pollInterval) clearInterval(State.pollInterval);   // ← ВОТ ЭТО НОВОЕ
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   if (window.p2p?.unsubscribeAll) window.p2p.unsubscribeAll();
   if (window.NotificationManager?.destroy) window.NotificationManager.destroy();
 });
 
-// =============================================================================
-// === Экспорт для внешних скриптов ===
-// =============================================================================
+// Экспорт функций для внешних скриптов
 window.selectConversation = selectConversation;
 window.appendMessageToUI = appendMessageToUI;
 window.loadMessagesForConversation = loadMessagesForConversation;
@@ -950,6 +782,5 @@ window.handleImageSelection = handleImageSelection;
 window.addContactFromChat = addContactFromChat;
 window.clearConversation = clearConversation;
 </script>
-
 {% endblock %}
 {% endblock %}
