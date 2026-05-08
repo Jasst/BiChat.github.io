@@ -4,7 +4,32 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB" />
+    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
+      <change afterPath="$PROJECT_DIR$/Trash/app.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/cache.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logging_setup.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/routes/auth.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/routes/files.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/routes/groups.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/contacts.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/messaging.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/wallet.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/emojis/❤️.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/emojis/.png" beforePathEscaped="$PROJECT_DIR$/emojis/🎉.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/emojis/.png" beforePathEscaped="$PROJECT_DIR$/emojis/😀.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/static/style.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/contacts.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/contacts.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/groups.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/groups.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/profile.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/profile.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/wallet.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/wallet.html" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -40,7 +65,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATELOTORY" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATELOTORY2" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -105,7 +130,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "mainUPDATELOTORY2",
+    "git-widget-placeholder": "mainUPDATELOTORY3",
     "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -125,11 +150,11 @@
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat\templates" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\templates" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\Trash" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static\js" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\routes" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\services" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\Trash" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\templates" />
     </key>
   </component>
   <component name="RunAnythingCache">
@@ -661,9 +686,19 @@
           <option name="timeStamp" value="58" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/app.py</url>
+          <url>file://$PROJECT_DIR$/Trash/app.py</url>
           <line>1652</line>
           <option name="timeStamp" value="62" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/services/wallet.py</url>
+          <line>46</line>
+          <option name="timeStamp" value="63" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/database.py</url>
+          <line>225</line>
+          <option name="timeStamp" value="64" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

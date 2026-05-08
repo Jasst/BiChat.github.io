@@ -499,15 +499,15 @@ body {
 .tabs {
   display: flex;
   padding: var(--space-sm);
-  gap: 4px;
+  gap: 8px;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
 }
 
 .tab {
   flex: 1;
-  padding: 8px 4px;                 /* было 10px; оставляем минимум */
-  font-size: 11px;
+  padding: 2px 2px;                 /* было 10px; оставляем минимум */
+  font-size: 16px;
   font-weight: 500;
   color: var(--text-secondary);
   text-align: center;
@@ -528,6 +528,26 @@ body {
   color: var(--text-primary);
   background: var(--bg-hover);
   font-weight: 600;
+}
+
+/* Анимация шестерёнки */
+.tab-icon-gear {
+  display: inline-block;            /* обязательно, чтобы transform работал */
+  transition: transform 0.3s ease;
+}
+
+.tab:hover .tab-icon-gear,
+.tab.active:hover .tab-icon-gear {
+  transform: rotate(90deg);         /* поворот на 90 градусов */
+}
+
+.tab:hover .tab-icon-gear,
+.tab.active:hover .tab-icon-gear {
+  animation: spin 5s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ===== Conversations List ===== */
@@ -1079,8 +1099,8 @@ body {
   }
   .tab {
     flex: 1 1 auto;
-    padding: 6px 8px;        /* компактнее */
-    font-size: 11px;
+    padding: 8px 10px;        /* компактнее */
+    font-size: 12px;
   }
 }
 

@@ -17,7 +17,9 @@
       <button class="tab" onclick="location.href='/contacts'">Contacts</button>
       <button class="tab" onclick="location.href='/groups'">Groups</button>
       <button class="tab active" role="tab" aria-selected="true">Wallet</button>
-      <button class="tab" onclick="location.href='/profile'">⚙️</button>
+      <button class="tab" onclick="location.href='/profile'">
+        <span class="tab-icon-gear">⚙️</span>
+      </button>
     </nav>
   </aside>
 
@@ -37,13 +39,67 @@
         <h3>Balance</h3>
         <div class="profile-row">
           <label>Available</label>
-          <div class="profile-value-wrap">
-            <span class="value" id="balanceDisplay">0.000000 COIN</span>
-          </div>
-          <div class="actions">
-            <button class="btn btn-icon" onclick="refreshBalance()" title="Refresh">🔄</button>
-          </div>
+          <span class="value" id="balanceDisplay">0.000000 BlockCoin</span>
+          <button class="btn btn-icon" onclick="refreshBalance()">🔄</button>
         </div>
+        <div class="profile-row" id="stakedInfo" style="display:none;">
+          <label>Staked</label>
+          <span class="value" id="stakedDisplay">0.000000 BlockCoin</span>
+        </div>
+      </div>
+
+      <!-- Network Statistics Card -->
+      <div class="profile-card">
+        <h3>🌐 Network Statistics</h3>
+        <div class="profile-row">
+          <label>Total Supply</label>
+          <span class="value" id="totalSupply">0.000000 BlockCoin</span>
+          <button class="btn btn-icon" onclick="refreshNetworkStats()">🔄</button>
+        </div>
+        <div class="profile-row">
+          <label>Lottery Pool Balance</label>
+          <span class="value" id="lotteryPoolBalance">0.000000 BlockCoin</span>
+        </div>
+        <div class="profile-row">
+          <label>Next Lottery Reward</label>
+          <span class="value" id="lotteryReward">0.000000 BlockCoin</span>
+        </div>
+        <div class="profile-row">
+          <label>Block Reward</label>
+          <span class="value" id="blockReward">0.000000 BlockCoin</span>
+        </div>
+        <div class="profile-row">
+          <label>Total Blocks</label>
+          <span class="value" id="totalBlocks">0</span>
+        </div>
+        <div class="profile-row">
+          <label>Total Staked</label>
+          <span class="value" id="totalStaked">0.000000 BlockCoin</span>
+        </div>
+        <div class="profile-row">
+          <label>Current Difficulty</label>
+          <span class="value" id="difficulty">0</span>
+        </div>
+      </div>
+
+      <!-- Mining Card -->
+      <div class="profile-card" id="miningCard">
+        <h3>⛏ Mining</h3>
+        <div id="miningStatus" class="text-muted" style="margin-bottom:8px;">Not mining</div>
+        <button id="startMiningBtn" class="btn" onclick="startMining()">Start Mining</button>
+        <button id="stopMiningBtn" class="btn hidden" onclick="stopMining()">Stop</button>
+      </div>
+
+      <!-- Staking Card -->
+      <div class="profile-card">
+        <h3>🔒 Staking</h3>
+        <div id="stakingInfo" class="text-muted" style="margin-bottom:8px;">Load staking info...</div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <input type="number" id="stakeAmount" class="input" placeholder="Amount" step="0.000001">
+          <button class="btn btn-primary" onclick="stake()">Stake</button>
+          <button class="btn btn-ghost" onclick="unstake()">Unstake</button>
+        </div>
+        <div id="stakeResult" class="hidden text-muted" style="font-size:12px; margin-top:4px;"></div>
       </div>
 
       <!-- Receive Card -->
@@ -56,7 +112,6 @@
             <button class="btn btn-icon" onclick="copyAddressToClipboard()" title="Copy">📋</button>
           </div>
         </div>
-        <!-- Toggle QR button -->
         <div class="profile-row">
           <label>QR Code</label>
           <div class="profile-value-wrap" style="align-items: center;">
@@ -66,7 +121,6 @@
             </button>
           </div>
         </div>
-        <!-- QR block (hidden by default) -->
         <div id="qrBlock" class="hidden animate-fade" style="margin-top: var(--space-sm);">
           <div class="qr-container">
             <div id="qrcode"></div>
@@ -80,7 +134,7 @@
 
       <!-- Send Card -->
       <div class="profile-card">
-        <h3>Send Coins</h3>
+        <h3>Send BlockCoin</h3>
         <div class="form-group" style="display:flex; flex-direction:column; gap:var(--space-sm);">
           <div style="display:flex; gap:var(--space-sm);">
             <input type="text" id="sendAddress" class="input input-monospace" placeholder="Recipient address (64 hex)" maxlength="64" style="flex:1;">
@@ -98,7 +152,7 @@
             <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001" style="flex:2;">
             <button class="btn btn-primary" onclick="sendCoins()" style="flex:1;">Send</button>
           </div>
-          <p class="text-muted" style="font-size:12px;">Fee: 0.010000 COIN</p>
+          <p class="text-muted" style="font-size:12px;">Fee: 0.010000 BlockCoin</p>
           <div id="sendResult" class="hidden text-muted" style="font-size:12px;"></div>
         </div>
       </div>
@@ -115,27 +169,318 @@
   </main>
 </div>
 
-<!-- Overlay for mobile sidebar -->
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
-<script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
 
 <script>
-const COIN = 1_000_000; // 1 coin = 1,000,000 satoshis
-const FEE = 10_000;     // 0.01 coin
-let qrGenerated = false;
+var BLOCKCOIN_SATS = 1_000_000;
+var qrGenerated = false;
+var miningActive = false;
 
-// ========== Receive QR toggle ==========
+// ================== Майнинг (исправленный) ==================
+async function sha256(text) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function startMining() {
+  if (miningActive) return;
+  miningActive = true;
+
+  document.getElementById('startMiningBtn').classList.add('hidden');
+  document.getElementById('stopMiningBtn').classList.remove('hidden');
+  const statusEl = document.getElementById('miningStatus');
+  statusEl.textContent = 'Mining... getting current proof';
+
+  try {
+    const proofResp = await fetch('/wallet/last-proof');
+    const chainData = await proofResp.json();
+    const { last_proof, difficulty } = chainData;
+    const target = '0'.repeat(difficulty);
+    const maxIter = 3000000;
+
+    statusEl.textContent = `Mining... difficulty=${difficulty}, searching proof`;
+
+    while (miningActive) {
+      let found = false;
+      let proof = 0;
+      for (proof = 0; proof < maxIter; proof++) {
+        if (!miningActive) break;
+        const hash = await sha256('' + last_proof + proof);
+        if (hash.startsWith(target)) {
+          found = true;
+          break;
+        }
+        if (proof % 1000 === 0) {
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      if (found) {
+        statusEl.textContent = 'Block found! Submitting...';
+        const res = await fetch('/wallet/mine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proof })
+        });
+        const result = await res.json();
+        if (res.ok) {
+          const reward = (result.reward / BLOCKCOIN_SATS).toFixed(6);
+          statusEl.textContent = `Block mined! +${reward} BlockCoin`;
+          refreshBalance();
+        } else {
+          statusEl.textContent = 'Error: ' + (result.error || 'Unknown');
+        }
+        stopMining();
+        return;
+      } else {
+        statusEl.textContent = 'Still mining... increasing search space';
+      }
+      await new Promise(r => setTimeout(r, 50));
+    }
+  } catch (err) {
+    console.error('Mining error:', err);
+    statusEl.textContent = 'Mining error: ' + err.message;
+    stopMining();
+  }
+}
+
+function stopMining() {
+  miningActive = false;
+  document.getElementById('startMiningBtn').classList.remove('hidden');
+  document.getElementById('stopMiningBtn').classList.add('hidden');
+  document.getElementById('miningStatus').textContent = 'Stopped';
+}
+
+// ================== Стейкинг ==================
+async function stake() {
+  const amountEl = document.getElementById('stakeAmount');
+  const rawAmount = parseFloat(amountEl.value);
+  if (isNaN(rawAmount) || rawAmount <= 0) {
+    alert('Enter a valid amount');
+    return;
+  }
+  const amount = Math.floor(rawAmount * BLOCKCOIN_SATS);
+  const res = await fetch('/wallet/stake', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount })
+  });
+  const data = await res.json();
+  const el = document.getElementById('stakeResult');
+  el.classList.remove('hidden');
+  if (res.ok) {
+    el.textContent = `Staked! Unlocks at block ${data.unlock_block}`;
+    el.style.color = 'var(--status-success)';
+    refreshBalance();
+    loadStakingInfo();
+  } else {
+    el.textContent = 'Error: ' + (data.error || 'Unknown');
+    el.style.color = 'var(--status-error)';
+  }
+}
+
+async function unstake() {
+  const res = await fetch('/wallet/unstake', { method: 'POST' });
+  const data = await res.json();
+  const el = document.getElementById('stakeResult');
+  el.classList.remove('hidden');
+  if (res.ok) {
+    el.textContent = 'Unstaked!';
+    el.style.color = 'var(--status-success)';
+    refreshBalance();
+    loadStakingInfo();
+  } else {
+    el.textContent = 'Error: ' + (data.error || 'No active stake or still locked');
+    el.style.color = 'var(--status-error)';
+  }
+}
+
+async function loadStakingInfo() {
+  const res = await fetch('/wallet/staking/info');
+  const data = await res.json();
+  const infoEl = document.getElementById('stakingInfo');
+  if (data.stakes && data.stakes.length > 0) {
+    let html = '';
+    data.stakes.forEach(s => {
+      const amount = (s.amount / BLOCKCOIN_SATS).toFixed(6);
+      html += `${amount} BlockCoin (unlock block: ${s.unlock_block})<br>`;
+    });
+    infoEl.innerHTML = html;
+  } else {
+    infoEl.textContent = 'No active stakes';
+  }
+}
+
+// ================== Баланс ==================
+async function refreshBalance() {
+  const res = await fetch('/wallet/balance');
+  if (!res.ok) return;
+  const data = await res.json();
+  document.getElementById('balanceDisplay').textContent =
+    (data.balance / BLOCKCOIN_SATS).toFixed(6) + ' BlockCoin';
+
+  if (data.staked) {
+    document.getElementById('stakedInfo').style.display = 'flex';
+    document.getElementById('stakedDisplay').textContent =
+      (data.staked / BLOCKCOIN_SATS).toFixed(6) + ' BlockCoin';
+  } else {
+    document.getElementById('stakedInfo').style.display = 'none';
+  }
+}
+
+// ================== Глобальная статистика сети ==================
+async function refreshNetworkStats() {
+  try {
+    const res = await fetch('/wallet/global-stats');
+    if (!res.ok) return;
+    const data = await res.json();
+    const divisor = data.coin_divisor;
+
+    document.getElementById('totalSupply').textContent =
+      (data.total_supply / divisor).toFixed(6) + ' ' + data.coin_name;
+    document.getElementById('lotteryPoolBalance').textContent =
+      (data.lottery_pool_balance / divisor).toFixed(6) + ' ' + data.coin_name;
+    document.getElementById('lotteryReward').textContent =
+      (data.lottery_reward / divisor).toFixed(6) + ' ' + data.coin_name;
+    document.getElementById('blockReward').textContent =
+      (data.block_reward / divisor).toFixed(6) + ' ' + data.coin_name;
+    document.getElementById('totalBlocks').textContent = data.total_blocks;
+    document.getElementById('totalStaked').textContent =
+      (data.total_staked / divisor).toFixed(6) + ' ' + data.coin_name;
+    document.getElementById('difficulty').textContent = data.difficulty;
+  } catch (err) {
+    console.error('Failed to load network stats:', err);
+  }
+}
+
+// ================== Транзакции ==================
+async function loadTx() {
+  const list = document.getElementById('txList');
+  list.innerHTML = '<div class="loading">Loading…</div>';
+  const res = await fetch('/wallet/transactions');
+  if (!res.ok) {
+    list.innerHTML = '<p class="text-muted text-center">Failed to load</p>';
+    return;
+  }
+  const data = await res.json();
+  if (!data.transactions.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">💳</div><p>No transactions yet</p></div>`;
+    return;
+  }
+  while (list.firstChild) list.removeChild(list.firstChild);
+
+  const myAddress = '{{ address }}';
+  data.transactions.forEach(tx => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+
+    let typeLabel = '';
+    let sign = '-';
+    if (tx.type === 'reward') {
+      typeLabel = '🎁 Lottery Reward';
+      sign = '+';
+    } else if (tx.type === 'fee') {
+      typeLabel = '💸 Fee';
+      sign = '-';
+    } else if (tx.type === 'transfer') {
+      if (tx.sender === myAddress) {
+        typeLabel = '📤 Sent';
+        sign = '-';
+      } else {
+        typeLabel = '📥 Received';
+        sign = '+';
+      }
+    } else if (tx.type === 'block_reward') {
+      typeLabel = '⛏ Block Reward';
+      sign = '+';
+    } else if (tx.type === 'stake') {
+      typeLabel = '🔒 Stake';
+      sign = '-';
+    } else if (tx.type === 'unstake') {
+      typeLabel = '🔓 Unstake';
+      sign = '+';
+    } else if (tx.type === 'airdrop') {
+      typeLabel = '🪂 Airdrop';
+      sign = '+';
+    }
+
+    const amount = (tx.amount / BLOCKCOIN_SATS).toFixed(6);
+    const timestamp = tx.timestamp ? new Date(tx.timestamp * 1000).toLocaleString() : '';
+
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'info';
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'name';
+    nameDiv.textContent = typeLabel;
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'address font-mono text-muted';
+    timeDiv.style.fontSize = '10px';
+    timeDiv.textContent = timestamp;
+    infoDiv.appendChild(nameDiv);
+    infoDiv.appendChild(timeDiv);
+
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'actions';
+    const amountSpan = document.createElement('span');
+    amountSpan.style.fontWeight = '600';
+    amountSpan.style.color = sign === '+' ? 'var(--status-success)' : 'var(--status-warning)';
+    amountSpan.textContent = `${sign}${amount} BlockCoin`;
+    actionsDiv.appendChild(amountSpan);
+
+    item.appendChild(infoDiv);
+    item.appendChild(actionsDiv);
+    list.appendChild(item);
+  });
+}
+
+// ================== Отправка монет ==================
+async function sendCoins() {
+  const addr = document.getElementById('sendAddress').value.trim().toLowerCase();
+  const rawAmount = Number(document.getElementById('sendAmount').value);
+  if (!addr || addr.length !== 64 || !/^[a-f0-9]{64}$/.test(addr)) {
+    alert('Enter a valid 64-character hex address.');
+    return;
+  }
+  if (isNaN(rawAmount) || rawAmount <= 0) {
+    alert('Enter a positive amount.');
+    return;
+  }
+  const amount = Math.floor(rawAmount * BLOCKCOIN_SATS);
+  const res = await fetch('/wallet/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipient: addr, amount })
+  });
+  const result = await res.json();
+  const el = document.getElementById('sendResult');
+  el.classList.remove('hidden');
+  if (res.ok) {
+    el.textContent = '✓ Sent!';
+    el.style.color = 'var(--status-success)';
+    document.getElementById('sendAmount').value = '';
+    document.getElementById('sendAddress').value = '';
+    refreshBalance();
+    loadTx();
+  } else {
+    el.textContent = 'Error: ' + result.error;
+    el.style.color = 'var(--status-error)';
+  }
+}
+
+// ================== QR-код и сканер ==================
 function toggleReceiveQR() {
   const block = document.getElementById('qrBlock');
   const icon = document.getElementById('toggleQRIcon');
   const label = document.getElementById('toggleQRLabel');
   const isHidden = block.classList.contains('hidden');
-
   if (isHidden) {
     block.classList.remove('hidden');
     if (!qrGenerated) generateQR();
@@ -193,8 +538,8 @@ async function shareQR() {
   }
 }
 
-// ========== Wallet QR Scanner (send) ==========
-const walletQR = {
+// ================== QR-сканер ==================
+var walletQR = {
   stream: null,
   active: false,
   animationFrame: null,
@@ -314,80 +659,6 @@ function parseQRData(data) {
 window.openWalletQRScanner = () => walletQR.open();
 window.forceCloseWalletQRScanner = () => walletQR.close();
 
-// ========== Balance & Transactions ==========
-async function refreshBalance() {
-  const res = await fetch('/wallet/balance');
-  if (!res.ok) return;
-  const data = await res.json();
-  document.getElementById('balanceDisplay').textContent = (data.balance / COIN).toFixed(6) + ' COIN';
-}
-
-async function loadTx() {
-  const list = document.getElementById('txList');
-  list.innerHTML = '<div class="loading">Loading…</div>';
-  const res = await fetch('/wallet/transactions');
-  if (!res.ok) { list.innerHTML = '<p class="text-muted text-center">Failed to load</p>'; return; }
-  const data = await res.json();
-  if (!data.transactions.length) {
-    list.innerHTML = `<div class="empty-state"><div class="icon">💳</div><p>No transactions yet</p></div>`;
-    return;
-  }
-  list.innerHTML = '';
-  data.transactions.forEach(tx => {
-    const item = document.createElement('div');
-    item.className = 'list-item';
-    let typeLabel = tx.type === 'reward' ? '🎁 Reward' :
-                    tx.type === 'transfer' ? (tx.sender === '{{ address }}' ? '📤 Sent' : '📥 Received') :
-                    '💸 Fee';
-    const amount = (tx.amount / COIN).toFixed(6);
-    const sign = (tx.type === 'reward' || (tx.type === 'transfer' && tx.recipient === '{{ address }}')) ? '+' : '-';
-    item.innerHTML = `
-      <div class="info">
-        <div class="name">${typeLabel}</div>
-        <div class="address font-mono text-muted" style="font-size:10px;">${tx.timestamp ? new Date(tx.timestamp*1000).toLocaleString() : ''}</div>
-      </div>
-      <div class="actions">
-        <span style="font-weight:600; color: ${sign==='+'?'var(--status-success)':'var(--status-warning)'}">${sign}${amount} COIN</span>
-      </div>`;
-    list.appendChild(item);
-  });
-}
-
-// ========== Send Coins ==========
-async function sendCoins() {
-  const addr = document.getElementById('sendAddress').value.trim().toLowerCase();
-  const rawAmount = Number(document.getElementById('sendAmount').value);
-  if (!addr || addr.length !== 64) {
-    alert('Enter a valid 64-character address.');
-    return;
-  }
-  if (isNaN(rawAmount) || rawAmount <= 0) {
-    alert('Enter a positive amount.');
-    return;
-  }
-  const amount = Math.floor(rawAmount * COIN);
-  const res = await fetch('/wallet/send', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({recipient: addr, amount: amount})
-  });
-  const result = await res.json();
-  const el = document.getElementById('sendResult');
-  el.classList.remove('hidden');
-  if (res.ok) {
-    el.textContent = '✓ Sent!';
-    el.style.color = 'var(--status-success)';
-    document.getElementById('sendAmount').value = '';
-    document.getElementById('sendAddress').value = '';
-    refreshBalance();
-    loadTx();
-  } else {
-    el.textContent = 'Error: ' + result.error;
-    el.style.color = 'var(--status-error)';
-  }
-}
-
-// ========== Helpers ==========
 async function copyToClipboard(text, successMsg, errorMsg) {
   if (!text) return window.NotificationManager?.showToast(errorMsg, 'error');
   try {
@@ -408,15 +679,21 @@ async function copyToClipboard(text, successMsg, errorMsg) {
   }
 }
 
-// ========== Init ==========
+// ================== Инициализация ==================
 document.addEventListener('DOMContentLoaded', function() {
   refreshBalance();
   loadTx();
+  loadStakingInfo();
+  refreshNetworkStats();
   window.toggleReceiveQR = toggleReceiveQR;
   window.sendCoins = sendCoins;
   window.copyAddressToClipboard = copyAddressToClipboard;
   window.downloadQR = downloadQR;
   window.shareQR = shareQR;
+  window.startMining = startMining;
+  window.stopMining = stopMining;
+  window.stake = stake;
+  window.unstake = unstake;
 });
 </script>
 {% endblock %}
