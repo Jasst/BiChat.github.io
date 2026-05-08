@@ -360,6 +360,7 @@ body {
   border-right: 1px solid var(--border-color);
   transition: transform var(--transition-normal);
   z-index: 10;
+  overflow: hidden;
 }
 
 .sidebar-header {
@@ -498,15 +499,15 @@ body {
 .tabs {
   display: flex;
   padding: var(--space-sm);
-  gap: var(--space-xs);
+  gap: 4px;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
 }
 
 .tab {
   flex: 1;
-  padding: 10px;
-  font-size: 13px;
+  padding: 8px 4px;                 /* было 10px; оставляем минимум */
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-secondary);
   text-align: center;
@@ -515,6 +516,7 @@ body {
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
+  white-space: nowrap;
 }
 
 .tab:hover {
@@ -959,6 +961,7 @@ body {
   font-size: 12px;
   color: var(--text-primary);
   word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .profile-row .actions {
@@ -1067,6 +1070,20 @@ body {
     padding: var(--space-sm);
   }
 }
+
+@media (max-width: 480px) {
+  .tabs {
+    flex-wrap: wrap;          /* разрешить перенос строк */
+    padding: var(--space-xs);
+    gap: 4px;
+  }
+  .tab {
+    flex: 1 1 auto;
+    padding: 6px 8px;        /* компактнее */
+    font-size: 11px;
+  }
+}
+
 /* ===== QR Code ===== */
 /* Анимация сканирования */
 /* ✅ Единый блок для QR-контейнеров */
@@ -1314,6 +1331,7 @@ body {
     transition: transform var(--transition-normal);
     z-index: 100;
     box-shadow: var(--shadow-lg);
+    overflow: hidden;
   }
 
   /* ✅ Открытый сайдбар */

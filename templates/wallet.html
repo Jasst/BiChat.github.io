@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}Wallet — Dark Messenger{% endblock %}
+
+{% block content %}
+<div class="chat-container">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigation">
+    <header class="sidebar-header">
+      <div class="user-info">
+        <span class="address font-mono" id="userAddress">{{ address[:10] }}…</span>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab" onclick="location.href='/chat'">Chat</button>
+      <button class="tab" onclick="location.href='/contacts'">Contacts</button>
+      <button class="tab" onclick="location.href='/groups'">Groups</button>
+      <button class="tab active" role="tab" aria-selected="true">Wallet</button>
+      <button class="tab" onclick="location.href='/profile'">⚙️</button>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <header class="chat-header">
+      <button class="btn btn-icon menu-toggle" id="menuToggle"
+              onclick="toggleSidebar()" aria-label="Toggle menu"
+              style="display: none;">☰</button>
+      <h2>Wallet</h2>
+    </header>
+
+    <div class="profile-section">
+
+      <!-- Balance Card -->
+      <div class="profile-card">
+        <h3>Balance</h3>
+        <div class="profile-row">
+          <label>Available</label>
+          <div class="profile-value-wrap">
+            <span class="value" id="balanceDisplay">0.000000 COIN</span>
+          </div>
+          <div class="actions">
+            <button class="btn btn-icon" onclick="refreshBalance()" title="Refresh">🔄</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Receive Card -->
+      <div class="profile-card" id="receiveCard">
+        <h3>Receive Coins</h3>
+        <div class="profile-row">
+          <label>Your Address</label>
+          <div class="profile-value-wrap">
+            <span class="value font-mono" id="receiveAddress" style="word-break: break-all;">{{ address|default('', true) }}</span>
+            <button class="btn btn-icon" onclick="copyAddressToClipboard()" title="Copy">📋</button>
+          </div>
+        </div>
+        <!-- Toggle QR button -->
+        <div class="profile-row">
+          <label>QR Code</label>
+          <div class="profile-value-wrap" style="align-items: center;">
+            <button id="toggleQRBtn" class="btn" onclick="toggleReceiveQR()">
+              <span id="toggleQRIcon">📱</span>
+              <span id="toggleQRLabel">Show QR Code</span>
+            </button>
+          </div>
+        </div>
+        <!-- QR block (hidden by default) -->
+        <div id="qrBlock" class="hidden animate-fade" style="margin-top: var(--space-sm);">
+          <div class="qr-container">
+            <div id="qrcode"></div>
+            <div class="qr-actions">
+              <button class="btn btn-ghost" onclick="downloadQR()">📥 Download</button>
+              <button class="btn btn-ghost" onclick="shareQR()">📤 Share</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Send Card -->
+      <div class="profile-card">
+        <h3>Send Coins</h3>
+        <div class="form-group" style="display:flex; flex-direction:column; gap:var(--space-sm);">
+          <div style="display:flex; gap:var(--space-sm);">
+            <input type="text" id="sendAddress" class="input input-monospace" placeholder="Recipient address (64 hex)" maxlength="64" style="flex:1;">
+            <button class="btn btn-icon" onclick="openWalletQRScanner()" title="Scan QR Code">📷</button>
+          </div>
+          <div id="qrScannerContainer" class="hidden" style="margin-bottom: var(--space-sm); background: var(--bg-secondary); border-radius: var(--radius-md); padding: var(--space-sm);">
+            <div class="text-center">
+              <video id="qrVideo" style="width: 220px; height: 220px; border-radius: var(--radius-md); background: #000;" playsinline autoplay muted disablepictureinpicture></video>
+              <p class="text-muted" style="font-size:12px;">Point camera at QR code</p>
+              <div id="scanResult" class="hidden" style="color: var(--status-success); font-weight: 500; margin-top: var(--space-xs);"></div>
+              <button class="btn btn-ghost" onclick="forceCloseWalletQRScanner()">Cancel</button>
+            </div>
+          </div>
+          <div style="display:flex; gap:var(--space-sm);">
+            <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001" style="flex:2;">
+            <button class="btn btn-primary" onclick="sendCoins()" style="flex:1;">Send</button>
+          </div>
+          <p class="text-muted" style="font-size:12px;">Fee: 0.010000 COIN</p>
+          <div id="sendResult" class="hidden text-muted" style="font-size:12px;"></div>
+        </div>
+      </div>
+
+      <!-- Transactions Card -->
+      <div class="profile-card">
+        <h3>Transaction History</h3>
+        <div id="txList" class="list-container" style="max-height:300px; overflow-y:auto;">
+          <div class="loading">Loading…</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Overlay for mobile sidebar -->
+<div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
+
+<script>
+const COIN = 1_000_000; // 1 coin = 1,000,000 satoshis
+const FEE = 10_000;     // 0.01 coin
+let qrGenerated = false;
+
+// ========== Receive QR toggle ==========
+function toggleReceiveQR() {
+  const block = document.getElementById('qrBlock');
+  const icon = document.getElementById('toggleQRIcon');
+  const label = document.getElementById('toggleQRLabel');
+  const isHidden = block.classList.contains('hidden');
+
+  if (isHidden) {
+    block.classList.remove('hidden');
+    if (!qrGenerated) generateQR();
+    icon.textContent = '📱';
+    label.textContent = 'Hide QR Code';
+  } else {
+    block.classList.add('hidden');
+    icon.textContent = '📱';
+    label.textContent = 'Show QR Code';
+  }
+}
+
+function generateQR() {
+  const address = "{{ address|default('', true) }}";
+  const qrDiv = document.getElementById('qrcode');
+  if (!address || address === 'None' || !qrDiv || typeof QRCode === 'undefined') return;
+  qrDiv.innerHTML = '';
+  try {
+    new QRCode(qrDiv, {
+      text: address,
+      width: 220, height: 220,
+      colorDark: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
+      colorLight: getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#0a0a0a',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+    qrGenerated = true;
+  } catch (e) {
+    qrDiv.innerHTML = '<span class="text-muted">QR error</span>';
+  }
+}
+
+function copyAddressToClipboard() {
+  const addr = document.getElementById('receiveAddress')?.textContent?.trim();
+  copyToClipboard(addr, 'Address copied', 'Nothing to copy');
+}
+
+function downloadQR() {
+  const canvas = document.querySelector('#qrcode canvas');
+  if (!canvas) return window.NotificationManager?.showToast('QR not ready', 'error');
+  const link = document.createElement('a');
+  link.download = `wallet-qr-${Date.now()}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+async function shareQR() {
+  const address = document.getElementById('receiveAddress')?.textContent?.trim();
+  if (!address) return;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'My Wallet Address', text: address });
+    } catch (e) { if (e.name !== 'AbortError') console.error(e); }
+  } else {
+    copyAddressToClipboard();
+  }
+}
+
+// ========== Wallet QR Scanner (send) ==========
+const walletQR = {
+  stream: null,
+  active: false,
+  animationFrame: null,
+  canvas: null,
+  ctx: null,
+  config: {
+    videoWidth: 1280,
+    videoHeight: 720,
+    scanSize: 400,
+    inversionAttempts: "attemptBoth",
+    scanInterval: 100
+  },
+  open() {
+    if (this.active) return;
+    const video = document.getElementById('qrVideo');
+    const container = document.getElementById('qrScannerContainer');
+    const resultEl = document.getElementById('scanResult');
+    if (!video || !container) return;
+    this.active = true;
+    container.classList.remove('hidden');
+    resultEl?.classList.add('hidden');
+    resultEl && (resultEl.textContent = '');
+
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: this.config.videoWidth }, height: { ideal: this.config.videoHeight } },
+      audio: false
+    }).then(stream => {
+      if (!this.active) return this._stopStream(stream);
+      this.stream = stream;
+      video.srcObject = stream;
+      return video.play();
+    }).then(() => {
+      const wait = () => {
+        if (!this.active) return;
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          this._startScanning(video, resultEl);
+        } else {
+          setTimeout(wait, 50);
+        }
+      };
+      wait();
+    }).catch(err => {
+      this._showError('Camera error: ' + (err.message || err.name), resultEl);
+    });
+  },
+  close() {
+    this.active = false;
+    if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
+    if (this.stream) this._stopStream(this.stream);
+    document.getElementById('qrScannerContainer')?.classList.add('hidden');
+  },
+  _stopStream(stream) {
+    stream?.getTracks().forEach(t => t.stop());
+  },
+  _showError(msg, resultEl) {
+    if (resultEl) { resultEl.textContent = '⚠️ ' + msg; resultEl.style.color = 'var(--status-error)'; resultEl.classList.remove('hidden'); }
+    setTimeout(() => this.close(), 3000);
+  },
+  _startScanning(video, resultEl) {
+    if (!this.active) return;
+    if (!this.canvas) {
+      this.canvas = document.createElement('canvas');
+      this.canvas.width = this.config.scanSize;
+      this.canvas.height = this.config.scanSize;
+      this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+    }
+    let lastScan = 0;
+    const scan = () => {
+      if (!this.active) return;
+      const now = performance.now();
+      if (now - lastScan < this.config.scanInterval) {
+        this.animationFrame = requestAnimationFrame(scan);
+        return;
+      }
+      lastScan = now;
+      if (video.readyState !== video.HAVE_ENOUGH_DATA || !video.videoWidth) {
+        this.animationFrame = requestAnimationFrame(scan);
+        return;
+      }
+      try {
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const size = Math.min(vw, vh) * 0.8;
+        const sx = (vw - size) / 2, sy = (vh - size) / 2;
+        const ctx = this.ctx;
+        const canvas = this.canvas;
+        canvas.width = this.config.scanSize;
+        canvas.height = this.config.scanSize;
+        ctx.drawImage(video, sx, sy, size, size, 0, 0, this.config.scanSize, this.config.scanSize);
+        const imageData = ctx.getImageData(0, 0, this.config.scanSize, this.config.scanSize);
+        const code = jsQR(imageData.data, this.config.scanSize, this.config.scanSize, { inversionAttempts: this.config.inversionAttempts });
+        if (code?.data) {
+          const addr = parseQRData(code.data);
+          if (addr) {
+            document.getElementById('sendAddress').value = addr;
+            if (resultEl) { resultEl.textContent = '✓ Address scanned'; resultEl.style.color = 'var(--status-success)'; resultEl.classList.remove('hidden'); }
+            this.close();
+            return;
+          } else {
+            if (resultEl) { resultEl.textContent = '⚠️ Not a valid wallet QR'; resultEl.style.color = 'var(--status-warning)'; resultEl.classList.remove('hidden'); }
+          }
+        }
+      } catch (e) { /* ignore */ }
+      if (this.active) this.animationFrame = requestAnimationFrame(scan);
+    };
+    this.animationFrame = requestAnimationFrame(scan);
+  }
+};
+
+function parseQRData(data) {
+  if (!data) return null;
+  if (/^[a-fA-F0-9]{64}$/.test(data)) return data.toLowerCase();
+  const match = data.match(/(?:darkmsg|bitcoin):([a-fA-F0-9]{64})/i);
+  if (match?.[1]) return match[1].toLowerCase();
+  return null;
+}
+
+window.openWalletQRScanner = () => walletQR.open();
+window.forceCloseWalletQRScanner = () => walletQR.close();
+
+// ========== Balance & Transactions ==========
+async function refreshBalance() {
+  const res = await fetch('/wallet/balance');
+  if (!res.ok) return;
+  const data = await res.json();
+  document.getElementById('balanceDisplay').textContent = (data.balance / COIN).toFixed(6) + ' COIN';
+}
+
+async function loadTx() {
+  const list = document.getElementById('txList');
+  list.innerHTML = '<div class="loading">Loading…</div>';
+  const res = await fetch('/wallet/transactions');
+  if (!res.ok) { list.innerHTML = '<p class="text-muted text-center">Failed to load</p>'; return; }
+  const data = await res.json();
+  if (!data.transactions.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">💳</div><p>No transactions yet</p></div>`;
+    return;
+  }
+  list.innerHTML = '';
+  data.transactions.forEach(tx => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    let typeLabel = tx.type === 'reward' ? '🎁 Reward' :
+                    tx.type === 'transfer' ? (tx.sender === '{{ address }}' ? '📤 Sent' : '📥 Received') :
+                    '💸 Fee';
+    const amount = (tx.amount / COIN).toFixed(6);
+    const sign = (tx.type === 'reward' || (tx.type === 'transfer' && tx.recipient === '{{ address }}')) ? '+' : '-';
+    item.innerHTML = `
+      <div class="info">
+        <div class="name">${typeLabel}</div>
+        <div class="address font-mono text-muted" style="font-size:10px;">${tx.timestamp ? new Date(tx.timestamp*1000).toLocaleString() : ''}</div>
+      </div>
+      <div class="actions">
+        <span style="font-weight:600; color: ${sign==='+'?'var(--status-success)':'var(--status-warning)'}">${sign}${amount} COIN</span>
+      </div>`;
+    list.appendChild(item);
+  });
+}
+
+// ========== Send Coins ==========
+async function sendCoins() {
+  const addr = document.getElementById('sendAddress').value.trim().toLowerCase();
+  const rawAmount = Number(document.getElementById('sendAmount').value);
+  if (!addr || addr.length !== 64) {
+    alert('Enter a valid 64-character address.');
+    return;
+  }
+  if (isNaN(rawAmount) || rawAmount <= 0) {
+    alert('Enter a positive amount.');
+    return;
+  }
+  const amount = Math.floor(rawAmount * COIN);
+  const res = await fetch('/wallet/send', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({recipient: addr, amount: amount})
+  });
+  const result = await res.json();
+  const el = document.getElementById('sendResult');
+  el.classList.remove('hidden');
+  if (res.ok) {
+    el.textContent = '✓ Sent!';
+    el.style.color = 'var(--status-success)';
+    document.getElementById('sendAmount').value = '';
+    document.getElementById('sendAddress').value = '';
+    refreshBalance();
+    loadTx();
+  } else {
+    el.textContent = 'Error: ' + result.error;
+    el.style.color = 'var(--status-error)';
+  }
+}
+
+// ========== Helpers ==========
+async function copyToClipboard(text, successMsg, errorMsg) {
+  if (!text) return window.NotificationManager?.showToast(errorMsg, 'error');
+  try {
+    await navigator.clipboard.writeText(text);
+    window.NotificationManager?.showToast(successMsg, 'success');
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta);
+      window.NotificationManager?.showToast(successMsg, 'success');
+    } catch (e) {
+      window.NotificationManager?.showToast(errorMsg, 'error');
+    }
+  }
+}
+
+// ========== Init ==========
+document.addEventListener('DOMContentLoaded', function() {
+  refreshBalance();
+  loadTx();
+  window.toggleReceiveQR = toggleReceiveQR;
+  window.sendCoins = sendCoins;
+  window.copyAddressToClipboard = copyAddressToClipboard;
+  window.downloadQR = downloadQR;
+  window.shareQR = shareQR;
+});
+</script>
+{% endblock %}
+{% endblock %}

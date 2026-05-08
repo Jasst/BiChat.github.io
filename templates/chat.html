@@ -17,7 +17,8 @@
       <button class="tab active" role="tab" aria-selected="true" onclick="location.href='/chat'">Chat</button>
       <button class="tab" role="tab" onclick="location.href='/contacts'">Contacts</button>
       <button class="tab" role="tab" onclick="location.href='/groups'">Groups</button>
-      <button class="tab" role="tab" onclick="location.href='/profile'">Profile</button>
+      <button class="tab" onclick="location.href='/wallet'">Wallet</button>
+      <button class="tab" role="tab" onclick="location.href='/profile'">⚙️</button>
     </nav>
     <div id="chat-tab" class="tab-content active">
       <div class="conversations-header">
@@ -729,6 +730,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
    // Инициализация уведомлений (‼️ ‼️ обязательно)
   if (window.NotificationManager?.init) window.NotificationManager.init();
+    // === Обработчик удаления сообщений ===
+  const msgContainer = document.getElementById('messagesContainer');
+  if (msgContainer) {
+    msgContainer.addEventListener('click', function(e) {
+      const btn = e.target.closest('.delete-btn');
+      if (btn) {
+        const msgId = parseInt(btn.dataset.id);
+        if (msgId) deleteMessage(msgId, btn);
+      }
+    });
+  }
 
   const params = new URLSearchParams(window.location.search);
   const startWith = params.get('start_with');

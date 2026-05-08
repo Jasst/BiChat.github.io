@@ -13,7 +13,7 @@ import sqlite3
 import time
 import json
 import uuid
-import threading
+import threading , random
 import secrets
 from functools import lru_cache
 from contextlib import contextmanager
@@ -57,10 +57,14 @@ CONFIG = {
     'LOG_MAX_BYTES': 10 * 1024 * 1024,
     'LOG_BACKUP_COUNT': 5,
     'MAX_UPLOAD_SIZE': 16 * 1024 * 1024,
+
 }
 
 DATABASE_PATH = os.getenv('DATABASE_PATH', 'blockchain.db')
 UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
+COIN = 1_000_000          # 1 монета = 1 000 000 сатоши
+TRANSFER_FEE = 10_000     # комиссия 0.01 монеты
+MIN_BALANCE = 0
 
 import sys
 if sys.platform == 'win32':
@@ -231,6 +235,7 @@ def _create_pubkey_cache_table(cursor):
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_updated ON pubkey_cache(updated_at)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_verified ON pubkey_cache(verified)')
 
+
 class Blockchain:
     def __init__(self, db_path=DATABASE_PATH):
         self.db_path = db_path
@@ -268,6 +273,25 @@ class Blockchain:
             PRIMARY KEY (user_address, chat_id)
         )''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_read_status_user ON read_status(user_address)')
+
+        # Внутри _create_tables (после создания read_status)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS wallets (
+            address TEXT PRIMARY KEY,
+            balance INTEGER NOT NULL DEFAULT 0
+        )''')
+
+        cursor.execute('''CREATE TABLE IF NOT EXISTS coin_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tx_type TEXT NOT NULL CHECK(tx_type IN ('reward','transfer','fee','genesis')),
+            sender TEXT,
+            recipient TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount > 0),
+            timestamp REAL NOT NULL,
+            block_ref INTEGER,
+            note TEXT
+        )''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_coin_tx_recipient ON coin_transactions(recipient)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_coin_tx_sender ON coin_transactions(sender)')
 
     def _create_indexes(self, cursor):
         for sql in [
@@ -327,6 +351,56 @@ class Blockchain:
             proof += 1
         raise RuntimeError(f"PoW failed after {CONFIG['POW_MAX_ITERATIONS']} iterations")
 
+
+class CoinLottery:
+    """
+    Собирает адреса уникальных отправителей за интервал.
+    В конце интервала награждает одного случайного победителя.
+    """
+    def __init__(self, interval_seconds=1800, initial_reward=100_000000):
+        self.interval = interval_seconds
+        self.reward = initial_reward        # в минимальных единицах (1e6 на монету)
+        self.halving_count = 0
+        self.halving_interval = 1000        # каждые 1000 розыгрышей халвинг
+        self.tickets = set()
+        self.lock = threading.Lock()
+        self._start_timer()
+
+    def add_ticket(self, address):
+        with self.lock:
+            self.tickets.add(address)
+
+    def _draw(self):
+        with self.lock:
+            if not self.tickets:
+                return
+            winner = random.choice(list(self.tickets))
+            self.tickets.clear()
+        # Выплата награды победителю
+        self._award(winner, self.reward)
+        # Халвинг
+        self.halving_count += 1
+        if self.halving_count % self.halving_interval == 0:
+            self.reward //= 2
+            if self.reward < 1:
+                self.reward = 1
+
+    def _award(self, winner, amount):
+        with get_db_cursor(blockchain.db_path) as cursor:
+            # Обновить баланс
+            cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
+                           (winner, amount, amount))
+            cursor.execute('INSERT INTO coin_transactions (tx_type, recipient, amount, timestamp) VALUES (?, ?, ?, ?)',
+                           ('reward', winner, amount, time.time()))
+        socketio.emit('wallet_update', {'address': winner, 'amount': amount, 'type': 'reward'}, room=winner)
+
+    def _start_timer(self):
+        def run():
+            while True:
+                time.sleep(self.interval)
+                self._draw()
+        threading.Thread(target=run, daemon=True).start()
+
 _pow_lock = threading.Lock()
 
 def _mine_block_async(db_path, last_proof):
@@ -370,6 +444,8 @@ init_sqlite_optimizations(DATABASE_PATH)
 blockchain = Blockchain(DATABASE_PATH)
 warmup_database(DATABASE_PATH)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+lottery = CoinLottery(interval_seconds=1800, initial_reward=100 * 1000000)  # 100 монет
 
 # 🔥 WebSocket аутентификация и уведомления
 @socketio.on('connect')
@@ -801,6 +877,11 @@ def profile():
     if 'address' not in session: return redirect(url_for('index'))
     return render_template('profile.html', address=session.get('address'),
                            cache_stats=get_cache_info() if app.debug else None)
+@app.route('/wallet')
+def wallet():
+    if 'address' not in session:
+        return redirect(url_for('index'))
+    return render_template('wallet.html', address=session['address'])
 
 @app.route('/get_public_key/<string:address>')
 def get_public_key_route(address: str):
@@ -864,6 +945,7 @@ def send_message():
             # 🔥 уведомляем всех участников
             for member in group['members']:
                 socketio.emit('new_message', {'chat_id': f"group:{group_id}", 'tx_id': tx_id}, room=member)
+                lottery.add_ticket(sender)
             return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': f"group:{group_id}", 'type': 'group',
                             'encryption': 'group-ecdh-v4', 'members_encrypted': len(encrypted_map)}), 201
 
@@ -882,6 +964,7 @@ def send_message():
                 last_proof = blockchain._last_block_raw(cursor)['proof']
                 threading.Thread(target=_mine_block_async, args=(blockchain.db_path, last_proof), daemon=True).start()
             notify_new_message(recipient, tx_id, sender=sender)
+            lottery.add_ticket(sender)
             return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient, 'type': 'direct',
                             'encryption': 'hybrid-v2', 'key_verified': recipient_verified}), 201
         else:
@@ -895,6 +978,7 @@ def send_message():
                 threading.Thread(target=_mine_block_async, args=(blockchain.db_path, last_proof), daemon=True).start()
             cache_public_key(sender, my_pubkey, source='outgoing', verified=True)
             notify_new_message(recipient, tx_id, sender=sender)
+            lottery.add_ticket(sender)
             return jsonify({'message': 'Key exchange sent.', 'tx_id': tx_id, 'recipient': recipient,
                             'key_exchange': True, 'my_pubkey': my_pubkey}), 201
     except ValidationError as err:
@@ -1062,6 +1146,79 @@ def mark_conversation_read():
 
 
 # =============================================================================
+# Lotory
+# =============================================================================
+@app.route('/wallet/balance')
+def wallet_balance():
+    if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+    addr = session['address']
+    with get_db_cursor(blockchain.db_path) as cursor:
+        cursor.execute('SELECT balance FROM wallets WHERE address = ?', (addr,))
+        row = cursor.fetchone()
+        balance = row[0] if row else 0
+    return jsonify({'address': addr, 'balance': balance, 'coin': COIN})
+
+@app.route('/wallet/transactions')
+def wallet_transactions():
+    if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+    addr = session['address']
+    with get_db_cursor(blockchain.db_path) as cursor:
+        cursor.execute('''
+            SELECT id, tx_type, sender, recipient, amount, timestamp
+            FROM coin_transactions
+            WHERE sender = ? OR recipient = ?
+            ORDER BY timestamp DESC LIMIT 50
+        ''', (addr, addr))
+        txs = []
+        for row in cursor.fetchall():
+            txs.append({
+                'id': row[0], 'type': row[1], 'sender': row[2], 'recipient': row[3],
+                'amount': row[4], 'timestamp': row[5]
+            })
+    return jsonify({'transactions': txs})
+
+@app.route('/wallet/send', methods=['POST'])
+def wallet_send():
+    if 'address' not in session: return jsonify({'error': 'Unauthorized'}), 401
+    user = session['address']
+    data = request.get_json()
+    recipient = data.get('recipient', '').strip()
+    try:
+        amount = int(data.get('amount', 0))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid amount'}), 400
+    if amount <= 0:
+        return jsonify({'error': 'Amount must be positive'}), 400
+    # Проверка адреса
+    if len(recipient) != 64 or not all(c in '0123456789abcdef' for c in recipient):
+        return jsonify({'error': 'Invalid recipient address'}), 400
+    if recipient == user:
+        return jsonify({'error': 'Cannot send to yourself'}), 400
+
+    total = amount + TRANSFER_FEE
+    with get_db_cursor(blockchain.db_path) as cursor:
+        # Проверить баланс
+        cursor.execute('SELECT balance FROM wallets WHERE address = ?', (user,))
+        row = cursor.fetchone()
+        balance = row[0] if row else 0
+        if balance < total:
+            return jsonify({'error': f'Insufficient balance. Need {total/COIN} coins'}), 400
+
+        # Вычесть у отправителя
+        cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?', (total, user))
+        # Зачислить получателю
+        cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
+                       (recipient, amount, amount))
+
+        # Записать транзакции перевода и комиссии
+        ts = time.time()
+        cursor.execute('INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp) VALUES (?,?,?,?,?)',
+                       ('transfer', user, recipient, amount, ts))
+        cursor.execute('INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) VALUES (?,?,?,?,?,?)',
+                       ('fee', user, 'network', TRANSFER_FEE, ts, 'transfer fee'))
+        # Можно сжечь комиссию, не начисляя никому, или отправить на системный адрес 'network'
+    return jsonify({'message': 'Sent', 'amount': amount, 'fee': TRANSFER_FEE}), 200
+
 
 
 # === Получение уведомлений ===
