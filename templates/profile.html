@@ -182,7 +182,7 @@
 </div>
 
 {% block scripts %}
-<script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mnemonic-manager.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
@@ -507,6 +507,7 @@
 #qrcode canvas {
   max-width: 100%;
   height: auto;
+  aspect-ratio: 1 / 1;
   border-radius: var(--radius-sm);
   display: block;
 }
