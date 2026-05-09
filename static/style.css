@@ -55,6 +55,15 @@
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* 🔧 Базовый размер шрифта для мобильных */
+  --font-size-base: 14px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --font-size-base: 15px; /* На десктопе чуть крупнее */
+  }
 }
 
 /* ===== Base Reset ===== */
@@ -71,7 +80,7 @@ html {
 
 body {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: var(--font-size-base); /* 🔧 динамический размер */
   line-height: 1.5;
   color: var(--text-primary);
   background: var(--bg-primary);
@@ -226,6 +235,21 @@ body {
   background: var(--bg-hover);
 }
 
+/* 🔧 Кнопка ошибки (была в конце, перенёс сюда же) */
+.btn-error {
+  background: var(--status-error, #cccccc);
+  color: var(--text-inverse, #0a0a0a);
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-error:hover {
+  opacity: 0.9;
+}
+
 /* ===== Inputs ===== */
 .input {
   width: 100%;
@@ -264,7 +288,7 @@ body {
 .container {
   display: flex;
   height: 100vh;
-  height: 100dvh;  /* ✅ Поддержка динамической высоты */
+  height: 100dvh;
   max-width: 1400px;
   margin: 0 auto;
   background: var(--bg-primary);
@@ -278,7 +302,7 @@ body {
   justify-content: center;
   width: 100%;
   min-height: 100vh;
-  min-height: 100dvh;  /* ✅ */
+  min-height: 100dvh;
   padding: var(--space-lg);
   background:
     radial-gradient(ellipse at top, var(--accent-soft) 0%, transparent 50%),
@@ -363,6 +387,13 @@ body {
   overflow: hidden;
 }
 
+@media (min-width: 1024px) {
+  .sidebar {
+    width: 300px;
+    min-width: 300px;
+  }
+}
+
 .sidebar-header {
   padding: var(--space-md) var(--space-lg);
   border-bottom: 1px solid var(--border-color);
@@ -386,21 +417,23 @@ body {
   content: '…';
 }
 
-.btn-error {
-  background: var(--status-error, #ef4444);
-  color: var(--text-inverse, #fff);
+/* 🔧 Меню-бургер: на десктопе скрыт, на мобильных показывается */
+.menu-toggle {
+  display: none; /* По умолчанию скрыт */
+  background: none;
   border: none;
-  padding: 10px 20px;
-  border-radius: var(--radius-md, 8px);
-  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 24px;
   cursor: pointer;
-  transition: opacity 0.2s;
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
 }
-.btn-error:hover {
-  opacity: 0.9;
+.menu-toggle:hover {
+  background: var(--bg-hover);
 }
 
-/* ===== In‑App Notification Banner (WhatsApp‑style) ===== */
+/* ===== In‑App Notification Banner ===== */
 .in-app-notification {
   position: fixed;
   top: 16px;
@@ -482,18 +515,10 @@ body {
   background: var(--bg-active);
 }
 
-/* Анимация появления */
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
+  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
-
 
 /* ===== Tabs ===== */
 .tabs {
@@ -506,8 +531,8 @@ body {
 
 .tab {
   flex: 1;
-  padding: 2px 2px;                 /* было 10px; оставляем минимум */
-  font-size: 16px;
+  padding: 10px 12px; /* 🔧 увеличено с 2px до удобного */
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
   text-align: center;
@@ -530,15 +555,9 @@ body {
   font-weight: 600;
 }
 
-/* Анимация шестерёнки */
 .tab-icon-gear {
-  display: inline-block;            /* обязательно, чтобы transform работал */
+  display: inline-block;
   transition: transform 0.3s ease;
-}
-
-.tab:hover .tab-icon-gear,
-.tab.active:hover .tab-icon-gear {
-  transform: rotate(90deg);         /* поворот на 90 градусов */
 }
 
 .tab:hover .tab-icon-gear,
@@ -554,23 +573,11 @@ body {
 .messages {
   scroll-behavior: smooth;
 }
-.conversation-item .meta .truncate:contains("✓") {
-  color: var(--text-muted);
-  font-style: italic;
-}
-/* Или универсальный класс: */
+/* 🔧 Убран невалидный :contains, вместо него ориентируемся на класс preview-read */
 .preview-read {
   color: var(--text-secondary) !important;
   font-style: italic;
 }
-
-.conversation-item .meta .truncate {
-    color: var(--text-secondary);
-}
-.conversation-item .meta .truncate:has(~ .status:empty):before {
-    /* Если нужно визуально отделить "Вы:" */
-}
-/* Простой вариант: сервер уже возвращает "Вы: 💬 Сообщение", фронтенд отобразит как есть */
 
 .conversations-list {
   flex: 1;
@@ -988,9 +995,10 @@ body {
   display: flex;
   gap: var(--space-xs);
 }
+
 /* ===== Group Cards ===== */
 .group-card {
-  flex-direction: column !important; /* Переопределяем .list-item */
+  flex-direction: column !important;
   align-items: flex-start !important;
   padding: var(--space-md);
   background: var(--bg-secondary);
@@ -1066,7 +1074,7 @@ body {
   display: flex;
   gap: var(--space-xs);
   width: 100%;
-  margin-top: auto; /* Прижимает кнопки к низу */
+  margin-top: auto;
 }
 
 .group-card-actions .btn {
@@ -1083,41 +1091,16 @@ body {
   align-content: start;
 }
 
-/* Адаптив для мобильных */
-@media (max-width: 768px) {
-  .groups-grid {
-    grid-template-columns: 1fr; /* Одна колонка на мобильных */
-    padding: var(--space-sm);
-  }
-}
-
-@media (max-width: 480px) {
-  .tabs {
-    flex-wrap: wrap;          /* разрешить перенос строк */
-    padding: var(--space-xs);
-    gap: 4px;
-  }
-  .tab {
-    flex: 1 1 auto;
-    padding: 8px 10px;        /* компактнее */
-    font-size: 12px;
-  }
-}
-
 /* ===== QR Code ===== */
-/* Анимация сканирования */
-/* ✅ Единый блок для QR-контейнеров */
 #qrScannerContainer,
 #qrScannerContainerModal {
   position: relative;
   display: inline-block;
 }
-/* ✅ Если нужно отключить зеркало для задней камеры — добавьте класс */
 #qrVideo.no-mirror,
 #qrVideoModal.no-mirror {
   transform: none;
 }
-/* Анимация сканирования — единая для всех контейнеров */
 #qrScannerContainer.scanning::after,
 #qrScannerContainerModal.scanning::after {
   content: '';
@@ -1141,33 +1124,26 @@ body {
   }
 }
 
-/* Видео для QR-сканера — фикс для мобильных */
 #qrVideo,
 #qrVideoModal {
-  object-fit: cover;        /* Заполняет контейнер без искажений */
-  background: #000;         /* Чёрный фон пока нет потока */
+  object-fit: cover;
+  background: #000;
   display: block;
-
 }
 
-/* В CSS */
-
-/* ===== QR Code — FIX для мобильных ===== */
 .qr-container {
-  display: flex;              /* ✅ Было: inline-flex → flex */
+  display: flex;
   flex-direction: column;
-  align-items: center;        /* ✅ Центрируем содержимое */
+  align-items: center;
   justify-content: center;
   gap: var(--space-md);
   padding: var(--space-lg);
   background: var(--bg-tertiary);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
-
-  /* ✅ Предотвращаем вылезание за границы */
   width: 100%;
   max-width: 320px;
-  margin: 0 auto;             /* ✅ Центрируем сам контейнер */
+  margin: 0 auto;
   box-sizing: border-box;
 }
 
@@ -1175,45 +1151,13 @@ body {
   border-radius: var(--radius-sm);
   padding: var(--space-sm);
   background: var(--text-primary);
-
-  /* ✅ Адаптивное масштабирование без переполнения */
   width: 256px;
   height: 256px;
-  max-width: 100%;            /* ✅ Не шире родителя */
+  max-width: 100%;
   height: auto;
   display: block;
   image-rendering: pixelated;
-
-  /* ✅ Убираем возможные отступы, создающие сдвиг */
   margin: 0 auto;
-}
-
-
-/* ✅ Мобильные: строгое центрирование */
-@media (max-width: 768px) {
-  .qr-container {
-    margin-right: 0 !important; /* Убираем отступ справа на мобильных */
-    padding: var(--space-md);
-    width: calc(100% - 32px); /* ✅ Отступы по краям экрана */
-    max-width: 280px;
-    margin: 0 auto;
-  }
-
-  .qr-container canvas {
-    width: 100%;              /* ✅ Растягиваем на всю ширину контейнера */
-    height: auto;
-    aspect-ratio: 1 / 1;      /* ✅ Сохраняем квадратную пропорцию */
-    max-width: 256px;         /* ✅ Но не больше 256px */
-  }
-}
-
-/* ✅ Очень маленькие экраны (< 360px) */
-@media (max-width: 360px) {
-  .qr-container {
-    width: calc(100% - 24px);
-    max-width: 240px;
-    padding: var(--space-sm);
-  }
 }
 
 .qr-actions {
@@ -1266,7 +1210,6 @@ body {
   display: flex;
   gap: var(--space-xs);
 }
-
 
 /* ===== Notifications ===== */
 .notification {
@@ -1332,34 +1275,32 @@ body {
   margin: 16px;
 }
 
+/* 🔧 Мобильная адаптация */
 @media (max-width: 768px) {
-   /* ✅ Кнопка меню — показываем только на мобильных */
   .menu-toggle {
-    display: flex !important;
+    display: flex !important; /* показываем только на мобильных */
     margin-right: var(--space-sm);
-    order: -1; /* Чтобы была слева в хедере */
+    order: -1;
   }
-    /* ✅ Сайдбар — фиксированный, скрыт по умолчанию */
+
   .sidebar {
     position: fixed;
     left: 0;
     top: 0;
     height: 100vh;
-    height: 100dvh; /* ✅ Фикс для мобильных браузеров */
+    height: 100dvh;
     width: 280px;
     transform: translateX(-100%);
     transition: transform var(--transition-normal);
     z-index: 100;
     box-shadow: var(--shadow-lg);
-    overflow: hidden;
+    overflow-y: auto; /* ✅ на случай длинного списка */
   }
 
-  /* ✅ Открытый сайдбар */
   .sidebar.open {
     transform: translateX(0);
   }
 
-  /* ✅ Оверлей — затемнение фона */
   .sidebar-overlay {
     display: none;
     position: fixed;
@@ -1376,7 +1317,6 @@ body {
     opacity: 1;
   }
 
-  /* ✅ Основной контент на всю ширину */
   .main-content {
     width: 100%;
   }
@@ -1388,32 +1328,94 @@ body {
   .message {
     max-width: 95%;
   }
-  /* ✅ Добавьте это: */
-  .modal {
-    max-width: calc(100vw - 32px) !important;  /* Отступы по краям */
-    margin: 16px;
-    max-height: calc(100dvh - 32px);           /* Учитываем адресную строку */
-    overflow-y: auto;                          /* Прокрутка если контент не влезает */
-  }
 
-  .modal-body {
-    max-height: 60vh;  /* Ограничение высоты тела модалки */
+  /* 🔧 Модальные окна с отступами */
+  .modal {
+    max-width: calc(100vw - 32px) !important;
+    margin: 16px;
+    max-height: calc(100dvh - 32px);
     overflow-y: auto;
   }
 
+  .modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
 
-  /* ✅ Фикс для auth-card на маленьких экранах */
   .auth-card {
     max-width: 100%;
     padding: var(--space-md);
     margin: 0 var(--space-sm);
   }
+
+  /* 🔧 Табы могут переноситься при маленькой ширине */
+  .tabs {
+    flex-wrap: wrap;
+    padding: var(--space-xs);
+    gap: 4px;
+  }
+  .tab {
+    flex: 1 1 auto;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  /* 🔧 Группы — одна колонка */
+  .groups-grid {
+    grid-template-columns: 1fr;
+    padding: var(--space-sm);
+  }
+
+  /* 🔧 Профиль: строки переносятся, лейбл на 100% */
+  .profile-row {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .profile-row label {
+    min-width: 100%;
+    margin-bottom: 4px;
+  }
+
+  /* 🔧 .value и .actions растягиваются */
+  .profile-row .value,
+  .profile-row .actions {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+
+  /* QR-контейнер прижимаем влево на мобильных */
+  .qr-container {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    text-align: left !important;
+    width: calc(100% - 32px);
+    max-width: 280px;
+  }
+  .qr-container canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    max-width: 256px;
+  }
+  .qr-actions {
+    justify-content: flex-start !important;
+  }
 }
 
+/* 🔧 Маленькие мобильные (< 360px) */
+@media (max-width: 360px) {
+  .qr-container {
+    width: calc(100% - 24px);
+    max-width: 240px;
+    padding: var(--space-sm);
+  }
+}
 
+/* Десктоп (>= 1024px) */
 @media (min-width: 1024px) {
   body {
-    font-size: 15px;
+    font-size: var(--font-size-base); /* уже задан через переменную */
   }
 
   .sidebar {
@@ -1483,10 +1485,6 @@ body {
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* Error state */
 .error {
   color: var(--status-error);
@@ -1495,7 +1493,7 @@ body {
   font-size: 14px;
 }
 
-
+/* ===== Message content wrapper (used in JS) ===== */
 .message-content-wrapper strong {
   font-size: 12px;
   color: var(--text-secondary);
@@ -1529,36 +1527,5 @@ body {
 
   .messages {
     overflow: visible;
-  }
-}
-
-/* === 📱 Mobile: QR влево === */
-@media (max-width: 768px) {
-  /* Профиль: лейбл на всю строку, контент под ним */
-  .profile-row {
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-  }
-
-  .profile-row label {
-    min-width: 100%;
-    margin-bottom: 4px;
-  }
-
-  .profile-row > div:not(label) {
-    width: 100%;
-    justify-content: flex-start !important;
-  }
-
-  /* QR-контейнер: прижимаем влево, отменяем центрирование */
-  .qr-container {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    text-align: left !important;
-  }
-
-  /* Кнопки под QR тоже влево */
-  .qr-actions {
-    justify-content: flex-start !important;
   }
 }
