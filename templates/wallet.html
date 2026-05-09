@@ -122,12 +122,16 @@
       </div>
 
       <!-- Mining Card -->
-      <div class="profile-card" id="miningCard">
-        <h3>⛏ Mining</h3>
-        <div id="miningStatus" class="text-muted" style="margin-bottom:8px;">Not mining</div>
-        <button id="startMiningBtn" class="btn" onclick="startMining()">Start Mining</button>
-        <button id="stopMiningBtn" class="btn hidden" onclick="stopMining()">Stop</button>
-      </div>
+      <!-- Mining Card -->
+<div class="profile-card" id="miningCard">
+  <h3>⛏ Mining</h3>
+  <div id="miningStatus" class="text-muted" style="margin-bottom:8px;">Not mining</div>
+  <button id="startMiningBtn" class="btn" onclick="startMining()">Start Mining</button>
+  <button id="stopMiningBtn" class="btn hidden" onclick="stopMining()">Stop</button>
+  <div id="miningProgress" class="hidden mining-progress-bar">
+    <div class="mining-progress-bar-fill"></div>
+  </div>
+</div>
 
       <!-- Staking Card -->
       <div class="profile-card">
@@ -229,6 +233,7 @@ async function sha256(text) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Обновлённый startMining с прогресс-баром
 async function startMining() {
   if (miningActive) return;
   miningActive = true;
@@ -236,6 +241,8 @@ async function startMining() {
   document.getElementById('startMiningBtn').classList.add('hidden');
   document.getElementById('stopMiningBtn').classList.remove('hidden');
   const statusEl = document.getElementById('miningStatus');
+  const progressBar = document.getElementById('miningProgress');
+  progressBar.classList.remove('hidden');
   statusEl.textContent = 'Mining... getting current proof';
 
   try {
@@ -264,6 +271,7 @@ async function startMining() {
 
       if (found) {
         statusEl.textContent = 'Block found! Submitting...';
+        progressBar.classList.add('hidden');
         const res = await fetch('/wallet/mine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -273,9 +281,11 @@ async function startMining() {
         if (res.ok) {
           const reward = (result.reward / BLOCKCOIN_SATS).toFixed(6);
           statusEl.textContent = `Block mined! +${reward} BlockCoin`;
+          window.NotificationManager?.showToast(`⛏ Block mined! +${reward} BlockCoin`, 'success');
           refreshBalance();
         } else {
           statusEl.textContent = 'Error: ' + (result.error || 'Unknown');
+          window.NotificationManager?.showToast('Mining failed', 'error');
         }
         stopMining();
         return;
@@ -287,6 +297,7 @@ async function startMining() {
   } catch (err) {
     console.error('Mining error:', err);
     statusEl.textContent = 'Mining error: ' + err.message;
+    window.NotificationManager?.showToast('Mining error', 'error');
     stopMining();
   }
 }
@@ -295,8 +306,11 @@ function stopMining() {
   miningActive = false;
   document.getElementById('startMiningBtn').classList.remove('hidden');
   document.getElementById('stopMiningBtn').classList.add('hidden');
+  document.getElementById('miningProgress').classList.add('hidden');
   document.getElementById('miningStatus').textContent = 'Stopped';
 }
+
+
 
 // ================== Стейкинг ==================
 async function stake() {
@@ -365,7 +379,7 @@ async function refreshBalance() {
   const data = await res.json();
   document.getElementById('balanceDisplay').textContent =
     (data.balance / BLOCKCOIN_SATS).toFixed(6) + ' BlockCoin';
-
+  window.NotificationManager?.showToast('Balance updated', 'success');
   if (data.staked) {
     document.getElementById('stakedInfo').style.display = 'flex';
     document.getElementById('stakedDisplay').textContent =
@@ -395,6 +409,7 @@ async function refreshNetworkStats() {
     document.getElementById('totalStaked').textContent =
       (data.total_staked / divisor).toFixed(6) + ' ' + data.coin_name;
     document.getElementById('difficulty').textContent = data.difficulty;
+    window.NotificationManager?.showToast('Network stats updated', 'success');
   } catch (err) {
     console.error('Failed to load network stats:', err);
   }
