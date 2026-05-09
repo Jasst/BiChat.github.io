@@ -13,14 +13,53 @@
     </header>
 
     <nav class="tabs" role="tablist">
-      <button class="tab" onclick="location.href='/chat'">Chat</button>
-      <button class="tab" onclick="location.href='/contacts'">Contacts</button>
-      <button class="tab active" role="tab" aria-selected="true" onclick="location.href='/groups'">Groups</button>
-      <button class="tab" onclick="location.href='/wallet'">Wallet</button>
-      <button class="tab" onclick="location.href='/profile'">
-  <span class="tab-icon-gear">⚙️</span>
-</button>
-    </nav>
+  <button class="tab" onclick="location.href='/chat'" aria-label="Chat" title="Chat">
+    <span class="tab-icon tab-icon-chat">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <circle class="bubble-dot" cx="8" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+        <circle class="bubble-dot" cx="12" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+        <circle class="bubble-dot" cx="16" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab" onclick="location.href='/contacts'" aria-label="Contacts" title="Contacts">
+    <span class="tab-icon tab-icon-contacts">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab active" onclick="location.href='/groups'" aria-label="Groups" title="Groups">
+    <span class="tab-icon tab-icon-groups">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="7" r="3"/>
+        <circle cx="16" cy="5" r="2.5"/>
+        <path d="M2 20c0-3.314 2.686-6 6-6" class="person-left"/>
+        <path d="M14 20c0-2.761 2.239-5 5-5" class="person-right"/>
+        <path d="M18 12h0.5a2.5 2.5 0 0 1 2.5 2.5V20"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab" onclick="location.href='/wallet'" aria-label="Wallet" title="Wallet">
+    <span class="tab-icon tab-icon-wallet">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 7v10M9 9.5c0-.828 1.12-1.5 3-1.5s3 .672 3 1.5-1.12 1.5-3 1.5"/>
+        <path d="M9 14.5c0 .828 1.12 1.5 3 1.5s3-.672 3-1.5"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab" onclick="location.href='/profile'" aria-label="Settings" title="Settings">
+    <span class="tab-icon tab-icon-settings tab-icon-gear">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+    </span>
+  </button>
+</nav>
   </aside>
 
   <!-- Main Content -->
@@ -178,6 +217,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
+
 <script>
 // ═══════════════════════════════════════════════════════════
 // State
@@ -660,159 +700,6 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>
-
-<!-- ═══════════════════════════════════════════════════════════
-     CSS FIXES FOR GROUPS PAGE
-═══════════════════════════════════════════════════════════ -->
-<style>
-/* Сетка групп — адаптивная */
-.groups-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-md, 16px);
-  padding: var(--space-md);
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Карточка группы */
-.groups-grid > .list-item.group-card {
-  background: var(--bg-card, var(--bg-tertiary, #1a1a2e));
-  border: 1px solid var(--border-color, #2a2a4a);
-  border-radius: var(--radius-md, 12px);
-  padding: var(--space-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm, 8px);
-  transition: box-shadow 0.2s, transform 0.2s;
-  min-width: 0; /* Важно для grid */
-}
-
-.groups-grid > .list-item.group-card:hover {
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  transform: translateY(-2px);
-}
-
-/* Хедер карточки: аватар + название */
-.group-card-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm, 12px);
-  min-width: 0;
-}
-
-.group-card-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent, #6366f1), var(--accent-dark, #4f46e5));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--text-inverse, #fff);
-  flex-shrink: 0;
-}
-
-.group-card-title {
-  flex: 1;
-  min-width: 0; /* Важно для truncate */
-}
-
-.group-card-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.group-card-id {
-  font-size: 11px;
-  color: var(--text-muted, #888);
-  font-family: var(--font-mono, monospace);
-}
-
-/* Бейдж создателя */
-.group-card-creator-badge {
-  align-self: flex-start;
-  font-size: 10px;
-  background: var(--accent-soft, rgba(99,102,241,0.15));
-  color: var(--accent, #6366f1);
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 600;
-}
-
-/* Мета-информация */
-.group-card-meta {
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding-top: var(--space-xs, 4px);
-  border-top: 1px solid var(--border-color);
-}
-
-/* Кнопки действий */
-.group-card-actions {
-  display: flex;
-  gap: var(--space-xs, 8px);
-  margin-top: auto; /* Прижимает кнопки к низу */
-  padding-top: var(--space-sm, 8px);
-  flex-wrap: wrap;
-}
-
-.group-card-actions .btn {
-  flex: 1;
-  justify-content: center;
-  padding: 6px 12px;
-  font-size: 12px;
-  min-width: 70px;
-}
-
-/* Пустое состояние */
-.empty-state {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: var(--space-xl);
-  color: var(--text-secondary);
-}
-
-.empty-state .icon {
-  font-size: 48px;
-  margin-bottom: var(--space-md);
-}
-
-/* Адаптив для мобильных */
-@media (max-width: 768px) {
-  .groups-grid {
-    grid-template-columns: 1fr;
-    padding: var(--space-sm);
-    gap: var(--space-sm);
-  }
-
-  .group-card-actions {
-    flex-wrap: wrap;
-  }
-
-  .group-card-actions .btn {
-    flex: none;
-    min-width: 80px;
-  }
-
-  .chat-header {
-    padding: var(--space-sm);
-  }
-}
-
-/* Утилиты */
-.truncate {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-</style>
 
 {% endblock %}
 {% endblock %}

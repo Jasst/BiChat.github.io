@@ -8,21 +8,69 @@
     <header class="sidebar-header">
       <div class="user-info">
         <span class="address font-mono" id="userAddress">{{ address[:10] }}…</span>
-        <button class="btn btn-ghost btn-icon"
-                onclick="confirmLogout(event)"
-                aria-label="Logout"
-                title="Log out">⏻</button>
+       <button class="btn btn-ghost btn-icon"
+        onclick="confirmLogout(event)"
+        aria-label="Logout"
+        title="Log out">
+  <span class="tab-icon tab-icon-logout">
+    <!-- Иконка выхода: дверь со стрелкой -->
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </span>
+</button>
       </div>
     </header>
     <nav class="tabs" role="tablist">
-      <button class="tab" onclick="location.href='/chat'">Chat</button>
-      <button class="tab" onclick="location.href='/contacts'">Contacts</button>
-      <button class="tab" onclick="location.href='/groups'">Groups</button>
-      <button class="tab" onclick="location.href='/wallet'">Wallet</button>
-      <button class="tab" onclick="location.href='/profile'">
-  <span class="tab-icon-gear">⚙️</span>
-</button>
-    </nav>
+  <button class="tab " onclick="location.href='/chat'" aria-label="Chat" title="Chat">
+    <span class="tab-icon tab-icon-chat">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <circle class="bubble-dot" cx="8" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+        <circle class="bubble-dot" cx="12" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+        <circle class="bubble-dot" cx="16" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab" onclick="location.href='/contacts'" aria-label="Contacts" title="Contacts">
+    <span class="tab-icon tab-icon-contacts">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab" onclick="location.href='/groups'" aria-label="Groups" title="Groups">
+    <span class="tab-icon tab-icon-groups">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="7" r="3"/>
+        <circle cx="16" cy="5" r="2.5"/>
+        <path d="M2 20c0-3.314 2.686-6 6-6" class="person-left"/>
+        <path d="M14 20c0-2.761 2.239-5 5-5" class="person-right"/>
+        <path d="M18 12h0.5a2.5 2.5 0 0 1 2.5 2.5V20"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab" onclick="location.href='/wallet'" aria-label="Wallet" title="Wallet">
+    <span class="tab-icon tab-icon-wallet">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 7v10M9 9.5c0-.828 1.12-1.5 3-1.5s3 .672 3 1.5-1.12 1.5-3 1.5"/>
+        <path d="M9 14.5c0 .828 1.12 1.5 3 1.5s3-.672 3-1.5"/>
+      </svg>
+    </span>
+  </button>
+  <button class="tab active" onclick="location.href='/profile'" aria-label="Settings" title="Settings">
+    <span class="tab-icon tab-icon-settings tab-icon-gear">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+    </span>
+  </button>
+</nav>
   </aside>
 
   <main class="main-content">
@@ -420,167 +468,6 @@
   });
 })();
 </script>
-
-<!-- ═══════════════════════════════════════════════════════════
-     CSS FIXES FOR PROFILE PAGE — ОБЯЗАТЕЛЬНО
-═══════════════════════════════════════════════════════════ -->
-<style>
-/* Контейнер секций профиля */
-.profile-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-lg, 24px);
-  padding: var(--space-md);
-  max-width: 640px;
-  margin: 0 auto;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Карточка профиля */
-.profile-card {
-  background: var(--bg-card, var(--bg-tertiary, #1a1a2e));
-  border: 1px solid var(--border-color, #2a2a4a);
-  border-radius: var(--radius-md, 12px);
-  padding: var(--space-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.profile-card h3 {
-  margin: 0 0 var(--space-sm);
-  padding-bottom: var(--space-xs);
-  border-bottom: 1px solid var(--border-color);
-  font-size: 16px;
-  color: var(--text-primary);
-}
-
-/* Строка: label + value */
-.profile-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding: var(--space-xs) 0;
-}
-
-.profile-row label {
-  font-size: 13px;
-  color: var(--text-secondary);
-  min-width: 130px;
-  flex-shrink: 0;
-  padding-top: 4px;
-}
-
-.profile-value-wrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.profile-value-wrap .input-monospace {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-}
-
-/* QR контейнер */
-.qr-container {
-  width: 100%;
-  max-width: 280px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-#qrcode {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 0 auto var(--space-sm);
-}
-
-#qrcode img,
-#qrcode canvas {
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 1 / 1;
-  border-radius: var(--radius-sm);
-  display: block;
-}
-
-.qr-actions {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
-}
-
-.qr-actions .btn {
-  font-size: 12px;
-  padding: 6px 12px;
-}
-
-/* Бейджи статуса */
-.status-badge {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 500;
-}
-.status-success {
-  color: var(--status-success, #22c55e);
-  background: rgba(34, 197, 94, 0.1);
-}
-.status-warning {
-  color: var(--status-warning, #f59e0b);
-  background: rgba(245, 158, 11, 0.1);
-}
-
-/* Адаптив */
-@media (max-width: 600px) {
-  .profile-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-xs);
-  }
-
-  .profile-row label {
-    min-width: auto;
-  }
-
-  .profile-value-wrap {
-    width: 100%;
-  }
-
-  .profile-section {
-    padding: var(--space-sm);
-  }
-
-  .qr-container {
-    max-width: 100%;
-  }
-}
-
-/* Утилиты */
-.hidden { display: none !important; }
-.error { color: var(--status-error, #ef4444); font-size: 12px; margin-top: 4px; }
-.btn-error {
-  background: var(--status-error, #ef4444);
-  color: var(--text-inverse, #fff);
-  border: none;
-  padding: 10px 20px;
-  border-radius: var(--radius-md, 8px);
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-.btn-error:hover { opacity: 0.9; }
-.btn-error:disabled { opacity: 0.5; cursor: not-allowed; }
-</style>
 
 {% endblock %}
 {% endblock %}
