@@ -10,7 +10,7 @@ import time
 from contextlib import contextmanager
 from typing import Optional
 
-from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, POOL_FEE_PERCENT
+from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, POOL_FEE_PERCENT, MESSAGE_REWARD_POOL_FEE_PERCENT
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ class Blockchain:
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS coin_transactions (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            tx_type   TEXT NOT NULL CHECK(tx_type IN ('reward','transfer','fee','genesis','block_reward','stake','unstake','airdrop')),
+            tx_type   TEXT NOT NULL CHECK(tx_type IN ('reward','transfer','fee','genesis','block_reward','stake','unstake','airdrop','message_reward')),
             sender    TEXT,
             recipient TEXT NOT NULL,
             amount    INTEGER NOT NULL CHECK(amount > 0),
@@ -233,9 +233,6 @@ class Blockchain:
         ]:
             cursor.execute(sql)
 
-
-
-
     # ------------------------------------------------------------------
     # Блокчейн — низкоуровневые методы
     # ------------------------------------------------------------------
@@ -255,6 +252,12 @@ class Blockchain:
             reward = BLOCK_REWARD
             pool_reward = (reward * POOL_FEE_PERCENT) // 100
             miner_reward = reward - pool_reward
+
+            # === ИЗМЕНЕНИЕ: разделяем пул-вознаграждение между лотереей и пулом сообщений ===
+            msg_pool_reward = (reward * MESSAGE_REWARD_POOL_FEE_PERCENT) // 100
+            lottery_pool_reward = pool_reward - msg_pool_reward
+
+            # Miner reward
             coin_txs.append({
                 'tx_type': 'block_reward',
                 'sender': None,
@@ -263,15 +266,27 @@ class Blockchain:
                 'timestamp': time.time(),
                 'note': 'Miner reward'
             })
+            # Lottery pool
             coin_txs.append({
                 'tx_type': 'block_reward',
                 'sender': None,
                 'recipient': 'lottery_pool',
-                'amount': pool_reward,
+                'amount': lottery_pool_reward,
                 'timestamp': time.time(),
-                'note': 'Pool fee'
+                'note': 'Lottery pool fee'
+            })
+            # Message reward pool (новый)
+            coin_txs.append({
+                'tx_type': 'block_reward',
+                'sender': None,
+                'recipient': 'message_reward_pool',
+                'amount': msg_pool_reward,
+                'timestamp': time.time(),
+                'note': 'Message reward pool fee'
             })
         else:
+            # Genesis block: нет майнера, все награды в лотерейный пул и пул сообщений?
+            # Для простоты оставим как было – всё в lottery_pool
             coin_txs.append({
                 'tx_type': 'block_reward',
                 'sender': None,

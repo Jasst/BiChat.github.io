@@ -6,9 +6,15 @@ import logging
 import random
 import threading
 import time
-from typing import Optional
+from collections import defaultdict
+from typing import Dict, List, Optional
 
-from config import COIN, COIN_NAME, LOTTERY_INTERVAL, MIN_STAKE_AMOUNT, STAKE_LOCK_BLOCKS, STAKE_WEIGHT_POWER, MAX_WEIGHT_PER_ADDRESS, LOTTERY_INITIAL_REWARD, LOTTERY_HALVING_INTERVAL
+from config import (
+    COIN, COIN_NAME, LOTTERY_INTERVAL, MIN_STAKE_AMOUNT, STAKE_LOCK_BLOCKS,
+    STAKE_WEIGHT_POWER, MAX_WEIGHT_PER_ADDRESS, LOTTERY_INITIAL_REWARD,
+    LOTTERY_HALVING_INTERVAL, MESSAGE_REWARD, MESSAGE_REWARD_LIMIT_PER_HOUR
+)
+
 logger = logging.getLogger(__name__)
 
 _db_path:   Optional[str] = None
@@ -18,12 +24,14 @@ _shutdown_event = threading.Event()
 
 lottery = None
 
-def init_wallet_service(db_path: str, blockchain) -> None:
+
+def init_wallet_service(db_path: str, blockchain):
     global _db_path, _blockchain, lottery
     _db_path    = db_path
     _blockchain = blockchain
     lottery = CoinLottery(interval_seconds=LOTTERY_INTERVAL, initial_reward=LOTTERY_INITIAL_REWARD)
     atexit.register(_shutdown_event.set)
+    return lottery      # <-- теперь возвращаем объект
 
 
 class CoinLottery:
@@ -34,6 +42,14 @@ class CoinLottery:
         self.halving_interval = LOTTERY_HALVING_INTERVAL
         self.lock            = threading.Lock()
         self.pool_address    = "lottery_pool"
+
+        # --- НОВОЕ: пул наград за сообщения ---
+        self.message_pool_address = "message_reward_pool"
+        self.message_reward = MESSAGE_REWARD
+        self.msg_limit_per_hour = MESSAGE_REWARD_LIMIT_PER_HOUR
+        self._msg_reward_times: Dict[str, List[float]] = defaultdict(list)
+        self._msg_lock = threading.Lock()
+
         self._start_timer()
 
     def stake(self, address: str, amount: int) -> int:
@@ -93,7 +109,6 @@ class CoinLottery:
                 return
             current_block = _blockchain._last_block_raw(None).get('index', 0) or 0
 
-            # Вычисляем веса с нелинейным преобразованием суммы
             weights = []
             for s in stakes:
                 locked_blocks = max(0, min(current_block - s['start_block'], STAKE_LOCK_BLOCKS))
@@ -129,7 +144,6 @@ class CoinLottery:
                 cursor.execute(
                     'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp) VALUES (?,?,?,?,?)',
                     ('reward', self.pool_address, winner_addr, self.reward, time.time()))
-                # SocketIO эмит удалён
             self.halving_count += 1
             if self.halving_count % self.halving_interval == 0:
                 self.reward = max(self.reward // 2, 1)
@@ -141,6 +155,58 @@ class CoinLottery:
                     break
                 self._draw()
         threading.Thread(target=run, daemon=True).start()
+
+    # ===================================================================
+    # НОВЫЙ МЕТОД: награда за сообщение из пула
+    # ===================================================================
+    def claim_message_reward(self, address: str) -> int:
+        """
+        Попытаться выплатить награду за сообщение.
+        Возвращает сумму в сатоши (0, если не удалось).
+        """
+        now = time.time()
+        with self._msg_lock:
+            # Очищаем устаревшие записи (старше 1 часа)
+            times = self._msg_reward_times[address]
+            one_hour_ago = now - 3600
+            self._msg_reward_times[address] = [t for t in times if t > one_hour_ago]
+            if len(self._msg_reward_times[address]) >= self.msg_limit_per_hour:
+                return 0   # лимит исчерпан
+
+        reward = self.message_reward
+        with self.lock:   # блокировка доступа к БД и кошелькам
+            from database import get_db_cursor
+            with get_db_cursor(_db_path) as cursor:
+                cursor.execute("BEGIN IMMEDIATE")
+                # Проверяем баланс пула сообщений
+                cursor.execute('SELECT balance FROM wallets WHERE address = ?',
+                               (self.message_pool_address,))
+                row = cursor.fetchone()
+                pool_balance = row[0] if row else 0
+                if pool_balance < reward:
+                    return 0
+
+                # Списание из пула
+                cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?',
+                               (reward, self.message_pool_address))
+                # Зачисление отправителю
+                cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) '
+                               'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
+                               (address, reward, reward))
+                # Запись транзакции
+                cursor.execute(
+                    'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
+                    'VALUES (?,?,?,?,?,?)',
+                    ('message_reward', self.message_pool_address, address, reward, now,
+                     f'Message reward ({reward/COIN:.6f} {COIN_NAME})')
+                )
+
+        # Фиксируем время награды после успешной выплаты
+        with self._msg_lock:
+            self._msg_reward_times[address].append(now)
+
+        logger.debug(f"Message reward {reward} sat paid to {address[:10]}...")
+        return reward
 
 
 # Фоновый PoW (не используется по умолчанию, клиент майнит самостоятельно)

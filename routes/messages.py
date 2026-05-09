@@ -108,7 +108,8 @@ def send_message():
                     target=mine_block_async,
                     args=(_blockchain.db_path, last_proof), daemon=True).start()
 
-            _lottery.add_ticket(sender)   # лотерея остаётся
+            # === ИЗМЕНЕНИЕ: вместо _lottery.add_ticket(sender) ===
+            _lottery.claim_message_reward(sender)
 
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
@@ -142,7 +143,10 @@ def send_message():
                 threading.Thread(
                     target=mine_block_async,
                     args=(_blockchain.db_path, last_proof), daemon=True).start()
-            _lottery.add_ticket(sender)
+
+            # === ИЗМЕНЕНИЕ: вместо _lottery.add_ticket(sender) ===
+            _lottery.claim_message_reward(sender)
+
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient,
                 'type': 'direct', 'encryption': 'hybrid-v2',
@@ -169,7 +173,9 @@ def send_message():
                 target=mine_block_async,
                 args=(_blockchain.db_path, last_proof), daemon=True).start()
         cache_public_key(sender, my_pubkey, source='outgoing', verified=True)
-        _lottery.add_ticket(sender)
+        # === ИЗМЕНЕНИЕ: вместо _lottery.add_ticket(sender) ===
+        _lottery.claim_message_reward(sender)
+
         return jsonify({
             'message': 'Key exchange sent.', 'tx_id': tx_id, 'recipient': recipient,
             'key_exchange': True, 'my_pubkey': my_pubkey,

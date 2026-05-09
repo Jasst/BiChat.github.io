@@ -52,8 +52,9 @@ svc_contacts.set_db_path(DATABASE_PATH)
 import services.messaging as svc_messaging
 svc_messaging.set_db_path(DATABASE_PATH)
 
-from services.wallet import init_wallet_service, lottery
-init_wallet_service(DATABASE_PATH, blockchain)          # без socketio
+# === ИЗМЕНЕНИЕ: получаем объект lottery, который возвращает init_wallet_service ===
+import services.wallet
+lottery = services.wallet.init_wallet_service(DATABASE_PATH, blockchain)
 
 # ── Blueprint'ы ──────────────────────────────────────────────────────────────
 from routes.auth import auth_bp
@@ -63,7 +64,8 @@ from routes.groups import groups_bp, init_groups
 from routes.wallet import wallet_bp, init_wallet_routes
 from routes.files import files_bp, init_files
 
-init_messages(blockchain, lottery)                      # без socketio
+# === ИЗМЕНЕНИЕ: передаём реальный объект lottery ===
+init_messages(blockchain, lottery)
 init_contacts(blockchain)
 init_groups(blockchain)
 init_wallet_routes(blockchain)

@@ -1356,24 +1356,42 @@ body {
 }
 
 /* Mining progress bar animation */
-.mining-progress-bar {
-  height: 4px;
-  background: var(--bg-hover);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-top: var(--space-xs);
+@keyframes blockFoundPulse {
+  0% { transform: scale(1); text-shadow: 0 0 10px #ffd700; }
+  50% { transform: scale(1.2); text-shadow: 0 0 30px #ffd700, 0 0 60px #ffa500; }
+  100% { transform: scale(1); text-shadow: 0 0 10px #ffd700; }
 }
+
+.block-found-animation {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #ffd700;
+  animation: blockFoundPulse 0.6s ease-in-out 3;
+}
+
+.mining-progress-bar {
+  /* уже есть, но убедитесь, что width задаётся в процентах */
+  background: var(--bg-tertiary, #222);
+  border-radius: 4px;
+  height: 8px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+
 .mining-progress-bar-fill {
   height: 100%;
-  background: var(--accent);
   width: 0%;
-  animation: miningPulse 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, #4caf50, #8bc34a);
+  transition: width 0.2s ease;
 }
 @keyframes miningPulse {
   0%   { width: 0%; opacity: 1; }
   50%  { width: 70%; opacity: 0.8; }
   100% { width: 100%; opacity: 0.4; }
 }
+
+
+
 
 /* ===== Print ===== */
 @media print {

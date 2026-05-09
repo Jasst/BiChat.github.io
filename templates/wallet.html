@@ -224,7 +224,7 @@ var BLOCKCOIN_SATS = 1_000_000;
 var qrGenerated = false;
 var miningActive = false;
 
-// ================== Майнинг (исправленный) ==================
+// ================== Майнинг (с визуализацией прогресса) ==================
 async function sha256(text) {
   const encoder = new TextEncoder();
   const data = encoder.encode(text);
@@ -233,7 +233,6 @@ async function sha256(text) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Обновлённый startMining с прогресс-баром
 async function startMining() {
   if (miningActive) return;
   miningActive = true;
@@ -242,6 +241,7 @@ async function startMining() {
   document.getElementById('stopMiningBtn').classList.remove('hidden');
   const statusEl = document.getElementById('miningStatus');
   const progressBar = document.getElementById('miningProgress');
+  const fillEl = progressBar.querySelector('.mining-progress-bar-fill');
   progressBar.classList.remove('hidden');
   statusEl.textContent = 'Mining... getting current proof';
 
@@ -250,13 +250,17 @@ async function startMining() {
     const chainData = await proofResp.json();
     const { last_proof, difficulty } = chainData;
     const target = '0'.repeat(difficulty);
-    const maxIter = 3000000;
+    const maxIter = 50000000;   // можно заменить на глобальную переменную
+    let startTime = Date.now();
 
     statusEl.textContent = `Mining... difficulty=${difficulty}, searching proof`;
 
     while (miningActive) {
       let found = false;
       let proof = 0;
+      // Сбрасываем прогресс-бар
+      fillEl.style.width = '0%';
+
       for (proof = 0; proof < maxIter; proof++) {
         if (!miningActive) break;
         const hash = await sha256('' + last_proof + proof);
@@ -264,14 +268,27 @@ async function startMining() {
           found = true;
           break;
         }
-        if (proof % 1000 === 0) {
+        // Обновляем прогресс каждые 5000 итераций и даём браузеру "дышать"
+        if (proof % 5000 === 0) {
+          // Процент выполнения
+          const pct = Math.min(100, Math.floor((proof / maxIter) * 100));
+          fillEl.style.width = pct + '%';
+          // Обновляем текст статуса не слишком часто
+          if (proof % 50000 === 0) {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            statusEl.textContent = `Hashing... ${(proof/1000).toFixed(0)}k / ${(maxIter/1000).toFixed(0)}k | ${elapsed}s elapsed`;
+          }
           await new Promise(r => setTimeout(r, 0));
         }
       }
 
       if (found) {
-        statusEl.textContent = 'Block found! Submitting...';
+        // Анимация "Блок найден!"
         progressBar.classList.add('hidden');
+        statusEl.innerHTML = '<span class="block-found">🎉 BLOCK FOUND!</span>';
+        statusEl.classList.add('block-found-animation');
+        setTimeout(() => statusEl.classList.remove('block-found-animation'), 3000);
+
         const res = await fetch('/wallet/mine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -282,7 +299,10 @@ async function startMining() {
           const reward = (result.reward / BLOCKCOIN_SATS).toFixed(6);
           statusEl.textContent = `Block mined! +${reward} BlockCoin`;
           window.NotificationManager?.showToast(`⛏ Block mined! +${reward} BlockCoin`, 'success');
+          // Автообновление
           refreshBalance();
+          refreshNetworkStats();
+          loadTx();               // историю транзакций тоже обновим
         } else {
           statusEl.textContent = 'Error: ' + (result.error || 'Unknown');
           window.NotificationManager?.showToast('Mining failed', 'error');
@@ -290,9 +310,16 @@ async function startMining() {
         stopMining();
         return;
       } else {
-        statusEl.textContent = 'Still mining... increasing search space';
+        // Не нашли за maxIter – пробуем снова
+        statusEl.textContent = 'No block found this round, restarting search...';
+        // Небольшая пауза и продолжаем
+        await new Promise(r => setTimeout(r, 500));
+        // Снова получим last_proof, т.к. за время поиска мог появиться новый блок
+        const fresh = await fetch('/wallet/last-proof');
+        const freshData = await fresh.json();
+        last_proof = freshData.last_proof;
+        startTime = Date.now();
       }
-      await new Promise(r => setTimeout(r, 50));
     }
   } catch (err) {
     console.error('Mining error:', err);
