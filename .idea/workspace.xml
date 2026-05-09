@@ -6,12 +6,8 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/wallet.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/static/style.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/wallet.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/wallet.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/wallet.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />

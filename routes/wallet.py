@@ -174,7 +174,7 @@ def wallet_global_stats():
     """Возвращает глобальную статистику сети: общую эмиссию, баланс лотерейного пула,
     текущую награду лотереи, награду за блок, количество блоков, сумму стейков."""
     from database import get_db_cursor
-    from config import BLOCK_REWARD, COIN, CONFIG
+    from config import BLOCK_REWARD, COIN, CONFIG, MAX_SUPPLY
     from services.wallet import lottery
 
     with get_db_cursor(_blockchain.db_path) as cursor:
@@ -197,6 +197,12 @@ def wallet_global_stats():
 
     # Текущая награда лотереи (если сервис инициализирован)
     lottery_reward = lottery.reward if lottery else 0
+    # Вычисляем оставшиеся монеты, если задан MAX_SUPPLY
+    if MAX_SUPPLY is not None:
+        remaining = max(0, MAX_SUPPLY - total_supply_raw)
+    else:
+        remaining = None  # без ограничений
+
 
     return jsonify({
         'total_supply': total_supply_raw,
@@ -207,5 +213,7 @@ def wallet_global_stats():
         'total_staked': total_staked_raw,
         'difficulty': CONFIG['POW_DIFFICULTY'],
         'coin_name': COIN_NAME,
-        'coin_divisor': COIN
+        'coin_divisor': COIN,
+        'max_supply': MAX_SUPPLY,
+        'remaining_supply': remaining,
     })

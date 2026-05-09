@@ -144,3 +144,6 @@ MESSAGE_REWARD_LIMIT_PER_HOUR = 10
 # =============================================================================
 MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
     # Для Flask — максимальный размер тела запроса.
+
+# Максимальная эмиссия (None = без ограничений)
+MAX_SUPPLY = 21_000_000 * COIN  # 200 000 000 BlockCoin

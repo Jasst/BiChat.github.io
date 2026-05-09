@@ -88,40 +88,50 @@
       </div>
 
       <!-- Network Statistics Card -->
-      <div class="profile-card">
-        <h3>🌐 Network Statistics</h3>
-        <div class="profile-row">
-          <label>Total Supply</label>
-          <span class="value" id="totalSupply">0.000000 BlockCoin</span>
-          <button class="btn btn-icon" onclick="refreshNetworkStats()">🔄</button>
-        </div>
-        <div class="profile-row">
-          <label>Lottery Pool Balance</label>
-          <span class="value" id="lotteryPoolBalance">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Next Lottery Reward</label>
-          <span class="value" id="lotteryReward">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Block Reward</label>
-          <span class="value" id="blockReward">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Total Blocks</label>
-          <span class="value" id="totalBlocks">0</span>
-        </div>
-        <div class="profile-row">
-          <label>Total Staked</label>
-          <span class="value" id="totalStaked">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Current Difficulty</label>
-          <span class="value" id="difficulty">0</span>
-        </div>
-      </div>
+<div class="profile-card">
+  <h3>🌐 Network Statistics</h3>
 
-      <!-- Mining Card -->
+  <div class="profile-row">
+    <label>Total Supply</label>
+    <span class="value" id="totalSupply">0.000000 BlockCoin</span>
+    <button class="btn btn-icon" onclick="refreshNetworkStats()">🔄</button>
+  </div>
+
+  <div class="profile-row" id="remainingRow">
+    <label>Remaining to Mine</label>
+    <span class="value" id="remainingSupply">∞</span>
+  </div>
+
+  <div class="profile-row">
+    <label>Lottery Pool Balance</label>
+    <span class="value" id="lotteryPoolBalance">0.000000 BlockCoin</span>
+  </div>
+
+  <div class="profile-row">
+    <label>Next Lottery Reward</label>
+    <span class="value" id="lotteryReward">0.000000 BlockCoin</span>
+  </div>
+
+  <div class="profile-row">
+    <label>Block Reward</label>
+    <span class="value" id="blockReward">0.000000 BlockCoin</span>
+  </div>
+
+  <div class="profile-row">
+    <label>Total Blocks</label>
+    <span class="value" id="totalBlocks">0</span>
+  </div>
+
+  <div class="profile-row">
+    <label>Total Staked</label>
+    <span class="value" id="totalStaked">0.000000 BlockCoin</span>
+  </div>
+
+  <div class="profile-row">
+    <label>Current Difficulty</label>
+    <span class="value" id="difficulty">0</span>
+  </div>
+</div>
       <!-- Mining Card -->
 <div class="profile-card" id="miningCard">
   <h3>⛏ Mining</h3>
@@ -423,7 +433,15 @@ async function refreshNetworkStats() {
     if (!res.ok) return;
     const data = await res.json();
     const divisor = data.coin_divisor;
-
+    // Обновляем оставшееся количество
+    if (data.remaining_supply !== null) {
+      document.getElementById('remainingSupply').textContent =
+        (data.remaining_supply / divisor).toFixed(6) + ' ' + data.coin_name;
+      document.getElementById('remainingRow').style.display = '';
+    } else {
+      document.getElementById('remainingSupply').textContent = '∞';
+      document.getElementById('remainingRow').style.display = 'none'; // или показываем "Unlimited"
+    }
     document.getElementById('totalSupply').textContent =
       (data.total_supply / divisor).toFixed(6) + ' ' + data.coin_name;
     document.getElementById('lotteryPoolBalance').textContent =
