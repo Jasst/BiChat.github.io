@@ -115,7 +115,6 @@
 <script>window.process = window.process || { env: {} };</script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
-<script src="{{ url_for('static', filename='js/mobile-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='js/notification-manager.js') }}"></script>
 
 <script>
@@ -142,7 +141,7 @@ const State = {
   topObserver: null   // для подгрузки старых сообщений
 };
 
-
+let isSending = false;   // флаг блокировки повторной отправки
 
 // =============================================================================
 // === Smart Scroll ===
@@ -294,6 +293,7 @@ async function loadConversations() {
 }
 
 function selectConversation(address, name, isGroup) {
+  if (isSending) isSending = false;
   // Очищаем предыдущие подписки
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   State.currentChatUnsub = null;
@@ -386,7 +386,7 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       return;
     }
 
-    if (!isNewMessage || State.lastKnownMessageId === 0) container.innerHTML = '';
+    if (!isNewMessage) container.innerHTML = '';
 
     let maxTimestamp = 0;
     const fragment = document.createDocumentFragment();
@@ -461,45 +461,101 @@ function appendMessageToUI(msg) {
 // =============================================================================
 async function sendMessage() {
   const contentEl = document.getElementById('messageContent');
-  if (!contentEl) return;
-  const content = contentEl.value.trim();
+  const sendBtn = document.getElementById('sendButton');
+  const attachBtn = document.getElementById('attachImageButton');
+
+  if (isSending) {
+    window.NotificationManager?.showToast('Sending in progress, please wait...', 'warning');
+    return;
+  }
+
+  const content = contentEl ? contentEl.value.trim() : '';
   const recipient = State.currentChatAddress;
   if (!recipient || (!content && !State.pendingImageData)) {
     window.NotificationManager?.showToast('Enter a message or attach an image', 'warning');
     return;
   }
+
+  // Блокируем UI
+  isSending = true;
+  if (sendBtn) sendBtn.disabled = true;
+  if (attachBtn) attachBtn.disabled = true;
+  if (contentEl) contentEl.disabled = true;
+
   const isGroup = State.currentChatIsGroup;
   const messageType = isGroup ? 'group' : 'direct';
   const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
 
-  const payload = {
+  // Оптимистичное добавление сообщения в UI
+  const tempId = 'temp-' + Date.now();
+  const tempMsg = {
+    id: tempId,
+    sender: State.userAddress,
     recipient: recipient,
-    content: content || '',
-    message_type: messageType
+    content: content,
+    image: State.pendingImageData,
+    timestamp: Date.now() / 1000,
+    is_mine: true,
+    sender_name: 'You',
+    encryption_type: 'pending'
   };
-  if (groupId) payload.group_id = groupId;
-  if (State.pendingImageData) payload.image = State.pendingImageData;
+
+  const container = document.getElementById('messagesContainer');
+  if (container) {
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+    const wasAtBottom = isUserAtBottom(container);
+    container.appendChild(createMessageElement(tempMsg));
+    if (wasAtBottom) smartScrollToBottom(container, false);
+  }
+
+  // Очищаем поле и картинку (текст не возвращаем даже при ошибке)
+  if (contentEl) {
+    contentEl.value = '';
+    contentEl.style.height = 'auto';
+  }
+  const attachedImage = State.pendingImageData;
+  State.pendingImageData = null;
 
   try {
+    const payload = {
+      recipient: recipient,
+      content: content || '',
+      message_type: messageType
+    };
+    if (groupId) payload.group_id = groupId;
+    if (attachedImage) payload.image = attachedImage;
+
     const res = await fetch('/send_message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     const data = await res.json();
+
     if (res.ok) {
-      contentEl.value = '';
-      contentEl.style.height = 'auto';
-      State.pendingImageData = null;
-      loadMessagesForConversation(recipient, true);   // ✅ ВОТ ЭТА СТРОКА – вернули
-      // Не вызываем loadMessagesForConversation здесь – WebSocket принесёт обновление мгновенно
-      loadConversations(); // обновление сайдбара
+      // Удаляем временное сообщение (реальное подтянется через polling)
+      const tempElem = document.getElementById('msg-' + tempId);
+      if (tempElem) tempElem.remove();
+      await loadMessagesForConversation(recipient, true);
+      loadConversations();
     } else {
+      // Ошибка: удаляем временное сообщение, но текст НЕ возвращаем
+      const tempElem = document.getElementById('msg-' + tempId);
+      if (tempElem) tempElem.remove();
       window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
     }
   } catch (error) {
     console.error('Send error:', error);
-    window.NotificationManager?.showToast('Network error', 'error');
+    const tempElem = document.getElementById('msg-' + tempId);
+    if (tempElem) tempElem.remove();
+    window.NotificationManager?.showToast('Network error, message not sent', 'error');
+  } finally {
+    isSending = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (attachBtn) attachBtn.disabled = false;
+    if (contentEl) contentEl.disabled = false;
+    contentEl?.focus();
   }
 }
 

@@ -12,6 +12,8 @@ from werkzeug.utils import secure_filename
 
 from config import UPLOAD_FOLDER, CONFIG
 from schemas import DeleteMessageSchema
+from typing import Optional
+
 
 logger   = logging.getLogger(__name__)
 files_bp = Blueprint('files', __name__)
@@ -37,7 +39,7 @@ IMAGE_MAGIC_BYTES = {
 }
 
 
-def validate_image_file(file_content: bytes) -> str | None:
+def validate_image_file(file_content: bytes) -> Optional[str]:
     for magic, mime_type in IMAGE_MAGIC_BYTES.items():
         if file_content.startswith(magic):
             return mime_type

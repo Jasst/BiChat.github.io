@@ -31,23 +31,14 @@ messages_bp = Blueprint('messages', __name__)
 # Ссылки, инициализируемые из app.py
 _blockchain = None
 _lottery    = None
-_socketio   = None
 _p2p_buffer: Dict[str, List[Dict]] = {}
 _p2p_buffer_lock = threading.Lock()
 
 
-def init_messages(blockchain, lottery, socketio) -> None:
-    global _blockchain, _lottery, _socketio
+def init_messages(blockchain, lottery) -> None:
+    global _blockchain, _lottery
     _blockchain = blockchain
     _lottery    = lottery
-    _socketio   = socketio
-
-
-def _notify_new_message(recipient: str, tx_id: int, sender: str = None) -> None:
-    _socketio.emit('new_message',
-                   {'chat_id': sender if sender else recipient,
-                    'tx_id': tx_id, 'sender': sender},
-                   room=recipient)
 
 
 # =============================================================================
@@ -117,11 +108,7 @@ def send_message():
                     target=mine_block_async,
                     args=(_blockchain.db_path, last_proof), daemon=True).start()
 
-            for member in group['members']:
-                _socketio.emit('new_message',
-                               {'chat_id': f"group:{group_id}", 'tx_id': tx_id},
-                               room=member)
-                _lottery.add_ticket(sender)
+            _lottery.add_ticket(sender)   # лотерея остаётся
 
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id,
@@ -155,7 +142,6 @@ def send_message():
                 threading.Thread(
                     target=mine_block_async,
                     args=(_blockchain.db_path, last_proof), daemon=True).start()
-            _notify_new_message(recipient, tx_id, sender=sender)
             _lottery.add_ticket(sender)
             return jsonify({
                 'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient,
@@ -183,7 +169,6 @@ def send_message():
                 target=mine_block_async,
                 args=(_blockchain.db_path, last_proof), daemon=True).start()
         cache_public_key(sender, my_pubkey, source='outgoing', verified=True)
-        _notify_new_message(recipient, tx_id, sender=sender)
         _lottery.add_ticket(sender)
         return jsonify({
             'message': 'Key exchange sent.', 'tx_id': tx_id, 'recipient': recipient,

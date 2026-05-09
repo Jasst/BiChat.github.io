@@ -8,22 +8,20 @@ import threading
 import time
 from typing import Optional
 
-from config import COIN, COIN_NAME, LOTTERY_INTERVAL, MIN_STAKE_AMOUNT, STAKE_LOCK_BLOCKS, STAKE_WEIGHT_POWER, MAX_WEIGHT_PER_ADDRESS ,LOTTERY_INTERVAL, LOTTERY_INITIAL_REWARD, LOTTERY_HALVING_INTERVAL
+from config import COIN, COIN_NAME, LOTTERY_INTERVAL, MIN_STAKE_AMOUNT, STAKE_LOCK_BLOCKS, STAKE_WEIGHT_POWER, MAX_WEIGHT_PER_ADDRESS, LOTTERY_INITIAL_REWARD, LOTTERY_HALVING_INTERVAL
 logger = logging.getLogger(__name__)
 
 _db_path:   Optional[str] = None
 _blockchain = None
-_socketio   = None
 _pow_lock   = threading.Lock()
 _shutdown_event = threading.Event()
 
 lottery = None
 
-def init_wallet_service(db_path: str, blockchain, socketio) -> None:
-    global _db_path, _blockchain, _socketio, lottery
+def init_wallet_service(db_path: str, blockchain) -> None:
+    global _db_path, _blockchain, lottery
     _db_path    = db_path
     _blockchain = blockchain
-    _socketio   = socketio
     lottery = CoinLottery(interval_seconds=LOTTERY_INTERVAL, initial_reward=LOTTERY_INITIAL_REWARD)
     atexit.register(_shutdown_event.set)
 
@@ -85,7 +83,6 @@ class CoinLottery:
     def get_active_stakes(self):
         from database import get_db_cursor
         with get_db_cursor(_db_path) as cursor:
-            # ВНИМАНИЕ: добавлен столбец start_block
             cursor.execute('SELECT address, amount, start_time, start_block, unlock_block FROM stakes WHERE active=1')
             return [dict(row) for row in cursor.fetchall()]
 
@@ -132,10 +129,7 @@ class CoinLottery:
                 cursor.execute(
                     'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp) VALUES (?,?,?,?,?)',
                     ('reward', self.pool_address, winner_addr, self.reward, time.time()))
-                if _socketio:
-                    _socketio.emit('wallet_update',
-                                   {'address': winner_addr, 'amount': self.reward, 'type': 'reward', 'coin_name': COIN_NAME},
-                                   room=winner_addr)
+                # SocketIO эмит удалён
             self.halving_count += 1
             if self.halving_count % self.halving_interval == 0:
                 self.reward = max(self.reward // 2, 1)

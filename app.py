@@ -7,11 +7,9 @@ from datetime import timedelta
 from flask import jsonify, request, session
 from flask.sessions import SecureCookieSessionInterface
 from flask_compress import Compress
-from flask_socketio import SocketIO, emit, join_room
 
 from config import (CONFIG, DATABASE_PATH, MAX_CONTENT_LENGTH,
-                    SECRET_KEY, STATIC_FOLDER, TEMPLATE_FOLDER, UPLOAD_FOLDER,
-                    LOTTERY_INTERVAL, COIN, POOL_FEE_PERCENT)
+                    SECRET_KEY, STATIC_FOLDER, TEMPLATE_FOLDER, UPLOAD_FOLDER)
 from database import Blockchain, init_sqlite_optimizations, warmup_database
 from logging_setup import setup_logging
 
@@ -37,7 +35,6 @@ app.config.update(
 app.session_interface = SecureCookieSessionInterface()
 
 Compress(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # ── База данных и блокчейн ───────────────────────────────────────────────────
 init_sqlite_optimizations(DATABASE_PATH)
@@ -56,7 +53,7 @@ import services.messaging as svc_messaging
 svc_messaging.set_db_path(DATABASE_PATH)
 
 from services.wallet import init_wallet_service, lottery
-init_wallet_service(DATABASE_PATH, blockchain, socketio)
+init_wallet_service(DATABASE_PATH, blockchain)          # без socketio
 
 # ── Blueprint'ы ──────────────────────────────────────────────────────────────
 from routes.auth import auth_bp
@@ -66,7 +63,7 @@ from routes.groups import groups_bp, init_groups
 from routes.wallet import wallet_bp, init_wallet_routes
 from routes.files import files_bp, init_files
 
-init_messages(blockchain, lottery, socketio)
+init_messages(blockchain, lottery)                      # без socketio
 init_contacts(blockchain)
 init_groups(blockchain)
 init_wallet_routes(blockchain)
@@ -78,14 +75,6 @@ app.register_blueprint(contacts_bp)
 app.register_blueprint(groups_bp)
 app.register_blueprint(wallet_bp)
 app.register_blueprint(files_bp)
-
-# ── WebSocket ────────────────────────────────────────────────────────────────
-@socketio.on('connect')
-def handle_connect():
-    if 'address' not in session:
-        return False
-    join_room(session['address'])
-    return True
 
 # ── Before-request: глобальная авторизация ───────────────────────────────────
 _PUBLIC_ENDPOINTS = frozenset([
@@ -100,11 +89,10 @@ def require_auth():
         if 'address' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
 
-# ── Запуск ───────────────────────────────────────────────────────────────────
+# ── Запуск (для локального тестирования) ───────────────────────────────────
 if __name__ == '__main__':
     is_production = os.getenv('FLASK_ENV') == 'production'
-    socketio.run(
-        app,
+    app.run(
         host='127.0.0.1' if is_production else '0.0.0.0',
         port=5000,
         debug=not is_production,
