@@ -1393,11 +1393,19 @@ body {
     max-width: 280px;
   }
   .qr-container canvas {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 1 / 1;
-    max-width: 256px;
-  }
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm);
+  background: var(--text-primary);
+
+  /* ✅ Адаптивное масштабирование без переполнения */
+  width: 256px;
+  height: 256px;          /* ← 1-е указание (строка примерно 1040) */
+  max-width: 100%;
+  height: auto;           /* ← 2-е указание (строка примерно 1042) – ПЕРЕОПРЕДЕЛЯЕТ */
+  display: block;
+  image-rendering: pixelated;
+  margin: 0 auto;
+}
   .qr-actions {
     justify-content: flex-start !important;
   }
