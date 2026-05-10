@@ -80,7 +80,7 @@ app.register_blueprint(files_bp)
 
 # ── Before-request: глобальная авторизация ───────────────────────────────────
 _PUBLIC_ENDPOINTS = frozenset([
-    'auth.index', 'auth.login', 'auth.create_wallet', 'static', 'files.serve_upload',
+    'auth.index', 'auth.login', 'auth.create_wallet', 'static', 'files.serve_upload','auth.logout',
 ])
 
 @app.before_request
@@ -90,6 +90,16 @@ def require_auth():
     if request.endpoint and request.endpoint not in _PUBLIC_ENDPOINTS:
         if 'address' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
+
+@app.after_request
+def add_cache_headers(response):
+    # Запрещаем кэширование для страниц с nonce, чтобы после логаута браузер
+    # всегда загружал свежую копию, а не закэшированную с устаревшим nonce.
+    if request.path in ['/', '/login', '/create_wallet']:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
 
 # ── Запуск (для локального тестирования) ───────────────────────────────────
 if __name__ == '__main__':

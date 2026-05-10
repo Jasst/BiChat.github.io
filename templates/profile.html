@@ -350,40 +350,32 @@
   }
 
   async function handleMnemonicConfirm() {
-    const input = document.getElementById('confirmInput');
-    const btn = document.getElementById('confirmSubmitBtn');
-    const error = document.getElementById('confirmError');
-    const value = input?.value?.trim()?.toUpperCase();
-    if (!value || !['I CONFIRM', 'CONFIRM', 'YES'].includes(value)) {
-      if (error) { error.textContent = 'Type "I CONFIRM" exactly'; error.classList.remove('hidden'); }
-      input?.focus();
-      return;
-    }
-    if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
-    if (error) { error.textContent = 'Connecting…'; error.classList.remove('hidden'); }
-    try {
-      const res = await fetch('/api/export_mnemonic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmation: value })
-      });
-      const result = await res.json();
-      if (res.ok) {
-        secureMnemonic = result.mnemonic;
-        updateMnemonicUI(true);
-        window.MnemonicManager?.showInModal?.(secureMnemonic, 'mnemonicModal', 'modalMnemonic');
-        window.ModalManager?.close?.('confirmModal');
-      } else {
-        if (error) error.textContent = result.error || 'Confirmation failed';
-        if (btn) { btn.disabled = false; btn.textContent = 'Confirm'; }
-        input?.select();
-      }
-    } catch (e) {
-      console.error('Export error:', e);
-      if (error) error.textContent = 'Network error';
-      if (btn) { btn.disabled = false; btn.textContent = 'Confirm'; }
-    }
+  const input = document.getElementById('confirmInput');
+  const btn = document.getElementById('confirmSubmitBtn');
+  const error = document.getElementById('confirmError');
+  const value = input?.value?.trim()?.toUpperCase();
+
+  if (!value || !['I CONFIRM', 'CONFIRM', 'YES'].includes(value)) {
+    if (error) { error.textContent = 'Type "I CONFIRM" exactly'; error.classList.remove('hidden'); }
+    input?.focus();
+    return;
   }
+
+  // Получаем мнемонику из sessionStorage (не с сервера!)
+  const mnemonic = sessionStorage.getItem('mnemonic');
+  if (!mnemonic || mnemonic.split(/\s+/).length < 24) {
+    if (error) error.textContent = 'Mnemonic not available. Please login again.';
+    window.NotificationManager?.showToast('Session expired, please re-login', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Confirm'; }
+    return;
+  }
+
+  // Устанавливаем в локальную переменную и показываем
+  secureMnemonic = mnemonic;
+  updateMnemonicUI(true);
+  window.MnemonicManager?.showInModal?.(secureMnemonic, 'mnemonicModal', 'modalMnemonic');
+  window.ModalManager?.close?.('confirmModal');
+}
 
   // 🔐 Logout
   window.confirmLogout = function(event) {
@@ -399,8 +391,9 @@
     document.getElementById('logoutModal')?.classList.add('hidden');
   };
   window.executeLogout = function() {
-    window.closeLogoutModal();
-    window.location.href = '/logout';
+  window.closeLogoutModal();
+  sessionStorage.removeItem('mnemonic');
+  window.location.href = '/logout';
   };
   function validateLogoutInput() {
     const input = document.getElementById('logoutConfirmInput');

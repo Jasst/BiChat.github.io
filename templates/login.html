@@ -6,13 +6,12 @@
 <div class="auth-container">
   <div class="auth-card animate-fade">
     <h1>Login</h1>
-    <p class="subtitle">Enter your 24-word mnemonic phrase to access your account</p>
+    <p class="subtitle">Enter your 24‑word mnemonic phrase</p>
 
     <form id="loginForm" class="auth-form">
-      <!-- ✅ name="mnemonic" добавлен для корректной работы FormData -->
+      <input type="hidden" id="nonce" value="{{ nonce }}">
       <textarea
         id="mnemonic"
-        name="mnemonic"
         placeholder="Enter your mnemonic phrase"
         rows="5"
         autocomplete="off"
@@ -25,84 +24,127 @@
       ></textarea>
 
       <div id="errorMsg" class="hidden error"></div>
-
       <button type="submit" class="btn btn-primary" id="loginBtn" style="width: 100%;">Login</button>
     </form>
 
     <div class="auth-footer">
-      <a href="/">← Back to Home</a>
+      <a href="#" id="backToHomeLink">← Back to Home</a>
     </div>
   </div>
 </div>
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  const form = document.getElementById('loginForm');
-  const btn = document.getElementById('loginBtn');
-  const error = document.getElementById('errorMsg');
+// Защита от повторного выполнения скрипта
+if (window._loginScriptLoaded) {
+  console.warn('Login script already executed');
+} else {
+  window._loginScriptLoaded = true;
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('loginForm');
+    const btn = document.getElementById('loginBtn');
+    const error = document.getElementById('errorMsg');
+    const nonceEl = document.getElementById('nonce');
+    const nonce = nonceEl ? nonceEl.value : '';
 
-    btn.disabled = true;
-    const originalText = btn.textContent;
-    btn.textContent = 'Logging in...';
-    error.classList.add('hidden');
+    if (!nonce) {
+      error.textContent = 'No challenge (nonce) received. Refresh the page.';
+      error.classList.remove('hidden');
+      return;
+    }
 
-    try {
-      const mnemonic = document.getElementById('mnemonic').value.trim();
+    let isSubmitting = false;
 
-      // 🔍 Клиентская валидация
-      if (!mnemonic) {
-        throw new Error('Mnemonic phrase is required');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (isSubmitting) {
+        console.warn('Already submitting, ignoring duplicate submit');
+        return;
       }
-      const words = mnemonic.split(/\s+/).filter(w => w.length > 0);
-      if (words.length < 24) {
-        throw new Error(`Expected 24 words, got ${words.length}`);
-      }
+      isSubmitting = true;
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Signing in…';
+      error.classList.add('hidden');
 
-      const res = await fetch('/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mnemonic_phrase: mnemonic })
-      });
+      try {
+        const mnemonic = document.getElementById('mnemonic').value.trim();
+        const words = mnemonic.split(/\s+/).filter(w => w.length > 0);
+        if (words.length < 24) throw new Error('Mnemonic must be 24 words');
 
-      const data = await res.json();
-
-      if (res.ok) {
-        window.location.href = '/chat';
-      } else {
-        // 🔧 Корректное извлечение ошибки из объекта Marshmallow
-        let msg = 'Login failed';
-        if (typeof data.error === 'string') {
-          msg = data.error;
-        } else if (typeof data.error === 'object' && data.error !== null) {
-          for (const key in data.error) {
-            const val = data.error[key];
-            if (Array.isArray(val) && val.length > 0) {
-              msg = val[0];
-              break;
-            }
-            if (typeof val === 'string') {
-              msg = val;
-              break;
-            }
-          }
+        if (typeof window.DarkCrypto === 'undefined') {
+          throw new Error('Crypto module not loaded. Check crypto-client.js.');
         }
 
-        error.textContent = 'Error: ' + msg;
+        const keys = await DarkCrypto.deriveKeyPair(mnemonic);
+        const { signPrivateKey, compressedPubKey, address } = keys;
+
+        const rawSignature = await DarkCrypto.signData(signPrivateKey, nonce);
+        const signatureHex = Array.from(new Uint8Array(rawSignature))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+
+        const pubkeyB64 = DarkCrypto._toBase64(compressedPubKey);
+
+        console.log('=== LOGIN DEBUG ===');
+        console.log('nonce:', nonce);
+        console.log('address:', address);
+        console.log('pubkey (base64):', pubkeyB64);
+        console.log('raw signature (hex):', signatureHex);
+        console.log('===================');
+
+        const res = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, public_key: pubkeyB64, signature: signatureHex })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          sessionStorage.setItem('mnemonic', mnemonic);
+          window.location.href = '/chat';
+        } else {
+          let msg = 'Login failed';
+          if (typeof data.error === 'string') msg = data.error;
+          else if (typeof data.error === 'object') {
+            const values = Object.values(data.error).flat();
+            msg = values[0] || 'Invalid credentials';
+          }
+          if (msg.includes('No challenge') || msg.includes('Refresh')) {
+            msg += ' The page may have been submitted twice. Please refresh.';
+          }
+          error.textContent = 'Error: ' + msg;
+          error.classList.remove('hidden');
+          isSubmitting = false;
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      } catch (err) {
+        console.error(err);
+        error.textContent = err.message || 'An unexpected error occurred';
         error.classList.remove('hidden');
-        throw new Error(msg);
+        isSubmitting = false;
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
-    } catch (err) {
-      console.error('Login error:', err);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalText;
-    }
+    });
+
+    // ✅ Исправленная ссылка "Back to Home" (умный переход)
+    document.getElementById('backToHomeLink')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Если манемоника есть в sessionStorage — значит мы залогинены, делаем явный выход.
+      // Иначе просто переходим на главную.
+      if (sessionStorage.getItem('mnemonic')) {
+        sessionStorage.removeItem('mnemonic');
+        window.location.href = '/logout';
+      } else {
+        window.location.href = '/';
+      }
+    });
   });
-});
+}
 </script>
 {% endblock %}
 {% endblock %}

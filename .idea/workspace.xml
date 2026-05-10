@@ -5,10 +5,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
+      <change afterPath="$PROJECT_DIR$/static/js/crypto-client.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/wallet.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/wallet.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/wallet.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/crypto_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/crypto_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/auth.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/messaging.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/messaging.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/js/client-crypto.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/base.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/base.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/login.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/login.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/profile.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/profile.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -45,7 +53,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATELOTORY3" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATELOTORY5" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -92,6 +100,7 @@
     "Python.Socket.executor": "Run",
     "Python.__init__.executor": "Run",
     "Python.app.executor": "Run",
+    "Python.auth.executor": "Run",
     "Python.blockchain.executor": "Run",
     "Python.bot.executor": "Run",
     "Python.bot_script.executor": "Run",
@@ -111,7 +120,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "mainUPDATELOTORY4",
+    "git-widget-placeholder": "mainUPDATENONCEMNEMONIK",
     "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -675,6 +684,11 @@
           <url>file://$PROJECT_DIR$/services/wallet.py</url>
           <line>60</line>
           <option name="timeStamp" value="63" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/routes/auth.py</url>
+          <line>21</line>
+          <option name="timeStamp" value="64" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
