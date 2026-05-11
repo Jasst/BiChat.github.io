@@ -36,9 +36,7 @@ def init_wallet_service(db_path: str, blockchain):
         staking_manager = None
         logger.info("Staking is DISABLED by config")
 
-    # ✅ Регистрируем очистку при завершении
     atexit.register(_cleanup)
-
     return staking_manager
 
 
@@ -70,31 +68,27 @@ class StakingManager:
         cursor.execute("UPDATE staking_state SET value=? WHERE key='acc_reward_per_stake'", (str(value),))
 
     def add_to_fee_pool(self, amount_sats: int, cursor=None):
-        """Зачисляет комиссию в стейкинг-пул и обновляет накопленный доход на единицу стейка.
-        Если cursor передан, то используется открытая транзакция (без BEGIN/COMMIT).
-        """
         if not ENABLE_STAKING:
             return
-        if cursor:
-            # работаем в уже открытой транзакции
-            cursor.execute(
-                'INSERT INTO wallets (address, balance) VALUES (?, ?) '
-                'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-                (self.pool_address, amount_sats, amount_sats)
-            )
-            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active=1")
-            total_staked = cursor.fetchone()[0]
-            if total_staked > 0:
-                acc = self._get_acc_reward_per_stake(cursor)
-                acc += (amount_sats * REWARD_PRECISION) // total_staked
-                self._set_acc_reward_per_stake(cursor, acc)
+        if cursor is None:
+            with self.lock:
+                with get_db_cursor(_db_path) as cur:
+                    cur.execute("BEGIN IMMEDIATE")
+                    self.add_to_fee_pool(amount_sats, cursor=cur)
+                    cur.execute("COMMIT")
             return
-        # иначе открываем свою транзакцию
-        with self.lock:
-            with get_db_cursor(_db_path) as cur:
-                cur.execute("BEGIN IMMEDIATE")
-                self.add_to_fee_pool(amount_sats, cursor=cur)
-                cur.execute("COMMIT")
+
+        cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) '
+                       'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
+                       (self.pool_address, amount_sats, amount_sats))
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active=1")
+        total_staked = cursor.fetchone()[0]
+        if total_staked == 0:
+            # Нет активных стейков – не накапливаем доход, просто кладём в пул
+            return
+        acc = self._get_acc_reward_per_stake(cursor)
+        acc += (amount_sats * REWARD_PRECISION) // total_staked
+        self._set_acc_reward_per_stake(cursor, acc)
 
     def stake(self, address: str, amount_sats: int) -> int:
         if not ENABLE_STAKING:
@@ -104,6 +98,12 @@ class StakingManager:
         with self.lock:
             with get_db_cursor(_db_path) as cursor:
                 cursor.execute("BEGIN IMMEDIATE")
+                # ✅ Ограничение: не более 10 активных стейков на пользователя
+                cursor.execute('SELECT COUNT(*) FROM stakes WHERE address=? AND active=1', (address,))
+                if cursor.fetchone()[0] >= 10:
+                    logger.warning(f"Stake limit exceeded for {address}")
+                    return -1
+
                 cursor.execute('SELECT balance FROM wallets WHERE address=?', (address,))
                 row = cursor.fetchone()
                 if not row or row[0] < amount_sats:
@@ -152,7 +152,14 @@ class StakingManager:
                         current_acc = self._get_acc_reward_per_stake(cursor)
                         reward = (s['amount'] * (current_acc - s['reward_debt'])) // REWARD_PRECISION
                         total_payout = s['amount'] + reward
-                        # Списываем с пула основную сумму и награду (если есть)
+
+                        # ✅ Проверка достаточности средств в пуле
+                        cursor.execute('SELECT balance FROM wallets WHERE address = ?', (self.pool_address,))
+                        pool_balance = cursor.fetchone()[0]
+                        if pool_balance < total_payout:
+                            logger.error(f"Pool underfunded: need {total_payout}, have {pool_balance}")
+                            continue  # пропускаем этот стейк, не возвращаем False, чтобы другие могли разблокироваться
+
                         cursor.execute(
                             'UPDATE wallets SET balance = balance - ? WHERE address = ?',
                             (s['amount'], self.pool_address)
@@ -184,16 +191,17 @@ class StakingManager:
     def get_expected_income(self, address: str) -> int:
         if not ENABLE_STAKING:
             return 0
-        with get_db_cursor(_db_path) as cursor:
-            cursor.execute('SELECT amount, reward_debt FROM stakes WHERE address=? AND active=1', (address,))
-            stakes = cursor.fetchall()
-            if not stakes:
-                return 0
-            current_acc = self._get_acc_reward_per_stake(cursor)
-            total = 0
-            for s in stakes:
-                total += (s['amount'] * (current_acc - s['reward_debt'])) // REWARD_PRECISION
-            return total
+        with self.lock:   # ✅ добавлена блокировка для консистентности
+            with get_db_cursor(_db_path) as cursor:
+                cursor.execute('SELECT amount, reward_debt FROM stakes WHERE address=? AND active=1', (address,))
+                stakes = cursor.fetchall()
+                if not stakes:
+                    return 0
+                current_acc = self._get_acc_reward_per_stake(cursor)
+                total = 0
+                for s in stakes:
+                    total += (s['amount'] * (current_acc - s['reward_debt'])) // REWARD_PRECISION
+                return total
 
 
 # Фоновый PoW (майнинг) — используется для асинхронного добора блоков

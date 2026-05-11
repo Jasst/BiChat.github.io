@@ -43,7 +43,7 @@ Compress(app)
 init_sqlite_optimizations(DATABASE_PATH)
 
 # ✅ НОВОЕ: Инициализируем пул соединений (5 соединений для старта)
-init_connection_pool(DATABASE_PATH, max_connections=5)
+init_connection_pool(DATABASE_PATH, max_connections=CONFIG['DB_POOL_SIZE'])
 
 blockchain = Blockchain(DATABASE_PATH)
 warmup_database(DATABASE_PATH)

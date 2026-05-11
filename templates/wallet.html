@@ -259,11 +259,9 @@ async function startMining() {
   try {
     const proofResp = await fetch('/wallet/last-proof');
     const chainData = await proofResp.json();
-    const { last_proof, difficulty } = chainData;
+    const { last_proof, difficulty, challenge } = chainData;
     const target = '0'.repeat(difficulty);
     const maxIter = POW_MAX_ITERATIONS;
-
-    // Разумный лимит для веб-майнинга
     const safeMaxIter = Math.min(maxIter, 20000000);
     const finalMaxIter = safeMaxIter;
 
@@ -282,7 +280,7 @@ async function startMining() {
 
       for (proof = 0; proof < finalMaxIter; proof++) {
         if (!miningActive) break;
-        const hash = await sha256('' + last_proof + proof);
+        const hash = await sha256(`${last_proof}${challenge}${proof}`);
         if (hash.startsWith(target)) {
           found = true;
           break;
@@ -308,7 +306,7 @@ async function startMining() {
         const res = await fetch('/wallet/mine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proof })
+          body: JSON.stringify({ proof, challenge })
         });
         const result = await res.json();
         if (res.ok) {
@@ -330,6 +328,7 @@ async function startMining() {
         const fresh = await fetch('/wallet/last-proof');
         const freshData = await fresh.json();
         last_proof = freshData.last_proof;
+        challenge = freshData.challenge;   // обновляем challenge
         startTime = Date.now();
       }
     }
