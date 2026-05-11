@@ -259,7 +259,7 @@ async function startMining() {
   try {
     const proofResp = await fetch('/wallet/last-proof');
     const chainData = await proofResp.json();
-    const { last_proof, difficulty, challenge } = chainData;
+    let { last_proof, difficulty, challenge } = chainData;
     const target = '0'.repeat(difficulty);
     const maxIter = POW_MAX_ITERATIONS;
     const safeMaxIter = Math.min(maxIter, 20000000);
