@@ -61,7 +61,7 @@ def send_message():
             with get_db_cursor(_blockchain.db_path) as cursor:
                 tx_id = _blockchain.new_transaction(
                     cursor, sender, f"group:{group_id}",
-                    json.dumps(encrypted_map), None,
+                    json.dumps({'encrypted_map': encrypted_map}), None,
                     sender_pubkey=None,
                     metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id}
                 )
