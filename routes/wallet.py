@@ -33,6 +33,9 @@ def wallet_config():
         'block_reward': BLOCK_REWARD if ENABLE_MINING else 0,
         'coin_name': COIN_NAME,
         'coin_divisor': COIN,
+        # ↓↓↓ ДОБАВИТЬ ЭТИ ДВЕ СТРОЧКИ ↓↓↓
+        'pow_max_iterations': CONFIG['POW_MAX_ITERATIONS'],
+        'pow_difficulty': CONFIG['POW_DIFFICULTY'],
     })
 
 

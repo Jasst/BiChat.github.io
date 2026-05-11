@@ -177,6 +177,13 @@ def login():
     session['login_nonce'] = nonce
     return render_template('login.html', nonce=nonce)
 
+@auth_bp.route('/check_session')
+def check_session():
+    """Проверка статуса авторизации (для клиентской логики)"""
+    return jsonify({
+        'authenticated': 'address' in session,
+        'address': session.get('address')
+    })
 
 @auth_bp.route('/logout')
 def logout():

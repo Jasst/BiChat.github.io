@@ -131,15 +131,26 @@ if (window._loginScriptLoaded) {
       }
     });
 
-    // ✅ Исправленная ссылка "Back to Home" (умный переход)
-    document.getElementById('backToHomeLink')?.addEventListener('click', (e) => {
+    // ✅ Исправленная ссылка "Back to Home" (умный переход с проверкой сессии)
+    document.getElementById('backToHomeLink')?.addEventListener('click', async (e) => {
       e.preventDefault();
-      // Если манемоника есть в sessionStorage — значит мы залогинены, делаем явный выход.
-      // Иначе просто переходим на главную.
-      if (sessionStorage.getItem('mnemonic')) {
-        sessionStorage.removeItem('mnemonic');
-        window.location.href = '/logout';
-      } else {
+
+      // Очищаем локальное состояние
+      sessionStorage.removeItem('mnemonic');
+
+      try {
+        const res = await fetch('/check_session');
+        const data = await res.json();
+
+        if (data.authenticated) {
+          // Если есть активная серверная сессия - делаем полный выход
+          window.location.href = '/logout';
+        } else {
+          // Если сессии нет - просто идём на главную
+          window.location.href = '/';
+        }
+      } catch (err) {
+        // При ошибке - на главную
         window.location.href = '/';
       }
     });
