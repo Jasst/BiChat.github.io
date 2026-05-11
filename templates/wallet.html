@@ -103,13 +103,13 @@
   </div>
 
   <div class="profile-row">
-    <label>Lottery Pool Balance</label>
-    <span class="value" id="lotteryPoolBalance">0.000000 BlockCoin</span>
+    <label>Staking Pool Balance</label>
+    <span class="value" id="stakingPoolBalance">0.000000 BlockCoin</span>
   </div>
 
   <div class="profile-row">
-    <label>Next Lottery Reward</label>
-    <span class="value" id="lotteryReward">0.000000 BlockCoin</span>
+    <label>Message Fee</label>
+    <span class="value" id="messageFee">0.000000 BlockCoin</span>
   </div>
 
   <div class="profile-row">
@@ -144,7 +144,7 @@
 </div>
 
       <!-- Staking Card -->
-      <div class="profile-card">
+      <div class="profile-card" id="stakingCard">
         <h3>🔒 Staking</h3>
         <div id="stakingInfo" class="text-muted" style="margin-bottom:8px;">Load staking info...</div>
         <div style="display:flex; gap:8px; margin-top:8px;">
@@ -205,7 +205,7 @@
             <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001" style="flex:2;">
             <button class="btn btn-primary" onclick="sendCoins()" style="flex:1;">Send</button>
           </div>
-          <p class="text-muted" style="font-size:12px;">Fee: 0.010000 BlockCoin</p>
+          <p class="text-muted" style="font-size:12px;" id="sendFeeDisplay">Fee: 0.010000 BlockCoin</p>
           <div id="sendResult" class="hidden text-muted" style="font-size:12px;"></div>
         </div>
       </div>
@@ -353,10 +353,14 @@ function stopMining() {
 async function stake() {
   const amountEl = document.getElementById('stakeAmount');
   const rawAmount = parseFloat(amountEl.value);
-  if (isNaN(rawAmount) || rawAmount <= 0) {
-    alert('Enter a valid amount');
-    return;
-  }
+  if (!amountEl.value.trim()) {
+  window.NotificationManager?.showToast('Amount field is empty', 'warning');
+  return;
+}
+if (isNaN(rawAmount) || rawAmount <= 0) {
+  window.NotificationManager?.showToast('Enter a valid positive number', 'warning');
+  return;
+}
   const amount = Math.floor(rawAmount * BLOCKCOIN_SATS);
   const res = await fetch('/wallet/stake', {
     method: 'POST',
@@ -369,6 +373,7 @@ async function stake() {
   if (res.ok) {
     el.textContent = `Staked! Unlocks at block ${data.unlock_block}`;
     el.style.color = 'var(--status-success)';
+    amountEl.value = '';
     refreshBalance();
     loadStakingInfo();
   } else {
@@ -393,16 +398,54 @@ async function unstake() {
   }
 }
 
+// Вставьте перед функцией loadStakingInfo
+function estimateTimeFromBlock(unlockBlock, currentBlock) {
+  const blocksLeft = unlockBlock - currentBlock;
+  const avgBlockTimeSeconds = 60; // подставьте реальное среднее время блока
+  const totalMinutes = Math.max(0, Math.floor((blocksLeft * avgBlockTimeSeconds) / 60));
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return `${hours}h ${mins}m`;
+}
+
 async function loadStakingInfo() {
   const res = await fetch('/wallet/staking/info');
   const data = await res.json();
   const infoEl = document.getElementById('stakingInfo');
   if (data.stakes && data.stakes.length > 0) {
     let html = '';
+    const currentBlock = data.current_block || 0;
+
+    // Считаем общую сумму стейка и средневзвешенное время для APR
+    let totalStaked = 0;
+    let weightedTime = 0;
+    const nowSec = Date.now() / 1000;
+
+    data.stakes.forEach(s => {
+      totalStaked += s.amount;
+      const elapsed = nowSec - s.start_time;   // в секундах
+      weightedTime += s.amount * elapsed;
+    });
+
+    // Среднее время жизни стейков
+    const avgElapsed = totalStaked > 0 ? weightedTime / totalStaked : 0;
+    const years = avgElapsed / (365 * 24 * 3600);
+    const apr = years > 0 ? (data.expected_income / totalStaked) / years * 100 : 0;
+
     data.stakes.forEach(s => {
       const amount = (s.amount / BLOCKCOIN_SATS).toFixed(6);
-      html += `${amount} BlockCoin (unlock block: ${s.unlock_block})<br>`;
+      const timeEst = estimateTimeFromBlock(s.unlock_block, currentBlock);
+      html += `${amount} BlockCoin (unlock in ~${timeEst})<br>`;
     });
+
+    if (data.expected_income) {
+      html += `<span style="color: var(--status-success)">Pending income: ${(data.expected_income / BLOCKCOIN_SATS).toFixed(6)} BlockCoin</span><br>`;
+    }
+    if (totalStaked > 0 && years > 0) {
+      html += `<span style="color: var(--accent)">APR: ${apr.toFixed(2)}%</span>`;
+    }
+
     infoEl.innerHTML = html;
   } else {
     infoEl.textContent = 'No active stakes';
@@ -440,14 +483,14 @@ async function refreshNetworkStats() {
       document.getElementById('remainingRow').style.display = '';
     } else {
       document.getElementById('remainingSupply').textContent = '∞';
-      document.getElementById('remainingRow').style.display = 'none'; // или показываем "Unlimited"
+      document.getElementById('remainingRow').style.display = 'none';
     }
     document.getElementById('totalSupply').textContent =
       (data.total_supply / divisor).toFixed(6) + ' ' + data.coin_name;
-    document.getElementById('lotteryPoolBalance').textContent =
-      (data.lottery_pool_balance / divisor).toFixed(6) + ' ' + data.coin_name;
-    document.getElementById('lotteryReward').textContent =
-      (data.lottery_reward / divisor).toFixed(6) + ' ' + data.coin_name;
+    document.getElementById('stakingPoolBalance').textContent =
+      (data.staking_pool_balance / divisor).toFixed(6) + ' ' + data.coin_name;
+    document.getElementById('messageFee').textContent =
+      (data.message_fee / divisor).toFixed(6) + ' ' + data.coin_name;
     document.getElementById('blockReward').textContent =
       (data.block_reward / divisor).toFixed(6) + ' ' + data.coin_name;
     document.getElementById('totalBlocks').textContent = data.total_blocks;
@@ -508,6 +551,12 @@ async function loadTx() {
       sign = '+';
     } else if (tx.type === 'airdrop') {
       typeLabel = '🪂 Airdrop';
+      sign = '+';
+    } else if (tx.type === 'message_fee') {
+      typeLabel = '💬 Message Fee';
+      sign = '-';
+    } else if (tx.type === 'staking_reward') {
+      typeLabel = '💰 Staking Reward';
       sign = '+';
     }
 
@@ -780,10 +829,31 @@ async function copyToClipboard(text, successMsg, errorMsg) {
 
 // ================== Инициализация ==================
 document.addEventListener('DOMContentLoaded', function() {
+  // Получаем конфигурацию сервера и управляем видимостью карточек
+  fetch('/wallet/config')
+    .then(r => r.json())
+    .then(cfg => {
+      // Скрываем карточку майнинга, если майнинг отключён
+      if (!cfg.enable_mining) {
+        document.getElementById('miningCard')?.remove();
+      }
+      // Скрываем карточку стейкинга, если стейкинг отключён
+      if (!cfg.enable_staking) {
+        document.getElementById('stakingCard')?.remove();
+      }
+      // Обновляем отображение комиссии за перевод
+      const feeDisplay = document.getElementById('sendFeeDisplay');
+      if (feeDisplay) {
+        feeDisplay.textContent = `Fee: ${(cfg.transfer_fee / BLOCKCOIN_SATS).toFixed(6)} BlockCoin`;
+      }
+    })
+    .catch(e => console.error('Error fetching wallet config:', e));
+
   refreshBalance();
   loadTx();
   loadStakingInfo();
   refreshNetworkStats();
+
   window.toggleReceiveQR = toggleReceiveQR;
   window.sendCoins = sendCoins;
   window.copyAddressToClipboard = copyAddressToClipboard;

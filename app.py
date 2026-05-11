@@ -52,9 +52,9 @@ svc_contacts.set_db_path(DATABASE_PATH)
 import services.messaging as svc_messaging
 svc_messaging.set_db_path(DATABASE_PATH)
 
-# === ИЗМЕНЕНИЕ: получаем объект lottery, который возвращает init_wallet_service ===
+# Инициализируем стейкинг-менеджер (возвращает объект StakingManager или None, если отключён)
 import services.wallet
-lottery = services.wallet.init_wallet_service(DATABASE_PATH, blockchain)
+staking_manager = services.wallet.init_wallet_service(DATABASE_PATH, blockchain)
 
 # ── Blueprint'ы ──────────────────────────────────────────────────────────────
 from routes.auth import auth_bp
@@ -64,12 +64,13 @@ from routes.groups import groups_bp, init_groups
 from routes.wallet import wallet_bp, init_wallet_routes
 from routes.files import files_bp, init_files
 
-# === ИЗМЕНЕНИЕ: передаём реальный объект lottery ===
-init_messages(blockchain, lottery)
+# Инициализация маршрутов: сообщения без отдельного объекта лотереи (списание fee идёт через staking_manager)
+init_messages(blockchain)           # изменено: убран второй аргумент
 init_contacts(blockchain)
-init_groups(blockchain)
+# Если groups или files используют staking_manager, нужно передать его:
+init_groups(blockchain)            # при необходимости добавить staking_manager вторым параметром
 init_wallet_routes(blockchain)
-init_files(blockchain)
+init_files(blockchain)             # аналогично
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(messages_bp)

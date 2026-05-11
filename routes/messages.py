@@ -15,21 +15,20 @@ from cache import (
     get_groups_cache_version, get_user_groups_cached,
 )
 from services.messaging import get_conversations_list
-from services.wallet import mine_block_async
+from services.wallet import mine_block_async, staking_manager
+from config import MESSAGE_FEE, COIN, COIN_NAME, STAKING_FEE_POOL_ADDRESS, ENABLE_STAKING
 
 logger = logging.getLogger(__name__)
 messages_bp = Blueprint('messages', __name__)
 
 _blockchain = None
-_lottery    = None
 _p2p_buffer: Dict[str, List[Dict]] = {}
 _p2p_buffer_lock = threading.Lock()
 
 
-def init_messages(blockchain, lottery) -> None:
-    global _blockchain, _lottery
+def init_messages(blockchain) -> None:
+    global _blockchain
     _blockchain = blockchain
-    _lottery    = lottery
 
 
 @messages_bp.route('/send_message', methods=['POST'])
@@ -41,60 +40,127 @@ def send_message():
     try:
         data = request.get_json(silent=True) or {}
         recipient = data.get('recipient')
-        payload = data.get('payload')            # уже зашифрованный клиентом пакет
+        payload = data.get('payload')
         msg_type = data.get('message_type', 'direct')
         group_id = data.get('group_id')
 
-        if msg_type == 'group' and group_id:
-            # Групповое: клиент передаёт encrypted_map
-            encrypted_map = data.get('encrypted_map')
-            if not encrypted_map or not isinstance(encrypted_map, dict):
-                return jsonify({'error': 'Missing encrypted_map'}), 400
-
-            # Проверка членства в группе
-            groups = get_user_groups_cached(sender, cache_version=get_groups_cache_version())
-            group = next((g for g in groups if g['id'] == group_id), None)
-            if not group or sender not in group['members']:
-                return jsonify({'error': 'Access denied'}), 403
-
+        # --- Открываем одну транзакцию на всё (плата + сообщение), если плата > 0 ---
+        if MESSAGE_FEE > 0:
             from database import get_db_cursor
             with get_db_cursor(_blockchain.db_path) as cursor:
-                tx_id = _blockchain.new_transaction(
-                    cursor, sender, f"group:{group_id}",
-                    json.dumps({'encrypted_map': encrypted_map}), None,
-                    sender_pubkey=None,
-                    metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id}
+                cursor.execute("BEGIN IMMEDIATE")
+                cursor.execute('SELECT balance FROM wallets WHERE address = ?', (sender,))
+                row = cursor.fetchone()
+                balance = row[0] if row else 0
+                if balance < MESSAGE_FEE:
+                    cursor.execute("ROLLBACK")
+                    return jsonify({'error': f'Insufficient balance to pay message fee ({MESSAGE_FEE/COIN:.6f} {COIN_NAME})'}), 402
+
+                # Списание платы
+                cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?', (MESSAGE_FEE, sender))
+                # Зачисление в стейкинг-пул
+                cursor.execute(
+                    'INSERT INTO wallets (address, balance) VALUES (?, ?) '
+                    'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
+                    (STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE, MESSAGE_FEE)
                 )
-                last_proof = _blockchain._last_block_raw(cursor)['proof']
-                threading.Thread(
-                    target=mine_block_async,
-                    args=(_blockchain.db_path, last_proof), daemon=True
-                ).start()
+                ts = time.time()
+                cursor.execute(
+                    'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
+                    'VALUES (?,?,?,?,?,?)',
+                    ('message_fee', sender, STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE, ts, 'message fee')
+                )
+                # Обновляем аккумулятор стейкинга (в этой же транзакции)
+                if ENABLE_STAKING and staking_manager:
+                    staking_manager.add_to_fee_pool(MESSAGE_FEE, cursor=cursor)
 
-            _lottery.claim_message_reward(sender)
-            return jsonify({'message': 'Sent', 'tx_id': tx_id, 'type': 'group'}), 201
-
-        # P2P
-        if sender == recipient:
-            return jsonify({'error': 'Cannot message yourself'}), 400
-
-        if not payload or not isinstance(payload, dict):
-            return jsonify({'error': 'Missing encrypted payload'}), 400
-
-        from database import get_db_cursor
-        with get_db_cursor(_blockchain.db_path) as cursor:
-            tx_id = _blockchain.new_transaction(
-                cursor, sender, recipient, json.dumps(payload), None,
-                sender_pubkey=None,
-                metadata={'encryption': 'hybrid-v2'}
-            )
-            last_proof = _blockchain._last_block_raw(cursor)['proof']
-            threading.Thread(
-                target=mine_block_async,
-                args=(_blockchain.db_path, last_proof), daemon=True
-            ).start()
-        _lottery.claim_message_reward(sender)
-        return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient}), 201
+                # Создаём транзакцию сообщения в той же транзакции
+                if msg_type == 'group' and group_id:
+                    encrypted_map = data.get('encrypted_map')
+                    if not encrypted_map or not isinstance(encrypted_map, dict):
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': 'Missing encrypted_map'}), 400
+                    groups = get_user_groups_cached(sender, cache_version=get_groups_cache_version())
+                    group = next((g for g in groups if g['id'] == group_id), None)
+                    if not group or sender not in group['members']:
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': 'Access denied'}), 403
+                    tx_id = _blockchain.new_transaction(
+                        cursor, sender, f"group:{group_id}",
+                        json.dumps({'encrypted_map': encrypted_map}), None,
+                        sender_pubkey=None,
+                        metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id}
+                    )
+                    last_proof = _blockchain._last_block_raw(cursor)['proof']
+                    # майнинг запустим после коммита
+                    cursor.execute("COMMIT")
+                    threading.Thread(
+                        target=mine_block_async,
+                        args=(_blockchain.db_path, last_proof), daemon=True
+                    ).start()
+                    return jsonify({'message': 'Sent', 'tx_id': tx_id, 'type': 'group', 'fee': MESSAGE_FEE}), 201
+                else:
+                    if sender == recipient:
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': 'Cannot message yourself'}), 400
+                    if not payload or not isinstance(payload, dict):
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': 'Missing encrypted payload'}), 400
+                    tx_id = _blockchain.new_transaction(
+                        cursor, sender, recipient, json.dumps(payload), None,
+                        sender_pubkey=None,
+                        metadata={'encryption': 'hybrid-v2'}
+                    )
+                    last_proof = _blockchain._last_block_raw(cursor)['proof']
+                    cursor.execute("COMMIT")
+                    threading.Thread(
+                        target=mine_block_async,
+                        args=(_blockchain.db_path, last_proof), daemon=True
+                    ).start()
+                    return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient, 'fee': MESSAGE_FEE}), 201
+        else:
+            # Плата 0, старая логика без двойной транзакции (можно упростить)
+            # ... (оставим как было, но без _lottery)
+            if msg_type == 'group' and group_id:
+                encrypted_map = data.get('encrypted_map')
+                if not encrypted_map or not isinstance(encrypted_map, dict):
+                    return jsonify({'error': 'Missing encrypted_map'}), 400
+                groups = get_user_groups_cached(sender, cache_version=get_groups_cache_version())
+                group = next((g for g in groups if g['id'] == group_id), None)
+                if not group or sender not in group['members']:
+                    return jsonify({'error': 'Access denied'}), 403
+                from database import get_db_cursor
+                with get_db_cursor(_blockchain.db_path) as cursor:
+                    tx_id = _blockchain.new_transaction(
+                        cursor, sender, f"group:{group_id}",
+                        json.dumps({'encrypted_map': encrypted_map}), None,
+                        sender_pubkey=None,
+                        metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id}
+                    )
+                    last_proof = _blockchain._last_block_raw(cursor)['proof']
+                    threading.Thread(
+                        target=mine_block_async,
+                        args=(_blockchain.db_path, last_proof), daemon=True
+                    ).start()
+                return jsonify({'message': 'Sent', 'tx_id': tx_id, 'type': 'group', 'fee': MESSAGE_FEE}), 201
+            else:
+                if sender == recipient:
+                    return jsonify({'error': 'Cannot message yourself'}), 400
+                if not payload or not isinstance(payload, dict):
+                    return jsonify({'error': 'Missing encrypted payload'}), 400
+                from database import get_db_cursor
+                with get_db_cursor(_blockchain.db_path) as cursor:
+                    tx_id = _blockchain.new_transaction(
+                        cursor, sender, recipient, json.dumps(payload), None,
+                        sender_pubkey=None,
+                        metadata={'encryption': 'hybrid-v2'}
+                    )
+                    last_proof = _blockchain._last_block_raw(cursor)['proof']
+                    threading.Thread(
+                        target=mine_block_async,
+                        args=(_blockchain.db_path, last_proof), daemon=True
+                    ).start()
+                return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient, 'fee': MESSAGE_FEE}), 201
 
     except Exception as e:
         logger.error(f"send_message error: {e}", exc_info=True)

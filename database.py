@@ -10,7 +10,7 @@ import time
 from contextlib import contextmanager
 from typing import Optional
 
-from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, POOL_FEE_PERCENT, MESSAGE_REWARD_POOL_FEE_PERCENT
+from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class Blockchain:
             with get_db_cursor(self.db_path) as cursor:
                 self._create_tables(cursor)
                 self._create_indexes(cursor)
-                self._migrate_schema(cursor)  # <-- вызов миграции
+                self._migrate_schema(cursor)
                 if not self._get_chain_raw(cursor):
                     self._new_block_raw(cursor, proof=100, previous_hash='1', miner_address=None)
                     logger.info("Genesis block created")
@@ -159,6 +159,20 @@ class Blockchain:
             cursor.execute("ALTER TABLE coin_transactions ADD COLUMN block_ref INTEGER")
         if 'note' not in tx_cols:
             cursor.execute("ALTER TABLE coin_transactions ADD COLUMN note TEXT")
+
+        # Новые поля для стейкинга
+        stakes_cols = [row[1] for row in cursor.execute("PRAGMA table_info('stakes')")]
+        if 'reward_debt' not in stakes_cols:
+            cursor.execute("ALTER TABLE stakes ADD COLUMN reward_debt INTEGER DEFAULT 0")
+
+        # Таблица состояния стейкинга
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS staking_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+        cursor.execute("INSERT OR IGNORE INTO staking_state (key, value) VALUES ('acc_reward_per_stake', '0')")
 
     def _create_tables(self, cursor: sqlite3.Cursor) -> None:
         cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain (
@@ -199,7 +213,7 @@ class Blockchain:
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS coin_transactions (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            tx_type   TEXT NOT NULL CHECK(tx_type IN ('reward','transfer','fee','genesis','block_reward','stake','unstake','airdrop','message_reward')),
+            tx_type   TEXT NOT NULL CHECK(tx_type IN ('reward','transfer','fee','genesis','block_reward','stake','unstake','airdrop','message_reward','message_fee','staking_reward')),
             sender    TEXT,
             recipient TEXT NOT NULL,
             amount    INTEGER NOT NULL CHECK(amount > 0),
@@ -219,7 +233,8 @@ class Blockchain:
             start_time REAL NOT NULL,
             start_block INTEGER NOT NULL,
             unlock_block INTEGER NOT NULL,
-            active INTEGER DEFAULT 1
+            active INTEGER DEFAULT 1,
+            reward_debt INTEGER DEFAULT 0
         )''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)')
 
@@ -247,54 +262,18 @@ class Blockchain:
         )
         coin_txs = [dict(row) for row in cursor.fetchall()]
 
-        # создаём запись награды майнеру и пулу
-        if miner_address:
+        # Награда майнеру только если майнинг включён и указан адрес майнера
+        if ENABLE_MINING and miner_address:
             reward = BLOCK_REWARD
-            pool_reward = (reward * POOL_FEE_PERCENT) // 100
-            miner_reward = reward - pool_reward
-
-            # === ИЗМЕНЕНИЕ: разделяем пул-вознаграждение между лотереей и пулом сообщений ===
-            msg_pool_reward = (reward * MESSAGE_REWARD_POOL_FEE_PERCENT) // 100
-            lottery_pool_reward = pool_reward - msg_pool_reward
-
-            # Miner reward
             coin_txs.append({
                 'tx_type': 'block_reward',
                 'sender': None,
                 'recipient': miner_address,
-                'amount': miner_reward,
+                'amount': reward,
                 'timestamp': time.time(),
                 'note': 'Miner reward'
             })
-            # Lottery pool
-            coin_txs.append({
-                'tx_type': 'block_reward',
-                'sender': None,
-                'recipient': 'lottery_pool',
-                'amount': lottery_pool_reward,
-                'timestamp': time.time(),
-                'note': 'Lottery pool fee'
-            })
-            # Message reward pool (новый)
-            coin_txs.append({
-                'tx_type': 'block_reward',
-                'sender': None,
-                'recipient': 'message_reward_pool',
-                'amount': msg_pool_reward,
-                'timestamp': time.time(),
-                'note': 'Message reward pool fee'
-            })
-        else:
-            # Genesis block: нет майнера, все награды в лотерейный пул и пул сообщений?
-            # Для простоты оставим как было – всё в lottery_pool
-            coin_txs.append({
-                'tx_type': 'block_reward',
-                'sender': None,
-                'recipient': 'lottery_pool',
-                'amount': BLOCK_REWARD,
-                'timestamp': time.time(),
-                'note': 'Full reward to pool'
-            })
+        # Если майнинг отключён, награда не начисляется
 
         last = self._last_block_raw(cursor)
         block_index = last.get('index', 0) + 1
@@ -315,16 +294,14 @@ class Blockchain:
              block['proof'], block['previous_hash'])
         )
 
-        # Обрабатываем каждую coin-транзакцию: вставляем запись и сразу обновляем баланс
+        # Обрабатываем каждую coin-транзакцию: вставляем запись и обновляем баланс
         for tx in coin_txs:
-            # Вставляем coin-транзакцию с привязкой к блоку
             cursor.execute(
                 'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, block_ref, note) '
                 'VALUES (?, ?, ?, ?, ?, ?, ?)',
                 (tx['tx_type'], tx.get('sender'), tx['recipient'],
                  tx['amount'], tx['timestamp'], block_index, tx.get('note'))
             )
-            # Если это награда (block_reward), зачисляем средства получателю
             if tx['tx_type'] == 'block_reward':
                 cursor.execute(
                     'INSERT INTO wallets (address, balance) VALUES (?, ?) '
@@ -347,7 +324,6 @@ class Blockchain:
         cursor.execute('SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1')
         row = cursor.fetchone()
         if row:
-            # безопасная загрузка coin_transactions
             coin_txs_raw = row[3] if len(row) > 3 else None
             try:
                 coin_txs = json.loads(coin_txs_raw) if isinstance(coin_txs_raw, str) else []
