@@ -236,8 +236,8 @@ class DarkCrypto {
 
   static async deriveKeyPair(mnemonic) {
     const seed = await this._mnemonicToSeed(mnemonic);
-    const rawPrivate = seed.slice(0, 32);
-    const d = this._normalizePrivateKey(rawPrivate);
+    const rawPrivate = new Uint8Array(seed.slice(0, 32));   // <-- Uint8Array
+    const d = rawPrivate;   // <-- БЕЗ нормализации, берём сырой ключ
     const point = this._derivePubPoint(d);
 
     const jwkPrivate = {
