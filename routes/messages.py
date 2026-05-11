@@ -70,6 +70,7 @@ def send_message():
                     target=mine_block_async,
                     args=(_blockchain.db_path, last_proof), daemon=True
                 ).start()
+
             _lottery.claim_message_reward(sender)
             return jsonify({'message': 'Sent', 'tx_id': tx_id, 'type': 'group'}), 201
 

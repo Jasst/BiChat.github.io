@@ -186,11 +186,22 @@ let userKeys = null;     // { signPrivateKey, ecdhPrivateKey, compressedPubKey, 
 // Глобальный кэш публичных ключей (адрес -> base64)
 const pubKeyCache = new Map();
 
+// СТАЛО — с верификацией
 async function getPubKey(address) {
   if (pubKeyCache.has(address)) return pubKeyCache.get(address);
   const res = await fetch(`/get_public_key/${address}`);
   if (!res.ok) throw new Error(`Public key not found for ${address}`);
   const data = await res.json();
+
+  // Верифицируем: address должен быть SHA256(pubkey)
+  const pubKeyBytes = DarkCrypto._fromBase64(data.public_key);
+  const hashBuf = await crypto.subtle.digest('SHA-256', pubKeyBytes);
+  const computedAddress = Array.from(new Uint8Array(hashBuf))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  if (computedAddress !== address) {
+    throw new Error(`⚠️ Public key mismatch for ${address} — possible MITM!`);
+  }
+
   pubKeyCache.set(address, data.public_key);
   return data.public_key;
 }

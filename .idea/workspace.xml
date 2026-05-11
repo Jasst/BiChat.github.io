@@ -6,6 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
     </list>
@@ -44,7 +45,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATENONCEMNEMONIK" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATENONCEMNEMONIK2" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -111,7 +112,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "mainUPDATENONCEMNEMONIK2",
+    "git-widget-placeholder": "mainUPDATENONCEMNEMONIK3",
     "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
