@@ -10,8 +10,11 @@ from flask_compress import Compress
 
 from config import (CONFIG, DATABASE_PATH, MAX_CONTENT_LENGTH,
                     SECRET_KEY, STATIC_FOLDER, TEMPLATE_FOLDER, UPLOAD_FOLDER)
-from database import Blockchain, init_sqlite_optimizations, warmup_database
+from database import Blockchain, init_sqlite_optimizations, warmup_database, init_connection_pool
 from logging_setup import setup_logging
+# ── НОВЫЕ ИМПОРТЫ (в начало файла) ──────────────────────────────────────────
+from rate_limiter import rate_limit, message_limiter, api_limiter, get_rate_limit_stats
+from query_optimizer import balance_cache, contact_cache, group_cache
 
 # ── Логирование ─────────────────────────────────────────────────────────────
 setup_logging()
@@ -38,6 +41,10 @@ Compress(app)
 
 # ── База данных и блокчейн ───────────────────────────────────────────────────
 init_sqlite_optimizations(DATABASE_PATH)
+
+# ✅ НОВОЕ: Инициализируем пул соединений (5 соединений для старта)
+init_connection_pool(DATABASE_PATH, max_connections=5)
+
 blockchain = Blockchain(DATABASE_PATH)
 warmup_database(DATABASE_PATH)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -64,13 +71,12 @@ from routes.groups import groups_bp, init_groups
 from routes.wallet import wallet_bp, init_wallet_routes
 from routes.files import files_bp, init_files
 
-# Инициализация маршрутов: сообщения без отдельного объекта лотереи (списание fee идёт через staking_manager)
-init_messages(blockchain)           # изменено: убран второй аргумент
+# Инициализация маршрутов
+init_messages(blockchain)
 init_contacts(blockchain)
-# Если groups или files используют staking_manager, нужно передать его:
-init_groups(blockchain)            # при необходимости добавить staking_manager вторым параметром
+init_groups(blockchain)
 init_wallet_routes(blockchain)
-init_files(blockchain)             # аналогично
+init_files(blockchain)
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(messages_bp)
@@ -94,13 +100,43 @@ def require_auth():
 
 @app.after_request
 def add_cache_headers(response):
-    # Запрещаем кэширование для страниц с nonce, чтобы после логаута браузер
-    # всегда загружал свежую копию, а не закэшированную с устаревшим nonce.
     if request.path in ['/', '/login', '/create_wallet']:
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
     return response
+
+
+# ── АДМИН-ЭНДПОИНТЫ (добавить после app.register_blueprint) ──────────────────
+
+@app.route('/health')
+def health_check():
+    """Проверка здоровья всего приложения"""
+    db_health = blockchain.health_check()
+
+    return jsonify({
+        'status': 'ok' if db_health.get('status') == 'healthy' else 'degraded',
+        'database': db_health,
+        'rate_limits': get_rate_limit_stats(),
+        'caches': {
+            'balance': balance_cache.get_stats(),
+            'contacts': contact_cache.get_stats(),
+            'groups': group_cache.get_stats(),
+        },
+        'connection_pool_size': CONFIG['DB_POOL_SIZE'],
+    })
+
+
+@app.route('/health/db')
+def health_db():
+    """Только проверка БД"""
+    return jsonify(blockchain.health_check())
+
+
+@app.route('/health/performance')
+def health_performance():
+    """Статистика производительности"""
+    return jsonify(blockchain.get_performance_stats())
 
 # ── Запуск (для локального тестирования) ───────────────────────────────────
 if __name__ == '__main__':

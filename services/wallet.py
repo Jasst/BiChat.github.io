@@ -35,7 +35,22 @@ def init_wallet_service(db_path: str, blockchain):
     else:
         staking_manager = None
         logger.info("Staking is DISABLED by config")
+
+    # ✅ Регистрируем очистку при завершении
+    atexit.register(_cleanup)
+
     return staking_manager
+
+
+def _cleanup():
+    """Закрывает пул соединений при завершении приложения"""
+    try:
+        from database import _connection_pool
+        if _connection_pool:
+            _connection_pool.close_all()
+            logger.info("Connection pool closed")
+    except Exception as e:
+        logger.error(f"Cleanup error: {e}")
 
 
 class StakingManager:

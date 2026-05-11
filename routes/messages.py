@@ -9,6 +9,8 @@ from typing import Dict, List
 
 from flask import Blueprint, jsonify, request, session
 from marshmallow import ValidationError
+# В начало файла после импортов
+from rate_limiter import rate_limit, message_limiter
 
 from cache import (
     get_contact_cache_version, get_contact_name_cached,
@@ -31,7 +33,9 @@ def init_messages(blockchain) -> None:
     _blockchain = blockchain
 
 
+
 @messages_bp.route('/send_message', methods=['POST'])
+@rate_limit(message_limiter, limit=30)  # ✅ 30 сообщений в минуту
 def send_message():
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401

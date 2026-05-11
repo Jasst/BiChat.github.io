@@ -8,11 +8,82 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from queue import Queue
 from typing import Optional
 
 from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# ПУЛ СОЕДИНЕНИЙ (простой и эффективный)
+# =============================================================================
+
+class ConnectionPool:
+    """Пул SQLite соединений с thread-safe доступом"""
+
+    def __init__(self, db_path: str, max_connections: int = 5):
+        self.db_path = db_path
+        self.max_connections = max_connections
+        self._pool = Queue(maxsize=max_connections)
+        self._all_connections = []
+        self._lock = threading.Lock()
+
+        # Предсоздаем соединения
+        for _ in range(max_connections):
+            conn = self._create_connection()
+            self._pool.put(conn)
+            self._all_connections.append(conn)
+
+    def _create_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(
+            self.db_path,
+            timeout=CONFIG['DB_TIMEOUT'],
+            check_same_thread=False,
+            detect_types=sqlite3.PARSE_DECLTYPES,
+        )
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute("PRAGMA synchronous = NORMAL")
+        cursor.execute("PRAGMA cache_size = -64000")
+        cursor.execute("PRAGMA busy_timeout = 30000")
+        cursor.execute("PRAGMA foreign_keys = OFF")
+        cursor.close()
+        return conn
+
+    def get_connection(self) -> sqlite3.Connection:
+        """Получает соединение из пула (ждет если все заняты)"""
+        return self._pool.get()
+
+    def return_connection(self, conn: sqlite3.Connection) -> None:
+        """Возвращает соединение обратно в пул"""
+        try:
+            self._pool.put_nowait(conn)
+        except:
+            # Пул переполнен (не должно случиться)
+            conn.close()
+
+    def close_all(self) -> None:
+        """Закрывает все соединения (при завершении приложения)"""
+        for conn in self._all_connections:
+            try:
+                conn.close()
+            except:
+                pass
+        logger.info("All database connections closed")
+
+
+# Глобальный пул соединений
+_connection_pool: Optional[ConnectionPool] = None
+
+
+def init_connection_pool(db_path: str, max_connections: int = 5) -> None:
+    """Инициализирует пул соединений (вызывается один раз при старте)"""
+    global _connection_pool
+    _connection_pool = ConnectionPool(db_path, max_connections)
+    logger.info(f"✅ Connection pool initialized with {max_connections} connections")
 
 
 # =============================================================================
@@ -55,24 +126,30 @@ def _create_pubkey_cache_table(cursor: sqlite3.Cursor) -> None:
 
 
 # =============================================================================
-# Контекстный менеджер подключения
+# Контекстный менеджер подключения (ИСПОЛЬЗУЕТ ПУЛ)
 # =============================================================================
 
 @contextmanager
-def get_db_cursor(db_path: str):
-    conn = None
-    try:
+def get_db_cursor(db_path: str = None):
+    """
+    Контекстный менеджер для работы с БД.
+    Использует пул соединений если он инициализирован.
+    """
+    if _connection_pool:
+        conn = _connection_pool.get_connection()
+        pool_used = True
+    else:
         conn = sqlite3.connect(
-            db_path,
+            db_path or DATABASE_PATH,
             timeout=CONFIG['DB_TIMEOUT'],
             check_same_thread=False,
             detect_types=sqlite3.PARSE_DECLTYPES,
         )
         conn.row_factory = sqlite3.Row
+        pool_used = False
+
+    try:
         cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode = WAL")
-        cursor.execute("PRAGMA synchronous = NORMAL")
-        cursor.execute("PRAGMA cache_size = -64000")
         yield cursor
         conn.commit()
     except Exception as e:
@@ -81,7 +158,9 @@ def get_db_cursor(db_path: str):
         logger.error(f"Database error: {e}")
         raise
     finally:
-        if conn:
+        if pool_used:
+            _connection_pool.return_connection(conn)
+        else:
             conn.close()
 
 
@@ -384,3 +463,66 @@ class Blockchain:
         guess = f'{last_proof}{proof}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
         return guess_hash[:CONFIG['POW_DIFFICULTY']] == '0' * CONFIG['POW_DIFFICULTY']
+
+    # В класс Blockchain добавить:
+
+    def health_check(self) -> dict:
+        """Проверка здоровья базы данных"""
+        try:
+            with get_db_cursor(self.db_path) as cursor:
+                # Проверяем целостность
+                cursor.execute("PRAGMA integrity_check")
+                integrity = cursor.fetchone()[0]
+
+                # Размер базы
+                cursor.execute("PRAGMA page_count")
+                page_count = cursor.fetchone()[0]
+                cursor.execute("PRAGMA page_size")
+                page_size = cursor.fetchone()[0]
+                db_size_bytes = page_count * page_size
+
+                # Количество записей в таблицах
+                tables = ['transactions', 'wallets', 'blockchain', 'contacts', 'groups', 'stakes']
+                counts = {}
+                for table in tables:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    counts[table] = cursor.fetchone()[0]
+
+                # Статистика WAL
+                cursor.execute("PRAGMA wal_checkpoint")
+                wal_status = cursor.fetchone()
+
+                return {
+                    'status': 'healthy' if integrity == 'ok' else 'corrupted',
+                    'integrity': integrity,
+                    'db_size_mb': round(db_size_bytes / (1024 * 1024), 2),
+                    'table_counts': counts,
+                    'wal_status': wal_status,
+                }
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+
+    def get_performance_stats(self) -> dict:
+        """Статистика производительности"""
+        try:
+            with get_db_cursor(self.db_path) as cursor:
+                # Статистика индексов
+                cursor.execute("""
+                    SELECT name, 
+                           (SELECT COUNT(*) FROM sqlite_stat1 WHERE idx = name) as stats_available
+                    FROM sqlite_master 
+                    WHERE type = 'index'
+                    ORDER BY name
+                """)
+                indexes = [dict(row) for row in cursor.fetchall()]
+
+                # Cache hit ratio
+                cursor.execute("PRAGMA cache_size")
+                cache_size = cursor.fetchone()[0]
+
+                return {
+                    'indexes': indexes,
+                    'cache_size_pages': cache_size,
+                }
+        except Exception as e:
+            return {'error': str(e)}
