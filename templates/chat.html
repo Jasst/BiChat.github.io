@@ -181,6 +181,42 @@ const State = {
 };
 
 let isSending = false;   // флаг блокировки повторной отправки
+let userKeys = null;     // { signPrivateKey, ecdhPrivateKey, compressedPubKey, address }
+
+// Сжатие изображения до макс. размера и качества JPEG
+async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > maxWidth || height > maxWidth) {
+        if (width > height) {
+          height = height * (maxWidth / width);
+          width = maxWidth;
+        } else {
+          width = width * (maxWidth / height);
+          height = maxWidth;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+// Получить ключи пользователя (из sessionStorage)
+async function ensureKeys() {
+    if (userKeys) return userKeys;
+    const mnemonic = sessionStorage.getItem('mnemonic');
+    if (!mnemonic) throw new Error('No mnemonic in session');
+    userKeys = await DarkCrypto.deriveKeyPair(mnemonic);
+    return userKeys;
+}
 
 // =============================================================================
 // === Smart Scroll ===
@@ -243,15 +279,15 @@ async function loadOlderMessages(chatId, beforeId) {
     const data = await res.json();
     if (data.messages?.length) {
       const fragment = document.createDocumentFragment();
-      data.messages.forEach(msg => {
-        if (document.getElementById('msg-' + msg.id)) return;
-        const div = createMessageElement(msg);
+      for (const msg of data.messages) {
+        if (document.getElementById('msg-' + msg.id)) continue;
+        const decryptedMsg = await processMessageDecryption(msg);
+        const div = createMessageElement(decryptedMsg);
         fragment.appendChild(div);
-      });
+      }
       container.insertBefore(fragment, container.firstChild);
-      // Обновляем ID самого раннего сообщения
       State.lastKnownMessageId = Math.min(...data.messages.map(m => m.id));
-      setupTopObserver(); // переподключаем observer к новому первому элементу
+      setupTopObserver();
     }
   } catch (e) { console.error('Older messages error:', e); }
 }
@@ -333,7 +369,6 @@ async function loadConversations() {
 
 function selectConversation(address, name, isGroup) {
   if (isSending) isSending = false;
-  // Очищаем предыдущие подписки
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   State.currentChatUnsub = null;
   State.currentChatAddress = address;
@@ -380,6 +415,51 @@ function _enableChatControls() {
   }
 }
 
+async function processMessageDecryption(msg) {
+  if (!msg.content) return msg;
+  let content = msg.content;
+  let image = msg.image;
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed.ciphertext && parsed.iv && parsed.sender_pubkey) {
+      const keys = await ensureKeys();
+      try {
+        // Проверяем, наше ли сообщение
+        if (msg.is_mine) {
+          // Расшифровываем копию для себя (self_ciphertext)
+          if (parsed.self_ciphertext && parsed.self_iv) {
+            const selfCiphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_ciphertext);
+            const selfIv = DarkCrypto._fromBase64(parsed.self_iv);
+            const selfShared = await DarkCrypto.getSharedSecret(
+              keys.ecdhPrivateKey,
+              keys.compressedPubKey   // пара со своим же ключом
+            );
+            content = await DarkCrypto.decryptAES(selfShared, selfCiphertext, selfIv);
+            image = parsed.image || null;
+          } else {
+            // Если нет self-копии (старые сообщения), показываем placeholder
+            content = '🔒 Encrypted message (no self-copy)';
+          }
+        } else {
+          // Чужое сообщение – расшифровываем для получателя
+          const senderPubKeyBytes = DarkCrypto._fromBase64(parsed.sender_pubkey);
+          content = await DarkCrypto.decryptMessage(
+            keys.ecdhPrivateKey,
+            senderPubKeyBytes,
+            parsed.iv,
+            parsed.ciphertext
+          );
+          image = parsed.image || null;
+        }
+      } catch (decryptErr) {
+        console.warn('Decryption failed for msg', msg.id, decryptErr);
+        content = '🔒 Encrypted message';
+      }
+    }
+  } catch (e) { /* не JSON */ }
+  return { ...msg, content, image };
+}
+
 async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
   const container = document.getElementById('messagesContainer');
   if (!container) return;
@@ -417,7 +497,14 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     container.classList.remove('loading');
     if (!res.ok) throw new Error(data.error || 'Failed to load');
 
-    const messages = Array.isArray(data.messages) ? data.messages : [];
+    const rawMessages = Array.isArray(data.messages) ? data.messages : [];
+    // Расшифровываем сообщения
+    const messages = [];
+    for (const msg of rawMessages) {
+      const decrypted = await processMessageDecryption(msg);
+      messages.push(decrypted);
+    }
+
     if (!messages.length) {
       if (isNewMessage) { _enableChatControls(); return; }
       container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">👋</div><p>No messages yet</p><p class="text-muted" style="font-size:12px">Start the conversation!</p></div>';
@@ -453,15 +540,12 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       markConversationAsRead(chatWithAddress, messages[messages.length - 1].id);
     }
 
-        // === ПРОКРУТКА ВНИЗ (простая и надёжная) ===
     if (!isNewMessage) {
-      // Первичная загрузка чата – мгновенно + повторные прокрутки
       container.scrollTop = container.scrollHeight;
       setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 100);
       setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 350);
       setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 650);
     } else {
-      // Новые сообщения – скроллим, только если пользователь был внизу
       const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
       if (wasNearBottom) {
         container.scrollTop = container.scrollHeight;
@@ -472,7 +556,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     }
 
     _enableChatControls();
-    // Установить observer для подгрузки старых сообщений
     if (!isNewMessage) setupTopObserver();
   } catch (error) {
     console.error('Load messages error:', error);
@@ -496,7 +579,7 @@ function appendMessageToUI(msg) {
 }
 
 // =============================================================================
-// === sendMessage (без передачи мнемоники) ===
+// === sendMessage (с шифрованием) ===
 // =============================================================================
 async function sendMessage() {
   const contentEl = document.getElementById('messageContent');
@@ -504,7 +587,7 @@ async function sendMessage() {
   const attachBtn = document.getElementById('attachImageButton');
 
   if (isSending) {
-    window.NotificationManager?.showToast('Sending in progress, please wait...', 'warning');
+    window.NotificationManager?.showToast('Sending in progress...', 'warning');
     return;
   }
 
@@ -515,7 +598,6 @@ async function sendMessage() {
     return;
   }
 
-  // Блокируем UI
   isSending = true;
   if (sendBtn) sendBtn.disabled = true;
   if (attachBtn) attachBtn.disabled = true;
@@ -525,30 +607,7 @@ async function sendMessage() {
   const messageType = isGroup ? 'group' : 'direct';
   const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
 
-  // Оптимистичное добавление сообщения в UI
-  const tempId = 'temp-' + Date.now();
-  const tempMsg = {
-    id: tempId,
-    sender: State.userAddress,
-    recipient: recipient,
-    content: content,
-    image: State.pendingImageData,
-    timestamp: Date.now() / 1000,
-    is_mine: true,
-    sender_name: 'You',
-    encryption_type: 'pending'
-  };
-
-  const container = document.getElementById('messagesContainer');
-  if (container) {
-    const emptyState = container.querySelector('.empty-state');
-    if (emptyState) emptyState.remove();
-    const wasAtBottom = isUserAtBottom(container);
-    container.appendChild(createMessageElement(tempMsg));
-    if (wasAtBottom) smartScrollToBottom(container, false);
-  }
-
-  // Очищаем поле и картинку (текст не возвращаем даже при ошибке)
+  // Очищаем поле ввода
   if (contentEl) {
     contentEl.value = '';
     contentEl.style.height = 'auto';
@@ -556,14 +615,73 @@ async function sendMessage() {
   const attachedImage = State.pendingImageData;
   State.pendingImageData = null;
 
+  // Оптимистичное сообщение (открытый текст)
+  const tempId = 'temp-' + Date.now();
+  const tempMsg = {
+    id: tempId,
+    sender: State.userAddress,
+    recipient: recipient,
+    content: content,
+    image: attachedImage,
+    timestamp: Date.now() / 1000,
+    is_mine: true,
+    sender_name: 'You'
+  };
+
+  const container = document.getElementById('messagesContainer');
+  if (container) {
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
+    container.appendChild(createMessageElement(tempMsg));
+    smartScrollToBottom(container, true);
+  }
+
   try {
-    const payload = {
-      recipient: recipient,
-      content: content || '',
-      message_type: messageType
-    };
-    if (groupId) payload.group_id = groupId;
-    if (attachedImage) payload.image = attachedImage;
+    const keys = await ensureKeys();
+
+    let payload = {};
+    if (isGroup && groupId) {
+      payload = {
+        message_type: 'group',
+        group_id: groupId,
+        content: content || '',
+        image: attachedImage || null
+      };
+    } else {
+      // Получаем публичный ключ собеседника
+      const resPub = await fetch(`/get_public_key/${recipient}`);
+      if (!resPub.ok) throw new Error('Recipient public key not found');
+      const pubData = await resPub.json();
+      const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
+
+      // 1. Шифруем для получателя
+      const encrypted = await DarkCrypto.encryptMessage(
+        keys.ecdhPrivateKey,
+        keys.compressedPubKey,
+        recipientPubKeyBytes,
+        content || ''
+      );
+
+      // 2. Шифруем для себя (чтобы отправитель мог перечитывать)
+      const selfShared = await DarkCrypto.getSharedSecret(
+        keys.ecdhPrivateKey,            // наш приватный
+        keys.compressedPubKey           // наш же публичный
+      );
+      const selfEnc = await DarkCrypto.encryptAES(selfShared, content || '');
+
+      payload = {
+        recipient: recipient,
+        payload: {
+          ciphertext: encrypted.ciphertext,       // для получателя
+          iv: encrypted.iv,
+          sender_pubkey: encrypted.myPubKey,      // наш публичный ключ
+          self_ciphertext: DarkCrypto._arrayBufferToBase64(selfEnc.ciphertext), // для себя
+          self_iv: DarkCrypto._toBase64(selfEnc.iv),
+          image: attachedImage || null
+        },
+        message_type: 'direct'
+      };
+    }
 
     const res = await fetch('/send_message', {
       method: 'POST',
@@ -573,13 +691,21 @@ async function sendMessage() {
     const data = await res.json();
 
     if (res.ok) {
-      // Удаляем временное сообщение (реальное подтянется через polling)
+      // Обновляем временное сообщение реальным ID
       const tempElem = document.getElementById('msg-' + tempId);
-      if (tempElem) tempElem.remove();
+      if (tempElem) {
+        const realId = data.tx_id;
+        tempElem.id = 'msg-' + realId;
+        tempElem.dataset.messageId = realId;
+        const deleteBtn = tempElem.querySelector('.delete-btn');
+        if (deleteBtn) deleteBtn.dataset.id = realId;
+        // Показываем, что отправлено
+        const metaDiv = tempElem.querySelector('.meta span');
+        if (metaDiv) metaDiv.innerHTML += ' ✓';
+      }
       await loadMessagesForConversation(recipient, true);
       loadConversations();
     } else {
-      // Ошибка: удаляем временное сообщение, но текст НЕ возвращаем
       const tempElem = document.getElementById('msg-' + tempId);
       if (tempElem) tempElem.remove();
       window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
@@ -588,7 +714,7 @@ async function sendMessage() {
     console.error('Send error:', error);
     const tempElem = document.getElementById('msg-' + tempId);
     if (tempElem) tempElem.remove();
-    window.NotificationManager?.showToast('Network error, message not sent', 'error');
+    window.NotificationManager?.showToast(error.message || 'Network error', 'error');
   } finally {
     isSending = false;
     if (sendBtn) sendBtn.disabled = false;
@@ -675,13 +801,21 @@ async function clearConversation() {
   }
 }
 
-function handleImageSelection(event) {
+async function handleImageSelection(event) {
   const file = event.target.files[0];
   if (file && file.type?.startsWith('image/')) {
     const reader = new FileReader();
-    reader.onload = e => { if (e.target?.result) State.pendingImageData = e.target.result; };
+    reader.onload = async (e) => {
+      if (e.target?.result) {
+        try {
+          State.pendingImageData = await compressImage(e.target.result);
+          window.NotificationManager?.showToast('Image attached', 'success');
+        } catch (err) {
+          window.NotificationManager?.showToast('Image processing failed', 'error');
+        }
+      }
+    };
     reader.readAsDataURL(file);
-    window.NotificationManager?.showToast('Image attached', 'success');
   } else {
     window.NotificationManager?.showToast('Please select an image', 'warning');
   }
@@ -812,22 +946,19 @@ function updateConversationPreview(chatId, newPreview) {
 // === Init ===
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
-// Polling каждые 3 секунды (стабильно на shared-хостинге)
   State.pollInterval = setInterval(() => {
     if (State.currentChatAddress && document.visibilityState === 'visible') {
       loadMessagesForConversation(State.currentChatAddress, true);
     }
   }, 3000);
 
-  // Загрузка списка чатов и обновление каждые 5 секунд
   loadConversations();
   setInterval(() => {
     if (document.visibilityState === 'visible') loadConversations();
   }, 5000);
 
-   // Инициализация уведомлений (‼️ ‼️ обязательно)
   if (window.NotificationManager?.init) window.NotificationManager.init();
-    // === Обработчик удаления сообщений ===
+
   const msgContainer = document.getElementById('messagesContainer');
   if (msgContainer) {
     msgContainer.addEventListener('click', function(e) {
@@ -865,14 +996,12 @@ document.addEventListener('DOMContentLoaded', function() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); QRScanner.close(); } });
 });
 
-
-
 // =============================================================================
 // === Cleanup ===
 // =============================================================================
 window.addEventListener('beforeunload', () => {
   QRScanner.close();
-  if (State.pollInterval) clearInterval(State.pollInterval);   // ← ВОТ ЭТО НОВОЕ
+  if (State.pollInterval) clearInterval(State.pollInterval);
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   if (window.p2p?.unsubscribeAll) window.p2p.unsubscribeAll();
   if (window.NotificationManager?.destroy) window.NotificationManager.destroy();
@@ -890,6 +1019,7 @@ window.closeImageModal = closeImageModal;
 window.handleImageSelection = handleImageSelection;
 window.addContactFromChat = addContactFromChat;
 window.clearConversation = clearConversation;
+window.processMessageDecryption = processMessageDecryption;
 </script>
 {% endblock %}
 {% endblock %}

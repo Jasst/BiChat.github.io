@@ -234,24 +234,26 @@ class DarkCrypto {
     return words.join(' ');
   }
 
+  // === deriveKeyPair с нормализацией и возвратом ECDH-ключа ===
   static async deriveKeyPair(mnemonic) {
     const seed = await this._mnemonicToSeed(mnemonic);
-    const rawPrivate = new Uint8Array(seed.slice(0, 32));   // <-- Uint8Array
-    const d = rawPrivate;   // <-- БЕЗ нормализации, берём сырой ключ
+    const rawPrivate = new Uint8Array(seed.slice(0, 32));
+    const d = this._normalizePrivateKey(rawPrivate);
     const point = this._derivePubPoint(d);
 
-    const jwkPrivate = {
-      kty: 'EC',
-      crv: 'P-256',
+    const jwkSign = {
+      kty: 'EC', crv: 'P-256',
       d: this._bytesToBase64Url(d),
       x: this._bytesToBase64Url(point.x),
       y: this._bytesToBase64Url(point.y),
       ext: true,
     };
     const signPrivateKey = await crypto.subtle.importKey(
-      'jwk', jwkPrivate,
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      true, ['sign']
+      'jwk', jwkSign, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']
+    );
+    // ECDH на том же ключе
+    const ecdhPrivateKey = await crypto.subtle.importKey(
+      'jwk', jwkSign, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']
     );
     const jwk = await crypto.subtle.exportKey('jwk', signPrivateKey);
     const xBytes = this._base64UrlToBytes(jwk.x);
@@ -263,7 +265,101 @@ class DarkCrypto {
     const hash = await crypto.subtle.digest('SHA-256', compressed);
     const address = Array.from(new Uint8Array(hash))
       .map(b => b.toString(16).padStart(2, '0')).join('');
-    return { signPrivateKey, ecdhPrivateKey: null, compressedPubKey: compressed, address };
+    return { signPrivateKey, ecdhPrivateKey, compressedPubKey: compressed, address };
+  }
+
+  // --- ECDH + AES-GCM ---
+  static decompressPublicKey(compressedKey) {
+    if (compressedKey.length !== 33 || (compressedKey[0] !== 0x02 && compressedKey[0] !== 0x03)) {
+      throw new Error('Invalid compressed key');
+    }
+    const p = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFn;
+    const a = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFCn;
+    const b = 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604Bn;
+    const x = BigInt('0x' + Array.from(compressedKey.slice(1)).map(b => b.toString(16).padStart(2,'0')).join(''));
+    const rhs = (x * x * x + a * x + b) % p;
+    const modPow = (base, exp) => {
+      let res = 1n;
+      while (exp > 0n) {
+        if (exp & 1n) res = (res * base) % p;
+        base = (base * base) % p;
+        exp >>= 1n;
+      }
+      return res;
+    };
+    let y = modPow(rhs, (p + 1n) / 4n);
+    if ((y & 1n) !== (compressedKey[0] === 0x03 ? 1n : 0n)) {
+      y = p - y;
+    }
+    const xBytes = this._to32Bytes(x);
+    const yBytes = this._to32Bytes(y);
+    const uncompressed = new Uint8Array(65);
+    uncompressed[0] = 0x04;
+    uncompressed.set(xBytes, 1);
+    uncompressed.set(yBytes, 33);
+    return uncompressed;
+  }
+
+  static async getSharedSecret(myEcdhPrivateKey, theirPubKeyBytes) {
+    let pubKey = theirPubKeyBytes;
+    if (pubKey.length === 33 && (pubKey[0] === 0x02 || pubKey[0] === 0x03)) {
+      pubKey = this.decompressPublicKey(pubKey);
+    }
+    const pubKeyObj = await crypto.subtle.importKey(
+      'raw', pubKey, { name: 'ECDH', namedCurve: 'P-256' }, false, []
+    );
+    const shared = await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: pubKeyObj }, myEcdhPrivateKey, 256
+    );
+    return shared;
+  }
+
+  static async encryptAES(sharedSecret, plaintext) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await crypto.subtle.importKey(
+      'raw', sharedSecret, { name: 'AES-GCM' }, false, ['encrypt']
+    );
+    const encoded = new TextEncoder().encode(plaintext);
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv }, key, encoded
+    );
+    return { ciphertext, iv };
+  }
+
+  static async decryptAES(sharedSecret, ciphertext, iv) {
+    const key = await crypto.subtle.importKey(
+      'raw', sharedSecret, { name: 'AES-GCM' }, false, ['decrypt']
+    );
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv }, key, ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
+  }
+
+  static async encryptMessage(myEcdhPrivateKey, myCompressedPubKey, recipientPubKey, plaintext) {
+    const shared = await this.getSharedSecret(myEcdhPrivateKey, recipientPubKey);
+    const { ciphertext, iv } = await this.encryptAES(shared, plaintext);
+    return {
+      ciphertext: this._arrayBufferToBase64(ciphertext),
+      iv: this._toBase64(iv),
+      myPubKey: this._toBase64(myCompressedPubKey)
+    };
+  }
+
+  static async decryptMessage(myEcdhPrivateKey, senderCompressedPubKey, ivBase64, ciphertextBase64) {
+    const iv = this._fromBase64(ivBase64);
+    const ciphertext = this._base64ToArrayBuffer(ciphertextBase64);
+    const shared = await this.getSharedSecret(myEcdhPrivateKey, senderCompressedPubKey);
+    return await this.decryptAES(shared, ciphertext, iv);
+  }
+
+  static _arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    return this._toBase64(bytes);
+  }
+  static _base64ToArrayBuffer(base64) {
+    const bytes = this._fromBase64(base64);
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   }
 
   static async signData(privateKey, dataString) {
@@ -385,6 +481,8 @@ class DarkCrypto {
     }
     return bytes;
   }
+
+
 
   static _bytesToBase64Url(bytes) {
     let binary = '';
