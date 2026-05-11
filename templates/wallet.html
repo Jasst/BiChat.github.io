@@ -260,7 +260,7 @@ async function startMining() {
     const chainData = await proofResp.json();
     const { last_proof, difficulty } = chainData;
     const target = '0'.repeat(difficulty);
-    const maxIter = 50000000;   // можно заменить на глобальную переменную
+    const maxIter = 5000000;   // можно заменить на глобальную переменную
     let startTime = Date.now();
 
     statusEl.textContent = `Mining... difficulty=${difficulty}, searching proof`;
