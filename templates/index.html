@@ -91,16 +91,25 @@
 // === Глобальное хранилище мнемоники (будет доступно после создания/входа) ===
 window.appMnemonic = null;
 
+// Флаг для защиты от повторных вызовов
+let isCreatingWallet = false;
+
 /**
  * Создание нового кошелька.
  * Генерируем мнемонику на клиенте, получаем адрес и публичный ключ,
  * отправляем их на сервер, показываем мнемонику пользователю.
  */
 async function createWallet() {
+  // Защита от повторного вызова
+  if (isCreatingWallet) {
+    console.warn('Wallet creation already in progress');
+    return;
+  }
+
   const btn = document.getElementById('createWalletBtn');
   if (!btn) return;
 
-  // Блокируем кнопку на время создания
+  isCreatingWallet = true;
   btn.disabled = true;
   btn.textContent = 'Creating…';
   btn.classList.add('animate-pulse');
@@ -112,7 +121,6 @@ async function createWallet() {
     const keys = await DarkCrypto.deriveKeyPair(mnemonic);
     const address = keys.address;
     const compressedPubKey = keys.compressedPubKey;
-    // signPrivateKey и ecdhPrivateKey пока не нужны
     // 3. Кодируем публичный ключ в Base64 для отправки
     const pubkeyB64 = DarkCrypto._toBase64(compressedPubKey);
 
@@ -143,10 +151,12 @@ async function createWallet() {
       error.message || 'Wallet creation failed. Please try again.',
       'error'
     );
-    // Возвращаем кнопку в исходное состояние
+    // Восстанавливаем кнопку только при ошибке
     btn.disabled = false;
     btn.textContent = '✨ Create New Wallet';
     btn.classList.remove('animate-pulse');
+  } finally {
+    isCreatingWallet = false;
   }
 }
 
@@ -167,15 +177,14 @@ document.addEventListener('DOMContentLoaded', function() {
     window.NotificationManager.init();
   }
 
-  // Привязываем кнопку к функции (на случай, если onclick из HTML переопределён)
-  const btn = document.getElementById('createWalletBtn');
-  if (btn) {
-    btn.addEventListener('click', createWallet);
-  }
+  // ВАЖНО: НЕ добавляем слушатель на createWalletBtn,
+  // так как он уже привязан через onclick в HTML
 
-  // Кнопка "Продолжить" в модальном окне (находится внутри MnemonicManager, но мы переопределим)
+  // Кнопка "Продолжить" в модальном окне
   const confirmBtn = document.querySelector('#mnemonicModal .btn-primary');
   if (confirmBtn) {
+    // Удаляем старый слушатель, если есть, чтобы избежать дублирования
+    confirmBtn.removeEventListener('click', proceedToChat);
     confirmBtn.addEventListener('click', proceedToChat);
   }
 });
