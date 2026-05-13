@@ -11,10 +11,10 @@ from flask_compress import Compress
 from config import (CONFIG, DATABASE_PATH, MAX_CONTENT_LENGTH,
                     SECRET_KEY, STATIC_FOLDER, TEMPLATE_FOLDER, UPLOAD_FOLDER)
 from database import Blockchain, init_sqlite_optimizations, warmup_database, init_connection_pool
-from logging_setup import setup_logging
+from setup import setup_logging
 # ── НОВЫЕ ИМПОРТЫ (в начало файла) ──────────────────────────────────────────
-from rate_limiter import rate_limit, message_limiter, api_limiter, get_rate_limit_stats
-from query_optimizer import balance_cache, contact_cache, group_cache
+from setup import rate_limit, message_limiter, api_limiter, get_rate_limit_stats
+from setup import balance_cache, contact_cache, group_cache
 
 # ── Логирование ─────────────────────────────────────────────────────────────
 setup_logging()
