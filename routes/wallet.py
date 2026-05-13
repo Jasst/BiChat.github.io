@@ -5,7 +5,7 @@ import time
 import logging
 import secrets
 from collections import defaultdict
-from rate_limiter import rate_limit
+from setup import rate_limit
 from flask import Blueprint, jsonify, request, session
 
 from config import (

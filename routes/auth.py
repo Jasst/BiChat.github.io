@@ -8,7 +8,7 @@ import secrets
 from flask import Blueprint, jsonify, render_template, request, session, url_for, redirect
 
 from cache import cache_public_key, clear_all_caches
-from crypto_manager import verify_address_matches_pubkey, load_public_key_from_b64
+from setup import verify_address_matches_pubkey, load_public_key_from_b64
 from config import AIRDROP_AMOUNT
 
 # Новый импорт для кодирования сырой подписи в DER

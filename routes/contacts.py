@@ -9,7 +9,7 @@ from marshmallow import ValidationError
 
 from cache import (bump_contact_cache_version, get_cached_public_key,
                     get_pubkey_cache_version)
-from schemas import ContactSchema, EditContactSchema
+from setup import ContactSchema, EditContactSchema
 from services.contacts import add_contact, get_contacts, update_contact_name
 
 logger      = logging.getLogger(__name__)

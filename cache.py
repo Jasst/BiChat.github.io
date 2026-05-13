@@ -9,7 +9,7 @@ from functools import lru_cache
 from typing import Optional, Tuple
 
 from config import CONFIG
-from crypto_manager import verify_address_matches_pubkey
+from setup import verify_address_matches_pubkey
 
 logger = logging.getLogger(__name__)
 

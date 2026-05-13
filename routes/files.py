@@ -11,7 +11,7 @@ from marshmallow import ValidationError
 from werkzeug.utils import secure_filename
 
 from config import UPLOAD_FOLDER, CONFIG
-from schemas import DeleteMessageSchema
+from setup import DeleteMessageSchema
 from typing import Optional
 
 

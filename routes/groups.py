@@ -10,7 +10,7 @@ from flask import Blueprint, jsonify, request, session
 from marshmallow import ValidationError
 
 from cache import bump_groups_cache_version, get_groups_cache_version, get_user_groups_cached
-from schemas import GroupSchema
+from setup import GroupSchema
 
 logger    = logging.getLogger(__name__)
 groups_bp = Blueprint('groups', __name__)

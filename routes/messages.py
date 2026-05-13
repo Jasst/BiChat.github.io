@@ -10,7 +10,7 @@ from typing import Dict, List
 from flask import Blueprint, jsonify, request, session
 from marshmallow import ValidationError
 # В начало файла после импортов
-from rate_limiter import rate_limit, message_limiter
+from setup import rate_limit, message_limiter
 
 from cache import (
     get_contact_cache_version, get_contact_name_cached,
