@@ -150,7 +150,8 @@ def wallet_send():
         # 5. Обновляем аккумулятор стейкинга (только на ту часть, что реально пошла в пул)
         if ENABLE_STAKING and staking_manager and staking_fee > 0:
             staking_manager.add_to_fee_pool(staking_fee, cursor=cursor)
-
+        logger.info(
+            f"Committed transfer: user={user}, recipient={recipient}, amount={amount}, collector_fee={collector_fee}, staking_fee={staking_fee}")
         cursor.execute("COMMIT")
 
     return jsonify({'message': 'Sent', 'amount': amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}), 200
