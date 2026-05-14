@@ -10,7 +10,8 @@ from flask import Blueprint, jsonify, request, session
 
 from config import (
     COIN, COIN_NAME, TRANSFER_FEE, MIN_STAKE_AMOUNT, BLOCK_REWARD, CONFIG,
-    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE
+    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE,
+    FEE_COLLECTOR_ADDRESS, FEE_COLLECTOR_SPLIT
 )
 from services.wallet import staking_manager
 
@@ -115,24 +116,45 @@ def wallet_send():
             cursor.execute("ROLLBACK")
             return jsonify({'error': f'Insufficient balance. Need {total / COIN} {COIN_NAME}'}), 400
 
+        # 1. Списываем сумму + полную комиссию с отправителя
         cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?', (total, user))
+
+        # 2. Зачисляем сумму получателю
         cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
                        (recipient, amount, amount))
+
         ts = time.time()
+
+        # 3. Записываем транзакцию перевода
         cursor.execute('INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp) VALUES (?,?,?,?,?)',
                        ('transfer', user, recipient, amount, ts))
-        # Комиссия в стейкинг-пул
-        cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-                       (STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, TRANSFER_FEE))
-        cursor.execute('INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) VALUES (?,?,?,?,?,?)',
-                       ('fee', user, STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, ts, 'transfer fee to staking pool'))
 
-        # Обновляем аккумулятор стейкинга (в той же транзакции)
-        if ENABLE_STAKING and staking_manager:
-            staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=cursor)
+        # 4. Разделяем комиссию между коллектором и стейкинг-пулом
+        collector_fee = int(TRANSFER_FEE * FEE_COLLECTOR_SPLIT)
+        staking_fee = TRANSFER_FEE - collector_fee
+
+        # 4a. Часть комиссии – создателю сервиса
+        if collector_fee > 0:
+            cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
+                           (FEE_COLLECTOR_ADDRESS, collector_fee, collector_fee))
+            cursor.execute('INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) VALUES (?,?,?,?,?,?)',
+                           ('fee', user, FEE_COLLECTOR_ADDRESS, collector_fee, ts, 'service fee'))
+
+        # 4b. Остаток – в стейкинг-пул
+        if staking_fee > 0:
+            cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
+                           (STAKING_FEE_POOL_ADDRESS, staking_fee, staking_fee))
+            cursor.execute('INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) VALUES (?,?,?,?,?,?)',
+                           ('fee', user, STAKING_FEE_POOL_ADDRESS, staking_fee, ts, 'transfer fee to staking pool'))
+
+        # 5. Обновляем аккумулятор стейкинга (только на ту часть, что реально пошла в пул)
+        if ENABLE_STAKING and staking_manager and staking_fee > 0:
+            staking_manager.add_to_fee_pool(staking_fee, cursor=cursor)
 
         cursor.execute("COMMIT")
+
     return jsonify({'message': 'Sent', 'amount': amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}), 200
+
 
 @wallet_bp.route('/wallet/stake', methods=['POST'])
 def stake():

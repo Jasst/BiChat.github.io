@@ -141,3 +141,7 @@ MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
 # Максимальная эмиссия (None = без ограничений)
 MAX_SUPPLY = 21_000_000 * COIN  # 21 000 000 BlockCoin
+
+# Комиссия, которая идёт создателю сервиса (в долях от TRANSFER_FEE)
+FEE_COLLECTOR_ADDRESS = "e9a751094d1740e4c68233e16fbe8a92317cdd2e73154c5a39cd850f9e809828"
+FEE_COLLECTOR_SPLIT = 0.3  # 30% от комиссии за перевод будет забирать себе коллектор
