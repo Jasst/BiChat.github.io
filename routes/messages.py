@@ -95,13 +95,8 @@ def send_message():
                         sender_pubkey=None,
                         metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id}
                     )
-                    last_proof = _blockchain._last_block_raw(cursor)['proof']
-                    # майнинг запустим после коммита
+                    # Майнинг отключён – блок не создаётся автоматически
                     cursor.execute("COMMIT")
-                    threading.Thread(
-                        target=mine_block_async,
-                        args=(_blockchain.db_path, last_proof), daemon=True
-                    ).start()
                     return jsonify({'message': 'Sent', 'tx_id': tx_id, 'type': 'group', 'fee': MESSAGE_FEE}), 201
                 else:
                     if sender == recipient:
@@ -115,16 +110,10 @@ def send_message():
                         sender_pubkey=None,
                         metadata={'encryption': 'hybrid-v2'}
                     )
-                    last_proof = _blockchain._last_block_raw(cursor)['proof']
                     cursor.execute("COMMIT")
-                    threading.Thread(
-                        target=mine_block_async,
-                        args=(_blockchain.db_path, last_proof), daemon=True
-                    ).start()
                     return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient, 'fee': MESSAGE_FEE}), 201
         else:
-            # Плата 0, старая логика без двойной транзакции (можно упростить)
-            # ... (оставим как было, но без _lottery)
+            # Плата 0 – майнинг не запускается
             if msg_type == 'group' and group_id:
                 encrypted_map = data.get('encrypted_map')
                 if not encrypted_map or not isinstance(encrypted_map, dict):
@@ -141,11 +130,6 @@ def send_message():
                         sender_pubkey=None,
                         metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id}
                     )
-                    last_proof = _blockchain._last_block_raw(cursor)['proof']
-                    threading.Thread(
-                        target=mine_block_async,
-                        args=(_blockchain.db_path, last_proof), daemon=True
-                    ).start()
                 return jsonify({'message': 'Sent', 'tx_id': tx_id, 'type': 'group', 'fee': MESSAGE_FEE}), 201
             else:
                 if sender == recipient:
@@ -159,17 +143,11 @@ def send_message():
                         sender_pubkey=None,
                         metadata={'encryption': 'hybrid-v2'}
                     )
-                    last_proof = _blockchain._last_block_raw(cursor)['proof']
-                    threading.Thread(
-                        target=mine_block_async,
-                        args=(_blockchain.db_path, last_proof), daemon=True
-                    ).start()
                 return jsonify({'message': 'Sent', 'tx_id': tx_id, 'recipient': recipient, 'fee': MESSAGE_FEE}), 201
 
     except Exception as e:
         logger.error(f"send_message error: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
-
 
 @messages_bp.route('/get_conversation', methods=['GET'])
 def get_conversation():
