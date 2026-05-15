@@ -11,8 +11,9 @@ from flask_compress import Compress
 from config import (CONFIG, DATABASE_PATH, MAX_CONTENT_LENGTH,
                     SECRET_KEY, STATIC_FOLDER, TEMPLATE_FOLDER, UPLOAD_FOLDER)
 from database import Blockchain, init_sqlite_optimizations, warmup_database, init_connection_pool
+from services.notifier import message_notifier
 from setup import setup_logging
-# ── НОВЫЕ ИМПОРТЫ (в начало файла) ──────────────────────────────────────────
+
 from setup import rate_limit, message_limiter, api_limiter, get_rate_limit_stats
 from setup import balance_cache, contact_cache, group_cache
 
@@ -137,6 +138,19 @@ def health_db():
 def health_performance():
     """Статистика производительности"""
     return jsonify(blockchain.get_performance_stats())
+
+
+# Добавь health check для мониторинга
+@app.route('/health/notifier')
+def health_notifier():
+    """Статус системы уведомлений"""
+    return jsonify({
+        'status': 'ok',
+        'stats': message_notifier.get_stats(),
+    })
+
+
+
 
 # ── Запуск (для локального тестирования) ───────────────────────────────────
 if __name__ == '__main__':

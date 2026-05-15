@@ -155,6 +155,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="{{ url_for('static', filename='js/common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/notification-manager.js') }}"></script>
+<script src="{{ url_for('static', filename='js/LongPollingClient.js') }}"></script>
 
 <script>
 // =============================================================================
@@ -168,7 +169,7 @@ if (typeof AppData === 'undefined') {
 
 
 // =============================================================================
-// === Состояние чата (без polling) ===
+// === Состояние чата ===
 // =============================================================================
 const State = {
   currentChatAddress: '',
@@ -180,22 +181,19 @@ const State = {
   allContacts: [],
   lastKnownMessageId: 0,
   pendingImageData: null,
-  topObserver: null   // для подгрузки старых сообщений
+  topObserver: null
 };
 
-let isSending = false;   // флаг блокировки повторной отправки
-let userKeys = null;     // { signPrivateKey, ecdhPrivateKey, compressedPubKey, address }
-// Глобальный кэш публичных ключей (адрес -> base64)
+let isSending = false;
+let userKeys = null;
 const pubKeyCache = new Map();
 
-// СТАЛО — с верификацией
 async function getPubKey(address) {
   if (pubKeyCache.has(address)) return pubKeyCache.get(address);
   const res = await fetch(`/get_public_key/${address}`);
   if (!res.ok) throw new Error(`Public key not found for ${address}`);
   const data = await res.json();
 
-  // Верифицируем: address должен быть SHA256(pubkey)
   const pubKeyBytes = DarkCrypto._fromBase64(data.public_key);
   const hashBuf = await crypto.subtle.digest('SHA-256', pubKeyBytes);
   const computedAddress = Array.from(new Uint8Array(hashBuf))
@@ -207,7 +205,7 @@ async function getPubKey(address) {
   pubKeyCache.set(address, data.public_key);
   return data.public_key;
 }
-// Сжатие изображения до макс. размера и качества JPEG
+
 async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -233,7 +231,6 @@ async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
   });
 }
 
-// Получить ключи пользователя (из sessionStorage)
 async function ensureKeys() {
     if (userKeys) return userKeys;
     const mnemonic = sessionStorage.getItem('mnemonic');
@@ -278,7 +275,7 @@ function showNewMessagesBadge() {
 }
 
 // =============================================================================
-// === Пагинация старых сообщений при скролле вверх ===
+// === Пагинация старых сообщений ===
 // =============================================================================
 function setupTopObserver() {
   if (State.topObserver) State.topObserver.disconnect();
@@ -316,7 +313,6 @@ async function loadOlderMessages(chatId, beforeId) {
   } catch (e) { console.error('Older messages error:', e); }
 }
 
-// Вспомогательная функция создания элемента сообщения (избегаем дублирования)
 function createMessageElement(msg) {
   const messageDiv = document.createElement('div');
   messageDiv.id = 'msg-' + msg.id;
@@ -399,7 +395,6 @@ async function selectConversation(address, name, isGroup) {
   State.currentChatIsGroup = !!isGroup;
   State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
 
-  // Загрузка состава группы, если это группа
   if (isGroup) {
     try {
       const res = await fetch('/get_groups');
@@ -465,7 +460,6 @@ async function processMessageDecryption(msg) {
   try {
     const parsed = JSON.parse(content);
 
-    // Групповое сообщение (encrypted_map)
     if (parsed.encrypted_map) {
       const myAddr = State.userAddress;
       const myEnc = parsed.encrypted_map[myAddr];
@@ -487,7 +481,6 @@ async function processMessageDecryption(msg) {
       return { ...msg, content, image };
     }
 
-    // P2P сообщение (ciphertext + iv + sender_pubkey)
     if (parsed.ciphertext && parsed.iv && parsed.sender_pubkey) {
       const keys = await ensureKeys();
       try {
@@ -519,7 +512,7 @@ async function processMessageDecryption(msg) {
         content = '🔒 Encrypted message';
       }
     }
-  } catch (e) { /* не JSON */ }
+  } catch (e) { }
   return { ...msg, content, image };
 }
 
@@ -561,7 +554,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     if (!res.ok) throw new Error(data.error || 'Failed to load');
 
     const rawMessages = Array.isArray(data.messages) ? data.messages : [];
-    // Расшифровываем сообщения
     const messages = [];
     for (const msg of rawMessages) {
       const decrypted = await processMessageDecryption(msg);
@@ -642,7 +634,7 @@ function appendMessageToUI(msg) {
 }
 
 // =============================================================================
-// === sendMessage (с шифрованием) ===
+// === sendMessage ===
 // =============================================================================
 async function sendMessage() {
   const contentEl = document.getElementById('messageContent');
@@ -667,10 +659,8 @@ async function sendMessage() {
   if (contentEl) contentEl.disabled = true;
 
   const isGroup = State.currentChatIsGroup;
-  const messageType = isGroup ? 'group' : 'direct';
   const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
 
-  // Очищаем поле ввода
   if (contentEl) {
     contentEl.value = '';
     contentEl.style.height = 'auto';
@@ -678,7 +668,6 @@ async function sendMessage() {
   const attachedImage = State.pendingImageData;
   State.pendingImageData = null;
 
-  // Оптимистичное сообщение (открытый текст)
   const tempId = 'temp-' + Date.now();
   const tempMsg = {
     id: tempId,
@@ -704,41 +693,38 @@ async function sendMessage() {
 
     let payload = {};
     if (isGroup && groupId) {
-      // Групповое: формируем encrypted_map
-      // СТАЛО — всегда берём свежий список перед отправкой
-try {
-  const gRes = await fetch('/get_groups');
-  const gData = await gRes.json();
-  const freshGroup = gData.groups?.find(g => g.id === groupId);
-  if (freshGroup && freshGroup.members?.length) {
-    State.currentGroupMembers = freshGroup.members;
-  }
-} catch (e) {
-  console.warn('Could not refresh group members, using cached list:', e);
-}
-const members = State.currentGroupMembers;
-if (!members || members.length === 0) throw new Error('Group members not loaded');
+      try {
+        const gRes = await fetch('/get_groups');
+        const gData = await gRes.json();
+        const freshGroup = gData.groups?.find(g => g.id === groupId);
+        if (freshGroup && freshGroup.members?.length) {
+          State.currentGroupMembers = freshGroup.members;
+        }
+      } catch (e) {
+        console.warn('Could not refresh group members, using cached list:', e);
+      }
+      const members = State.currentGroupMembers;
+      if (!members || members.length === 0) throw new Error('Group members not loaded');
 
       const encryptedMap = {};
       for (const addr of members) {
-  const pubKeyB64 = await getPubKey(addr);
-  const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
-  const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
-  const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content || '');
+        const pubKeyB64 = await getPubKey(addr);
+        const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
+        const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
+        const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content || '');
 
-  encryptedMap[addr] = {
-    ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext),
-    iv: DarkCrypto._toBase64(iv),
-    sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
-    image: attachedImage || null   // ← Баг 2: картинки теперь доходят
-  };
+        encryptedMap[addr] = {
+          ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext),
+          iv: DarkCrypto._toBase64(iv),
+          sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
+          image: attachedImage || null
+        };
 
-  // Для себя добавляем self-копию
-  if (addr === State.userAddress) {
-    encryptedMap[addr].self_ciphertext = encryptedMap[addr].ciphertext;
-    encryptedMap[addr].self_iv = encryptedMap[addr].iv;
-  }
-}
+        if (addr === State.userAddress) {
+          encryptedMap[addr].self_ciphertext = encryptedMap[addr].ciphertext;
+          encryptedMap[addr].self_iv = encryptedMap[addr].iv;
+        }
+      }
 
       payload = {
         message_type: 'group',
@@ -746,13 +732,11 @@ if (!members || members.length === 0) throw new Error('Group members not loaded'
         encrypted_map: encryptedMap
       };
     } else {
-      // P2P: получаем публичный ключ собеседника
       const resPub = await fetch(`/get_public_key/${recipient}`);
       if (!resPub.ok) throw new Error('Recipient public key not found');
       const pubData = await resPub.json();
       const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
 
-      // 1. Шифруем для получателя
       const encrypted = await DarkCrypto.encryptMessage(
         keys.ecdhPrivateKey,
         keys.compressedPubKey,
@@ -760,20 +744,19 @@ if (!members || members.length === 0) throw new Error('Group members not loaded'
         content || ''
       );
 
-      // 2. Шифруем для себя (чтобы отправитель мог перечитывать)
       const selfShared = await DarkCrypto.getSharedSecret(
-        keys.ecdhPrivateKey,            // наш приватный
-        keys.compressedPubKey           // наш же публичный
+        keys.ecdhPrivateKey,
+        keys.compressedPubKey
       );
       const selfEnc = await DarkCrypto.encryptAES(selfShared, content || '');
 
       payload = {
         recipient: recipient,
         payload: {
-          ciphertext: encrypted.ciphertext,       // для получателя
+          ciphertext: encrypted.ciphertext,
           iv: encrypted.iv,
-          sender_pubkey: encrypted.myPubKey,      // наш публичный ключ
-          self_ciphertext: DarkCrypto._arrayBufferToBase64(selfEnc.ciphertext), // для себя
+          sender_pubkey: encrypted.myPubKey,
+          self_ciphertext: DarkCrypto._arrayBufferToBase64(selfEnc.ciphertext),
           self_iv: DarkCrypto._toBase64(selfEnc.iv),
           image: attachedImage || null
         },
@@ -801,6 +784,11 @@ if (!members || members.length === 0) throw new Error('Group members not loaded'
       }
       await loadMessagesForConversation(recipient, true);
       loadConversations();
+
+      // ✅ Принудительно проверяем новые сообщения
+      if (longPollingClient) {
+        longPollingClient.forceCheck();
+      }
     } else {
       const tempElem = document.getElementById('msg-' + tempId);
       if (tempElem) tempElem.remove();
@@ -821,7 +809,7 @@ if (!members || members.length === 0) throw new Error('Group members not loaded'
 }
 
 // =============================================================================
-// === Остальные функции (addContactFromChat, deleteMessage, etc.) без изменений ===
+// === Вспомогательные функции ===
 // =============================================================================
 async function addContactFromChat() {
   if (!State.currentChatPartnerAddress || State.currentChatPartnerAddress === State.userAddress) {
@@ -932,21 +920,22 @@ function openImageModal(src) {
     };
   }
 }
+
 function closeImageModal() { document.getElementById('imageModal')?.classList.add('hidden'); }
 
 // =============================================================================
-// === Modal Controls (из исходного кода) ===
+// === Modal Controls ===
 // =============================================================================
 function openNewChatModal() {
   document.getElementById('newChatModal')?.classList.remove('hidden');
   document.getElementById('newChatSelect').value = '';
   document.getElementById('newChatAddress').value = '';
   loadContactsForModal();
-  QRScanner.close();
+  if (window.QRScanner) QRScanner.close();
 }
 function closeNewChatModal() {
   document.getElementById('newChatModal')?.classList.add('hidden');
-  QRScanner.close();
+  if (window.QRScanner) QRScanner.close();
 }
 async function loadContactsForModal() {
   try {
@@ -1039,19 +1028,14 @@ function updateConversationPreview(chatId, newPreview) {
 }
 
 // =============================================================================
-// === Init ===
+// === DOMContentLoaded ===
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
-  State.pollInterval = setInterval(() => {
-    if (State.currentChatAddress && document.visibilityState === 'visible') {
-      loadMessagesForConversation(State.currentChatAddress, true);
-    }
-  }, 3000);
-
+  // ✅ Загружаем диалоги при старте
   loadConversations();
-  setInterval(() => {
-    if (document.visibilityState === 'visible') loadConversations();
-  }, 5000);
+
+  // ✅ Запускаем Long Polling
+  setupLongPolling();
 
   if (window.NotificationManager?.init) window.NotificationManager.init();
 
@@ -1075,6 +1059,7 @@ document.addEventListener('DOMContentLoaded', function() {
       history.replaceState({}, '', location.pathname);
     }, 100);
   }
+
   const input = document.getElementById('messageContent');
   if (input) {
     input.addEventListener('input', function() {
@@ -1085,25 +1070,86 @@ document.addEventListener('DOMContentLoaded', function() {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
   }
+
   document.getElementById('newChatBtn')?.addEventListener('click', openNewChatModal);
   document.getElementById('startNewChatBtn')?.addEventListener('click', startNewChat);
   document.getElementById('imageModal')?.addEventListener('click', e => { if (e.target.id === 'imageModal') closeImageModal(); });
-  window.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) { e.target.classList.add('hidden'); QRScanner.close(); } });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); QRScanner.close(); } });
+  window.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) { e.target.classList.add('hidden'); if (window.QRScanner) QRScanner.close(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); if (window.QRScanner) QRScanner.close(); } });
 });
 
 // =============================================================================
 // === Cleanup ===
 // =============================================================================
 window.addEventListener('beforeunload', () => {
-  QRScanner.close();
-  if (State.pollInterval) clearInterval(State.pollInterval);
+  if (window.QRScanner) QRScanner.close();
+  if (longPollingClient) {
+    longPollingClient.stop();
+    longPollingClient = null;
+  }
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   if (window.p2p?.unsubscribeAll) window.p2p.unsubscribeAll();
   if (window.NotificationManager?.destroy) window.NotificationManager.destroy();
 });
 
-// Экспорт функций для внешних скриптов
+// =============================================================================
+// === Long Polling Client ===
+// =============================================================================
+
+let longPollingClient = null;
+
+async function setupLongPolling() {
+    if (longPollingClient) {
+        longPollingClient.stop();
+    }
+
+    longPollingClient = new LongPollingClient({
+        baseUrl: '',
+        timeout: 25000,
+        debug: false,
+        onMessages: async (messages) => {
+            console.log('📬 New messages via Long Polling:', messages.length);
+
+            for (const msg of messages) {
+                if (msg.timestamp > State.lastMessageTimestamp) {
+                    State.lastMessageTimestamp = msg.timestamp;
+                }
+
+                if (State.currentChatAddress === msg.chatId) {
+                    await loadMessagesForConversation(State.currentChatAddress, true);
+                } else {
+                    await loadConversations();
+
+                    if (window.NotificationManager && document.visibilityState === 'visible') {
+                        window.NotificationManager.handleIncomingMessage?.({
+                            sender: msg.sender,
+                            sender_name: msg.sender_name,
+                            chatId: msg.chatId,
+                            isGroup: msg.isGroup,
+                            preview: msg.preview,
+                            timestamp: msg.timestamp * 1000
+                        });
+                    }
+                }
+            }
+        },
+        onError: (error) => {
+            console.warn('⚠️ Long polling connection issue:', error.message);
+        },
+        onConnect: () => {
+            console.log('✅ Long polling connected');
+        },
+        onDisconnect: () => {
+            console.warn('⚠️ Long polling disconnected');
+        }
+    });
+
+    longPollingClient.start();
+}
+
+window.getLongPollingStatus = () => longPollingClient?.getStatus();
+
+// Экспорт функций
 window.selectConversation = selectConversation;
 window.appendMessageToUI = appendMessageToUI;
 window.loadMessagesForConversation = loadMessagesForConversation;

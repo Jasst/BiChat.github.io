@@ -59,6 +59,9 @@ CONFIG = {
         # Максимальное количество сообщений в минуту с одного пользователя.
     'RATE_LIMIT_API_PER_MINUTE': int(os.getenv('RATE_LIMIT_API_PER_MINUTE', 120)),
         # Максимальное количество API-запросов в минуту с одного IP.
+     # В конфиг добавь
+    'LONG_POLLING_TIMEOUT': int(os.getenv('LONG_POLLING_TIMEOUT', 25)),
+    'LONG_POLLING_MAX_WAIT': int(os.getenv('LONG_POLLING_MAX_WAIT', 30)),
 }
 
 # =============================================================================
