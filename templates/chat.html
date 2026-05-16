@@ -606,11 +606,13 @@ async function processMessageDecryption(msg) {
 async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
   const container = document.getElementById('messagesContainer');
   if (!container) return;
+
   if (!chatWithAddress) {
     if (!isNewMessage) container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">💬</div><p>Select a conversation to start chatting</p></div>';
     _enableChatControls();
     return;
   }
+
   const isGroup = chatWithAddress.startsWith('group:');
   const isPersonal = Security.isValidAddress(chatWithAddress);
   if (!isGroup && !isPersonal) {
@@ -619,6 +621,7 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     _enableChatControls();
     return;
   }
+
   if (!isNewMessage) {
     container.innerHTML = '<div class="loading">Loading messages…</div>';
     container.classList.add('loading');
@@ -642,7 +645,12 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 
     const rawMessages = Array.isArray(data.messages) ? data.messages : [];
     const messages = [];
+
     for (const msg of rawMessages) {
+      // ✅ Отмечаем сообщение как обработанное для Long Polling (предотвращает дубли)
+      if (longPollingClient && msg.id) {
+        longPollingClient.markMessageProcessed(msg.id);
+      }
       const decrypted = await processMessageDecryption(msg);
       messages.push(decrypted);
     }
@@ -868,13 +876,27 @@ async function sendMessage() {
         if (deleteBtn) deleteBtn.dataset.id = realId;
         const metaDiv = tempElem.querySelector('.meta span');
         if (metaDiv) metaDiv.innerHTML += ' ✓';
+
+        // ✅ Отмечаем сообщение как обработанное (чтобы Long Polling не присылал его снова)
+        if (longPollingClient) {
+          longPollingClient.markMessageProcessed(realId);
+        }
       }
-      await loadMessagesForConversation(recipient, true);
+
+      // ✅ Обновляем список диалогов
       loadConversations();
 
-      // ✅ Принудительно проверяем новые сообщения
+      // ✅ Не загружаем сообщения принудительно — Long Polling сделает это сам
+      // НО: если Long Polling не активен, нужно обновить чат
+      if (!longPollingClient || !longPollingClient.isConnected) {
+        await loadMessagesForConversation(recipient, true);
+      }
+
+      // ✅ Принудительно проверяем новые сообщения (с небольшой задержкой)
       if (longPollingClient) {
-        longPollingClient.forceCheck();
+        setTimeout(() => {
+          longPollingClient.forceCheck();
+        }, 100);
       }
     } else {
       const tempElem = document.getElementById('msg-' + tempId);
