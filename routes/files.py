@@ -160,26 +160,5 @@ def clear_conversation():
         return jsonify({'error': 'Failed to clear'}), 500
 
 
-@files_bp.route('/gun-config')
-def gun_config():
-    peers = [
-        'https://gun.robins.one/gun',
-        'https://relic.eastus.cloudapp.azure.com/gun',
-        'https://gun-manhattan.herokuapp.com/gun',
-        'https://gundb-relay-eb4x.onrender.com/gun',
-        'https://gun-relay-7q2w.onrender.com/gun',
-    ]
-    return jsonify({'peers': peers, 'room_prefix': 'dm_v1:',
-                    'version': '1.0', 'fallback': 'localStorage'})
 
 
-try:
-    from gun import Gun  # noqa: F401
-
-    @files_bp.route('/gun', methods=['GET', 'POST', 'OPTIONS'])
-    def gun_relay():
-        if request.method == 'OPTIONS':
-            return '', 204
-        return jsonify({'ok': True})
-except ImportError:
-    pass
