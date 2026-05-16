@@ -1,16 +1,5 @@
-/**
- * crypto-client.js — End-to-end шифрование на стороне браузера
- * Версия: 3.3 (исправленная)
- */
-
 class DarkCrypto {
-  // =========================================================================
-  // 1. ГЕНЕРАЦИЯ МНЕМОНИКИ (BIP39)
-  // =========================================================================
   static async generateMnemonic() {
-    // ================================================================
-    // ⚠️ ВСТАВЬ СВОЙ WORDLIST (2048 слов) МЕЖДУ ЭТИМИ СТРОКАМИ
-    // ================================================================
     const wordlist = [
       "abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse",
       "access","accident","account","accuse","achieve","acid","acoustic","acquire","across","act",
@@ -220,8 +209,6 @@ class DarkCrypto {
       "work","world","worry","worth","wrap","wreck","wrestle","wrist","write","wrong",
       "yard","year","yellow","you","young","youth","zebra","zero","zone","zoo"
     ];
-    // ================================================================
-
     const entropy = crypto.getRandomValues(new Uint8Array(32));
     const hash = await crypto.subtle.digest('SHA-256', entropy);
     const checksumBits = 8;
@@ -247,9 +234,7 @@ class DarkCrypto {
     return words.join(' ');
   }
 
-  // =========================================================================
-  // 2. ДЕРИВАЦИЯ КЛЮЧЕЙ ИЗ МНЕМОНИКИ
-  // =========================================================================
+  // === deriveKeyPair с нормализацией и возвратом ECDH-ключа ===
   static async deriveKeyPair(mnemonic) {
     const seed = await this._mnemonicToSeed(mnemonic);
     const rawPrivate = new Uint8Array(seed.slice(0, 32));
@@ -266,6 +251,7 @@ class DarkCrypto {
     const signPrivateKey = await crypto.subtle.importKey(
       'jwk', jwkSign, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']
     );
+    // ECDH на том же ключе
     const ecdhPrivateKey = await crypto.subtle.importKey(
       'jwk', jwkSign, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']
     );
@@ -282,9 +268,7 @@ class DarkCrypto {
     return { signPrivateKey, ecdhPrivateKey, compressedPubKey: compressed, address };
   }
 
-  // =========================================================================
-  // 3. ДЕКОМПРЕССИЯ ПУБЛИЧНОГО КЛЮЧА
-  // =========================================================================
+  // --- ECDH + AES-GCM ---
   static decompressPublicKey(compressedKey) {
     if (compressedKey.length !== 33 || (compressedKey[0] !== 0x02 && compressedKey[0] !== 0x03)) {
       throw new Error('Invalid compressed key');
@@ -294,7 +278,6 @@ class DarkCrypto {
     const b = 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604Bn;
     const x = BigInt('0x' + Array.from(compressedKey.slice(1)).map(b => b.toString(16).padStart(2,'0')).join(''));
     const rhs = (x * x * x + a * x + b) % p;
-
     const modPow = (base, exp) => {
       let res = 1n;
       while (exp > 0n) {
@@ -304,7 +287,6 @@ class DarkCrypto {
       }
       return res;
     };
-
     let y = modPow(rhs, (p + 1n) / 4n);
     if ((y & 1n) !== (compressedKey[0] === 0x03 ? 1n : 0n)) {
       y = p - y;
@@ -318,9 +300,6 @@ class DarkCrypto {
     return uncompressed;
   }
 
-  // =========================================================================
-  // 4. ECDH ОБЩИЙ СЕКРЕТ
-  // =========================================================================
   static async getSharedSecret(myEcdhPrivateKey, theirPubKeyBytes) {
     let pubKey = theirPubKeyBytes;
     if (pubKey.length === 33 && (pubKey[0] === 0x02 || pubKey[0] === 0x03)) {
@@ -335,9 +314,6 @@ class DarkCrypto {
     return shared;
   }
 
-  // =========================================================================
-  // 5. AES-GCM ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ
-  // =========================================================================
   static async encryptAES(sharedSecret, plaintext) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await crypto.subtle.importKey(
@@ -360,9 +336,6 @@ class DarkCrypto {
     return new TextDecoder().decode(decrypted);
   }
 
-  // =========================================================================
-  // 6. ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ СООБЩЕНИЙ
-  // =========================================================================
   static async encryptMessage(myEcdhPrivateKey, myCompressedPubKey, recipientPubKey, plaintext) {
     const shared = await this.getSharedSecret(myEcdhPrivateKey, recipientPubKey);
     const { ciphertext, iv } = await this.encryptAES(shared, plaintext);
@@ -380,9 +353,15 @@ class DarkCrypto {
     return await this.decryptAES(shared, ciphertext, iv);
   }
 
-  // =========================================================================
-  // 7. ПОДПИСЬ ДАННЫХ
-  // =========================================================================
+  static _arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    return this._toBase64(bytes);
+  }
+  static _base64ToArrayBuffer(base64) {
+    const bytes = this._fromBase64(base64);
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  }
+
   static async signData(privateKey, dataString) {
     const signature = await crypto.subtle.sign(
       { name: 'ECDSA', hash: 'SHA-256' },
@@ -392,51 +371,7 @@ class DarkCrypto {
     return new Uint8Array(signature);
   }
 
-  // =========================================================================
-  // 8. ВЕРИФИКАЦИЯ ПОДПИСИ (НОВЫЙ МЕТОД)
-  // =========================================================================
-  static async verifySignature(publicKeyBytes, signature, dataString) {
-    const pubKeyObj = await crypto.subtle.importKey(
-      'raw', publicKeyBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']
-    );
-    return await crypto.subtle.verify(
-      { name: 'ECDSA', hash: 'SHA-256' },
-      pubKeyObj,
-      signature,
-      new TextEncoder().encode(dataString)
-    );
-  }
-
-  // =========================================================================
-  // 9. ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-  // =========================================================================
-  static async _mnemonicToSeed(mnemonic) {
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw', new TextEncoder().encode(mnemonic),
-      'PBKDF2', false, ['deriveBits']
-    );
-    return crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt: new TextEncoder().encode('mnemonic'),
-        iterations: 2048, hash: 'SHA-512' },
-      keyMaterial, 512
-    );
-  }
-
-  static _normalizePrivateKey(rawBytes) {
-    const n = BigInt("0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551");
-    let scalar = 0n;
-    for (let i = 0; i < rawBytes.length; i++) {
-      scalar = (scalar << 8n) | BigInt(rawBytes[i]);
-    }
-    scalar = (scalar % (n - 1n)) + 1n;
-    const hex = scalar.toString(16).padStart(64, '0');
-    const bytes = new Uint8Array(32);
-    for (let i = 0; i < 32; i++) {
-      bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-    }
-    return bytes;
-  }
-
+  // ===================== ИСПРАВЛЕННАЯ ФУНКЦИЯ =====================
   static _derivePubPoint(privateScalar) {
     const p = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFn;
     const a = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFCn;
@@ -510,6 +445,34 @@ class DarkCrypto {
     return { x: this._to32Bytes(Q.x), y: this._to32Bytes(Q.y) };
   }
 
+  // ------------------ Вспомогательные методы ------------------
+  static async _mnemonicToSeed(mnemonic) {
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(mnemonic),
+      'PBKDF2', false, ['deriveBits']
+    );
+    return crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: new TextEncoder().encode('mnemonic'),
+        iterations: 2048, hash: 'SHA-512' },
+      keyMaterial, 512
+    );
+  }
+
+  static _normalizePrivateKey(rawBytes) {
+    const n = BigInt("0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551");
+    let scalar = 0n;
+    for (let i = 0; i < rawBytes.length; i++) {
+      scalar = (scalar << 8n) | BigInt(rawBytes[i]);
+    }
+    scalar = (scalar % (n - 1n)) + 1n;
+    const hex = scalar.toString(16).padStart(64, '0');
+    const bytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+      bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+    }
+    return bytes;
+  }
+
   static _to32Bytes(value) {
     const hex = value.toString(16).padStart(64, '0');
     const bytes = new Uint8Array(32);
@@ -518,6 +481,8 @@ class DarkCrypto {
     }
     return bytes;
   }
+
+
 
   static _bytesToBase64Url(bytes) {
     let binary = '';
@@ -534,31 +499,9 @@ class DarkCrypto {
     return bytes;
   }
 
-  static _toBase64(arr) {
-    return btoa(String.fromCharCode(...arr));
-  }
-
-  static _fromBase64(str) {
-    return new Uint8Array(atob(str).split('').map(c => c.charCodeAt(0)));
-  }
-
-  static _arrayBufferToBase64(buffer) {
-    const bytes = new Uint8Array(buffer);
-    return this._toBase64(bytes);
-  }
-
-  static _base64ToArrayBuffer(base64) {
-    const bytes = this._fromBase64(base64);
-    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  }
-
-  static _concat(a, b) {
-    const c = new Uint8Array(a.length + b.length);
-    c.set(a, 0);
-    c.set(b, a.length);
-    return c;
-  }
+  static _toBase64(arr) { return btoa(String.fromCharCode(...arr)); }
+  static _fromBase64(str) { return new Uint8Array(atob(str).split('').map(c => c.charCodeAt(0))); }
+  static _concat(a, b) { const c = new Uint8Array(a.length + b.length); c.set(a, 0); c.set(b, a.length); return c; }
 }
 
-// Экспортируем в глобальную область видимости
 window.DarkCrypto = DarkCrypto;
