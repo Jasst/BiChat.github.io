@@ -253,6 +253,18 @@ class Blockchain:
         """)
         cursor.execute("INSERT OR IGNORE INTO staking_state (key, value) VALUES ('acc_reward_per_stake', '0')")
 
+        # ✅ ДОБАВЬ ПРОВЕРКУ НАЛИЧИЯ ТАБЛИЦЫ user_status
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_status'")
+        if not cursor.fetchone():
+            cursor.execute('''CREATE TABLE user_status (
+                    address TEXT PRIMARY KEY,
+                    last_seen REAL NOT NULL,
+                    status TEXT DEFAULT 'offline',
+                    current_chat TEXT
+                )''')
+            logger.info("✅ Created user_status table")
+
+
     def _create_tables(self, cursor: sqlite3.Cursor) -> None:
         cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain (
             block_index       INTEGER PRIMARY KEY,

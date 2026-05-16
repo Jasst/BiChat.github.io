@@ -669,16 +669,70 @@ body {
   font-size: 11px;
   color: var(--text-muted);
 }
-.conversation-item .status {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--text-muted);
+
+/* ===== Status Indicators with Pulse Animation ===== */
+.status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 6px;
+    flex-shrink: 0;
 }
-.conversation-item.active .status {
-  background: var(--status-success);
-  animation: pulse 2s infinite;
+
+/* Emoji стиль с миганием */
+.status.online::before {
+    content: "🟢";
+    font-size: 10px;
+    line-height: 1;
+    animation: onlinePulse 1.5s ease-in-out infinite;
+    display: inline-block;
 }
+
+.status.away::before {
+    content: "🟡";
+    font-size: 10px;
+    line-height: 1;
+    animation: awayPulse 3s ease-in-out infinite;
+    display: inline-block;
+}
+
+.status.offline::before {
+    content: "⚫";
+    font-size: 10px;
+    line-height: 1;
+    opacity: 0.5;
+    display: inline-block;
+}
+
+/* Анимации */
+@keyframes onlinePulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.15);
+    }
+}
+
+@keyframes awayPulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Убираем фон и тени (для emoji стиля) */
+.status::before {
+    background: none;
+    box-shadow: none;
+    width: auto;
+    height: auto;
+}
+
 
 /* ===== Main Content ===== */
 .main-content {
@@ -1523,3 +1577,4 @@ body {
   }
   html { scroll-behavior: auto; }
 }
+

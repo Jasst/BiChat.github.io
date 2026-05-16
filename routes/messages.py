@@ -1,10 +1,11 @@
 """
-routes/messages.py — Отправка и получение сообщений (сервер не работает с ключами)
+routes/messages.py — Отправка и получение сообщений (с буферизацией для Long Polling)
 """
 import json
 import logging
 import threading
 import time
+from collections import defaultdict
 from typing import Dict, List, Optional
 
 from flask import Blueprint, jsonify, request, session
@@ -27,16 +28,23 @@ _p2p_buffer: Dict[str, List[Dict]] = {}
 _p2p_buffer_lock = threading.Lock()
 
 # =============================================================================
-# Long Polling Notifier (упрощённая версия, без отдельного файла)
+# Улучшенный MessageNotifier с БУФЕРИЗАЦИЕЙ сообщений
 # =============================================================================
 
 class MessageNotifier:
-    """Потокобезопасный менеджер уведомлений для Long Polling"""
+    """
+    Потокобезопасный менеджер уведомлений для Long Polling с буферизацией.
+    Сообщения накапливаются в очереди, пока клиент их не заберёт.
+    """
 
-    def __init__(self, default_timeout: int = 25):
+    def __init__(self, default_timeout: int = 25, max_buffer_size: int = 100):
         self.default_timeout = default_timeout
+        self.max_buffer_size = max_buffer_size
         self._events: Dict[str, threading.Event] = {}
+        self._buffers: Dict[str, List[dict]] = defaultdict(list)
+        self._last_timestamps: Dict[str, float] = {}
         self._lock = threading.Lock()
+        self._cleanup_counter = 0
 
     def get_event(self, user_address: str) -> threading.Event:
         with self._lock:
@@ -44,31 +52,97 @@ class MessageNotifier:
                 self._events[user_address] = threading.Event()
             return self._events[user_address]
 
+    def add_message(self, user_address: str, message: dict) -> None:
+        with self._lock:
+            self._buffers[user_address].append(message)
+            if len(self._buffers[user_address]) > self.max_buffer_size:
+                self._buffers[user_address] = self._buffers[user_address][-self.max_buffer_size:]
+            if user_address in self._events:
+                self._events[user_address].set()
+            logger.debug(f"📦 Added message to buffer for {user_address[:16]}..., buffer size: {len(self._buffers[user_address])}")
+
+    def add_group_messages(self, group_id: str, members: List[str], message: dict, exclude_sender: str = None) -> None:
+        for member in members:
+            if member != exclude_sender:
+                self.add_message(member, message)
+
     def notify_user(self, user_address: str) -> None:
         with self._lock:
             if user_address in self._events:
                 self._events[user_address].set()
-                logger.debug(f"Notified {user_address[:16]}...")
+                logger.debug(f"🔔 Notified {user_address[:16]}...")
 
     def notify_group(self, group_id: str, members: List[str]) -> None:
         for member in members:
             self.notify_user(member)
 
-    def wait_for_messages(self, user_address: str, timeout: int = None) -> bool:
+    def get_messages(self, user_address: str, since_timestamp: float, timeout: int = None) -> tuple:
         if timeout is None:
             timeout = self.default_timeout
+
+        with self._lock:
+            self._last_timestamps[user_address] = since_timestamp
+            buffer = self._buffers.get(user_address, [])
+            new_messages = [m for m in buffer if m.get('timestamp', 0) > since_timestamp]
+
+            if new_messages:
+                logger.debug(f"⚡ Returning {len(new_messages)} buffered messages to {user_address[:16]}...")
+                last_ts = max(m.get('timestamp', 0) for m in new_messages)
+                self._buffers[user_address] = [m for m in buffer if m.get('timestamp', 0) > last_ts]
+                return new_messages, 0, False
+
         event = self.get_event(user_address)
         triggered = event.wait(timeout)
-        if triggered:
-            event.clear()
-        return triggered
+
+        with self._lock:
+            if triggered:
+                event.clear()
+            buffer = self._buffers.get(user_address, [])
+            new_messages = [m for m in buffer if m.get('timestamp', 0) > since_timestamp]
+            if new_messages:
+                last_ts = max(m.get('timestamp', 0) for m in new_messages)
+                self._buffers[user_address] = [m for m in buffer if m.get('timestamp', 0) > last_ts]
+            self._cleanup_counter += 1
+            if self._cleanup_counter > 100:
+                self._cleanup_old_buffers()
+                self._cleanup_counter = 0
+            return new_messages, timeout if not triggered else 0, triggered
+
+    def _cleanup_old_buffers(self):
+        one_hour_ago = time.time() - 3600
+        to_delete = []
+        for addr, ts in self._last_timestamps.items():
+            if ts < one_hour_ago:
+                to_delete.append(addr)
+        for addr in to_delete:
+            if addr in self._buffers:
+                del self._buffers[addr]
+            if addr in self._events:
+                del self._events[addr]
+            if addr in self._last_timestamps:
+                del self._last_timestamps[addr]
+        if to_delete:
+            logger.debug(f"🧹 Cleaned up {len(to_delete)} inactive buffers")
+
+    def force_check(self, user_address: str) -> None:
+        with self._lock:
+            if user_address in self._events:
+                self._events[user_address].set()
+                logger.debug(f"⚡ Forced check for {user_address[:16]}...")
 
     def get_stats(self) -> dict:
         with self._lock:
-            return {'active_events': len(self._events)}
+            total_buffered = sum(len(buf) for buf in self._buffers.values())
+            return {
+                'active_events': len(self._events),
+                'total_buffered': total_buffered,
+                'active_users': len(self._buffers),
+                'default_timeout': self.default_timeout,
+                'max_buffer_size': self.max_buffer_size,
+            }
 
 # Глобальный экземпляр
-message_notifier = MessageNotifier(default_timeout=25)
+message_notifier = MessageNotifier(default_timeout=25, max_buffer_size=100)
 
 
 def init_messages(blockchain) -> None:
@@ -80,10 +154,8 @@ def init_messages(blockchain) -> None:
 # Вспомогательные функции
 # =============================================================================
 
-def _get_new_messages_since(user_addr: str, since_timestamp: float, limit: int = 50) -> List[dict]:
-    """Получает новые сообщения после указанного времени"""
+def _fetch_new_messages_from_db(user_addr: str, since_timestamp: float, limit: int = 50) -> List[dict]:
     from database import get_db_cursor
-
     try:
         with get_db_cursor(_blockchain.db_path) as cursor:
             cursor.execute('''
@@ -95,17 +167,14 @@ def _get_new_messages_since(user_addr: str, since_timestamp: float, limit: int =
                 ORDER BY timestamp ASC
                 LIMIT ?
             ''', (user_addr, 'group:%', since_timestamp, user_addr, limit))
-
             rows = cursor.fetchall()
 
         messages = []
         for row in rows:
             is_group = row[2].startswith('group:')
             chat_id = row[2] if is_group else row[1]
-
-            # Получаем имя отправителя (если есть в контактах)
             sender_name = None
-            if not is_group and not is_group:
+            if not is_group:
                 try:
                     with get_db_cursor(_blockchain.db_path) as cursor2:
                         cursor2.execute(
@@ -117,7 +186,6 @@ def _get_new_messages_since(user_addr: str, since_timestamp: float, limit: int =
                             sender_name = contact_row[0]
                 except:
                     pass
-
             messages.append({
                 'id': row[0],
                 'sender': row[1],
@@ -126,70 +194,142 @@ def _get_new_messages_since(user_addr: str, since_timestamp: float, limit: int =
                 'isGroup': is_group,
                 'preview': '💬 Новое сообщение',
                 'timestamp': row[5],
+                'content': row[3],
+                'image': row[4],
             })
-
         return messages
-
     except Exception as e:
-        logger.error(f"_get_new_messages_since error: {e}")
+        logger.error(f"_fetch_new_messages_from_db error: {e}")
         return []
 
 
 # =============================================================================
-# Long Polling Endpoint (НОВЫЙ!)
+# Long Polling Endpoint
 # =============================================================================
 
 @messages_bp.route('/wait_for_messages', methods=['GET'])
 def wait_for_messages():
-    """
-    Long Polling эндпоинт — ожидает новые сообщения до 30 секунд.
-    Клиент должен передавать timestamp последнего полученного сообщения.
-    """
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
 
     user_addr = session['address']
 
-    # Получаем параметры
+    # Санитизация since timestamp
     try:
         since = float(request.args.get('since', 0))
-        timeout = min(int(request.args.get('timeout', 25)), 30)  # Максимум 30 секунд
+        now = time.time()
+        min_valid = now - 3600
+        max_valid = now + 60
+        since = max(min(since, max_valid), min_valid)
     except (ValueError, TypeError):
-        since = 0
+        since = time.time() - 3600
+
+    # Ограничение timeout
+    try:
+        timeout = int(request.args.get('timeout', 25))
+        timeout = min(max(timeout, 5), 30)
+    except (ValueError, TypeError):
         timeout = 25
 
-    # Ждём уведомление о новых сообщениях
-    has_new = message_notifier.wait_for_messages(user_addr, timeout)
+    # Rate limiting (не чаще 2 раз в секунду)
+    _last_poll_time = getattr(wait_for_messages, '_last_poll_time', {})
+    last_request = _last_poll_time.get(user_addr, 0)
+    now = time.time()
+    if now - last_request < 0.5:
+        _last_poll_time[user_addr] = now
+        return jsonify({'messages': [], 'throttled': True, 'timestamp': now}), 200
+    _last_poll_time[user_addr] = now
 
-    # Проверяем реальные новые сообщения
-    new_messages = _get_new_messages_since(user_addr, since)
+    # Проверка существования пользователя
+    from database import get_db_cursor
+    try:
+        with get_db_cursor(_blockchain.db_path) as cursor:
+            cursor.execute('SELECT 1 FROM wallets WHERE address = ?', (user_addr,))
+            if not cursor.fetchone():
+                logger.warning(f"Invalid user attempted long poll: {user_addr[:16]}...")
+                return jsonify({'error': 'Invalid user'}), 403
+    except Exception as e:
+        logger.error(f"User validation error: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+    # Получение сообщений из буфера
+    buffered_messages, waited_time, had_notification = message_notifier.get_messages(
+        user_addr, since, timeout
+    )
+
+    if buffered_messages:
+        if len(buffered_messages) > 50:
+            buffered_messages = buffered_messages[:50]
+        sanitized_messages = []
+        for msg in buffered_messages:
+            sanitized = {
+                'id': msg.get('id'),
+                'sender': msg.get('sender'),
+                'sender_name': msg.get('sender_name'),
+                'chatId': msg.get('chatId'),
+                'isGroup': msg.get('isGroup', False),
+                'preview': msg.get('preview', '💬 Новое сообщение'),
+                'timestamp': msg.get('timestamp', time.time()),
+            }
+            sanitized_messages.append(sanitized)
+        return jsonify({
+            'messages': sanitized_messages,
+            'has_more': len(buffered_messages) >= 50,
+            'timestamp': time.time(),
+            'from_buffer': True,
+            'waited': waited_time,
+        }), 200
+
+    # Проверка БД
+    db_messages = _fetch_new_messages_from_db(user_addr, since)
+    if db_messages:
+        for msg in db_messages:
+            message_notifier.add_message(user_addr, msg)
+        if len(db_messages) > 50:
+            db_messages = db_messages[:50]
+        sanitized_messages = []
+        for msg in db_messages:
+            sanitized = {
+                'id': msg.get('id'),
+                'sender': msg.get('sender'),
+                'sender_name': msg.get('sender_name'),
+                'chatId': msg.get('chatId'),
+                'isGroup': msg.get('isGroup', False),
+                'preview': msg.get('preview', '💬 Новое сообщение'),
+                'timestamp': msg.get('timestamp', time.time()),
+            }
+            sanitized_messages.append(sanitized)
+        return jsonify({
+            'messages': sanitized_messages,
+            'has_more': len(db_messages) >= 50,
+            'timestamp': time.time(),
+            'from_db': True,
+        }), 200
 
     return jsonify({
-        'messages': new_messages,
-        'has_more': len(new_messages) >= 50,
+        'messages': [],
+        'has_more': False,
         'timestamp': time.time(),
         'waited': timeout,
-        'notified': has_new
+        'notified': had_notification,
     }), 200
 
 
 # =============================================================================
-# Legacy endpoint (для обратной совместимости)
+# Legacy endpoint
 # =============================================================================
 
 @messages_bp.route('/check_new_messages', methods=['GET'])
 def check_new_messages_legacy():
-    """Legacy endpoint — лучше использовать /wait_for_messages"""
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-
     since = float(request.args.get('since', 0))
-    messages = _get_new_messages_since(session['address'], since)
+    messages = _fetch_new_messages_from_db(session['address'], since)
     return jsonify({'messages': messages}), 200
 
 
 # =============================================================================
-# Send Message (с уведомлениями)
+# Send Message
 # =============================================================================
 
 @messages_bp.route('/send_message', methods=['POST'])
@@ -209,11 +349,9 @@ def send_message():
 
         from database import get_db_cursor
 
-        # --- Открываем транзакцию ---
         with get_db_cursor(_blockchain.db_path) as cursor:
             cursor.execute("BEGIN IMMEDIATE")
 
-            # Проверка баланса для комиссии
             if MESSAGE_FEE > 0:
                 cursor.execute('SELECT balance FROM wallets WHERE address = ?', (sender,))
                 row = cursor.fetchone()
@@ -222,7 +360,6 @@ def send_message():
                     cursor.execute("ROLLBACK")
                     return jsonify({'error': f'Insufficient balance for fee ({MESSAGE_FEE/COIN:.6f} {COIN_NAME})'}), 402
 
-                # Списание комиссии
                 cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?', (MESSAGE_FEE, sender))
                 cursor.execute(
                     'INSERT INTO wallets (address, balance) VALUES (?, ?) '
@@ -237,11 +374,10 @@ def send_message():
                 if ENABLE_STAKING and staking_manager:
                     staking_manager.add_to_fee_pool(MESSAGE_FEE, cursor=cursor)
 
-            # Сохраняем сообщение
             tx_id = None
+            message_obj = None
 
             if msg_type == 'group' and group_id:
-                # Групповое сообщение
                 if not encrypted_map:
                     cursor.execute("ROLLBACK")
                     return jsonify({'error': 'Missing encrypted_map'}), 400
@@ -259,13 +395,20 @@ def send_message():
                     metadata={'encryption': 'group-ecdh-v4', 'group_id': group_id}
                 )
 
-                # ✅ Уведомляем всех участников группы (кроме отправителя)
-                for member in group['members']:
-                    if member != sender:
-                        message_notifier.notify_user(member)
+                message_obj = {
+                    'id': tx_id,
+                    'sender': sender,
+                    'sender_name': None,
+                    'chatId': f"group:{group_id}",
+                    'isGroup': True,
+                    'preview': '💬 Новое сообщение в группе',
+                    'timestamp': time.time(),
+                    'content': json.dumps({'encrypted_map': encrypted_map}),
+                    'image': None,
+                }
+                message_notifier.add_group_messages(group_id, group['members'], message_obj, exclude_sender=sender)
 
             else:
-                # Личное сообщение
                 if sender == recipient:
                     cursor.execute("ROLLBACK")
                     return jsonify({'error': 'Cannot message yourself'}), 400
@@ -279,12 +422,28 @@ def send_message():
                     metadata={'encryption': 'hybrid-v2'}
                 )
 
-                # ✅ Уведомляем получателя
-                message_notifier.notify_user(recipient)
+                message_obj = {
+                    'id': tx_id,
+                    'sender': sender,
+                    'sender_name': None,
+                    'chatId': recipient,
+                    'isGroup': False,
+                    'preview': '💬 Новое сообщение',
+                    'timestamp': time.time(),
+                    'content': json.dumps(payload),
+                    'image': None,
+                }
+                message_notifier.add_message(recipient, message_obj)
 
             cursor.execute("COMMIT")
 
-            # Асинхронный майнинг (если включён)
+            if msg_type == 'group' and group_id and group:
+                for member in group['members']:
+                    if member != sender:
+                        message_notifier.notify_user(member)
+            else:
+                message_notifier.notify_user(recipient)
+
             if CONFIG.get('ENABLE_MINING', False):
                 last = _blockchain._last_block_raw(cursor)
                 if last:
@@ -307,7 +466,7 @@ def send_message():
 
 
 # =============================================================================
-# GET CONVERSATION (без изменений, но оставляем)
+# GET CONVERSATION
 # =============================================================================
 
 @messages_bp.route('/get_conversation', methods=['GET'])
@@ -443,13 +602,20 @@ def get_public_key_route(address: str):
 
 
 # =============================================================================
-# Admin endpoint для мониторинга
+# Admin endpoints
 # =============================================================================
 
 @messages_bp.route('/notifier/stats')
 def notifier_stats():
-    """Статистика системы уведомлений (только для админов)"""
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    # Можно добавить проверку на админа
     return jsonify(message_notifier.get_stats())
+
+
+@messages_bp.route('/force_check', methods=['POST'])
+def force_check():
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    user_addr = session['address']
+    message_notifier.force_check(user_addr)
+    return jsonify({'status': 'ok'}), 200

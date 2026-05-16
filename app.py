@@ -16,6 +16,7 @@ from setup import setup_logging
 
 from setup import rate_limit, message_limiter, api_limiter, get_rate_limit_stats
 from setup import balance_cache, contact_cache, group_cache
+from routes.status import status_bp
 
 # ── Логирование ─────────────────────────────────────────────────────────────
 setup_logging()
@@ -85,6 +86,7 @@ app.register_blueprint(contacts_bp)
 app.register_blueprint(groups_bp)
 app.register_blueprint(wallet_bp)
 app.register_blueprint(files_bp)
+app.register_blueprint(status_bp)
 
 # ── Before-request: глобальная авторизация ───────────────────────────────────
 _PUBLIC_ENDPOINTS = frozenset([

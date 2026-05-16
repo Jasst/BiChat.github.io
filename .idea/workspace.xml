@@ -5,11 +5,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
+      <change afterPath="$PROJECT_DIR$/routes/status.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/blockchain.db-wal" beforeDir="false" afterPath="$PROJECT_DIR$/blockchain.db-wal" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/common.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/common.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/base.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/base.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/profile.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/profile.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/js/LongPollingClient.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/LongPollingClient.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/static/style.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -113,7 +117,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "mainUPDATEDATABASE5",
+    "git-widget-placeholder": "mainUPDATEDATABASE6",
     "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -692,6 +696,11 @@
           <url>file://$PROJECT_DIR$/routes/wallet.py</url>
           <line>88</line>
           <option name="timeStamp" value="66" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/app.py</url>
+          <line>86</line>
+          <option name="timeStamp" value="68" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

@@ -1,6 +1,6 @@
 /**
  * LongPollingClient.js — клиент для Long Polling с авто-переподключением
- * Использует /wait_for_messages эндпоинт вместо частых запросов
+ * 🔒 Безопасная версия с защитой от утечек и таймаутов
  */
 
 class LongPollingClient {
@@ -21,12 +21,16 @@ class LongPollingClient {
         this.currentRequest = null;
         this.abortController = null;
 
-        // Для отладки
+        this.maxTimeout = Math.min(options.timeout || 25000, 30000);
+        this.maxTimestampDrift = 60;
         this.debug = options.debug || false;
+        this._reconnectLock = false;
     }
 
     log(...args) {
-        if (this.debug) {
+        if (this.debug && window.location.hostname !== 'localhost') {
+            console.log('[LongPolling]', ...args);
+        } else if (this.debug) {
             console.log('[LongPolling]', ...args);
         }
     }
@@ -39,7 +43,15 @@ class LongPollingClient {
 
         this.isRunning = true;
         this.retryCount = 0;
+        this._reconnectLock = false;
         this.log('Starting Long Polling client');
+
+        if (!this._isSessionValid()) {
+            this.log('Session invalid, not starting');
+            this.isRunning = false;
+            return;
+        }
+
         this._poll();
     }
 
@@ -47,6 +59,7 @@ class LongPollingClient {
         this.log('Stopping Long Polling client');
         this.isRunning = false;
         this.isConnected = false;
+        this._reconnectLock = true;
 
         if (this.abortController) {
             this.abortController.abort();
@@ -60,86 +73,121 @@ class LongPollingClient {
         this.onDisconnect();
     }
 
-    // Принудительно сбросить таймер (вызвать после отправки сообщения)
     forceCheck() {
-        if (this.abortController) {
+        if (this.abortController && !this.abortController.signal.aborted) {
             this.abortController.abort();
             this.log('Forced check - aborted current wait');
         }
     }
 
-    // Обновить timestamp (после загрузки старых сообщений)
     updateTimestamp(timestamp) {
+        const now = Date.now() / 1000;
+        if (timestamp > now + this.maxTimestampDrift) {
+            this.log(`⚠️ Rejected future timestamp: ${timestamp} > ${now}`);
+            return;
+        }
         if (timestamp > this.lastTimestamp) {
             this.lastTimestamp = timestamp;
             this.log(`Timestamp updated to ${this.lastTimestamp}`);
         }
     }
 
-    async _poll() {
-        while (this.isRunning) {
-            try {
-                // Создаём AbortController для таймаута
-                this.abortController = new AbortController();
+    _isSessionValid() {
+        return document.querySelector('[data-user-address]') !== null;
+    }
 
-                const url = `${this.baseUrl}/wait_for_messages?since=${this.lastTimestamp}&timeout=25`;
-                this.log(`Requesting: ${url}`);
+    _sanitizeTimestamp(ts) {
+        const now = Date.now() / 1000;
+        const minValid = now - 3600;
+        const maxValid = now + 60;
+        let sanitized = Math.max(ts, minValid);
+        sanitized = Math.min(sanitized, maxValid);
+        if (sanitized !== ts) {
+            this.log(`⚠️ Timestamp sanitized: ${ts} → ${sanitized}`);
+        }
+        return sanitized;
+    }
+
+    async _poll() {
+        while (this.isRunning && !this._reconnectLock) {
+            try {
+                this.abortController = new AbortController();
+                const safeTimestamp = this._sanitizeTimestamp(this.lastTimestamp);
+                const requestTimeout = Math.min(25, Math.floor(this.maxTimeout / 1000));
+                const url = `${this.baseUrl}/wait_for_messages?since=${safeTimestamp}&timeout=${requestTimeout}`;
+                this.log(`Requesting: ${url.substring(0, 100)}...`);
+
+                const fetchTimeout = setTimeout(() => {
+                    if (this.abortController) {
+                        this.abortController.abort();
+                        this.log('Fetch timeout');
+                    }
+                }, 30000);
 
                 this.currentRequest = fetch(url, {
                     method: 'GET',
                     headers: {
-                        'Cache-Control': 'no-cache',
+                        'Cache-Control': 'no-cache, no-store',
+                        'Pragma': 'no-cache',
                         'X-Requested-With': 'XMLHttpRequest'
                     },
-                    signal: this.abortController.signal
+                    signal: this.abortController.signal,
+                    credentials: 'same-origin'
                 });
 
                 const response = await this.currentRequest;
+                clearTimeout(fetchTimeout);
 
                 if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        this.log(`Session expired (${response.status}), stopping`);
+                        this.stop();
+                        break;
+                    }
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
                 const data = await response.json();
 
-                // Сброс счётчика ошибок при успехе
+                if (data && typeof data !== 'object') {
+                    throw new Error('Invalid response format');
+                }
+
                 this.retryCount = 0;
 
-                // Обновляем статус соединения
                 if (!this.isConnected) {
                     this.isConnected = true;
                     this.onConnect();
                 }
 
-                // Обрабатываем сообщения
-                if (data.messages && data.messages.length > 0) {
+                if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
                     this.log(`Received ${data.messages.length} new messages`);
 
-                    // Обновляем timestamp на основе последнего сообщения
-                    const lastMsg = data.messages[data.messages.length - 1];
-                    if (lastMsg.timestamp > this.lastTimestamp) {
-                        this.lastTimestamp = lastMsg.timestamp + 0.001;
-                    }
+                    const validMessages = data.messages.filter(msg =>
+                        msg && typeof msg === 'object' &&
+                        msg.id && msg.sender && msg.timestamp
+                    );
 
-                    // Вызываем callback
-                    this.onMessages(data.messages);
+                    if (validMessages.length > 0) {
+                        const lastMsg = validMessages[validMessages.length - 1];
+                        if (lastMsg.timestamp && lastMsg.timestamp > this.lastTimestamp) {
+                            this.updateTimestamp(lastMsg.timestamp);
+                        }
+                        this.onMessages(validMessages);
+                    }
                 } else {
                     this.log('No new messages, waiting...');
                 }
 
-                // Небольшая задержка перед следующим запросом (предотвращает гонки)
-                await this._delay(50);
+                await this._delay(100);
 
             } catch (error) {
-                // Проверяем, не был ли это intentional abort
                 if (error.name === 'AbortError') {
                     this.log('Request aborted (likely forceCheck)');
-                    // Не считаем ошибкой, просто продолжаем
                     continue;
                 }
 
-                // Ошибка соединения
-                console.error('Long polling error:', error);
+                console.error('Long polling error:', error.name);
                 this.retryCount++;
 
                 if (this.isConnected) {
@@ -147,9 +195,8 @@ class LongPollingClient {
                     this.onDisconnect();
                 }
 
-                this.onError(error);
+                this.onError(new Error('Connection issue'));
 
-                // Экспоненциальная задержка при ошибках
                 const delay = Math.min(this.retryDelay * Math.pow(2, this.retryCount), 30000);
                 this.log(`Retry ${this.retryCount}/${this.maxRetries} in ${delay}ms`);
 
@@ -171,18 +218,15 @@ class LongPollingClient {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Получить статус
     getStatus() {
         return {
             isRunning: this.isRunning,
             isConnected: this.isConnected,
-            retryCount: this.retryCount,
-            lastTimestamp: this.lastTimestamp
+            retryCount: this.retryCount
         };
     }
 }
 
-// Экспортируем для использования в других скриптах
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = LongPollingClient;
 }

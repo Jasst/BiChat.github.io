@@ -387,6 +387,84 @@ async function loadConversations() {
   }
 }
 
+// =============================================================================
+// === Обновление статусов пользователей ===
+// =============================================================================
+
+// =============================================================================
+// === Обновление статусов пользователей ===
+// =============================================================================
+
+async function updateUsersStatus() {
+    // Собираем все адреса из диалогов (только личные, не группы)
+    const conversationItems = document.querySelectorAll('.conversation-item');
+    const addresses = [];
+
+    conversationItems.forEach(item => {
+        const address = item.dataset.address;
+        if (address && !address.startsWith('group:')) {
+            addresses.push(address);
+        }
+    });
+
+    if (addresses.length === 0) return;
+
+    try {
+        const res = await fetch('/get_many_statuses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ addresses })
+        });
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        // Обновляем каждый диалог
+        for (const [address, statusData] of Object.entries(data.statuses)) {
+            const item = document.querySelector(`.conversation-item[data-address="${address}"]`);
+            if (!item) continue;
+
+            const statusSpan = item.querySelector('.status');
+            if (!statusSpan) continue;
+
+            const status = statusData.status;
+            const lastSeen = statusData.last_seen;
+
+            // Удаляем старые классы
+            statusSpan.classList.remove('online', 'away', 'offline');
+
+            if (status === 'online') {
+                statusSpan.classList.add('online');
+                statusSpan.title = 'Online';
+            } else if (lastSeen) {
+                const minutesAgo = Math.floor((Date.now() - (lastSeen * 1000)) / 60000);
+                if (minutesAgo < 5) {
+                    statusSpan.classList.add('online');
+                    statusSpan.title = 'Online recently';
+                } else if (minutesAgo < 60) {
+                    statusSpan.classList.add('away');
+                    statusSpan.title = `Was online ${minutesAgo} min ago`;
+                } else {
+                    statusSpan.classList.add('offline');
+                    statusSpan.title = `Last seen ${new Date(lastSeen * 1000).toLocaleString()}`;
+                }
+            } else {
+                statusSpan.classList.add('offline');
+                statusSpan.title = 'Never seen';
+            }
+        }
+    } catch (e) {
+        console.error('Failed to update statuses:', e);
+    }
+}
+
+// Запускаем обновление статусов каждые 30 секунд
+setInterval(updateUsersStatus, 30000);
+
+// Также обновляем при загрузке диалогов
+setTimeout(updateUsersStatus, 1000);
+
 async function selectConversation(address, name, isGroup) {
   if (isSending) isSending = false;
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
@@ -412,6 +490,15 @@ async function selectConversation(address, name, isGroup) {
     State.currentGroupMembers = null;
   }
 
+   // В конце функции selectConversation, после обновления State
+   if (heartbeatInterval) {
+       // Отправляем heartbeat сразу при смене чата
+       fetch('/heartbeat', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_chat: State.currentChatAddress || '' })
+        }).catch(e => {});
+   }
   if (window.NotificationManager?.setActiveChat) window.NotificationManager.setActiveChat(address);
   const container = document.getElementById('messagesContainer');
   if (container) { container.innerHTML = '<div class="loading">Loading…</div>'; container.classList.add('loading'); }
@@ -1036,6 +1123,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ✅ Запускаем Long Polling
   setupLongPolling();
+  // ✅ Запускаем Heartbeat (статус "онлайн")
+  startHeartbeat();
 
   if (window.NotificationManager?.init) window.NotificationManager.init();
 
@@ -1081,15 +1170,75 @@ document.addEventListener('DOMContentLoaded', function() {
 // =============================================================================
 // === Cleanup ===
 // =============================================================================
+// =============================================================================
+// === Cleanup / Before Unload ===
+// =============================================================================
+
 window.addEventListener('beforeunload', () => {
-  if (window.QRScanner) QRScanner.close();
-  if (longPollingClient) {
-    longPollingClient.stop();
-    longPollingClient = null;
-  }
-  if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
-  if (window.p2p?.unsubscribeAll) window.p2p.unsubscribeAll();
-  if (window.NotificationManager?.destroy) window.NotificationManager.destroy();
+
+
+    // ✅ Остановка Long Polling клиента
+    if (longPollingClient) {
+        longPollingClient.stop();
+        longPollingClient = null;
+    }
+
+    // ✅ Остановка heartbeat (если используется)
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+
+
+    // ✅ Закрытие QR сканера (если открыт)
+    if (window.QRScanner && typeof QRScanner.close === 'function') {
+        try {
+            QRScanner.close();
+        } catch(e) {
+            console.debug('QRScanner close error:', e);
+        }
+    }
+
+    // ✅ Остановка наблюдения за старыми сообщениями (IntersectionObserver)
+    if (State.topObserver) {
+        State.topObserver.disconnect();
+        State.topObserver = null;
+    }
+
+    // ✅ Отписка от P2P (если используется)
+    if (window.p2p && typeof window.p2p.unsubscribeAll === 'function') {
+        try {
+            window.p2p.unsubscribeAll();
+        } catch(e) {
+            console.debug('P2P unsubscribe error:', e);
+        }
+    }
+
+    // ✅ Очистка менеджера уведомлений
+    if (window.NotificationManager && typeof window.NotificationManager.destroy === 'function') {
+        try {
+            window.NotificationManager.destroy();
+        } catch(e) {
+            console.debug('NotificationManager destroy error:', e);
+        }
+    }
+
+    // ✅ Остановка heartbeat (если используется)
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+
+    // ✅ Отмена текущего fetch запроса (на всякий случай)
+    if (longPollingClient && longPollingClient.abortController) {
+        try {
+            longPollingClient.abortController.abort();
+        } catch(e) {
+            // игнорируем
+        }
+    }
+    // Небольшая задержка для завершения отправки данных (опционально)
+    // navigator.sendBeacon('/logout', JSON.stringify({}));
 });
 
 // =============================================================================
@@ -1097,6 +1246,7 @@ window.addEventListener('beforeunload', () => {
 // =============================================================================
 
 let longPollingClient = null;
+let heartbeatInterval = null;
 
 async function setupLongPolling() {
     if (longPollingClient) {
@@ -1145,6 +1295,34 @@ async function setupLongPolling() {
     });
 
     longPollingClient.start();
+}
+
+// =============================================================================
+// === Heartbeat (статус "онлайн") ===
+// =============================================================================
+
+function startHeartbeat() {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(async () => {
+        try {
+            await fetch('/heartbeat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    current_chat: State.currentChatAddress || ''
+                })
+            });
+        } catch (e) {
+            // тихо падаем
+        }
+    }, 30000);
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
 }
 
 window.getLongPollingStatus = () => longPollingClient?.getStatus();
