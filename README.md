@@ -1,207 +1,120 @@
-# 🔐 Secure Messenger
+```markdown
+# 🔐 Dark Messenger
 
-<p align="center">
-  <strong>Private • Decentralized • Encrypted</strong>
-</p>
+**Private • Decentralized • Encrypted — with built‑in rewards**
 
-<p align="center">
-  A secure messaging application that puts your privacy first.
-</p>
-
----
-
-## ⚠️ Security Notice
-
-> This application handles sensitive cryptographic material. Please read the [Security Guidelines](#-security-guidelines) before use.
+A secure messaging application that protects your privacy and lets you earn cryptocurrency just by chatting.
 
 ---
 
 ## ✨ Overview
 
-Secure Messenger enables private communication through:
-
-- **End-to-end encryption** — Messages are encrypted on your device and can only be read by the intended recipient
-- **Decentralized architecture** — No central server stores your messages in readable form
-- **Wallet-based identity** — Your identity is derived from a cryptographic mnemonic phrase you control
-- **Local-first design** — Sensitive data stays on your device
+- **End‑to‑end encryption** – only you and the recipient can read messages
+- **Decentralized** – no central server stores your data in plain text
+- **Proof of Writing** – send messages and earn COIN through a fair lottery
+- **Built‑in wallet** – send, receive and hold COIN inside the app
+- **Identity from mnemonic** – you control your keys, no registration
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quick Start
 
 ### Requirements
 - Python 3.8+
-- Modern web browser (Chrome, Firefox, Edge, Safari)
-- Internet connection for peer communication
+- Modern browser
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd secure-messenger
-
-# Install dependencies
+git clone <repo-url>
+cd dark-messenger
 pip install -r requirements.txt
-
-# Start the application
 python app.py
 ```
 
-Visit `http://localhost:5000` in your browser.
-
-### First-Time Setup
-
-1. **Create or import your wallet**
-   - New users: Click "Create Wallet" and **securely save** your mnemonic phrase
-   - Returning users: Click "Login" and enter your mnemonic phrase
-
-2. **Add contacts**
-   - Share your address (64-character hex string) with contacts
-   - Add contacts manually or via QR code scan
-
-3. **Start messaging**
-   - Select a contact and begin encrypted communication
-
----
-
-## 🔐 Security Guidelines
-
-### 🛡️ Protect Your Mnemonic
-
-Your mnemonic phrase is the **master key** to your identity and messages.
-
-✅ **DO:**
-- Write it down and store in a secure, offline location
-- Use a reputable password manager for digital storage
-- Verify the full phrase before saving
-
-❌ **NEVER:**
-- Share your mnemonic with anyone
-- Enter it on websites you don't fully trust
-- Store it in plain text files, emails, or cloud notes
-- Take screenshots or photos of it
-
-> ⚠️ **If your mnemonic is compromised, your identity and messages can be accessed by others. There is no "password reset" — your mnemonic is irreplaceable.**
-
-### 🔒 Session Security
-
-- Sessions expire after a configurable period of inactivity
-- Always click **Logout** when using shared or public devices
-- Clear your browser cache after sensitive sessions
-
-### 📱 Device Security
-
-- Keep your operating system and browser updated
-- Use device encryption (BitLocker, FileVault, etc.)
-- Avoid using the application on rooted/jailbroken devices
-- Be cautious of browser extensions that can read page content
-
-### 🌐 Network Security
-
-- Use HTTPS in production deployments
-- Avoid public Wi-Fi for sensitive communications
-- Consider using a trusted VPN for additional privacy
+Open `http://localhost:5000` and either create a new wallet or login with your existing 24‑word mnemonic.
 
 ---
 
 ## 📱 Features
 
-### Messaging
-- Send encrypted text messages
-- Share images with automatic encryption
-- View message history with local decryption
-- Delete your own messages locally
+### 💬 Encrypted Messaging
+- Text messages and images encrypted with hybrid ECDH + AES‑GCM
+- Group chats with per‑member encryption
+- Delete your own messages anytime
 
-### Contacts
-- Manage your address book securely
-- Scan QR codes for easy contact addition
-- Verify contact identities via public key fingerprint
+### 💰 Wallet & Proof of Writing
+- **Earn COIN** – every message you send gives you a lottery ticket
+- Every 30 minutes one random sender wins the current reward
+- Reward halves periodically (every ~1000 payouts)
+- **Send COIN** to any address (manual input or QR scan)
+- **Receive COIN** by showing your address or QR code
+- Transfers include a **0.01 COIN fee** to prevent spam
 
-### Groups
+### 👥 Contacts & Groups
+- Add contacts manually or by scanning a QR code
 - Create encrypted group conversations
-- Add/remove members with cryptographic access control
-- Group messages are encrypted individually per member
+- Manage group members (creator controls)
 
-### Privacy Tools
-- Export your mnemonic securely (with confirmation)
-- Clear conversation history locally
-- View your public address for sharing
+### 🔐 Profile & Security
+- View your public address and QR code
+- Export your mnemonic phrase (with double confirmation)
+- Session management and logout
 
 ---
 
-## ⚙️ Configuration (For Administrators)
+## 🛡️ Security Guidelines
 
-Basic configuration via environment variables:
+- **Your mnemonic phrase is your master key** – write it down, never share it
+- **No password reset** – if you lose your mnemonic, your identity and funds are lost
+- Always **logout** on shared devices
+- Use HTTPS in production
+
+---
+
+## 🪙 Wallet Details
+
+- **Unit**: 1 COIN = 1 000 000 minimal units
+- **Earning**: send any message (group or private) to enter the lottery
+- **Sending**: enter recipient’s 64‑hex address or scan their QR; a fixed **0.01 COIN fee** is deducted
+- **Receiving**: share your address or QR – no action needed
+- **History**: view all rewards and transfers in the Wallet tab
+
+---
+
+## ⚙️ Configuration (Admins)
+
+Basic environment variables (`.env` or system):
 
 | Variable | Purpose |
 |----------|---------|
-| `SECRET_KEY` | Session encryption (generate securely) |
+| `SECRET_KEY` | Session encryption (generate a strong random key) |
 | `FLASK_ENV` | Set to `production` for production settings |
-| `DATABASE_PATH` | Location of the local database file |
-| `UPLOAD_FOLDER` | Directory for temporary file handling |
+| `DATABASE_PATH` | Location of the SQLite database |
+| `UPLOAD_FOLDER` | Temporary file storage |
+| `COIN` | Minimal units per coin (default `1000000`) |
+| `TRANSFER_FEE` | Fee per transfer in minimal units (default `10000`) |
+| `POW_DIFFICULTY` | Proof‑of‑work difficulty for block mining |
 
-> 🔐 **Never commit `.env` files or secrets to version control.**
-
-See `config.example` for a template with safe defaults.
+> 🔐 Never commit secrets to version control.
 
 ---
 
 ## 🆘 Support
 
-### Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| "Invalid mnemonic" on login | Verify all 24 words are entered correctly, in order, with single spaces |
-| Messages not sending | Check internet connection; ensure recipient address is valid (64 hex chars) |
-| Camera not working for QR | Allow camera permissions in browser; try HTTPS if on remote server |
-| Session expires frequently | Increase `SESSION_LIFETIME` in configuration (balance with security) |
-
-### Getting Help
-
-- Review the [Security Guidelines](#-security-guidelines) first
-- Check browser console for error messages (F12 → Console)
-- Ensure you're running the latest version
-- For technical issues: open an issue with **no sensitive information**
-
----
-
-## 🤝 Contributing
-
-We welcome responsible contributions.
-
-### Before Contributing
-
-1. Read our [Security Policy](SECURITY.md)
-2. Never include real keys, mnemonics, or user data in PRs
-3. Test changes in an isolated environment first
-
-### Contribution Guidelines
-
-- Follow existing code style and security patterns
-- Add tests for new functionality
-- Document user-facing changes
-- Security fixes: coordinate privately first (see SECURITY.md)
+- Check browser console (F12) for errors
+- Make sure your mnemonic is entered correctly (24 words, single spaces)
+- For camera issues, allow browser permissions or use HTTPS
+- Ensure the recipient address is exactly 64 hex characters
 
 ---
 
 ## 📜 License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
-
----
-
-## 🔗 Resources
-
-- [Understanding Mnemonic Phrases](https://bitcoin.org/en/developer-guide#mnemonic-code)
-- [Browser Security Best Practices](https://developer.mozilla.org/en-US/docs/Web/Security)
-- [HTTPS Configuration Guide](https://https.cio.gov/)
+MIT License. See `LICENSE` for details.
 
 ---
 
 <p align="center">
-  <sub>🔐 Your keys, your messages, your responsibility.</sub>
+  <sub>🔐 Your keys, your messages, your coins. Stay safe.</sub>
 </p>
-
-> ℹ️ This README intentionally omits implementation details to protect user security. For architectural documentation, please contact the maintainers directly.

@@ -1,11 +1,7 @@
-# requirements.txt
 Flask==2.3.3
-cryptography==41.0.7
+flask-compress==1.14
 marshmallow==3.20.1
 mnemonic==0.20
-Werkzeug==2.3.7
-python-dotenv>=1.0.0
-
-# Для продакшена (раскомментируйте если нужно):
-# gunicorn==21.2.0
-# redis==5.0.1  # для кэша
+cryptography==41.0.7
+cachetools==5.3.1
+python-dotenv==1.0.0

@@ -1,0 +1,9 @@
+<changelist name="Uncommitted_changes_before_Checkout_at_14_05_2026_22_38_[Changes]" date="1778787533910" recycled="true" deleted="true">
+  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_05_2026_22_38_[Changes]/shelved.patch" />
+  <option name="DESCRIPTION" value="Uncommitted changes before Checkout at 14.05.2026 22:38 [Changes]" />
+  <binary>
+    <option name="BEFORE_PATH" value="blockchain.db-wal" />
+    <option name="AFTER_PATH" value="blockchain.db-wal" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_05_2026_22_38_[Changes]/blockchain.db-wal" />
+  </binary>
+</changelist>
