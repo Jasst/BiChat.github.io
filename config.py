@@ -8,6 +8,7 @@ import os
 import sys
 import secrets
 import logging
+from pathlib import Path
 
 # Попытка загрузить переменные из .env (необязательно)
 try:
@@ -36,7 +37,6 @@ CONFIG = {
 
     # ----- База данных -----
     'DB_TIMEOUT':           30.0,     # Тайм-аут SQLite-соединения (секунды)
-    # ✅ НОВОЕ: Размер пула соединений (можно менять через .env)
     'DB_POOL_SIZE':         int(os.getenv('DB_POOL_SIZE', 5)),
         # Количество соединений в пуле. Для 100-200 пользователей рекомендуется 5-10.
 
@@ -47,19 +47,20 @@ CONFIG = {
     # ----- Логирование -----
     'LOG_MAX_BYTES':        10 * 1024 * 1024,   # Максимальный размер одного лог-файла (10 МБ)
     'LOG_BACKUP_COUNT':     5,                  # Количество ротируемых файлов логов
-    'LOG_LEVEL':            os.getenv('LOG_LEVEL', 'INFO').upper(),  # ✅ НОВОЕ: уровень логирования
+    'LOG_LEVEL':            os.getenv('LOG_LEVEL', 'INFO').upper(),
 
     # ----- Загрузка файлов -----
     'MAX_UPLOAD_SIZE':      16 * 1024 * 1024,   # Максимальный размер загружаемого файла (16 МБ)
 
-    # ✅ НОВОЕ: Лимиты запросов (Rate Limiting)
+    # ----- Лимиты запросов (Rate Limiting) -----
     'RATE_LIMIT_PER_MINUTE': int(os.getenv('RATE_LIMIT_PER_MINUTE', 60)),
         # Максимальное количество запросов в минуту с одного IP.
     'RATE_LIMIT_MESSAGE_PER_MINUTE': int(os.getenv('RATE_LIMIT_MESSAGE_PER_MINUTE', 30)),
         # Максимальное количество сообщений в минуту с одного пользователя.
     'RATE_LIMIT_API_PER_MINUTE': int(os.getenv('RATE_LIMIT_API_PER_MINUTE', 120)),
         # Максимальное количество API-запросов в минуту с одного IP.
-     # В конфиг добавь
+
+    # ----- Long polling -----
     'LONG_POLLING_TIMEOUT': int(os.getenv('LONG_POLLING_TIMEOUT', 25)),
     'LONG_POLLING_MAX_WAIT': int(os.getenv('LONG_POLLING_MAX_WAIT', 30)),
 }
@@ -67,22 +68,36 @@ CONFIG = {
 # =============================================================================
 # ПУТИ К ФАЙЛАМ И ПАПКАМ
 # =============================================================================
-DATABASE_PATH = os.getenv('DATABASE_PATH', 'blockchain.db')
-    # Путь к файлу базы данных SQLite. По умолчанию в текущей папке.
-UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
-    # Папка для хранения загруженных пользователями файлов.
-STATIC_FOLDER  = 'static'        # Папка со статическими ресурсами (CSS, JS, изображения)
-TEMPLATE_FOLDER = 'templates'    # Папка с HTML-шаблонами Jinja2
 
-# Корректировка путей для Windows (если вдруг заданы linux-пути)
+# Корневая директория проекта (там, где лежит этот config.py)
+BASE_DIR = Path(__file__).resolve().parent
+
+# Папка для данных (БД и прочие файлы)
+DATA_DIR = BASE_DIR / 'data'
+DATA_DIR.mkdir(exist_ok=True)   # создаём, если нет
+
+# База данных по умолчанию — внутри data/
+DEFAULT_DB_PATH = str(DATA_DIR / 'blockchain.db')
+
+# Переопределяем через переменную окружения, если задано
+DATABASE_PATH = os.getenv('DATABASE_PATH', DEFAULT_DB_PATH)
+
+# Папка для загруженных пользователями файлов
+UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', str(BASE_DIR / 'uploads'))
+
+# Папки статики и шаблонов (относительные, Flask ищет их в корне проекта)
+STATIC_FOLDER  = 'static'
+TEMPLATE_FOLDER = 'templates'
+
+# Корректировка для Windows (если заданы linux-пути, но теперь пути относительные)
 if sys.platform == 'win32':
     if DATABASE_PATH.startswith('/var/www/'):
-        DATABASE_PATH = 'blockchain.db'
+        DATABASE_PATH = DEFAULT_DB_PATH
     if UPLOAD_FOLDER.startswith('/var/www/'):
-        UPLOAD_FOLDER = 'uploads'
+        UPLOAD_FOLDER = str(BASE_DIR / 'uploads')
 
-# Создание необходимых папок, если их нет
-os.makedirs(os.path.dirname(os.path.abspath(DATABASE_PATH)) or '.', exist_ok=True)
+# Создание необходимых папок
+os.makedirs(os.path.dirname(DATABASE_PATH) or '.', exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # =============================================================================
@@ -96,7 +111,7 @@ MIN_BALANCE   = 0               # Минимальный допустимый б
 # =============================================================================
 # АИРДРОП (раздача монет новым пользователям)
 # =============================================================================
-AIRDROP_AMOUNT = 10_00       # Количество сатоши, выдаваемое при регистрации (0.001 BlockCoin)
+AIRDROP_AMOUNT = 10_00          # Количество сатоши, выдаваемое при регистрации (0.001 BlockCoin)
 
 # =============================================================================
 # СТЕЙКИНГ (пассивный доход от комиссий)
@@ -144,4 +159,3 @@ MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
 # Максимальная эмиссия (None = без ограничений)
 MAX_SUPPLY = 21_000_000 * COIN  # 21 000 000 BlockCoin
-
