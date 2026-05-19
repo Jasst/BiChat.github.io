@@ -5,3 +5,7 @@ mnemonic==0.20
 cryptography==41.0.7
 cachetools==5.3.1
 python-dotenv==1.0.0
+Flask-SocketIO~=5.3.6
+Werkzeug~=2.3.7
+waitress~=3.0.2
+requests~=2.34.2
