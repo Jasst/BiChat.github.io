@@ -236,39 +236,41 @@ def mine():
     data = request.get_json()
     proof = data.get('proof')
     challenge = data.get('challenge')
-    last_proof = data.get('last_proof')  # ← нужно добавить
-    last_index = data.get('last_index')  # ← нужно добавить
+    last_proof = data.get('last_proof')
+    last_index = data.get('last_index')
     address = session['address']
 
-    if not all([proof, challenge, last_proof is not None]):
-        return jsonify({'error': 'proof, challenge and last_proof required'}), 400
+    # Валидация входных данных
+    if not all([proof, challenge, last_proof is not None, last_index is not None]):
+        return jsonify({'error': 'proof, challenge, last_proof and last_index required'}), 400
 
+    # Проверяем challenge (временный, вне транзакции БД)
     challenges = _mining_challenges.get(address, {})
     if challenge not in challenges or time.time() > challenges[challenge]:
         return jsonify({'error': 'Invalid or expired challenge'}), 400
+
+    # Удаляем использованный challenge
     del _mining_challenges[address][challenge]
 
-    from database import get_db_cursor
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        cursor.execute("BEGIN IMMEDIATE")
-        last = _blockchain._last_block_raw(cursor)
-        if not last:
-            return jsonify({'error': 'No blockchain'}), 500
+    # Атомарная попытка создать блок
+    success, error_msg, reward_amount, block_index = _blockchain.try_mine_block(
+        last_proof, last_index, proof, challenge, address
+    )
 
-        # Проверяем, что блок не изменился
-        if last.get('proof') != last_proof or last.get('index') != last_index:
-            cursor.execute("ROLLBACK")
-            return jsonify({'error': 'Blockchain moved, try again'}), 409
+    if not success:
+        # Логируем ошибку для диагностики
+        logger.warning(f"Mining failed for {address}: {error_msg}")
+        return jsonify({'error': error_msg}), 400 if error_msg != "Blockchain moved, try again" else 409
 
-        # Проверяем proof через метод класса (вместо ручного hashlib)
-        if not _blockchain.valid_proof_with_challenge(last_proof, proof, challenge):
-            cursor.execute("ROLLBACK")
-            return jsonify({'error': 'Invalid proof'}), 400
+    # Успешный майнинг
+    logger.info(f"✅ Block {block_index} mined by {address}, reward: {reward_amount}")
 
-        _blockchain._new_block_raw(cursor, proof, miner_address=address)
-        cursor.execute("COMMIT")
-
-    return jsonify({'message': 'Block mined', 'reward': BLOCK_REWARD}), 200
+    return jsonify({
+        'message': 'Block mined',
+        'reward': reward_amount,
+        'block_index': block_index,
+        'coin_name': COIN_NAME
+    }), 200
 
 @wallet_bp.route('/wallet/global-stats')
 def wallet_global_stats():

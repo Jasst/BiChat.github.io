@@ -497,7 +497,67 @@ class Blockchain:
         target = '0' * CONFIG['POW_DIFFICULTY']
         return guess_hash.startswith(target)
 
-    # В класс Blockchain добавить:
+    def try_mine_block(self, last_proof: int, last_index: int, proof: int, challenge: str,
+                           miner_address: str) -> tuple:
+            """
+            Атомарная попытка создать блок.
+
+            Args:
+                last_proof: proof последнего блока (из challenge)
+                last_index: индекс последнего блока (из challenge)
+                proof: найденный proof (nonce)
+                challenge: уникальный challenge для этого сеанса майнинга
+                miner_address: адрес майнера для начисления награды
+
+            Returns:
+                (success, error_message, reward_amount, block_index)
+                - success: bool
+                - error_message: str (пусто если success)
+                - reward_amount: int (в сатоши)
+                - block_index: int (индекс созданного блока)
+            """
+            from database import get_db_cursor
+
+            with get_db_cursor(self.db_path) as cursor:
+                try:
+                    cursor.execute("BEGIN IMMEDIATE")
+
+                    # 1. Проверяем актуальность блока
+                    current = self._last_block_raw(cursor)
+                    if not current:
+                        cursor.execute("ROLLBACK")
+                        return False, "No blockchain", 0, 0
+
+                    if current.get('proof') != last_proof or current.get('index') != last_index:
+                        cursor.execute("ROLLBACK")
+                        return False, "Blockchain moved, try again", 0, 0
+
+                    # 2. Проверяем proof
+                    if not self.valid_proof_with_challenge(last_proof, proof, challenge):
+                        cursor.execute("ROLLBACK")
+                        return False, "Invalid proof", 0, 0
+
+                    # 3. Повторная проверка (на случай гонки)
+                    current_again = self._last_block_raw(cursor)
+                    if current_again.get('proof') != last_proof or current_again.get('index') != last_index:
+                        cursor.execute("ROLLBACK")
+                        return False, "Blockchain changed during validation", 0, 0
+
+                    # 4. Создаём блок
+                    self._new_block_raw(cursor, proof, miner_address=miner_address)
+
+                    # 5. Получаем индекс созданного блока
+                    new_block = self._last_block_raw(cursor)
+                    block_index = new_block.get('index', 0)
+
+                    cursor.execute("COMMIT")
+
+                    return True, "Success", BLOCK_REWARD, block_index
+
+                except Exception as e:
+                    cursor.execute("ROLLBACK")
+                    logger.error(f"try_mine_block error: {e}")
+                    return False, str(e), 0, 0
 
     def health_check(self) -> dict:
         """Проверка здоровья базы данных"""
