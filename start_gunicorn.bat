@@ -1,0 +1,1 @@
+start wsl bash -c "cd /mnt/e/BlockcoinGunicorn && .venv/bin/gunicorn -c gunicorn_config.py app:app"

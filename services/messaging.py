@@ -27,66 +27,85 @@ def _db():
 
 def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     """
-    Возвращает список диалогов пользователя.
-    Превью заполняется общим текстом, так как содержимое зашифровано.
+    Возвращает список диалогов пользователя (оптимизировано: 2 запроса вместо N+1).
     """
-    conversations: Dict[str, Dict] = {}
+    conversations = []
     try:
         with _db() as cursor:
+            # 1. Получаем последнее сообщение для каждого партнёра
             cursor.execute('''
                 SELECT
-                    CASE WHEN sender = :addr THEN recipient ELSE sender END AS partner,
-                    content, image, timestamp, sender, id
-                FROM transactions
-                WHERE (sender = :addr OR recipient = :addr)
-                  AND NOT (sender = :addr AND recipient = :addr)
-                ORDER BY timestamp DESC
-            ''', {'addr': user_address})
+                    partner,
+                    MAX(id) AS last_msg_id,
+                    MAX(timestamp) AS last_ts,
+                    (SELECT sender FROM transactions t2
+                     WHERE (t2.sender = ? AND t2.recipient = partner)
+                        OR (t2.sender = partner AND t2.recipient = ?)
+                     ORDER BY t2.timestamp DESC LIMIT 1) AS last_sender
+                FROM (
+                    SELECT
+                        CASE WHEN sender = ? THEN recipient ELSE sender END AS partner,
+                        id, timestamp, sender
+                    FROM transactions
+                    WHERE sender = ? OR recipient = ?
+                ) AS t
+                WHERE partner IS NOT NULL AND partner != ?
+                GROUP BY partner
+            ''', (user_address, user_address, user_address, user_address, user_address, user_address))
 
-            seen_partners: set = set()
-            for row in cursor.fetchall():
-                partner, raw_content, raw_image, ts, msg_sender, msg_id = row
-                if partner == user_address or partner in seen_partners:
-                    continue
-                seen_partners.add(partner)
+            rows = cursor.fetchall()
+            if not rows:
+                return []
 
-                cursor.execute(
-                    'SELECT last_read_message_id FROM read_status '
-                    'WHERE user_address = ? AND chat_id = ?',
-                    (user_address, partner)
-                )
-                read_row = cursor.fetchone()
-                last_read_id = read_row[0] if read_row else 0
+            # 2. Получаем статусы чтения для всех чатов одним запросом
+            chat_ids = [row['partner'] for row in rows]
+            placeholders = ','.join('?' * len(chat_ids))
+            cursor.execute(f'''
+                SELECT chat_id, last_read_message_id
+                FROM read_status
+                WHERE user_address = ? AND chat_id IN ({placeholders})
+            ''', (user_address, *chat_ids))
+            read_map = {row['chat_id']: row['last_read_message_id'] for row in cursor.fetchall()}
 
-                # Превью – теперь просто индикатор, без расшифровки
-                if last_read_id >= msg_id:
+            # 3. Формируем результат
+            for row in rows:
+                partner = row['partner']
+                last_msg_id = row['last_msg_id']
+                last_ts = row['last_ts']
+                last_sender = row['last_sender']
+                last_read_id = read_map.get(partner, 0)
+
+                # preview
+                if last_read_id >= last_msg_id:
                     preview = "✓ Прочитано"
                 else:
-                    preview = "💬 Новое сообщение" if msg_sender != user_address else "Вы: сообщение"
+                    preview = "💬 Новое сообщение" if last_sender != user_address else "Вы: сообщение"
 
+                # имя и тип
                 if partner.startswith('group:'):
                     group_id = partner.split(':', 1)[1]
-                    groups = get_user_groups_cached(
-                        user_address, cache_version=get_groups_cache_version())
+                    groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
                     group = next((g for g in groups if g['id'] == group_id), None)
                     name = group['name'] if group else f'Группа {group_id[:8]}...'
                     is_group = True
                 else:
-                    name = (get_contact_name_cached(
-                        user_address, partner,
-                        cache_version=get_contact_cache_version())
+                    name = (get_contact_name_cached(user_address, partner,
+                                                    cache_version=get_contact_cache_version())
                             or partner[:10] + "...")
                     is_group = False
 
-                conversations[partner] = {
+                conversations.append({
                     'address': partner,
                     'name': name,
                     'is_group': is_group,
                     'last_preview': preview,
-                    'last_ts': ts,
-                }
+                    'last_ts': last_ts,
+                })
+
     except Exception as e:
         logger.error(f"Get conversations error: {e}")
+        # выводим traceback для отладки
+        import traceback
+        logger.error(traceback.format_exc())
 
-    return sorted(conversations.values(),
-                  key=lambda x: x.get('last_ts', 0), reverse=True)
+    return sorted(conversations, key=lambda x: x.get('last_ts', 0), reverse=True)

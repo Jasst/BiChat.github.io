@@ -1,6 +1,10 @@
 """
 app.py — Точка входа: создание Flask-приложения, регистрация blueprint'ов, старт.
 """
+
+from gevent import monkey
+monkey.patch_all()
+
 import os
 from datetime import timedelta
 

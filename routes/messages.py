@@ -237,7 +237,11 @@ def wait_for_messages():
     now = time.time()
     if now - last_request < 0.5:
         _last_poll_time[user_addr] = now
-        return jsonify({'messages': [], 'throttled': True, 'timestamp': now}), 200
+        response = jsonify({'messages': [], 'throttled': True, 'timestamp': now})
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     _last_poll_time[user_addr] = now
 
     # Проверка существования пользователя
@@ -247,10 +251,20 @@ def wait_for_messages():
             cursor.execute('SELECT 1 FROM wallets WHERE address = ?', (user_addr,))
             if not cursor.fetchone():
                 logger.warning(f"Invalid user attempted long poll: {user_addr[:16]}...")
-                return jsonify({'error': 'Invalid user'}), 403
+                response = jsonify({'error': 'Invalid user'})
+                response.status_code = 403
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+                return response
     except Exception as e:
         logger.error(f"User validation error: {e}")
-        return jsonify({'error': 'Internal error'}), 500
+        response = jsonify({'error': 'Internal error'})
+        response.status_code = 500
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
 
     # Получение сообщений из буфера
     buffered_messages, waited_time, had_notification = message_notifier.get_messages(
@@ -272,13 +286,17 @@ def wait_for_messages():
                 'timestamp': msg.get('timestamp', time.time()),
             }
             sanitized_messages.append(sanitized)
-        return jsonify({
+        response = jsonify({
             'messages': sanitized_messages,
             'has_more': len(buffered_messages) >= 50,
             'timestamp': time.time(),
             'from_buffer': True,
             'waited': waited_time,
-        }), 200
+        })
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
 
     # Проверка БД
     db_messages = _fetch_new_messages_from_db(user_addr, since)
@@ -299,20 +317,28 @@ def wait_for_messages():
                 'timestamp': msg.get('timestamp', time.time()),
             }
             sanitized_messages.append(sanitized)
-        return jsonify({
+        response = jsonify({
             'messages': sanitized_messages,
             'has_more': len(db_messages) >= 50,
             'timestamp': time.time(),
             'from_db': True,
-        }), 200
+        })
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
 
-    return jsonify({
+    response = jsonify({
         'messages': [],
         'has_more': False,
         'timestamp': time.time(),
         'waited': timeout,
         'notified': had_notification,
-    }), 200
+    })
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 # =============================================================================
