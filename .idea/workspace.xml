@@ -5,7 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
+      <change afterPath="$PROJECT_DIR$/run_win.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/wallet.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/start_app.bat" beforeDir="false" afterPath="$PROJECT_DIR$/start_app.bat" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/wallet.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/wallet.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,7 +48,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATEDCLEAN5" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATEDUNICORN" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -112,7 +118,7 @@
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;mainUPDATEDUNICORN&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;mainUPDATEDUNICORN1&quot;,
     &quot;last_opened_file_path&quot;: &quot;C:/Users/PC/Documents/GitHub/BiChat.github.io&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
@@ -677,6 +683,16 @@
           <url>file://$PROJECT_DIR$/Trash/app.py</url>
           <line>1652</line>
           <option name="timeStamp" value="62" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/database.py</url>
+          <line>267</line>
+          <option name="timeStamp" value="63" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/routes/wallet.py</url>
+          <line>229</line>
+          <option name="timeStamp" value="64" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

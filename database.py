@@ -476,6 +476,27 @@ class Blockchain:
         guess_hash = hashlib.sha256(guess).hexdigest()
         return guess_hash[:CONFIG['POW_DIFFICULTY']] == '0' * CONFIG['POW_DIFFICULTY']
 
+    def valid_proof_with_challenge(self, last_proof: int, proof: int, challenge: str) -> bool:
+        """
+        Проверяет, что proof удовлетворяет условию Proof-of-Work.
+
+        Алгоритм: хеш от строки f"{last_proof}{challenge}{proof}"
+        должен начинаться с '0' * POW_DIFFICULTY
+
+        Args:
+            last_proof: proof предыдущего блока
+            proof: доказываемое значение (nonce)
+            challenge: уникальная строка для каждого сеанса майнинга
+
+        Returns:
+            True если proof валидный, иначе False
+        """
+        import hashlib
+        guess = f"{last_proof}{challenge}{proof}".encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        target = '0' * CONFIG['POW_DIFFICULTY']
+        return guess_hash.startswith(target)
+
     # В класс Blockchain добавить:
 
     def health_check(self) -> dict:

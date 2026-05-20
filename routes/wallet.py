@@ -219,25 +219,29 @@ def last_proof():
     _mining_challenges[address][challenge] = time.time() + _CHALLENGE_TTL
     return jsonify({
         'last_proof': last.get('proof', 0),
+        'last_index': last.get('index', 0),   # ← добавить номер блока
         'difficulty': CONFIG['POW_DIFFICULTY'],
         'challenge': challenge
     })
 
 
 @wallet_bp.route('/wallet/mine', methods=['POST'])
-@rate_limit(limit=3)   # теперь rate_limit определён
+@rate_limit(limit=3)
 def mine():
     if not ENABLE_MINING:
         return jsonify({'error': 'Mining disabled'}), 403
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.get_json()
     proof = data.get('proof')
     challenge = data.get('challenge')
+    last_proof = data.get('last_proof')  # ← нужно добавить
+    last_index = data.get('last_index')  # ← нужно добавить
     address = session['address']
 
-    if not proof or not challenge:
-        return jsonify({'error': 'proof and challenge required'}), 400
+    if not all([proof, challenge, last_proof is not None]):
+        return jsonify({'error': 'proof, challenge and last_proof required'}), 400
 
     challenges = _mining_challenges.get(address, {})
     if challenge not in challenges or time.time() > challenges[challenge]:
@@ -251,14 +255,14 @@ def mine():
         if not last:
             return jsonify({'error': 'No blockchain'}), 500
 
-        # Защита от слишком частого майнинга (не чаще 1 блока в 2 минуты)
-        if time.time() - last['timestamp'] < 120:
-            return jsonify({'error': 'Too fast, wait before next block'}), 429
+        # Проверяем, что блок не изменился
+        if last.get('proof') != last_proof or last.get('index') != last_index:
+            cursor.execute("ROLLBACK")
+            return jsonify({'error': 'Blockchain moved, try again'}), 409
 
-        import hashlib
-        guess = f"{last['proof']}{challenge}{proof}".encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        if not guess_hash.startswith('0' * CONFIG['POW_DIFFICULTY']):
+        # Проверяем proof через метод класса (вместо ручного hashlib)
+        if not _blockchain.valid_proof_with_challenge(last_proof, proof, challenge):
+            cursor.execute("ROLLBACK")
             return jsonify({'error': 'Invalid proof'}), 400
 
         _blockchain._new_block_raw(cursor, proof, miner_address=address)

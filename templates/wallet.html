@@ -245,99 +245,96 @@ async function sha256(text) {
 }
 
 async function startMining() {
-  if (miningActive) return;
-  miningActive = true;
+    if (miningActive) return;
+    miningActive = true;
 
-  document.getElementById('startMiningBtn').classList.add('hidden');
-  document.getElementById('stopMiningBtn').classList.remove('hidden');
-  const statusEl = document.getElementById('miningStatus');
-  const progressBar = document.getElementById('miningProgress');
-  const fillEl = progressBar.querySelector('.mining-progress-bar-fill');
-  progressBar.classList.remove('hidden');
-  statusEl.textContent = 'Mining... getting current proof';
+    document.getElementById('startMiningBtn').classList.add('hidden');
+    document.getElementById('stopMiningBtn').classList.remove('hidden');
+    const statusEl = document.getElementById('miningStatus');
+    const progressBar = document.getElementById('miningProgress');
+    const fillEl = progressBar.querySelector('.mining-progress-bar-fill');
+    progressBar.classList.remove('hidden');
+    statusEl.textContent = 'Mining... getting current proof';
 
-  try {
-    const proofResp = await fetch('/wallet/last-proof');
-    const chainData = await proofResp.json();
-    let { last_proof, difficulty, challenge } = chainData;
-    const target = '0'.repeat(difficulty);
-    const maxIter = POW_MAX_ITERATIONS;
-    const safeMaxIter = Math.min(maxIter, 20000000);
-    const finalMaxIter = safeMaxIter;
+    try {
+        const proofResp = await fetch('/wallet/last-proof');
+        const chainData = await proofResp.json();
+        let { last_proof, last_index, difficulty, challenge } = chainData;  // ← добавили last_index
+        const target = '0'.repeat(difficulty);
+        const maxIter = POW_MAX_ITERATIONS;  // из конфига, например 5_000_000
 
-    if (maxIter > 20000000) {
-        statusEl.textContent = `⚠️ High difficulty! Limited to 20M tries (server wants ${Math.floor(maxIter/1000000)}M)`;
-        await new Promise(r => setTimeout(r, 2000));
-    }
+        let startTime = Date.now();
+        statusEl.textContent = `Mining... difficulty=${difficulty}, max tries=${Math.floor(maxIter/1000000)}M`;
 
-    let startTime = Date.now();
-    statusEl.textContent = `Mining... difficulty=${difficulty}, max tries=${Math.floor(finalMaxIter/1000000)}M`;
+        while (miningActive) {
+            let found = false;
+            let proof = 0;
+            fillEl.style.width = '0%';
 
-    while (miningActive) {
-      let found = false;
-      let proof = 0;
-      fillEl.style.width = '0%';
+            for (proof = 0; proof < maxIter; proof++) {
+                if (!miningActive) break;
+                const hash = await sha256(`${last_proof}${challenge}${proof}`);
+                if (hash.startsWith(target)) {
+                    found = true;
+                    break;
+                }
+                if (proof % 5000 === 0) {
+                    const pct = Math.min(100, Math.floor((proof / maxIter) * 100));
+                    fillEl.style.width = pct + '%';
+                    if (proof % 50000 === 0) {
+                        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                        statusEl.textContent = `Hashing... ${(proof/1000).toFixed(0)}k / ${(maxIter/1000).toFixed(0)}k | ${elapsed}s`;
+                    }
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
 
-      for (proof = 0; proof < finalMaxIter; proof++) {
-        if (!miningActive) break;
-        const hash = await sha256(`${last_proof}${challenge}${proof}`);
-        if (hash.startsWith(target)) {
-          found = true;
-          break;
+            if (found) {
+                progressBar.classList.add('hidden');
+                statusEl.innerHTML = '<span class="block-found">🎉 BLOCK FOUND!</span>';
+                statusEl.classList.add('block-found-animation');
+                setTimeout(() => statusEl.classList.remove('block-found-animation'), 3000);
+
+                const res = await fetch('/wallet/mine', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ proof, challenge, last_proof, last_index })  // ← добавили last_proof, last_index
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    const reward = (result.reward / BLOCKCOIN_SATS).toFixed(6);
+                    statusEl.textContent = `Block mined! +${reward} BlockCoin`;
+                    window.NotificationManager?.showToast(`⛏ Block mined! +${reward} BlockCoin`, 'success');
+                    refreshBalance();
+                    refreshNetworkStats();
+                    loadTx();
+                    stopMining();
+                    // Автоматически начинаем новый майнинг через 2 секунды
+                    setTimeout(() => startMining(), 2000);
+                    return;
+                } else {
+                    statusEl.textContent = 'Error: ' + (result.error || 'Unknown');
+                    window.NotificationManager?.showToast('Mining failed', 'error');
+                    stopMining();
+                    return;
+                }
+            } else {
+                statusEl.textContent = 'No block found this round, restarting search...';
+                await new Promise(r => setTimeout(r, 500));
+                const fresh = await fetch('/wallet/last-proof');
+                const freshData = await fresh.json();
+                last_proof = freshData.last_proof;
+                last_index = freshData.last_index;   // ← обновляем
+                challenge = freshData.challenge;
+                startTime = Date.now();
+            }
         }
-        // Обновляем прогресс каждые 5000 итераций
-        if (proof % 5000 === 0) {
-          const pct = Math.min(100, Math.floor((proof / finalMaxIter) * 100));
-          fillEl.style.width = pct + '%';
-          if (proof % 50000 === 0) {
-            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            statusEl.textContent = `Hashing... ${(proof/1000).toFixed(0)}k / ${(finalMaxIter/1000).toFixed(0)}k | ${elapsed}s elapsed`;
-          }
-          await new Promise(r => setTimeout(r, 0));
-        }
-      }
-
-      if (found) {
-        progressBar.classList.add('hidden');
-        statusEl.innerHTML = '<span class="block-found">🎉 BLOCK FOUND!</span>';
-        statusEl.classList.add('block-found-animation');
-        setTimeout(() => statusEl.classList.remove('block-found-animation'), 3000);
-
-        const res = await fetch('/wallet/mine', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proof, challenge })
-        });
-        const result = await res.json();
-        if (res.ok) {
-          const reward = (result.reward / BLOCKCOIN_SATS).toFixed(6);
-          statusEl.textContent = `Block mined! +${reward} BlockCoin`;
-          window.NotificationManager?.showToast(`⛏ Block mined! +${reward} BlockCoin`, 'success');
-          refreshBalance();
-          refreshNetworkStats();
-          loadTx();
-        } else {
-          statusEl.textContent = 'Error: ' + (result.error || 'Unknown');
-          window.NotificationManager?.showToast('Mining failed', 'error');
-        }
+    } catch (err) {
+        console.error('Mining error:', err);
+        statusEl.textContent = 'Mining error: ' + err.message;
+        window.NotificationManager?.showToast('Mining error', 'error');
         stopMining();
-        return;
-      } else {
-        statusEl.textContent = 'No block found this round, restarting search...';
-        await new Promise(r => setTimeout(r, 500));
-        const fresh = await fetch('/wallet/last-proof');
-        const freshData = await fresh.json();
-        last_proof = freshData.last_proof;
-        challenge = freshData.challenge;   // обновляем challenge
-        startTime = Date.now();
-      }
     }
-  } catch (err) {
-    console.error('Mining error:', err);
-    statusEl.textContent = 'Mining error: ' + err.message;
-    window.NotificationManager?.showToast('Mining error', 'error');
-    stopMining();
-  }
 }
 
 function stopMining() {
