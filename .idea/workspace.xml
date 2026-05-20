@@ -4,13 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
+    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.pid" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/run.py" beforeDir="false" afterPath="$PROJECT_DIR$/run.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/messaging.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/messaging.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/chat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/chat.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,7 +42,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATEDCLEAN4" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATEDCLEAN5" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -81,54 +76,54 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;DefaultHtmlFileTemplate&quot;: &quot;HTML File&quot;,
-    &quot;Flask server.BiChat.github.io.executor&quot;: &quot;Run&quot;,
-    &quot;Flask server.Flask (app.py).executor&quot;: &quot;Run&quot;,
-    &quot;Node.js.Privet.js.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Bot 2.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Interface.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Jarvis.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Qbyte.executor&quot;: &quot;Run&quot;,
-    &quot;Python.Socket.executor&quot;: &quot;Run&quot;,
-    &quot;Python.__init__.executor&quot;: &quot;Run&quot;,
-    &quot;Python.app.executor&quot;: &quot;Run&quot;,
-    &quot;Python.auth.executor&quot;: &quot;Run&quot;,
-    &quot;Python.blockchain.executor&quot;: &quot;Run&quot;,
-    &quot;Python.bot.executor&quot;: &quot;Run&quot;,
-    &quot;Python.bot_script.executor&quot;: &quot;Run&quot;,
-    &quot;Python.check_env.executor&quot;: &quot;Run&quot;,
-    &quot;Python.config.executor&quot;: &quot;Debug&quot;,
-    &quot;Python.cripto_manager.executor&quot;: &quot;Run&quot;,
-    &quot;Python.crypto_manager.executor&quot;: &quot;Run&quot;,
-    &quot;Python.files.executor&quot;: &quot;Run&quot;,
-    &quot;Python.python app.py.executor&quot;: &quot;Run&quot;,
-    &quot;Python.pythonProject1.executor&quot;: &quot;Run&quot;,
-    &quot;Python.routes.executor&quot;: &quot;Run&quot;,
-    &quot;Python.run.executor&quot;: &quot;Run&quot;,
-    &quot;Python.run_waitress.executor&quot;: &quot;Run&quot;,
-    &quot;Python.sec.executor&quot;: &quot;Run&quot;,
-    &quot;Python.setup.executor&quot;: &quot;Run&quot;,
-    &quot;Python.sync_peers.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test.executor&quot;: &quot;Run&quot;,
-    &quot;Python.transactions.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;mainUPDATEFASTAPI2&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/PC/Documents/GitHub/BiChat.github.io&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.remoteExternalTools&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "DefaultHtmlFileTemplate": "HTML File",
+    "Flask server.BiChat.github.io.executor": "Run",
+    "Flask server.Flask (app.py).executor": "Run",
+    "Node.js.Privet.js.executor": "Run",
+    "Python.Bot 2.executor": "Run",
+    "Python.Interface.executor": "Run",
+    "Python.Jarvis.executor": "Run",
+    "Python.Qbyte.executor": "Run",
+    "Python.Socket.executor": "Run",
+    "Python.__init__.executor": "Run",
+    "Python.app.executor": "Run",
+    "Python.auth.executor": "Run",
+    "Python.blockchain.executor": "Run",
+    "Python.bot.executor": "Run",
+    "Python.bot_script.executor": "Run",
+    "Python.check_env.executor": "Run",
+    "Python.config.executor": "Debug",
+    "Python.cripto_manager.executor": "Run",
+    "Python.crypto_manager.executor": "Run",
+    "Python.files.executor": "Run",
+    "Python.python app.py.executor": "Run",
+    "Python.pythonProject1.executor": "Run",
+    "Python.routes.executor": "Run",
+    "Python.run.executor": "Run",
+    "Python.run_waitress.executor": "Run",
+    "Python.sec.executor": "Run",
+    "Python.setup.executor": "Run",
+    "Python.sync_peers.executor": "Run",
+    "Python.test.executor": "Run",
+    "Python.transactions.executor": "Run",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "mainUPDATEDUNICORN",
+    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "run.code.analysis.last.selected.profile": "pProject Default",
+    "settings.editor.selected.configurable": "preferences.remoteExternalTools",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
@@ -229,22 +224,6 @@
       <workItem from="1720513636923" duration="7525000" />
       <workItem from="1724683315330" duration="603000" />
       <workItem from="1732215911360" duration="2005000" />
-    </task>
-    <task id="LOCAL-00046" summary="Split">
-      <option name="closed" value="true" />
-      <created>1718129048267</created>
-      <option name="number" value="00046" />
-      <option name="presentableId" value="LOCAL-00046" />
-      <option name="project" value="LOCAL" />
-      <updated>1718129048267</updated>
-    </task>
-    <task id="LOCAL-00047" summary="Split">
-      <option name="closed" value="true" />
-      <created>1718135188985</created>
-      <option name="number" value="00047" />
-      <option name="presentableId" value="LOCAL-00047" />
-      <option name="project" value="LOCAL" />
-      <updated>1718135188985</updated>
     </task>
     <task id="LOCAL-00048" summary="Split">
       <option name="closed" value="true" />
@@ -622,7 +601,23 @@
       <option name="project" value="LOCAL" />
       <updated>1720514127909</updated>
     </task>
-    <option name="localTasksCounter" value="95" />
+    <task id="LOCAL-00095" summary="DB">
+      <option name="closed" value="true" />
+      <created>1779292333864</created>
+      <option name="number" value="00095" />
+      <option name="presentableId" value="LOCAL-00095" />
+      <option name="project" value="LOCAL" />
+      <updated>1779292333864</updated>
+    </task>
+    <task id="LOCAL-00096" summary="DB UNICORN">
+      <option name="closed" value="true" />
+      <created>1779292467138</created>
+      <option name="number" value="00096" />
+      <option name="presentableId" value="LOCAL-00096" />
+      <option name="project" value="LOCAL" />
+      <updated>1779292467138</updated>
+    </task>
+    <option name="localTasksCounter" value="97" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -652,7 +647,8 @@
     <MESSAGE value="Split" />
     <MESSAGE value="DB1" />
     <MESSAGE value="DB" />
-    <option name="LAST_COMMIT_MESSAGE" value="DB" />
+    <MESSAGE value="DB UNICORN" />
+    <option name="LAST_COMMIT_MESSAGE" value="DB UNICORN" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -681,26 +677,6 @@
           <url>file://$PROJECT_DIR$/Trash/app.py</url>
           <line>1652</line>
           <option name="timeStamp" value="62" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/services/wallet.py</url>
-          <line>107</line>
-          <option name="timeStamp" value="63" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/routes/wallet.py</url>
-          <line>228</line>
-          <option name="timeStamp" value="65" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/routes/wallet.py</url>
-          <line>88</line>
-          <option name="timeStamp" value="66" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/app.py</url>
-          <line>91</line>
-          <option name="timeStamp" value="68" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
