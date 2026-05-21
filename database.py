@@ -263,6 +263,16 @@ class Blockchain:
                     current_chat TEXT
                 )''')
             logger.info("✅ Created user_status table")
+        # Добавление колонок статусов для сообщений
+        trans_cols = [row[1] for row in cursor.execute("PRAGMA table_info('transactions')")]
+        if 'status' not in trans_cols:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN status TEXT DEFAULT 'sent'")
+            logger.info("✅ Added 'status' column to transactions")
+        if 'read_at' not in trans_cols:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN read_at REAL")
+            logger.info("✅ Added 'read_at' column to transactions")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)")
+
 
 
     def _create_tables(self, cursor: sqlite3.Cursor) -> None:

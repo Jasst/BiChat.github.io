@@ -159,6 +159,14 @@ function createMessageElement(msg) {
   messageDiv.id = 'msg-' + msg.id;
   messageDiv.className = 'message ' + (msg.is_mine ? 'sent' : 'received') + ' animate-fade';
   messageDiv.dataset.messageId = msg.id;
+  messageDiv.dataset.id = msg.id;
+
+  // ✅ Улучшенная установка начального статуса
+  let initialStatus = msg.status;
+  if (!initialStatus) {
+    initialStatus = msg.is_mine ? 'sent' : 'delivered';
+  }
+  messageDiv.dataset.status = initialStatus;
 
   const initials = (msg.sender || 'U').slice(0, 1).toUpperCase();
   const senderName = msg.is_mine || !State.currentChatIsGroup
@@ -174,6 +182,28 @@ function createMessageElement(msg) {
   const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" title="Delete">🗑</button>` : '';
 
   messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
+
+  // Добавляем статус для своих сообщений
+  if (msg.is_mine) {
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'message-status';
+    // ✅ Правильное отображение иконки в зависимости от статуса
+    if (initialStatus === 'read') {
+      statusSpan.textContent = '✓✓';
+      statusSpan.style.color = '#4caf50';
+    } else if (initialStatus === 'delivered') {
+      statusSpan.textContent = '✓✓';
+      statusSpan.style.color = '#888';
+    } else {
+      statusSpan.textContent = '✓';
+      statusSpan.style.color = '#888';
+    }
+    statusSpan.style.marginLeft = '8px';
+    statusSpan.style.fontSize = '12px';
+    const metaDiv = messageDiv.querySelector('.meta');
+    if (metaDiv) metaDiv.appendChild(statusSpan);
+  }
+
   return messageDiv;
 }
 
@@ -352,9 +382,16 @@ async function selectConversation(address, name, isGroup) {
   State.lastKnownMessageId = 0;
   State.lastMessageTimestamp = 0;
   State.pendingImageData = null;
+  stopStatusPolling();
+  startStatusPolling();   // ✅ Запускаем опрос статусов для своих сообщений
+  if (longPollingClient) {
+    longPollingClient.forceCheck();
+  }
   loadMessagesForConversation(address, false);
   updateConversationPreview(address, '✓ Доставлено');
+
   if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
+
 }
 
 function _disableChatControls() {
@@ -435,10 +472,10 @@ async function processMessageDecryption(msg) {
           );
           image = parsed.image || null;
         }
-      } catch (decryptErr) {
-        console.warn('Decryption failed for msg', msg.id, decryptErr);
-        content = '🔒 Encrypted message';
-      }
+      } catch (e) {
+        console.error('Decryption critical error', msg.id, e);
+        return { ...msg, content: '🔒 Ошибка расшифровки', image: null };
+    }
     }
   } catch (e) { }
   return { ...msg, content, image };
@@ -488,10 +525,7 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     const messages = [];
 
     for (const msg of rawMessages) {
-      // Отмечаем сообщение как обработанное для Long Polling (предотвращает дубли)
-      if (longPollingClient && msg.id) {
-        longPollingClient.markMessageProcessed(msg.id);
-      }
+
       const decrypted = await processMessageDecryption(msg);
       messages.push(decrypted);
     }
@@ -527,7 +561,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     container.appendChild(fragment);
     State.lastMessageTimestamp = maxTimestamp;
 
-    // ✅ Обновляем lastTimestamp в Long Polling клиенте
     if (longPollingClient && maxTimestamp > 0) {
       longPollingClient.updateTimestamp(maxTimestamp);
     }
@@ -551,8 +584,27 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       }
     }
 
+    // ✅ Отмечаем прочтение только для новых сообщений (isNewMessage = true)
+    if (isNewMessage) {
+      setTimeout(() => {
+        const otherMessages = document.querySelectorAll('.message-other');
+        otherMessages.forEach(msgDiv => {
+          const msgId = msgDiv.dataset.id;
+          const currentStatus = msgDiv.dataset.status;
+          if (msgId && currentStatus !== 'read') {
+            fetch(`/message/${msgId}/read`, { method: 'POST' })
+              .then(() => {
+                msgDiv.dataset.status = 'read';
+              })
+              .catch(e => console.warn('Failed to mark read', e));
+          }
+        });
+      }, 500);
+    }
+
     _enableChatControls();
     if (!isNewMessage) setupTopObserver();
+
   } catch (error) {
     console.error('Load messages error:', error);
     container.classList.remove('loading');
@@ -560,19 +612,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     else if (!isNewMessage) container.innerHTML = '<p class="text-muted text-center">Failed to load messages</p>';
     _enableChatControls();
   }
-}
-
-
-function appendMessageToUI(msg) {
-  const container = document.getElementById('messagesContainer');
-  if (!container) return;
-  if (document.getElementById('msg-' + msg.id)) return;
-  const emptyState = container.querySelector('.empty-state');
-  if (emptyState) emptyState.remove();
-  const wasAtBottom = isUserAtBottom(container);
-  container.appendChild(createMessageElement(msg));
-  if (wasAtBottom) smartScrollToBottom(container, false);
-  else showNewMessagesBadge();
 }
 
 // =============================================================================
@@ -619,7 +658,8 @@ async function sendMessage() {
     image: attachedImage,
     timestamp: Date.now() / 1000,
     is_mine: true,
-    sender_name: 'You'
+    sender_name: 'You',
+    status: 'sent'  // ✅ ДОБАВИТЬ ЭТУ СТРОКУ
   };
 
   const container = document.getElementById('messagesContainer');
@@ -879,6 +919,43 @@ function openImageModal(src) {
 
 function closeImageModal() { document.getElementById('imageModal')?.classList.add('hidden'); }
 
+let statusPollingInterval = null;
+
+function startStatusPolling() {
+    if (statusPollingInterval) clearInterval(statusPollingInterval);
+    statusPollingInterval = setInterval(async () => {
+        const myMessages = document.querySelectorAll('.message-own');
+        const ids = Array.from(myMessages)
+            .map(el => el.dataset.id)
+            .filter(id => id && !id.startsWith('temp'));
+        if (ids.length === 0) return;
+
+        try {
+            const res = await fetch('/message/statuses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: ids })
+            });
+            const statuses = await res.json();
+            for (const [id, st] of Object.entries(statuses)) {
+                const msgDiv = document.querySelector(`.message-own[data-id="${id}"]`);
+                if (msgDiv && msgDiv.dataset.status !== st) {
+                    msgDiv.dataset.status = st;
+                    updateStatusIcon(msgDiv, st);
+                }
+            }
+        } catch (e) {
+            console.warn('Status polling error', e);
+        }
+    }, 20000);  // каждые 10 секунд
+}
+
+function stopStatusPolling() {
+    if (statusPollingInterval) {
+        clearInterval(statusPollingInterval);
+        statusPollingInterval = null;
+    }
+}
 // =============================================================================
 // === Modal Controls ===
 // =============================================================================
@@ -889,10 +966,12 @@ function openNewChatModal() {
   loadContactsForModal();
   if (window.QRScanner) QRScanner.close();
 }
+
 function closeNewChatModal() {
   document.getElementById('newChatModal')?.classList.add('hidden');
   if (window.QRScanner) QRScanner.close();
 }
+
 async function loadContactsForModal() {
   try {
     const res = await fetch('/get_contacts');
@@ -913,6 +992,7 @@ async function loadContactsForModal() {
     }
   } catch (error) { console.error('Load contacts error:', error); }
 }
+
 async function startNewChat() {
   const select = document.getElementById('newChatSelect');
   const addressInput = document.getElementById('newChatAddress');
@@ -983,6 +1063,21 @@ function updateConversationPreview(chatId, newPreview) {
   }
 }
 
+function updateStatusIcon(msgDiv, status) {
+    const icon = msgDiv.querySelector('.message-status');
+    if (!icon) return;
+    if (status === 'sent') {
+        icon.textContent = '✓';
+        icon.style.color = '#888';
+    } else if (status === 'delivered') {
+        icon.textContent = '✓✓';
+        icon.style.color = '#888';
+    } else if (status === 'read') {
+        icon.textContent = '✓✓';
+        icon.style.color = '#4caf50';
+    }
+    // ✅ Всё правильно, break не нужен при if-else
+}
 // =============================================================================
 // === DOMContentLoaded ===
 // =============================================================================
@@ -1125,51 +1220,105 @@ async function setupLongPolling() {
     longPollingClient = new LongPollingClient({
         baseUrl: '',
         timeout: 25000,
-        debug: false,
+        debug: true,
         onMessages: async (messages) => {
-    console.log('📬 New messages via Long Polling:', messages.length);
-    if (!messages.length) return;
+            console.log('📬 New messages via Long Polling:', messages.length);
+            console.log('🔍 Полные объекты сообщений:', JSON.parse(JSON.stringify(messages)));
+            console.log('🔍 Текущий чат (State.currentChatAddress):', State.currentChatAddress);
+            if (!messages.length) return;
 
-    // Обновляем lastTimestamp
-    const maxTs = Math.max(...messages.map(m => m.timestamp));
-    if (maxTs > State.lastMessageTimestamp) {
-        State.lastMessageTimestamp = maxTs;
-        longPollingClient.updateTimestamp(maxTs);
-    }
+            const userAddr = State.userAddress;
 
-    // Группируем по chatId
-    const grouped = new Map();
-    for (const msg of messages) {
-        if (!grouped.has(msg.chatId)) grouped.set(msg.chatId, []);
-        grouped.get(msg.chatId).push(msg);
-    }
+            // Отмечаем доставку для чужих сообщений
+            for (const msg of messages) {
+                if (msg.sender && msg.sender !== userAddr) {
+                    fetch(`/message/${msg.id}/delivered`, { method: 'POST' })
+                        .catch(e => console.warn('Failed to mark delivered', e));
+                }
+            }
 
-    // Если есть сообщения для текущего чата — перезагружаем его один раз
-    if (State.currentChatAddress && grouped.has(State.currentChatAddress)) {
-        await loadMessagesForConversation(State.currentChatAddress, true);
-        grouped.delete(State.currentChatAddress);
-    }
+            // Обновляем lastTimestamp
+            const maxTs = Math.max(...messages.map(m => m.timestamp));
+            if (maxTs > State.lastMessageTimestamp) {
+                State.lastMessageTimestamp = maxTs;
+                longPollingClient.updateTimestamp(maxTs);
+            }
 
-    // Для остальных чатов обновляем список диалогов
-    if (grouped.size > 0) {
-        await loadConversations();
-    }
+            // Группируем по chatId
+            const grouped = new Map();
+            for (const msg of messages) {
+                if (!grouped.has(msg.chatId)) grouped.set(msg.chatId, []);
+                grouped.get(msg.chatId).push(msg);
+            }
 
-    // Уведомления (если нужно)
-    if (window.NotificationManager && document.visibilityState === 'visible') {
-        for (const [chatId, msgs] of grouped.entries()) {
-            const lastMsg = msgs[msgs.length - 1];
-            window.NotificationManager.handleIncomingMessage?.({
-                sender: lastMsg.sender,
-                sender_name: lastMsg.sender_name,
-                chatId: chatId,
-                isGroup: lastMsg.isGroup,
-                preview: lastMsg.preview,
-                timestamp: lastMsg.timestamp * 1000
+            console.log('Сравнение адресов: текущий чат =', State.currentChatAddress);
+            console.log('Ключи grouped:', Array.from(grouped.keys()));
+
+            const currentChat = String(State.currentChatAddress).trim();
+
+            // Проверяем, есть ли сообщения для текущего чата (по chatId = адрес собеседника)
+            const hasChat = Array.from(grouped.keys()).some(key => {
+               const keyStr = String(key).trim();
+               return keyStr === currentChat || keyStr === userAddr;
             });
-        }
-    }
-},
+            if (currentChat && hasChat) {
+                console.log('🔍 ВОШЛИ в блок обработки текущего чата');
+                                // Ищем ключ, который соответствует либо текущему чату, либо адресу пользователя
+                const foundKey = Array.from(grouped.keys()).find(key => {
+                const keyStr = String(key).trim();
+                return keyStr === currentChat || keyStr === userAddr;
+                });
+                console.log('🔍 Найденный ключ:', foundKey);
+                const newMessages = grouped.get(foundKey);
+                console.log('🔍 Количество сообщений для чата:', newMessages.length);
+                const container = document.getElementById('messagesContainer');
+                console.log('🔍 Контейнер найден:', container !== null);
+                if (container) {
+                    const wasAtBottom = isUserAtBottom(container, 30);
+                    for (const msg of newMessages) {
+                        try {
+                            if (document.getElementById('msg-' + msg.id)) continue;
+                            const decrypted = await processMessageDecryption(msg);
+                            const msgElement = createMessageElement(decrypted);
+                            container.appendChild(msgElement);
+                            if (!decrypted.is_mine) {
+                                fetch(`/message/${decrypted.id}/read`, { method: 'POST' });
+                            }
+                        } catch (err) {
+                            console.error('Ошибка обработки сообщения', msg.id, err);
+                        }
+                    }
+                    if (wasAtBottom) {
+                        setTimeout(() => {
+                            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                        }, 50);
+                    } else {
+                        showNewMessagesBadge();
+                    }
+                }
+                grouped.delete(State.currentChatAddress);
+            }
+
+            // Для остальных чатов обновляем список диалогов
+            if (grouped.size > 0) {
+                await loadConversations();
+            }
+
+            // Уведомления (если нужно)
+            if (window.NotificationManager && document.visibilityState === 'visible') {
+                for (const [chatId, msgs] of grouped.entries()) {
+                    const lastMsg = msgs[msgs.length - 1];
+                    window.NotificationManager.handleIncomingMessage?.({
+                        sender: lastMsg.sender,
+                        sender_name: lastMsg.sender_name,
+                        chatId: chatId,
+                        isGroup: lastMsg.isGroup,
+                        preview: lastMsg.preview,
+                        timestamp: lastMsg.timestamp * 1000
+                    });
+                }
+            }
+        },
         onError: (error) => {
             console.warn('⚠️ Long polling connection issue:', error.message);
         },
@@ -1216,7 +1365,6 @@ window.getLongPollingStatus = () => longPollingClient?.getStatus();
 
 // Экспорт функций
 window.selectConversation = selectConversation;
-window.appendMessageToUI = appendMessageToUI;
 window.loadMessagesForConversation = loadMessagesForConversation;
 window.startNewChat = startNewChat;
 window.sendMessage = sendMessage;

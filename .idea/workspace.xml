@@ -5,25 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
-      <change afterPath="$PROJECT_DIR$/app_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/database_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/er.bat" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/middleware.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/redis_manager.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/auth_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/contacts_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/files_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/groups_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/messages_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/status_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/wallet_async.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/setup_async.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_win.py" beforeDir="false" afterPath="$PROJECT_DIR$/run_win.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/static/js/chat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/chat.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -701,7 +685,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/database.py</url>
-          <line>267</line>
+          <line>277</line>
           <option name="timeStamp" value="63" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">

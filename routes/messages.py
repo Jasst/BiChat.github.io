@@ -284,6 +284,8 @@ def wait_for_messages():
                 'isGroup': msg.get('isGroup', False),
                 'preview': msg.get('preview', '💬 Новое сообщение'),
                 'timestamp': msg.get('timestamp', time.time()),
+                'content': msg.get('content'),  # ✅ добавлено
+                'image': msg.get('image'),  # ✅ добавлено
             }
             sanitized_messages.append(sanitized)
         response = jsonify({
@@ -307,6 +309,7 @@ def wait_for_messages():
             db_messages = db_messages[:50]
         sanitized_messages = []
         for msg in db_messages:
+            # Для db_messages (аналогично)
             sanitized = {
                 'id': msg.get('id'),
                 'sender': msg.get('sender'),
@@ -315,6 +318,8 @@ def wait_for_messages():
                 'isGroup': msg.get('isGroup', False),
                 'preview': msg.get('preview', '💬 Новое сообщение'),
                 'timestamp': msg.get('timestamp', time.time()),
+                'content': msg.get('content'),  # ✅ добавлено
+                'image': msg.get('image'),  # ✅ добавлено
             }
             sanitized_messages.append(sanitized)
         response = jsonify({
@@ -340,6 +345,59 @@ def wait_for_messages():
     response.headers['Expires'] = '0'
     return response
 
+
+@messages_bp.route('/message/<int:message_id>/delivered', methods=['POST'])
+def mark_delivered(message_id):
+    """Получатель подтверждает доставку сообщения"""
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    user_addr = session['address']
+
+    from database import get_db_cursor
+    with get_db_cursor(_blockchain.db_path) as cursor:
+        cursor.execute('''
+            UPDATE transactions 
+            SET status = 'delivered' 
+            WHERE id = ? AND recipient = ? AND status = 'sent'
+        ''', (message_id, user_addr))
+        cursor.connection.commit()
+    return jsonify({'status': 'ok'})
+
+
+@messages_bp.route('/message/<int:message_id>/read', methods=['POST'])
+def mark_read(message_id):
+    """Получатель подтверждает прочтение сообщения"""
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    user_addr = session['address']
+
+    from database import get_db_cursor
+    with get_db_cursor(_blockchain.db_path) as cursor:
+        cursor.execute('''
+            UPDATE transactions 
+            SET status = 'read', read_at = ? 
+            WHERE id = ? AND recipient = ? AND status IN ('sent', 'delivered')
+        ''', (time.time(), message_id, user_addr))
+        cursor.connection.commit()
+    return jsonify({'status': 'ok'})
+
+
+@messages_bp.route('/message/statuses', methods=['POST'])
+def get_messages_statuses():
+    """Получить статусы нескольких сообщений (для отправителя)"""
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    msg_ids = data.get('ids', [])
+    if not msg_ids:
+        return jsonify({})
+
+    from database import get_db_cursor
+    with get_db_cursor(_blockchain.db_path) as cursor:
+        placeholders = ','.join('?' * len(msg_ids))
+        cursor.execute(f"SELECT id, status FROM transactions WHERE id IN ({placeholders})", msg_ids)
+        rows = cursor.fetchall()
+    return jsonify({str(row[0]): row[1] for row in rows})
 
 # =============================================================================
 # Legacy endpoint
@@ -636,6 +694,7 @@ def notifier_stats():
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
     return jsonify(message_notifier.get_stats())
+
 
 
 @messages_bp.route('/force_check', methods=['POST'])
