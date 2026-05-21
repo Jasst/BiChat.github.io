@@ -5,29 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
+      <change afterPath="$PROJECT_DIR$/install_autostart_task.bat" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/run_win_dev.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/er.bat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/middleware.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/redis_manager.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/auth_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/contacts_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/files_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/groups_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/messages_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/status_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/wallet.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/wallet_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/setup_async.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/chat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/chat.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run_win.py" beforeDir="false" afterPath="$PROJECT_DIR$/run_win.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/start_app.bat" beforeDir="false" afterPath="$PROJECT_DIR$/start_app.bat" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -64,7 +46,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATEASICIO" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATEASICIO2" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -136,7 +118,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "mainUPDATEASICIO2",
+    "git-widget-placeholder": "mainUPDATEASICIO3",
     "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
