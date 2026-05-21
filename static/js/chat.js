@@ -353,7 +353,7 @@ async function selectConversation(address, name, isGroup) {
   State.lastMessageTimestamp = 0;
   State.pendingImageData = null;
   loadMessagesForConversation(address, false);
-  updateConversationPreview(address, '✓ Прочитано');
+  updateConversationPreview(address, '✓ Доставлено');
   if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
 }
 
