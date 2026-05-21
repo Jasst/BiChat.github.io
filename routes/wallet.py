@@ -315,3 +315,17 @@ def wallet_global_stats():
         'remaining_supply': remaining,
         'message_fee': MESSAGE_FEE,
     })
+
+
+@wallet_bp.route('/wallet/stats')
+def wallet_stats():
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    stats = _blockchain.get_conversation_stats(session['address'])
+    db_stats = _blockchain.get_database_stats()
+
+    return jsonify({
+        'user_stats': stats,
+        'database_stats': db_stats
+    }), 200

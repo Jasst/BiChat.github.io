@@ -159,3 +159,10 @@ MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
 
 # Максимальная эмиссия (None = без ограничений)
 MAX_SUPPLY = 21_000_000 * COIN  # 21 000 000 BlockCoin
+
+# Настройки архивации
+ARCHIVE_OLD_MESSAGES_DAYS = int(os.getenv('ARCHIVE_OLD_MESSAGES_DAYS', 90))
+ARCHIVE_ENABLED = os.getenv('ARCHIVE_ENABLED', '1') == '1'
+
+# Полнотекстовый поиск
+FTS_ENABLED = os.getenv('FTS_ENABLED', '1') == '1'

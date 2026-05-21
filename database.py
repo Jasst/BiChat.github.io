@@ -9,32 +9,43 @@ import threading
 import time
 from contextlib import contextmanager
 from queue import Queue
-from typing import Optional
+from typing import Optional, List
 
 from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING
 
 logger = logging.getLogger(__name__)
 
-
+# Добавьте эти строки для безопасности:
+try:
+    from config import ARCHIVE_OLD_MESSAGES_DAYS, ARCHIVE_ENABLED, FTS_ENABLED
+except ImportError:
+    ARCHIVE_OLD_MESSAGES_DAYS = 90
+    ARCHIVE_ENABLED = True
+    FTS_ENABLED = True
+    logger.warning("Archive/FTS config not found, using defaults")
 # =============================================================================
-# ПУЛ СОЕДИНЕНИЙ (простой и эффективный)
+# ПУЛ СОЕДИНЕНИЙ (улучшенный с health-check)
 # =============================================================================
 
 class ConnectionPool:
-    """Пул SQLite соединений с thread-safe доступом"""
+    """Пул SQLite соединений с health-check и автоматическим восстановлением"""
 
-    def __init__(self, db_path: str, max_connections: int = 5):
+    def __init__(self, db_path: str, max_connections: int = 10):
         self.db_path = db_path
         self.max_connections = max_connections
         self._pool = Queue(maxsize=max_connections)
         self._all_connections = []
         self._lock = threading.Lock()
+        self._closed = False
 
         # Предсоздаем соединения
         for _ in range(max_connections):
             conn = self._create_connection()
             self._pool.put(conn)
             self._all_connections.append(conn)
+
+        # Запускаем фоновую очистку
+        self._start_cleanup_thread()
 
     def _create_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(
@@ -49,24 +60,42 @@ class ConnectionPool:
         cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.execute("PRAGMA cache_size = -64000")
         cursor.execute("PRAGMA busy_timeout = 30000")
-        cursor.execute("PRAGMA foreign_keys = OFF")
+        cursor.execute("PRAGMA temp_store = MEMORY")
+        cursor.execute("PRAGMA foreign_keys = ON")
         cursor.close()
         return conn
 
+    def _start_cleanup_thread(self):
+        """Фоновый поток для периодической проверки соединений"""
+        def cleanup_worker():
+            while not self._closed:
+                time.sleep(60)
+                with self._lock:
+                    for conn in self._all_connections:
+                        try:
+                            conn.cursor().execute("SELECT 1").fetchone()
+                        except Exception as e:
+                            logger.warning(f"Connection cleanup: {e}")
+                            idx = self._all_connections.index(conn)
+                            self._all_connections[idx] = self._create_connection()
+
+        thread = threading.Thread(target=cleanup_worker, daemon=True)
+        thread.start()
+
     def get_connection(self) -> sqlite3.Connection:
-        """Получает соединение из пула (ждет если все заняты)"""
+        if self._closed:
+            raise RuntimeError("Connection pool is closed")
         return self._pool.get()
 
     def return_connection(self, conn: sqlite3.Connection) -> None:
-        """Возвращает соединение обратно в пул"""
-        try:
-            self._pool.put_nowait(conn)
-        except:
-            # Пул переполнен (не должно случиться)
-            conn.close()
+        if not self._closed:
+            try:
+                self._pool.put_nowait(conn)
+            except:
+                conn.close()
 
     def close_all(self) -> None:
-        """Закрывает все соединения (при завершении приложения)"""
+        self._closed = True
         for conn in self._all_connections:
             try:
                 conn.close()
@@ -79,7 +108,7 @@ class ConnectionPool:
 _connection_pool: Optional[ConnectionPool] = None
 
 
-def init_connection_pool(db_path: str, max_connections: int = 5) -> None:
+def init_connection_pool(db_path: str, max_connections: int = 10) -> None:
     """Инициализирует пул соединений (вызывается один раз при старте)"""
     global _connection_pool
     _connection_pool = ConnectionPool(db_path, max_connections)
@@ -126,7 +155,7 @@ def _create_pubkey_cache_table(cursor: sqlite3.Cursor) -> None:
 
 
 # =============================================================================
-# Контекстный менеджер подключения (ИСПОЛЬЗУЕТ ПУЛ)
+# Контекстный менеджер подключения
 # =============================================================================
 
 @contextmanager
@@ -179,7 +208,7 @@ def init_sqlite_optimizations(db_path: str) -> None:
             PRAGMA cache_size = -64000;
             PRAGMA temp_store = MEMORY;
             PRAGMA busy_timeout = 30000;
-            PRAGMA foreign_keys = OFF;
+            PRAGMA foreign_keys = ON;
         """)
         cursor.execute("PRAGMA journal_mode")
         mode = cursor.fetchone()[0]
@@ -200,15 +229,15 @@ def warmup_database(db_path: str) -> None:
 
 
 # =============================================================================
-# Класс Blockchain
+# Класс Blockchain (улучшенный)
 # =============================================================================
 
 class Blockchain:
     def __init__(self, db_path: str = DATABASE_PATH):
-        self.db_path   = db_path
+        self.db_path = db_path
         self._init_lock = threading.Lock()
         self.initialize_blockchain()
-        logger.info("Blockchain initialized")
+        logger.info("Blockchain initialized with optimizations")
 
     # ------------------------------------------------------------------
     # Инициализация
@@ -218,11 +247,19 @@ class Blockchain:
         with self._init_lock:
             with get_db_cursor(self.db_path) as cursor:
                 self._create_tables(cursor)
-                self._create_indexes(cursor)
+                # Сначала добавляем колонки (миграция)
                 self._migrate_schema(cursor)
+                # Затем создаем индексы (теперь колонки существуют)
+                self._create_indexes(cursor)
                 if not self._get_chain_raw(cursor):
                     self._new_block_raw(cursor, proof=100, previous_hash='1', miner_address=None)
                     logger.info("Genesis block created")
+
+                # Настраиваем полнотекстовый поиск
+                self._setup_fts5(cursor)
+
+                # Запускаем фоновую архивацию
+                self._start_archive_scheduler()
 
     def _migrate_schema(self, cursor: sqlite3.Cursor) -> None:
         """Добавляет отсутствующие столбцы / таблицы в старых БД."""
@@ -253,7 +290,7 @@ class Blockchain:
         """)
         cursor.execute("INSERT OR IGNORE INTO staking_state (key, value) VALUES ('acc_reward_per_stake', '0')")
 
-        # ✅ ДОБАВЬ ПРОВЕРКУ НАЛИЧИЯ ТАБЛИЦЫ user_status
+        # Таблица user_status
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_status'")
         if not cursor.fetchone():
             cursor.execute('''CREATE TABLE user_status (
@@ -263,7 +300,8 @@ class Blockchain:
                     current_chat TEXT
                 )''')
             logger.info("✅ Created user_status table")
-        # Добавление колонок статусов для сообщений
+
+        # Добавление колонок статусов для сообщений (ВАЖНО: ДО СОЗДАНИЯ ИНДЕКСОВ)
         trans_cols = [row[1] for row in cursor.execute("PRAGMA table_info('transactions')")]
         if 'status' not in trans_cols:
             cursor.execute("ALTER TABLE transactions ADD COLUMN status TEXT DEFAULT 'sent'")
@@ -271,9 +309,33 @@ class Blockchain:
         if 'read_at' not in trans_cols:
             cursor.execute("ALTER TABLE transactions ADD COLUMN read_at REAL")
             logger.info("✅ Added 'read_at' column to transactions")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)")
 
+        # Таблица для архивации
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS transactions_archive (
+                id INTEGER PRIMARY KEY,
+                sender TEXT NOT NULL,
+                recipient TEXT NOT NULL,
+                content TEXT,
+                image TEXT,
+                timestamp REAL NOT NULL,
+                sender_pubkey TEXT,
+                metadata TEXT,
+                status TEXT,
+                read_at REAL,
+                archived_at REAL NOT NULL
+            )
+        ''')
 
+        # Таблица для логов архивации
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS archive_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                archived_date TEXT NOT NULL,
+                messages_count INTEGER,
+                created_at REAL NOT NULL
+            )
+        ''')
 
     def _create_tables(self, cursor: sqlite3.Cursor) -> None:
         cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain (
@@ -305,7 +367,6 @@ class Blockchain:
             read_at             REAL,
             PRIMARY KEY (user_address, chat_id)
         )''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_read_status_user ON read_status(user_address)')
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS wallets (
             address TEXT PRIMARY KEY,
@@ -322,11 +383,8 @@ class Blockchain:
             block_ref INTEGER,
             note      TEXT
         )''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_coin_tx_recipient ON coin_transactions(recipient)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_coin_tx_sender    ON coin_transactions(sender)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_coin_tx_block     ON coin_transactions(block_ref)')
 
-        # Новая таблица стейкинга
+        # Таблица стейкинга
         cursor.execute('''CREATE TABLE IF NOT EXISTS stakes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             address TEXT NOT NULL,
@@ -337,17 +395,168 @@ class Blockchain:
             active INTEGER DEFAULT 1,
             reward_debt INTEGER DEFAULT 0
         )''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)')
 
     def _create_indexes(self, cursor: sqlite3.Cursor) -> None:
-        for sql in [
-            'CREATE INDEX IF NOT EXISTS idx_tx_sender           ON transactions(sender)',
-            'CREATE INDEX IF NOT EXISTS idx_tx_recipient        ON transactions(recipient)',
-            'CREATE INDEX IF NOT EXISTS idx_tx_timestamp        ON transactions(timestamp)',
+        """Создает индексы (вызывается ПОСЛЕ миграции колонок)"""
+        indexes = [
+            'CREATE INDEX IF NOT EXISTS idx_tx_sender ON transactions(sender)',
+            'CREATE INDEX IF NOT EXISTS idx_tx_recipient ON transactions(recipient)',
+            'CREATE INDEX IF NOT EXISTS idx_tx_timestamp ON transactions(timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_tx_sender_recipient ON transactions(sender, recipient)',
             'CREATE INDEX IF NOT EXISTS idx_tx_recipient_sender ON transactions(recipient, sender)',
-        ]:
-            cursor.execute(sql)
+            'CREATE INDEX IF NOT EXISTS idx_read_status_user ON read_status(user_address)',
+            'CREATE INDEX IF NOT EXISTS idx_coin_tx_recipient ON coin_transactions(recipient)',
+            'CREATE INDEX IF NOT EXISTS idx_coin_tx_sender ON coin_transactions(sender)',
+            'CREATE INDEX IF NOT EXISTS idx_coin_tx_block ON coin_transactions(block_ref)',
+            'CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)',
+            'CREATE INDEX IF NOT EXISTS idx_archive_timestamp ON transactions_archive(timestamp)',
+            'CREATE INDEX IF NOT EXISTS idx_archive_sender ON transactions_archive(sender)',
+        ]
+
+        # Индекс на status только если колонка существует
+        trans_cols = [row[1] for row in cursor.execute("PRAGMA table_info('transactions')")]
+        if 'status' in trans_cols:
+            indexes.append('CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)')
+
+        for sql in indexes:
+            try:
+                cursor.execute(sql)
+            except sqlite3.OperationalError as e:
+                logger.warning(f"Could not create index: {e}")
+
+    def _setup_fts5(self, cursor: sqlite3.Cursor) -> None:
+        """Настраивает полнотекстовый поиск (FTS5)"""
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'")
+        if cursor.fetchone():
+            logger.info("FTS5 already configured")
+            return
+
+        try:
+            cursor.execute('''
+                CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                    content, 
+                    sender, 
+                    recipient,
+                    content='transactions',
+                    content_rowid='id'
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON transactions BEGIN
+                    INSERT INTO messages_fts(rowid, content, sender, recipient)
+                    VALUES (new.id, new.content, new.sender, new.recipient);
+                END
+            ''')
+
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON transactions BEGIN
+                    INSERT INTO messages_fts(messages_fts, rowid, content, sender, recipient)
+                    VALUES ('delete', old.id, old.content, old.sender, old.recipient);
+                END
+            ''')
+
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON transactions BEGIN
+                    INSERT INTO messages_fts(messages_fts, rowid, content, sender, recipient)
+                    VALUES ('delete', old.id, old.content, old.sender, old.recipient);
+                    INSERT INTO messages_fts(rowid, content, sender, recipient)
+                    VALUES (new.id, new.content, new.sender, new.recipient);
+                END
+            ''')
+
+            # Индексируем существующие сообщения
+            cursor.execute("SELECT COUNT(*) FROM transactions")
+            total = cursor.fetchone()[0]
+            batch_size = 10000
+
+            for offset in range(0, total, batch_size):
+                cursor.execute('''
+                    INSERT INTO messages_fts(rowid, content, sender, recipient)
+                    SELECT id, content, sender, recipient FROM transactions
+                    LIMIT ? OFFSET ?
+                ''', (batch_size, offset))
+                logger.info(f"FTS5 indexing: {min(offset + batch_size, total)}/{total}")
+
+            logger.info("✅ FTS5全文搜索已启用")
+
+        except Exception as e:
+            logger.warning(f"FTS5 setup failed (non-critical): {e}")
+
+    def _start_archive_scheduler(self):
+        """Запускает фоновую архивацию старых сообщений"""
+        def archive_worker():
+            while True:
+                try:
+                    time.sleep(24 * 3600)
+                    with get_db_cursor(self.db_path) as cursor:
+                        self._archive_old_messages(cursor, days_old=90)
+                except Exception as e:
+                    logger.error(f"Archive worker error: {e}")
+
+        thread = threading.Thread(target=archive_worker, daemon=True)
+        thread.start()
+        logger.info("Archive scheduler started")
+
+    def _archive_old_messages(self, cursor: sqlite3.Cursor, days_old: int = 90) -> int:
+        """Архивирует старые сообщения"""
+        cutoff_time = time.time() - (days_old * 24 * 3600)
+
+        cursor.execute('''
+            INSERT INTO transactions_archive (
+                id, sender, recipient, content, image, timestamp,
+                sender_pubkey, metadata, status, read_at, archived_at
+            )
+            SELECT id, sender, recipient, content, image, timestamp,
+                   sender_pubkey, metadata, status, read_at, ?
+            FROM transactions
+            WHERE timestamp < ? 
+              AND (status = 'read' OR status IS NULL)
+              AND id NOT IN (SELECT id FROM transactions_archive)
+        ''', (time.time(), cutoff_time))
+
+        archived_count = cursor.rowcount
+
+        if archived_count > 0:
+            cursor.execute('''
+                DELETE FROM transactions
+                WHERE timestamp < ? 
+                  AND (status = 'read' OR status IS NULL)
+                  AND id IN (SELECT id FROM transactions_archive WHERE archived_at = ?)
+            ''', (cutoff_time, time.time()))
+
+            cursor.execute('''
+                INSERT INTO archive_log (archived_date, messages_count, created_at)
+                VALUES (date('now', ?), ?, ?)
+            ''', (f'-{days_old} days', archived_count, time.time()))
+
+            logger.info(f"Archived {archived_count} old messages")
+
+        return archived_count
+
+    # ------------------------------------------------------------------
+    # НОВЫЕ МЕТОДЫ
+    # ------------------------------------------------------------------
+
+    def search_messages(self, user_address: str, query: str, limit: int = 50) -> List[dict]:
+        """Полнотекстовый поиск по сообщениям пользователя"""
+        try:
+            with get_db_cursor(self.db_path) as cursor:
+                cursor.execute('''
+                    SELECT t.id, t.sender, t.recipient, t.content, t.image, t.timestamp,
+                           highlight(messages_fts, 0, '<mark>', '</mark>') as highlighted_content
+                    FROM messages_fts
+                    JOIN transactions t ON t.id = messages_fts.rowid
+                    WHERE messages_fts MATCH ?
+                      AND (t.sender = ? OR t.recipient = ?)
+                    ORDER BY t.timestamp DESC
+                    LIMIT ?
+                ''', (query, user_address, user_address, limit))
+
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            return []
 
     # ------------------------------------------------------------------
     # Блокчейн — низкоуровневые методы
@@ -356,14 +565,12 @@ class Blockchain:
     def _new_block_raw(self, cursor: sqlite3.Cursor, proof: int,
                        previous_hash: Optional[str] = None,
                        miner_address: Optional[str] = None) -> None:
-        # собираем неподтверждённые coin-транзакции
         cursor.execute(
             "SELECT id, tx_type, sender, recipient, amount, timestamp, note "
             "FROM coin_transactions WHERE block_ref IS NULL"
         )
         coin_txs = [dict(row) for row in cursor.fetchall()]
 
-        # Награда майнеру только если майнинг включён и указан адрес майнера
         if ENABLE_MINING and miner_address:
             reward = BLOCK_REWARD
             coin_txs.append({
@@ -374,7 +581,6 @@ class Blockchain:
                 'timestamp': time.time(),
                 'note': 'Miner reward'
             })
-        # Если майнинг отключён, награда не начисляется
 
         last = self._last_block_raw(cursor)
         block_index = last.get('index', 0) + 1
@@ -395,7 +601,6 @@ class Blockchain:
              block['proof'], block['previous_hash'])
         )
 
-        # Обрабатываем каждую coin-транзакцию: вставляем запись и обновляем баланс
         for tx in coin_txs:
             cursor.execute(
                 'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, block_ref, note) '
@@ -410,7 +615,6 @@ class Blockchain:
                     (tx['recipient'], tx['amount'], tx['amount'])
                 )
 
-        # Обновляем block_ref у ранее существовавших транзакций (если были)
         cursor.execute(
             'UPDATE coin_transactions SET block_ref = ? WHERE block_ref IS NULL',
             (block_index,)
@@ -473,7 +677,7 @@ class Blockchain:
         return cursor.lastrowid
 
     def proof_of_work(self, last_proof: int) -> int:
-        proof  = 0
+        proof = 0
         target = "0" * CONFIG['POW_DIFFICULTY']
         while proof < CONFIG['POW_MAX_ITERATIONS']:
             if hashlib.sha256(f'{last_proof}{proof}'.encode()).hexdigest()[:CONFIG['POW_DIFFICULTY']] == target:
@@ -487,111 +691,67 @@ class Blockchain:
         return guess_hash[:CONFIG['POW_DIFFICULTY']] == '0' * CONFIG['POW_DIFFICULTY']
 
     def valid_proof_with_challenge(self, last_proof: int, proof: int, challenge: str) -> bool:
-        """
-        Проверяет, что proof удовлетворяет условию Proof-of-Work.
-
-        Алгоритм: хеш от строки f"{last_proof}{challenge}{proof}"
-        должен начинаться с '0' * POW_DIFFICULTY
-
-        Args:
-            last_proof: proof предыдущего блока
-            proof: доказываемое значение (nonce)
-            challenge: уникальная строка для каждого сеанса майнинга
-
-        Returns:
-            True если proof валидный, иначе False
-        """
-        import hashlib
         guess = f"{last_proof}{challenge}{proof}".encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
         target = '0' * CONFIG['POW_DIFFICULTY']
         return guess_hash.startswith(target)
 
     def try_mine_block(self, last_proof: int, last_index: int, proof: int, challenge: str,
-                           miner_address: str) -> tuple:
-            """
-            Атомарная попытка создать блок.
+                       miner_address: str) -> tuple:
+        with get_db_cursor(self.db_path) as cursor:
+            try:
+                cursor.execute("BEGIN IMMEDIATE")
 
-            Args:
-                last_proof: proof последнего блока (из challenge)
-                last_index: индекс последнего блока (из challenge)
-                proof: найденный proof (nonce)
-                challenge: уникальный challenge для этого сеанса майнинга
-                miner_address: адрес майнера для начисления награды
-
-            Returns:
-                (success, error_message, reward_amount, block_index)
-                - success: bool
-                - error_message: str (пусто если success)
-                - reward_amount: int (в сатоши)
-                - block_index: int (индекс созданного блока)
-            """
-            from database import get_db_cursor
-
-            with get_db_cursor(self.db_path) as cursor:
-                try:
-                    cursor.execute("BEGIN IMMEDIATE")
-
-                    # 1. Проверяем актуальность блока
-                    current = self._last_block_raw(cursor)
-                    if not current:
-                        cursor.execute("ROLLBACK")
-                        return False, "No blockchain", 0, 0
-
-                    if current.get('proof') != last_proof or current.get('index') != last_index:
-                        cursor.execute("ROLLBACK")
-                        return False, "Blockchain moved, try again", 0, 0
-
-                    # 2. Проверяем proof
-                    if not self.valid_proof_with_challenge(last_proof, proof, challenge):
-                        cursor.execute("ROLLBACK")
-                        return False, "Invalid proof", 0, 0
-
-                    # 3. Повторная проверка (на случай гонки)
-                    current_again = self._last_block_raw(cursor)
-                    if current_again.get('proof') != last_proof or current_again.get('index') != last_index:
-                        cursor.execute("ROLLBACK")
-                        return False, "Blockchain changed during validation", 0, 0
-
-                    # 4. Создаём блок
-                    self._new_block_raw(cursor, proof, miner_address=miner_address)
-
-                    # 5. Получаем индекс созданного блока
-                    new_block = self._last_block_raw(cursor)
-                    block_index = new_block.get('index', 0)
-
-                    cursor.execute("COMMIT")
-
-                    return True, "Success", BLOCK_REWARD, block_index
-
-                except Exception as e:
+                current = self._last_block_raw(cursor)
+                if not current:
                     cursor.execute("ROLLBACK")
-                    logger.error(f"try_mine_block error: {e}")
-                    return False, str(e), 0, 0
+                    return False, "No blockchain", 0, 0
+
+                if current.get('proof') != last_proof or current.get('index') != last_index:
+                    cursor.execute("ROLLBACK")
+                    return False, "Blockchain moved, try again", 0, 0
+
+                if not self.valid_proof_with_challenge(last_proof, proof, challenge):
+                    cursor.execute("ROLLBACK")
+                    return False, "Invalid proof", 0, 0
+
+                current_again = self._last_block_raw(cursor)
+                if current_again.get('proof') != last_proof or current_again.get('index') != last_index:
+                    cursor.execute("ROLLBACK")
+                    return False, "Blockchain changed during validation", 0, 0
+
+                self._new_block_raw(cursor, proof, miner_address=miner_address)
+
+                new_block = self._last_block_raw(cursor)
+                block_index = new_block.get('index', 0)
+
+                cursor.execute("COMMIT")
+                return True, "Success", BLOCK_REWARD, block_index
+
+            except Exception as e:
+                cursor.execute("ROLLBACK")
+                logger.error(f"try_mine_block error: {e}")
+                return False, str(e), 0, 0
 
     def health_check(self) -> dict:
         """Проверка здоровья базы данных"""
         try:
             with get_db_cursor(self.db_path) as cursor:
-                # Проверяем целостность
                 cursor.execute("PRAGMA integrity_check")
                 integrity = cursor.fetchone()[0]
 
-                # Размер базы
                 cursor.execute("PRAGMA page_count")
                 page_count = cursor.fetchone()[0]
                 cursor.execute("PRAGMA page_size")
                 page_size = cursor.fetchone()[0]
                 db_size_bytes = page_count * page_size
 
-                # Количество записей в таблицах
                 tables = ['transactions', 'wallets', 'blockchain', 'contacts', 'groups', 'stakes']
                 counts = {}
                 for table in tables:
                     cursor.execute(f"SELECT COUNT(*) FROM {table}")
                     counts[table] = cursor.fetchone()[0]
 
-                # Статистика WAL
                 cursor.execute("PRAGMA wal_checkpoint")
                 wal_status = cursor.fetchone()
 
@@ -609,7 +769,6 @@ class Blockchain:
         """Статистика производительности"""
         try:
             with get_db_cursor(self.db_path) as cursor:
-                # Статистика индексов
                 cursor.execute("""
                     SELECT name, 
                            (SELECT COUNT(*) FROM sqlite_stat1 WHERE idx = name) as stats_available
@@ -619,7 +778,6 @@ class Blockchain:
                 """)
                 indexes = [dict(row) for row in cursor.fetchall()]
 
-                # Cache hit ratio
                 cursor.execute("PRAGMA cache_size")
                 cache_size = cursor.fetchone()[0]
 

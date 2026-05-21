@@ -947,7 +947,7 @@ function startStatusPolling() {
         } catch (e) {
             console.warn('Status polling error', e);
         }
-    }, 20000);  // каждые 10 секунд
+    }, 30000);  // каждые 10 секунд
 }
 
 function stopStatusPolling() {
@@ -1220,11 +1220,11 @@ async function setupLongPolling() {
     longPollingClient = new LongPollingClient({
         baseUrl: '',
         timeout: 25000,
-        debug: true,
+        debug: false,
         onMessages: async (messages) => {
-            console.log('📬 New messages via Long Polling:', messages.length);
-            console.log('🔍 Полные объекты сообщений:', JSON.parse(JSON.stringify(messages)));
-            console.log('🔍 Текущий чат (State.currentChatAddress):', State.currentChatAddress);
+           // console.log('📬 New messages via Long Polling:', messages.length);
+           // console.log('🔍 Полные объекты сообщений:', JSON.parse(JSON.stringify(messages)));
+           // console.log('🔍 Текущий чат (State.currentChatAddress):', State.currentChatAddress);
             if (!messages.length) return;
 
             const userAddr = State.userAddress;
@@ -1251,8 +1251,8 @@ async function setupLongPolling() {
                 grouped.get(msg.chatId).push(msg);
             }
 
-            console.log('Сравнение адресов: текущий чат =', State.currentChatAddress);
-            console.log('Ключи grouped:', Array.from(grouped.keys()));
+            //console.log('Сравнение адресов: текущий чат =', State.currentChatAddress);
+           // console.log('Ключи grouped:', Array.from(grouped.keys()));
 
             const currentChat = String(State.currentChatAddress).trim();
 
@@ -1262,17 +1262,17 @@ async function setupLongPolling() {
                return keyStr === currentChat || keyStr === userAddr;
             });
             if (currentChat && hasChat) {
-                console.log('🔍 ВОШЛИ в блок обработки текущего чата');
+               // console.log('🔍 ВОШЛИ в блок обработки текущего чата');
                                 // Ищем ключ, который соответствует либо текущему чату, либо адресу пользователя
                 const foundKey = Array.from(grouped.keys()).find(key => {
                 const keyStr = String(key).trim();
                 return keyStr === currentChat || keyStr === userAddr;
                 });
-                console.log('🔍 Найденный ключ:', foundKey);
+               // console.log('🔍 Найденный ключ:', foundKey);
                 const newMessages = grouped.get(foundKey);
-                console.log('🔍 Количество сообщений для чата:', newMessages.length);
+               // console.log('🔍 Количество сообщений для чата:', newMessages.length);
                 const container = document.getElementById('messagesContainer');
-                console.log('🔍 Контейнер найден:', container !== null);
+              //  console.log('🔍 Контейнер найден:', container !== null);
                 if (container) {
                     const wasAtBottom = isUserAtBottom(container, 30);
                     for (const msg of newMessages) {

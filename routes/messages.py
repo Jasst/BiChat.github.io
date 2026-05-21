@@ -685,6 +685,17 @@ def get_public_key_route(address: str):
     return jsonify({'error': 'Public key not found'}), 404
 
 
+@messages_bp.route('/search_messages', methods=['GET'])
+def search_messages():
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'error': 'Query too short'}), 400
+
+    results = _blockchain.search_messages(session['address'], query)
+    return jsonify({'results': results}), 200
 # =============================================================================
 # Admin endpoints
 # =============================================================================
