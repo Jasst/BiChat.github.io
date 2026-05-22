@@ -16,7 +16,7 @@ from cache import (
     get_contact_cache_version, get_contact_name_cached,
     get_groups_cache_version, get_user_groups_cached,
 )
-from services.messaging import get_conversations_list
+from services.messaging import get_conversations_list, get_conversations_list_cached, invalidate_conversations_cache
 from services.wallet import mine_block_async, staking_manager
 from config import MESSAGE_FEE, COIN, COIN_NAME, STAKING_FEE_POOL_ADDRESS, ENABLE_STAKING, CONFIG
 
@@ -227,7 +227,9 @@ def wait_for_messages():
     # Ограничение timeout
     try:
         timeout = int(request.args.get('timeout', 25))
-        timeout = min(max(timeout, 5), 30)
+        timeout = min(max(timeout, 5), 15)
+        if message_notifier.get_stats()['active_events'] > 200:
+            return jsonify({'messages': [], 'throttled': True}), 200
     except (ValueError, TypeError):
         timeout = 25
 
@@ -284,8 +286,8 @@ def wait_for_messages():
                 'isGroup': msg.get('isGroup', False),
                 'preview': msg.get('preview', '💬 Новое сообщение'),
                 'timestamp': msg.get('timestamp', time.time()),
-                'content': msg.get('content'),  # ✅ добавлено
-                'image': msg.get('image'),  # ✅ добавлено
+                'content': msg.get('content'),
+                'image': msg.get('image'),
             }
             sanitized_messages.append(sanitized)
         response = jsonify({
@@ -305,11 +307,14 @@ def wait_for_messages():
     if db_messages:
         for msg in db_messages:
             message_notifier.add_message(user_addr, msg)
+
+        # Инвалидация кэша диалогов при получении новых сообщений
+        invalidate_conversations_cache(user_addr)
+
         if len(db_messages) > 50:
             db_messages = db_messages[:50]
         sanitized_messages = []
         for msg in db_messages:
-            # Для db_messages (аналогично)
             sanitized = {
                 'id': msg.get('id'),
                 'sender': msg.get('sender'),
@@ -318,8 +323,8 @@ def wait_for_messages():
                 'isGroup': msg.get('isGroup', False),
                 'preview': msg.get('preview', '💬 Новое сообщение'),
                 'timestamp': msg.get('timestamp', time.time()),
-                'content': msg.get('content'),  # ✅ добавлено
-                'image': msg.get('image'),  # ✅ добавлено
+                'content': msg.get('content'),
+                'image': msg.get('image'),
             }
             sanitized_messages.append(sanitized)
         response = jsonify({
@@ -460,6 +465,7 @@ def send_message():
 
             tx_id = None
             message_obj = None
+            group = None  # инициализируем переменную
 
             if msg_type == 'group' and group_id:
                 if not encrypted_map:
@@ -521,6 +527,7 @@ def send_message():
 
             cursor.execute("COMMIT")
 
+            # Уведомления
             if msg_type == 'group' and group_id and group:
                 for member in group['members']:
                     if member != sender:
@@ -528,6 +535,18 @@ def send_message():
             else:
                 message_notifier.notify_user(recipient)
 
+            # Инвалидация кэша диалогов
+            invalidate_conversations_cache(sender)  # у отправителя
+
+            if msg_type == 'group' and group_id and group:
+                # Для группы — инвалидируем всех участников
+                for member in group['members']:
+                    invalidate_conversations_cache(member)
+            else:
+                # Для личного сообщения — инвалидируем получателя
+                invalidate_conversations_cache(recipient)
+
+            # Фоновый майнинг (если включен)
             if CONFIG.get('ENABLE_MINING', False):
                 last = _blockchain._last_block_raw(cursor)
                 if last:
@@ -631,7 +650,11 @@ def get_conversation():
 def get_conversations_route():
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    return jsonify({'conversations': get_conversations_list(session['address'])}), 200
+
+    # Используем кэшированную версию
+    conversations = get_conversations_list_cached(session['address'])
+
+    return jsonify({'conversations': conversations}), 200
 
 
 @messages_bp.route('/mark_conversation_read', methods=['POST'])
@@ -696,6 +719,8 @@ def search_messages():
 
     results = _blockchain.search_messages(session['address'], query)
     return jsonify({'results': results}), 200
+
+
 # =============================================================================
 # Admin endpoints
 # =============================================================================
@@ -705,7 +730,6 @@ def notifier_stats():
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
     return jsonify(message_notifier.get_stats())
-
 
 
 @messages_bp.route('/force_check', methods=['POST'])

@@ -116,13 +116,20 @@ echo.
 :START_SILENT
 cd /d "%PROJECT_DIR%"
 
-:: Проверка Nginx
+:: Запуск Nginx
 echo %BOLD%%BLUE%[1/4]%RESET% %WHITE%> Checking Nginx...%RESET%
 if exist "%NGINX_DIR%\nginx.exe" (
     echo %GREEN%  ✓ Nginx found at %NGINX_DIR%%RESET%
     cd /d "%NGINX_DIR%"
-    start /b nginx.exe >nul 2>&1
-    echo %GREEN%  ✓ Nginx started%RESET%
+
+    :: Проверяем, не запущен ли nginx
+    tasklist /fi "imagename eq nginx.exe" 2>nul | find /i "nginx.exe" >nul
+    if errorlevel 1 (
+        start /b nginx.exe >nul 2>&1
+        echo %GREEN%  ✓ Nginx started%RESET%
+    ) else (
+        echo %YELLOW%  ⚠ Nginx already running%RESET%
+    )
 ) else (
     echo %YELLOW%  ⚠ Nginx not found, continuing without it%RESET%
 )
@@ -153,18 +160,33 @@ echo %YELLOW%║%RESET%     %BOLD%%GREEN%✨ Server is now RUNNING ✨%RESET%   
 echo %YELLOW%║%RESET%     %DIM%Mode: %WHITE%!WAITRESS_MODE!%RESET%                                           %YELLOW%║%RESET%
 echo %YELLOW%║%RESET%     %DIM%Project: %WHITE%%PROJECT_DIR%%RESET%                              %YELLOW%║%RESET%
 echo %YELLOW%║%RESET%     %DIM%URL: %WHITE%http://127.0.0.1:8000%RESET%                                %YELLOW%║%RESET%
-echo %YELLOW%║%RESET%     %DIM%Press Ctrl+C to stop the server%RESET%                      %YELLOW%║%RESET%
+echo %YELLOW%║%RESET%     %BOLD%%RED%⚠ PRESS CTRL+C TO STOP THE SERVER ⚠%RESET%                  %YELLOW%║%RESET%
 echo %YELLOW%║%RESET%                                                              %YELLOW%║%RESET%
 echo %YELLOW%╚══════════════════════════════════════════════════════════════╝%RESET%
 echo.
 
 cd /d "%PROJECT_DIR%"
 
-:: Запуск run_win.py с переданной переменной окружения
+:: Запуск run_win.py напрямую (так Ctrl+C будет работать правильно)
 python run_win.py
 
-:: Сюда попадаем после остановки
+:: Сюда попадаем после остановки (Ctrl+C или ошибка)
 set "EXIT_CODE=%errorlevel%"
+
+:: Остановка Nginx после завершения Python
+echo.
+echo %BOLD%%RED%[4/4]%RESET% %WHITE%> Stopping Nginx...%RESET%
+if exist "%NGINX_DIR%\nginx.exe" (
+    cd /d "%NGINX_DIR%"
+    nginx.exe -s stop >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo %GREEN%  ✓ Nginx stopped gracefully%RESET%
+    ) else (
+        taskkill /f /im nginx.exe >nul 2>&1
+        echo %GREEN%  ✓ Nginx force stopped%RESET%
+    )
+)
+echo.
 
 :: Если сервер упал с ошибкой (не по Ctrl+C) - создаем флаг для авто-восстановления
 if %EXIT_CODE% neq 0 (
@@ -243,36 +265,34 @@ echo.
 del "%AUTORESTART_FLAG%" 2>nul
 
 :: Остановка Nginx
-echo %BOLD%%RED%[1/3]%RESET% %WHITE%> Stopping Nginx...%RESET%
-taskkill /f /im nginx.exe >nul 2>&1
-if %errorlevel%==0 (
-    echo %GREEN%  ✓ Nginx stopped%RESET%
-) else (
-    echo %DIM%  ℹ Nginx not running%RESET%
+echo %BOLD%%RED%[1/2]%RESET% %WHITE%> Stopping Nginx...%RESET%
+if exist "%NGINX_DIR%\nginx.exe" (
+    cd /d "%NGINX_DIR%"
+    nginx.exe -s stop >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo %GREEN%  ✓ Nginx stopped gracefully%RESET%
+    ) else (
+        taskkill /f /im nginx.exe >nul 2>&1
+        if !errorlevel! equ 0 (
+            echo %GREEN%  ✓ Nginx force stopped%RESET%
+        ) else (
+            echo %DIM%  ℹ Nginx not running%RESET%
+        )
+    )
 )
 echo.
 
-:: Остановка Python по PID файлу
-echo %BOLD%%RED%[2/3]%RESET% %WHITE%> Stopping Python server...%RESET%
-if exist "%PID_FILE%" (
-    set /p PID=<"%PID_FILE%"
-    taskkill /f /pid !PID! >nul 2>&1
-    if !errorlevel!==0 (
-        echo %GREEN%  ✓ Stopped PID: !PID!%RESET%
-    ) else (
-        echo %YELLOW%  ⚠ Could not stop by PID, trying force kill%RESET%
-        taskkill /f /im python.exe >nul 2>&1
-    )
-    del "%PID_FILE%" >nul 2>&1
+:: Остановка Python процессов
+echo %BOLD%%RED%[2/2]%RESET% %WHITE%> Stopping Python server...%RESET%
+taskkill /f /im python.exe >nul 2>&1
+if errorlevel 1 (
+    echo %DIM%  ℹ No Python processes found%RESET%
 ) else (
-    taskkill /f /im python.exe >nul 2>&1
-    if !errorlevel!==0 (
-        echo %GREEN%  ✓ Stopped all Python processes%RESET%
-    )
+    echo %GREEN%  ✓ All Python processes stopped%RESET%
 )
-echo.
 
 :: Очистка порта 8000
+echo.
 echo %BOLD%%RED%[3/3]%RESET% %WHITE%> Cleaning port 8000...%RESET%
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8000 ^| findstr LISTENING 2^>nul') do (
     taskkill /f /pid %%a >nul 2>&1
@@ -296,7 +316,7 @@ echo.
 
 :: Проверка Nginx
 echo %BOLD%%WHITE%> Nginx:%RESET%
-tasklist /fi "imagename eq nginx.exe" 2>nul | find "nginx.exe" >nul
+tasklist /fi "imagename eq nginx.exe" 2>nul | find /i "nginx.exe" >nul
 if errorlevel 1 (
     echo   %RED%❌ NOT RUNNING%RESET%
 ) else (
@@ -327,24 +347,6 @@ if errorlevel 1 (
     echo   %GREEN%✅ HEALTHY%RESET%
 )
 
-echo.
-echo %CYAN%╔══════════════════════════════════════════════════════════════╗%RESET%
-echo %CYAN%║%RESET%                                                              %CYAN%║%RESET%
-echo %CYAN%║%RESET%  %DIM%Project Dir:%RESET% %WHITE%%PROJECT_DIR%%RESET% %CYAN%║%RESET%
-if exist "%PID_FILE%" (
-    set /p PID=<"%PID_FILE%"
-    echo %CYAN%║%RESET%  %DIM%PID File:%RESET% %WHITE%!PID!%RESET%                                       %CYAN%║%RESET%
-) else (
-    echo %CYAN%║%RESET%  %DIM%PID File:%RESET% %RED%Not found%RESET%                                      %CYAN%║%RESET%
-)
-echo %CYAN%║%RESET%  %DIM%Auto-Restore:%RESET%
-if exist "%AUTORESTART_FLAG%" (
-    echo %GREEN% Active%RESET%                                          %CYAN%║%RESET%
-) else (
-    echo %DIM% Inactive%RESET%                                        %CYAN%║%RESET%
-)
-echo %CYAN%║%RESET%                                                              %CYAN%║%RESET%
-echo %CYAN%╚══════════════════════════════════════════════════════════════╝%RESET%
 echo.
 echo %WHITE%Press any key to return to menu...%RESET%
 pause >nul

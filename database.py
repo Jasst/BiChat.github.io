@@ -55,6 +55,9 @@ class ConnectionPool:
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.execute("PRAGMA cache_size = -64000")
+        # ⭐ ДОБАВИТЬ:
+        cursor.execute("PRAGMA wal_autocheckpoint = 1000")  # реже делать чекпоинты
+        cursor.execute("PRAGMA mmap_size = 268435456")  # 256 MB memory-mapped I/O
         cursor.execute("PRAGMA busy_timeout = 30000")
         cursor.execute("PRAGMA temp_store = MEMORY")
         cursor.execute("PRAGMA foreign_keys = ON")

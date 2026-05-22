@@ -109,3 +109,42 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
         logger.error(traceback.format_exc())
 
     return sorted(conversations, key=lambda x: x.get('last_ts', 0), reverse=True)
+
+
+# services/messaging.py (добавить в конец файла)
+
+# =============================================================================
+# КЭШ ДЛЯ СПИСКА ДИАЛОГОВ
+# =============================================================================
+
+from functools import lru_cache
+import time
+from typing import List, Dict, Any
+
+_conversations_cache = {}
+_CONV_CACHE_TTL = 2  # секунды
+
+
+def get_conversations_list_cached(user_address: str) -> List[Dict[str, Any]]:
+    """
+    Кэшированная версия get_conversations_list.
+    TTL = 2 секунды, чтобы не кэшировать слишком долго.
+    """
+    now = time.time()
+    cached = _conversations_cache.get(user_address)
+    if cached and now - cached[1] < _CONV_CACHE_TTL:
+        return cached[0]
+
+    result = get_conversations_list(user_address)
+    _conversations_cache[user_address] = (result, now)
+    return result
+
+
+def invalidate_conversations_cache(user_address: str = None):
+    """
+    Сброс кэша диалогов (вызывать при отправке/получении сообщения)
+    """
+    if user_address:
+        _conversations_cache.pop(user_address, None)
+    else:
+        _conversations_cache.clear()
