@@ -1,5 +1,6 @@
 """
 database.py — SQLite-инфраструктура: контекстный менеджер, инициализация, Blockchain
+Исправленная версия без критических багов.
 """
 import hashlib
 import json
@@ -7,50 +8,45 @@ import logging
 import sqlite3
 import threading
 import time
+import atexit
 from contextlib import contextmanager
 from queue import Queue
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
-from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING
+from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING, DB_POOL_SIZE, DB_TIMEOUT
+from config import ARCHIVE_OLD_MESSAGES_DAYS, ARCHIVE_ENABLED, FTS_ENABLED
 
 logger = logging.getLogger(__name__)
 
-# Добавьте эти строки для безопасности:
-try:
-    from config import ARCHIVE_OLD_MESSAGES_DAYS, ARCHIVE_ENABLED, FTS_ENABLED
-except ImportError:
-    ARCHIVE_OLD_MESSAGES_DAYS = 90
-    ARCHIVE_ENABLED = True
-    FTS_ENABLED = True
-    logger.warning("Archive/FTS config not found, using defaults")
 # =============================================================================
-# ПУЛ СОЕДИНЕНИЙ (улучшенный с health-check)
+# ПУЛ СОЕДИНЕНИЙ (исправленный, с валидацией и закрытием)
 # =============================================================================
 
 class ConnectionPool:
-    """Пул SQLite соединений с health-check и автоматическим восстановлением"""
+    """Пул SQLite соединений с автоматическим восстановлением и валидацией"""
 
-    def __init__(self, db_path: str, max_connections: int = 10):
+    def __init__(self, db_path: str, max_connections: int = None):
         self.db_path = db_path
-        self.max_connections = max_connections
-        self._pool = Queue(maxsize=max_connections)
+        self.max_connections = max_connections or DB_POOL_SIZE
+        self._pool = Queue(maxsize=self.max_connections)
         self._all_connections = []
         self._lock = threading.Lock()
         self._closed = False
+        self._cleanup_thread = None
 
-        # Предсоздаем соединения
+        # Предсоздаём соединения
         for _ in range(max_connections):
             conn = self._create_connection()
             self._pool.put(conn)
             self._all_connections.append(conn)
 
-        # Запускаем фоновую очистку
         self._start_cleanup_thread()
+        atexit.register(self.close_all)
 
     def _create_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(
             self.db_path,
-            timeout=CONFIG['DB_TIMEOUT'],
+            timeout=DB_TIMEOUT,
             check_same_thread=False,
             detect_types=sqlite3.PARSE_DECLTYPES,
         )
@@ -65,34 +61,55 @@ class ConnectionPool:
         cursor.close()
         return conn
 
+    def _is_conn_alive(self, conn: sqlite3.Connection) -> bool:
+        """Проверка, живо ли соединение"""
+        try:
+            conn.cursor().execute("SELECT 1").fetchone()
+            return True
+        except Exception:
+            return False
+
     def _start_cleanup_thread(self):
-        """Фоновый поток для периодической проверки соединений"""
         def cleanup_worker():
             while not self._closed:
                 time.sleep(60)
                 with self._lock:
-                    for conn in self._all_connections:
-                        try:
-                            conn.cursor().execute("SELECT 1").fetchone()
-                        except Exception as e:
-                            logger.warning(f"Connection cleanup: {e}")
-                            idx = self._all_connections.index(conn)
-                            self._all_connections[idx] = self._create_connection()
+                    for i, conn in enumerate(self._all_connections):
+                        if not self._is_conn_alive(conn):
+                            try:
+                                conn.close()
+                            except:
+                                pass
+                            new_conn = self._create_connection()
+                            self._all_connections[i] = new_conn
+                            logger.info(f"Replaced dead connection #{i}")
 
-        thread = threading.Thread(target=cleanup_worker, daemon=True)
-        thread.start()
+        self._cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+        self._cleanup_thread.start()
 
     def get_connection(self) -> sqlite3.Connection:
         if self._closed:
             raise RuntimeError("Connection pool is closed")
-        return self._pool.get()
+        # Ленивая проверка: если соединение из очереди мёртвое, заменяем
+        while True:
+            conn = self._pool.get()
+            if self._is_conn_alive(conn):
+                return conn
+            # Мёртвое – заменяем
+            with self._lock:
+                try:
+                    conn.close()
+                except:
+                    pass
+                new_conn = self._create_connection()
+                if conn in self._all_connections:
+                    idx = self._all_connections.index(conn)
+                    self._all_connections[idx] = new_conn
+                return new_conn
 
     def return_connection(self, conn: sqlite3.Connection) -> None:
         if not self._closed:
-            try:
-                self._pool.put_nowait(conn)
-            except:
-                conn.close()
+            self._pool.put_nowait(conn)
 
     def close_all(self) -> None:
         self._closed = True
@@ -104,69 +121,26 @@ class ConnectionPool:
         logger.info("All database connections closed")
 
 
-# Глобальный пул соединений
 _connection_pool: Optional[ConnectionPool] = None
 
-
 def init_connection_pool(db_path: str, max_connections: int = 10) -> None:
-    """Инициализирует пул соединений (вызывается один раз при старте)"""
     global _connection_pool
-    _connection_pool = ConnectionPool(db_path, max_connections)
-    logger.info(f"✅ Connection pool initialized with {max_connections} connections")
+    if _connection_pool is None:
+        _connection_pool = ConnectionPool(db_path, max_connections)
+        logger.info(f"✅ Connection pool initialized with {max_connections} connections")
+    else:
+        logger.warning("Connection pool already initialized")
 
 
 # =============================================================================
-# Вспомогательные функции создания таблиц
-# =============================================================================
-
-def _create_contacts_table(cursor: sqlite3.Cursor) -> None:
-    cursor.execute('''CREATE TABLE IF NOT EXISTS contacts (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_address     TEXT NOT NULL,
-        contact_address  TEXT NOT NULL,
-        contact_name     TEXT NOT NULL,
-        contact_pubkey   TEXT,
-        created_at       REAL,
-        UNIQUE(user_address, contact_address)
-    )''')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_address)')
-
-
-def _create_group_table(cursor: sqlite3.Cursor) -> None:
-    cursor.execute('''CREATE TABLE IF NOT EXISTS groups (
-        id         TEXT PRIMARY KEY,
-        name       TEXT NOT NULL,
-        creator    TEXT NOT NULL,
-        members    TEXT NOT NULL,
-        created_at REAL
-    )''')
-
-
-def _create_pubkey_cache_table(cursor: sqlite3.Cursor) -> None:
-    cursor.execute('''CREATE TABLE IF NOT EXISTS pubkey_cache (
-        address        TEXT PRIMARY KEY,
-        public_key_b64 TEXT NOT NULL,
-        updated_at     REAL,
-        source         TEXT DEFAULT 'blockchain',
-        verified       INTEGER DEFAULT 0
-    )''')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_updated  ON pubkey_cache(updated_at)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_verified ON pubkey_cache(verified)')
-
-
-# =============================================================================
-# Контекстный менеджер подключения
+# КОНТЕКСТНЫЙ МЕНЕДЖЕР
 # =============================================================================
 
 @contextmanager
 def get_db_cursor(db_path: str = None):
-    """
-    Контекстный менеджер для работы с БД.
-    Использует пул соединений если он инициализирован.
-    """
     if _connection_pool:
         conn = _connection_pool.get_connection()
-        pool_used = True
+        use_pool = True
     else:
         conn = sqlite3.connect(
             db_path or DATABASE_PATH,
@@ -175,30 +149,27 @@ def get_db_cursor(db_path: str = None):
             detect_types=sqlite3.PARSE_DECLTYPES,
         )
         conn.row_factory = sqlite3.Row
-        pool_used = False
-
+        use_pool = False
     try:
         cursor = conn.cursor()
         yield cursor
         conn.commit()
     except Exception as e:
-        if conn:
-            conn.rollback()
+        conn.rollback()
         logger.error(f"Database error: {e}")
         raise
     finally:
-        if pool_used:
+        if use_pool:
             _connection_pool.return_connection(conn)
         else:
             conn.close()
 
 
 # =============================================================================
-# Инициализация и прогрев
+# ИНИЦИАЛИЗАЦИЯ И ПРОГРЕВ
 # =============================================================================
 
 def init_sqlite_optimizations(db_path: str) -> None:
-    """Однократно применяет PRAGMA-оптимизации при старте."""
     try:
         conn = sqlite3.connect(db_path, timeout=CONFIG['DB_TIMEOUT'])
         cursor = conn.cursor()
@@ -229,59 +200,72 @@ def warmup_database(db_path: str) -> None:
 
 
 # =============================================================================
-# Класс Blockchain (улучшенный)
+# СИНГЛТОН Blockchain (с двойной блокировкой)
 # =============================================================================
 
 class Blockchain:
+    _instance = None
+    _init_lock = threading.Lock()
+
+    def __new__(cls, db_path: str = DATABASE_PATH):
+        if cls._instance is None:
+            with cls._init_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self, db_path: str = DATABASE_PATH):
+        if self._initialized:
+            return
         self.db_path = db_path
+        self._archive_thread = None
+        self._stop_archive = threading.Event()
         self._init_lock = threading.Lock()
+        self._initialized = True
         self.initialize_blockchain()
-        logger.info("Blockchain initialized with optimizations")
+        logger.info("Blockchain singleton initialized with optimizations")
 
     # ------------------------------------------------------------------
-    # Инициализация
+    # ИНИЦИАЛИЗАЦИЯ (один раз)
     # ------------------------------------------------------------------
 
     def initialize_blockchain(self) -> None:
         with self._init_lock:
             with get_db_cursor(self.db_path) as cursor:
                 self._create_tables(cursor)
-                # Сначала добавляем колонки (миграция)
                 self._migrate_schema(cursor)
-                # Затем создаем индексы (теперь колонки существуют)
                 self._create_indexes(cursor)
                 if not self._get_chain_raw(cursor):
                     self._new_block_raw(cursor, proof=100, previous_hash='1', miner_address=None)
                     logger.info("Genesis block created")
-
-                # Настраиваем полнотекстовый поиск
-                self._setup_fts5(cursor)
-
-                # Запускаем фоновую архивацию
-                self._start_archive_scheduler()
+                if FTS_ENABLED:
+                    self._setup_fts5(cursor)
+                if ARCHIVE_ENABLED:
+                    self._start_archive_scheduler()
+                else:
+                    logger.info("Archiving is disabled by config")
 
     def _migrate_schema(self, cursor: sqlite3.Cursor) -> None:
-        """Добавляет отсутствующие столбцы / таблицы в старых БД."""
-        # Проверяем наличие столбца coin_transactions в blockchain
+        # blockchain
         cols = [row[1] for row in cursor.execute("PRAGMA table_info('blockchain')")]
         if 'coin_transactions' not in cols:
             cursor.execute("ALTER TABLE blockchain ADD COLUMN coin_transactions TEXT DEFAULT '[]'")
             cursor.execute("UPDATE blockchain SET coin_transactions = '[]' WHERE coin_transactions IS NULL")
 
-        # Проверяем coin_transactions на отсутствие block_ref и note
+        # coin_transactions
         tx_cols = [row[1] for row in cursor.execute("PRAGMA table_info('coin_transactions')")]
         if 'block_ref' not in tx_cols:
             cursor.execute("ALTER TABLE coin_transactions ADD COLUMN block_ref INTEGER")
         if 'note' not in tx_cols:
             cursor.execute("ALTER TABLE coin_transactions ADD COLUMN note TEXT")
 
-        # Новые поля для стейкинга
+        # stakes
         stakes_cols = [row[1] for row in cursor.execute("PRAGMA table_info('stakes')")]
         if 'reward_debt' not in stakes_cols:
             cursor.execute("ALTER TABLE stakes ADD COLUMN reward_debt INTEGER DEFAULT 0")
 
-        # Таблица состояния стейкинга
+        # staking_state
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS staking_state (
                 key TEXT PRIMARY KEY,
@@ -290,7 +274,7 @@ class Blockchain:
         """)
         cursor.execute("INSERT OR IGNORE INTO staking_state (key, value) VALUES ('acc_reward_per_stake', '0')")
 
-        # Таблица user_status
+        # user_status
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_status'")
         if not cursor.fetchone():
             cursor.execute('''CREATE TABLE user_status (
@@ -301,7 +285,7 @@ class Blockchain:
                 )''')
             logger.info("✅ Created user_status table")
 
-        # Добавление колонок статусов для сообщений (ВАЖНО: ДО СОЗДАНИЯ ИНДЕКСОВ)
+        # transactions columns
         trans_cols = [row[1] for row in cursor.execute("PRAGMA table_info('transactions')")]
         if 'status' not in trans_cols:
             cursor.execute("ALTER TABLE transactions ADD COLUMN status TEXT DEFAULT 'sent'")
@@ -310,7 +294,7 @@ class Blockchain:
             cursor.execute("ALTER TABLE transactions ADD COLUMN read_at REAL")
             logger.info("✅ Added 'read_at' column to transactions")
 
-        # Таблица для архивации
+        # archive tables
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions_archive (
                 id INTEGER PRIMARY KEY,
@@ -326,8 +310,6 @@ class Blockchain:
                 archived_at REAL NOT NULL
             )
         ''')
-
-        # Таблица для логов архивации
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS archive_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -356,10 +338,32 @@ class Blockchain:
             sender_pubkey TEXT,
             metadata      TEXT
         )''')
-        _create_contacts_table(cursor)
-        _create_group_table(cursor)
-        _create_pubkey_cache_table(cursor)
-
+        cursor.execute('''CREATE TABLE IF NOT EXISTS contacts (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_address     TEXT NOT NULL,
+            contact_address  TEXT NOT NULL,
+            contact_name     TEXT NOT NULL,
+            contact_pubkey   TEXT,
+            created_at       REAL,
+            UNIQUE(user_address, contact_address)
+        )''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_address)')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS groups (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            creator    TEXT NOT NULL,
+            members    TEXT NOT NULL,
+            created_at REAL
+        )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS pubkey_cache (
+            address        TEXT PRIMARY KEY,
+            public_key_b64 TEXT NOT NULL,
+            updated_at     REAL,
+            source         TEXT DEFAULT 'blockchain',
+            verified       INTEGER DEFAULT 0
+        )''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_updated  ON pubkey_cache(updated_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pubkey_verified ON pubkey_cache(verified)')
         cursor.execute('''CREATE TABLE IF NOT EXISTS read_status (
             user_address        TEXT NOT NULL,
             chat_id             TEXT NOT NULL,
@@ -367,12 +371,10 @@ class Blockchain:
             read_at             REAL,
             PRIMARY KEY (user_address, chat_id)
         )''')
-
         cursor.execute('''CREATE TABLE IF NOT EXISTS wallets (
             address TEXT PRIMARY KEY,
             balance INTEGER NOT NULL DEFAULT 0
         )''')
-
         cursor.execute('''CREATE TABLE IF NOT EXISTS coin_transactions (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             tx_type   TEXT NOT NULL CHECK(tx_type IN ('reward','transfer','fee','genesis','block_reward','stake','unstake','airdrop','message_reward','message_fee','staking_reward')),
@@ -383,8 +385,6 @@ class Blockchain:
             block_ref INTEGER,
             note      TEXT
         )''')
-
-        # Таблица стейкинга
         cursor.execute('''CREATE TABLE IF NOT EXISTS stakes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             address TEXT NOT NULL,
@@ -397,7 +397,6 @@ class Blockchain:
         )''')
 
     def _create_indexes(self, cursor: sqlite3.Cursor) -> None:
-        """Создает индексы (вызывается ПОСЛЕ миграции колонок)"""
         indexes = [
             'CREATE INDEX IF NOT EXISTS idx_tx_sender ON transactions(sender)',
             'CREATE INDEX IF NOT EXISTS idx_tx_recipient ON transactions(recipient)',
@@ -411,9 +410,9 @@ class Blockchain:
             'CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)',
             'CREATE INDEX IF NOT EXISTS idx_archive_timestamp ON transactions_archive(timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_archive_sender ON transactions_archive(sender)',
+            # Составной индекс для ускорения архивации (статус + время)
+            'CREATE INDEX IF NOT EXISTS idx_transactions_archive_scan ON transactions(timestamp, status)',
         ]
-
-        # Индекс на status только если колонка существует
         trans_cols = [row[1] for row in cursor.execute("PRAGMA table_info('transactions')")]
         if 'status' in trans_cols:
             indexes.append('CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)')
@@ -425,37 +424,32 @@ class Blockchain:
                 logger.warning(f"Could not create index: {e}")
 
     def _setup_fts5(self, cursor: sqlite3.Cursor) -> None:
-        """Настраивает полнотекстовый поиск (FTS5)"""
+        if not FTS_ENABLED:
+            logger.info("FTS5 disabled by config")
+            return
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'")
         if cursor.fetchone():
             logger.info("FTS5 already configured")
             return
-
         try:
             cursor.execute('''
                 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-                    content, 
-                    sender, 
-                    recipient,
-                    content='transactions',
-                    content_rowid='id'
+                    content, sender, recipient,
+                    content='transactions', content_rowid='id'
                 )
             ''')
-
             cursor.execute('''
                 CREATE TRIGGER IF NOT EXISTS transactions_ai AFTER INSERT ON transactions BEGIN
                     INSERT INTO messages_fts(rowid, content, sender, recipient)
                     VALUES (new.id, new.content, new.sender, new.recipient);
                 END
             ''')
-
             cursor.execute('''
                 CREATE TRIGGER IF NOT EXISTS transactions_ad AFTER DELETE ON transactions BEGIN
                     INSERT INTO messages_fts(messages_fts, rowid, content, sender, recipient)
                     VALUES ('delete', old.id, old.content, old.sender, old.recipient);
                 END
             ''')
-
             cursor.execute('''
                 CREATE TRIGGER IF NOT EXISTS transactions_au AFTER UPDATE ON transactions BEGIN
                     INSERT INTO messages_fts(messages_fts, rowid, content, sender, recipient)
@@ -464,44 +458,54 @@ class Blockchain:
                     VALUES (new.id, new.content, new.sender, new.recipient);
                 END
             ''')
-
-            # Индексируем существующие сообщения
+            # Индексация существующих данных пакетами
             cursor.execute("SELECT COUNT(*) FROM transactions")
             total = cursor.fetchone()[0]
             batch_size = 10000
-
             for offset in range(0, total, batch_size):
                 cursor.execute('''
                     INSERT INTO messages_fts(rowid, content, sender, recipient)
                     SELECT id, content, sender, recipient FROM transactions
                     LIMIT ? OFFSET ?
                 ''', (batch_size, offset))
-                logger.info(f"FTS5 indexing: {min(offset + batch_size, total)}/{total}")
-
-            logger.info("✅ FTS5全文搜索已启用")
-
+                logger.info(f"FTS5 indexing: {min(offset+batch_size, total)}/{total}")
+            logger.info("✅ FTS5 full-text search enabled")
         except Exception as e:
             logger.warning(f"FTS5 setup failed (non-critical): {e}")
 
+    # ------------------------------------------------------------------
+    # АРХИВАЦИЯ (управляемая, с корректным удалением)
+    # ------------------------------------------------------------------
+
     def _start_archive_scheduler(self):
-        """Запускает фоновую архивацию старых сообщений"""
+        if not ARCHIVE_ENABLED:
+            return
+        if self._archive_thread and self._archive_thread.is_alive():
+            logger.warning("Archive thread already running")
+            return
         def archive_worker():
-            while True:
+            logger.info("Archive scheduler started")
+            while not self._stop_archive.is_set():
+                self._stop_archive.wait(24 * 3600)  # раз в сутки
+                if self._stop_archive.is_set():
+                    break
                 try:
-                    time.sleep(24 * 3600)
                     with get_db_cursor(self.db_path) as cursor:
-                        self._archive_old_messages(cursor, days_old=90)
+                        self._archive_old_messages(cursor, days_old=ARCHIVE_OLD_MESSAGES_DAYS)
                 except Exception as e:
                     logger.error(f"Archive worker error: {e}")
-
-        thread = threading.Thread(target=archive_worker, daemon=True)
-        thread.start()
-        logger.info("Archive scheduler started")
+            logger.info("Archive scheduler stopped")
+        self._archive_thread = threading.Thread(target=archive_worker, daemon=False)
+        self._archive_thread.start()
 
     def _archive_old_messages(self, cursor: sqlite3.Cursor, days_old: int = 90) -> int:
-        """Архивирует старые сообщения"""
+        """Архивирует старые прочитанные сообщения. Возвращает количество архивированных."""
+        if not ARCHIVE_ENABLED:
+            return 0
         cutoff_time = time.time() - (days_old * 24 * 3600)
+        archive_time = time.time()  # фиксируем время архивации
 
+        # Вставляем в архив
         cursor.execute('''
             INSERT INTO transactions_archive (
                 id, sender, recipient, content, image, timestamp,
@@ -510,36 +514,55 @@ class Blockchain:
             SELECT id, sender, recipient, content, image, timestamp,
                    sender_pubkey, metadata, status, read_at, ?
             FROM transactions
-            WHERE timestamp < ? 
+            WHERE timestamp < ?
               AND (status = 'read' OR status IS NULL)
-              AND id NOT IN (SELECT id FROM transactions_archive)
-        ''', (time.time(), cutoff_time))
-
+              AND NOT EXISTS (SELECT 1 FROM transactions_archive WHERE id = transactions.id)
+        ''', (archive_time, cutoff_time))
         archived_count = cursor.rowcount
 
         if archived_count > 0:
-            cursor.execute('''
-                DELETE FROM transactions
-                WHERE timestamp < ? 
-                  AND (status = 'read' OR status IS NULL)
-                  AND id IN (SELECT id FROM transactions_archive WHERE archived_at = ?)
-            ''', (cutoff_time, time.time()))
-
+            # Удаляем пачками по 1000, используя тот же archive_time
+            batch_size = 1000
+            total_deleted = 0
+            while True:
+                cursor.execute('''
+                    DELETE FROM transactions
+                    WHERE id IN (
+                        SELECT id FROM transactions_archive
+                        WHERE archived_at = ?
+                        LIMIT ?
+                    )
+                ''', (archive_time, batch_size))
+                deleted = cursor.rowcount
+                if deleted == 0:
+                    break
+                total_deleted += deleted
+            # Логируем результат
             cursor.execute('''
                 INSERT INTO archive_log (archived_date, messages_count, created_at)
                 VALUES (date('now', ?), ?, ?)
             ''', (f'-{days_old} days', archived_count, time.time()))
-
-            logger.info(f"Archived {archived_count} old messages")
-
+            logger.info(f"Archived {archived_count} old messages, deleted {total_deleted} from main table")
         return archived_count
+
+    def stop_archive(self):
+        """Останавливает фоновый поток архивации (graceful shutdown)."""
+        self._stop_archive.set()
+        if self._archive_thread and self._archive_thread.is_alive():
+            self._archive_thread.join(timeout=5)
+            if self._archive_thread.is_alive():
+                logger.warning("Archive thread did not finish within timeout")
+            else:
+                logger.info("Archive thread stopped")
 
     # ------------------------------------------------------------------
     # НОВЫЕ МЕТОДЫ
     # ------------------------------------------------------------------
 
-    def search_messages(self, user_address: str, query: str, limit: int = 50) -> List[dict]:
-        """Полнотекстовый поиск по сообщениям пользователя"""
+    def search_messages(self, user_address: str, query: str, limit: int = 50) -> List[Dict[str, Any]]:
+        if not FTS_ENABLED:
+            logger.warning("FTS disabled, search unavailable")
+            return []
         try:
             with get_db_cursor(self.db_path) as cursor:
                 cursor.execute('''
@@ -552,14 +575,13 @@ class Blockchain:
                     ORDER BY t.timestamp DESC
                     LIMIT ?
                 ''', (query, user_address, user_address, limit))
-
                 return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Search error: {e}")
             return []
 
     # ------------------------------------------------------------------
-    # Блокчейн — низкоуровневые методы
+    # БЛОКЧЕЙН - НИЗКОУРОВНЕВЫЕ МЕТОДЫ
     # ------------------------------------------------------------------
 
     def _new_block_raw(self, cursor: sqlite3.Cursor, proof: int,
@@ -629,9 +651,8 @@ class Blockchain:
         cursor.execute('SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1')
         row = cursor.fetchone()
         if row:
-            coin_txs_raw = row[3] if len(row) > 3 else None
             try:
-                coin_txs = json.loads(coin_txs_raw) if isinstance(coin_txs_raw, str) else []
+                coin_txs = json.loads(row[3]) if isinstance(row[3], str) else []
             except (json.JSONDecodeError, TypeError):
                 coin_txs = []
             return {
@@ -646,9 +667,8 @@ class Blockchain:
         cursor.execute('SELECT * FROM blockchain ORDER BY block_index ASC')
         chain = []
         for r in cursor.fetchall():
-            coin_txs_raw = r[3] if len(r) > 3 else None
             try:
-                coin_txs = json.loads(coin_txs_raw) if isinstance(coin_txs_raw, str) else []
+                coin_txs = json.loads(r[3]) if isinstance(r[3], str) else []
             except (json.JSONDecodeError, TypeError):
                 coin_txs = []
             chain.append({
@@ -660,7 +680,7 @@ class Blockchain:
         return chain
 
     # ------------------------------------------------------------------
-    # Публичные методы
+    # ПУБЛИЧНЫЕ МЕТОДЫ
     # ------------------------------------------------------------------
 
     def new_transaction(self, cursor: sqlite3.Cursor, sender: str, recipient: str,
@@ -733,57 +753,56 @@ class Blockchain:
                 logger.error(f"try_mine_block error: {e}")
                 return False, str(e), 0, 0
 
-    def health_check(self) -> dict:
-        """Проверка здоровья базы данных"""
+    def health_check(self, quick: bool = True) -> dict:
+        """quick=True пропускает тяжёлый PRAGMA integrity_check"""
         try:
             with get_db_cursor(self.db_path) as cursor:
-                cursor.execute("PRAGMA integrity_check")
-                integrity = cursor.fetchone()[0]
-
+                status = {'status': 'healthy'}
+                if not quick:
+                    cursor.execute("PRAGMA integrity_check")
+                    integrity = cursor.fetchone()[0]
+                    if integrity != 'ok':
+                        status['status'] = 'corrupted'
+                        status['integrity'] = integrity
                 cursor.execute("PRAGMA page_count")
                 page_count = cursor.fetchone()[0]
                 cursor.execute("PRAGMA page_size")
                 page_size = cursor.fetchone()[0]
-                db_size_bytes = page_count * page_size
-
+                status['db_size_mb'] = round(page_count * page_size / (1024 * 1024), 2)
                 tables = ['transactions', 'wallets', 'blockchain', 'contacts', 'groups', 'stakes']
-                counts = {}
+                status['table_counts'] = {}
                 for table in tables:
                     cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                    counts[table] = cursor.fetchone()[0]
-
+                    status['table_counts'][table] = cursor.fetchone()[0]
                 cursor.execute("PRAGMA wal_checkpoint")
                 wal_status = cursor.fetchone()
-
-                return {
-                    'status': 'healthy' if integrity == 'ok' else 'corrupted',
-                    'integrity': integrity,
-                    'db_size_mb': round(db_size_bytes / (1024 * 1024), 2),
-                    'table_counts': counts,
-                    'wal_status': wal_status,
-                }
+                status['wal_status'] = wal_status
+                return status
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
 
     def get_performance_stats(self) -> dict:
-        """Статистика производительности"""
         try:
             with get_db_cursor(self.db_path) as cursor:
                 cursor.execute("""
-                    SELECT name, 
+                    SELECT name,
                            (SELECT COUNT(*) FROM sqlite_stat1 WHERE idx = name) as stats_available
-                    FROM sqlite_master 
+                    FROM sqlite_master
                     WHERE type = 'index'
                     ORDER BY name
                 """)
                 indexes = [dict(row) for row in cursor.fetchall()]
-
                 cursor.execute("PRAGMA cache_size")
                 cache_size = cursor.fetchone()[0]
-
                 return {
                     'indexes': indexes,
                     'cache_size_pages': cache_size,
                 }
         except Exception as e:
             return {'error': str(e)}
+
+    def close(self):
+        """Вызывается при завершении приложения"""
+        self.stop_archive()
+        if _connection_pool:
+            _connection_pool.close_all()

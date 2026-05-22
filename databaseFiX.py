@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from queue import Queue
 from typing import Optional, List, Dict, Any
 
-from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING
+from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING, DB_POOL_SIZE, DB_TIMEOUT
 from config import ARCHIVE_OLD_MESSAGES_DAYS, ARCHIVE_ENABLED, FTS_ENABLED
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 class ConnectionPool:
     """Пул SQLite соединений с автоматическим восстановлением и валидацией"""
 
-    def __init__(self, db_path: str, max_connections: int = 10):
+    def __init__(self, db_path: str, max_connections: int = None):
         self.db_path = db_path
-        self.max_connections = max_connections
-        self._pool = Queue(maxsize=max_connections)
+        self.max_connections = max_connections or CONFIG.get('DB_POOL_SIZE', 10)
+        self._pool = Queue(maxsize=self.max_connections)
         self._all_connections = []
         self._lock = threading.Lock()
         self._closed = False
