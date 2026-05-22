@@ -4,8 +4,8 @@ import requests
 import json
 
 # ДАННЫЕ ДЛЯ ВХОДА (ЗАМЕНИТЕ НА СВОИ!)
-USERNAME = "nel.tern@gmail.com"
-PASSWORD = "Jasstme66!"
+USERNAME = ""
+PASSWORD = ""
 DOMAIN = "blockcoin.ru"  # Ваш основной домен
 SUBDOMAIN = "@"  # "@" означает сам домен blockcoin.ru
 
