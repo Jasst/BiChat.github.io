@@ -1,5 +1,6 @@
 """
 database.py — SQLite-инфраструктура: контекстный менеджер, инициализация, Blockchain
+Исправленная версия без критических багов.
 """
 import hashlib
 import json
@@ -18,7 +19,7 @@ from config import ARCHIVE_OLD_MESSAGES_DAYS, ARCHIVE_ENABLED, FTS_ENABLED
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# ПУЛ СОЕДИНЕНИЙ (исправленный)
+# ПУЛ СОЕДИНЕНИЙ (исправленный, с валидацией и закрытием)
 # =============================================================================
 
 class ConnectionPool:
@@ -199,7 +200,7 @@ def warmup_database(db_path: str) -> None:
 
 
 # =============================================================================
-# СИНГЛТОН Blockchain
+# СИНГЛТОН Blockchain (с двойной блокировкой)
 # =============================================================================
 
 class Blockchain:
@@ -409,6 +410,8 @@ class Blockchain:
             'CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)',
             'CREATE INDEX IF NOT EXISTS idx_archive_timestamp ON transactions_archive(timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_archive_sender ON transactions_archive(sender)',
+            # Составной индекс для ускорения архивации (статус + время)
+            'CREATE INDEX IF NOT EXISTS idx_transactions_archive_scan ON transactions(timestamp, status)',
         ]
         trans_cols = [row[1] for row in cursor.execute("PRAGMA table_info('transactions')")]
         if 'status' in trans_cols:
@@ -471,7 +474,7 @@ class Blockchain:
             logger.warning(f"FTS5 setup failed (non-critical): {e}")
 
     # ------------------------------------------------------------------
-    # АРХИВАЦИЯ (управляемая и оптимизированная)
+    # АРХИВАЦИЯ (управляемая, с корректным удалением)
     # ------------------------------------------------------------------
 
     def _start_archive_scheduler(self):
@@ -492,14 +495,17 @@ class Blockchain:
                 except Exception as e:
                     logger.error(f"Archive worker error: {e}")
             logger.info("Archive scheduler stopped")
-        self._archive_thread = threading.Thread(target=archive_worker, daemon=True)
+        self._archive_thread = threading.Thread(target=archive_worker, daemon=False)
         self._archive_thread.start()
 
     def _archive_old_messages(self, cursor: sqlite3.Cursor, days_old: int = 90) -> int:
+        """Архивирует старые прочитанные сообщения. Возвращает количество архивированных."""
         if not ARCHIVE_ENABLED:
             return 0
         cutoff_time = time.time() - (days_old * 24 * 3600)
+        archive_time = time.time()  # фиксируем время архивации
 
+        # Вставляем в архив
         cursor.execute('''
             INSERT INTO transactions_archive (
                 id, sender, recipient, content, image, timestamp,
@@ -511,35 +517,43 @@ class Blockchain:
             WHERE timestamp < ?
               AND (status = 'read' OR status IS NULL)
               AND NOT EXISTS (SELECT 1 FROM transactions_archive WHERE id = transactions.id)
-        ''', (time.time(), cutoff_time))
+        ''', (archive_time, cutoff_time))
         archived_count = cursor.rowcount
 
         if archived_count > 0:
-            # Удаляем пачками по 1000
+            # Удаляем пачками по 1000, используя тот же archive_time
             batch_size = 1000
+            total_deleted = 0
             while True:
                 cursor.execute('''
                     DELETE FROM transactions
                     WHERE id IN (
                         SELECT id FROM transactions_archive
-                        WHERE archived_at = ? AND id > (SELECT IFNULL(MAX(id),0) FROM transactions WHERE 0)
+                        WHERE archived_at = ?
                         LIMIT ?
                     )
-                ''', (time.time(), batch_size))
-                if cursor.rowcount == 0:
+                ''', (archive_time, batch_size))
+                deleted = cursor.rowcount
+                if deleted == 0:
                     break
+                total_deleted += deleted
+            # Логируем результат
             cursor.execute('''
                 INSERT INTO archive_log (archived_date, messages_count, created_at)
                 VALUES (date('now', ?), ?, ?)
             ''', (f'-{days_old} days', archived_count, time.time()))
-            logger.info(f"Archived {archived_count} old messages")
+            logger.info(f"Archived {archived_count} old messages, deleted {total_deleted} from main table")
         return archived_count
 
     def stop_archive(self):
+        """Останавливает фоновый поток архивации (graceful shutdown)."""
         self._stop_archive.set()
-        if self._archive_thread:
-            self._archive_thread.join(timeout=2)
-            logger.info("Archive thread stopped")
+        if self._archive_thread and self._archive_thread.is_alive():
+            self._archive_thread.join(timeout=5)
+            if self._archive_thread.is_alive():
+                logger.warning("Archive thread did not finish within timeout")
+            else:
+                logger.info("Archive thread stopped")
 
     # ------------------------------------------------------------------
     # НОВЫЕ МЕТОДЫ
@@ -740,7 +754,7 @@ class Blockchain:
                 return False, str(e), 0, 0
 
     def health_check(self, quick: bool = True) -> dict:
-        """quick=True пропускает тяжелый PRAGMA integrity_check"""
+        """quick=True пропускает тяжёлый PRAGMA integrity_check"""
         try:
             with get_db_cursor(self.db_path) as cursor:
                 status = {'status': 'healthy'}
