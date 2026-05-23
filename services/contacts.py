@@ -9,7 +9,6 @@ from cache import bump_contact_cache_version
 
 logger = logging.getLogger(__name__)
 
-# db_path устанавливается из app.py через set_db_path()
 _db_path: Optional[str] = None
 
 

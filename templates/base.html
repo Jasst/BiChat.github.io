@@ -10,11 +10,11 @@
   <title>{% block title %}Dark Messenger{% endblock %}</title>
 
   <!-- Favicon -->
-  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
+  <link rel="icon" href="{{ url_for('static', path='favicon.ico') }}" type="image/x-icon">
+  <link rel="apple-touch-icon" href="{{ url_for('static', path='icon-192.png') }}">
 
   <!-- Styles -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 
   {% block head_extra %}{% endblock %}
 </head>
@@ -32,11 +32,11 @@
   <!-- Libraries -->
 
 <!-- Клиентская криптография -->
-  <script src="{{ url_for('static', filename='js/common.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/crypto-client.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/notification-manager.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/global-notifications.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/mnemonic-manager.js') }}" defer></script>
+  <script src="{{ url_for('static', path='js/common.js') }}" defer></script>
+  <script src="{{ url_for('static', path='js/crypto-client.js') }}" defer></script>
+  <script src="{{ url_for('static', path='js/notification-manager.js') }}" defer></script>
+  <script src="{{ url_for('static', path='js/global-notifications.js') }}" defer></script>
+  <script src="{{ url_for('static', path='js/mnemonic-manager.js') }}" defer></script>
   <script>
 // Проверка авторизации (защита маршрутов)
 (function() {

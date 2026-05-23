@@ -13,42 +13,37 @@ from setup import verify_address_matches_pubkey
 
 logger = logging.getLogger(__name__)
 
-# Импортируется отложенно, чтобы избежать циклического импорта
-# (database → cache → database).  Blockchain-инстанс передаётся при вызовах.
 _db_path: Optional[str] = None
 
 
 def set_db_path(path: str) -> None:
-    """Вызывается один раз из app.py после создания Blockchain."""
     global _db_path
     _db_path = path
 
 
 def _get_db():
-    """Ленивый импорт get_db_cursor, чтобы не создавать цикл."""
     from database import get_db_cursor
     return get_db_cursor(_db_path)
 
 
 # =============================================================================
-# Версионирование кэша (инкремент → lru_cache видит новый ключ)
+# Версионирование кэша
 # =============================================================================
 
-_pubkey_cache_version   = 0
-_pubkey_version_lock    = threading.Lock()
+_pubkey_cache_version  = 0
+_pubkey_version_lock   = threading.Lock()
 
-_contact_cache_version  = 0
-_contact_version_lock   = threading.Lock()
+_contact_cache_version = 0
+_contact_version_lock  = threading.Lock()
 
-_groups_cache_version   = 0
-_groups_version_lock    = threading.Lock()
+_groups_cache_version  = 0
+_groups_version_lock   = threading.Lock()
 
 
 def bump_pubkey_cache_version() -> None:
     global _pubkey_cache_version
     with _pubkey_version_lock:
         _pubkey_cache_version += 1
-        logger.debug(f"🔄 Pubkey cache version → {_pubkey_cache_version}")
 
 
 def get_pubkey_cache_version() -> int:
@@ -85,7 +80,6 @@ def get_groups_cache_version() -> int:
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_PUBKEYS'])
 def get_cached_public_key(address: str,
                           cache_version: int = 0) -> Tuple[Optional[str], bool]:
-    """Читает pubkey из таблицы pubkey_cache (результат кэшируется по версии)."""
     with _get_db() as cursor:
         cursor.execute(
             'SELECT public_key_b64, verified FROM pubkey_cache WHERE address = ?',
@@ -102,7 +96,7 @@ def cache_public_key(address: str, pubkey_b64: str,
         if verified is None:
             verified = verify_address_matches_pubkey(address, pubkey_b64)
             if not verified:
-                logger.warning(f"⚠️ Unverified pubkey cached for {address[:16]}...")
+                logger.warning(f"Unverified pubkey cached for {address[:16]}...")
         with _get_db() as cursor:
             cursor.execute(
                 'INSERT OR REPLACE INTO pubkey_cache '
@@ -118,7 +112,6 @@ def cache_public_key(address: str, pubkey_b64: str,
 
 
 def fetch_public_key_from_chain(address: str) -> Tuple[Optional[str], bool]:
-    """Ищет последний известный pubkey в таблице транзакций."""
     with _get_db() as cursor:
         cursor.execute(
             'SELECT sender_pubkey, metadata FROM transactions '
@@ -163,9 +156,7 @@ def get_contact_name_cached(user_address: str, contact_address: str,
 @lru_cache(maxsize=CONFIG['CACHE_SIZE_GROUPS'])
 def get_user_groups_cached(address: str, cache_version: int = 0) -> tuple:
     with _get_db() as cursor:
-        cursor.execute(
-            'SELECT id, name, creator, members, created_at FROM groups'
-        )
+        cursor.execute('SELECT id, name, creator, members, created_at FROM groups')
         groups = []
         for row in cursor.fetchall():
             members = json.loads(row[3])
@@ -178,7 +169,6 @@ def get_user_groups_cached(address: str, cache_version: int = 0) -> tuple:
 
 
 def clear_all_caches() -> None:
-    """Сбрасывает все LRU-кэши (вызывается при logout)."""
     get_cached_public_key.cache_clear()
     get_contact_name_cached.cache_clear()
     get_user_groups_cached.cache_clear()

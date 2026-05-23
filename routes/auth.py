@@ -1,95 +1,105 @@
 """
-routes/auth.py — Регистрация, вход, выход и страницы приложения
+routes/auth.py — Регистрация, вход, выход
 """
 import logging
-import time
 import secrets
+import time
 
-from flask import Blueprint, jsonify, render_template, request, session, url_for, redirect
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
 from cache import cache_public_key, clear_all_caches
+from config import AIRDROP_AMOUNT, TEMPLATE_FOLDER
+from dependencies import require_auth
+from models import CreateWalletRequest, LoginRequest
 from setup import verify_address_matches_pubkey, load_public_key_from_b64
-from config import AIRDROP_AMOUNT
 
-# Новый импорт для кодирования сырой подписи в DER
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
-logger = logging.getLogger(__name__)
-auth_bp = Blueprint('auth', __name__)
+logger    = logging.getLogger(__name__)
+router    = APIRouter(tags=['auth'])
+templates = Jinja2Templates(directory=TEMPLATE_FOLDER)
 
 
-@auth_bp.route('/')
-def index():
-    if 'address' in session:
-        return redirect(url_for('auth.chat'))
-    return render_template('index.html')
+# =============================================================================
+# Pages (HTML)
+# =============================================================================
+
+@router.get('/', response_class=HTMLResponse)
+def index(request: Request):
+    if request.session.get('address'):
+        return RedirectResponse('/chat')
+    return templates.TemplateResponse('index.html', {'request': request})
 
 
-@auth_bp.route('/chat')
-def chat():
-    if 'address' not in session:
-        return redirect(url_for('auth.index'))
-    return render_template('chat.html', address=session['address'])
+@router.get('/chat', response_class=HTMLResponse)
+def chat(request: Request):
+    if not request.session.get('address'):
+        return RedirectResponse('/')
+    return templates.TemplateResponse('chat.html', {
+        'request': request,
+        'address': request.session['address'],
+    })
 
 
-@auth_bp.route('/contacts')
-def contacts_page():
-    if 'address' not in session:
-        return redirect(url_for('auth.index'))
-    return render_template('contacts.html', address=session['address'])
+@router.get('/contacts', response_class=HTMLResponse)
+def contacts_page(request: Request):
+    if not request.session.get('address'):
+        return RedirectResponse('/')
+    return templates.TemplateResponse('contacts.html', {
+        'request': request,
+        'address': request.session['address'],
+    })
 
 
-@auth_bp.route('/groups')
-def groups_page():
-    if 'address' not in session:
-        return redirect(url_for('auth.index'))
-    return render_template('groups.html', address=session['address'])
+@router.get('/groups', response_class=HTMLResponse)
+def groups_page(request: Request):
+    if not request.session.get('address'):
+        return RedirectResponse('/')
+    return templates.TemplateResponse('groups.html', {
+        'request': request,
+        'address': request.session['address'],
+    })
 
 
-@auth_bp.route('/profile')
-def profile():
-    if 'address' not in session:
-        return redirect(url_for('auth.index'))
-    from flask import current_app
-    return render_template('profile.html',
-                           address=session.get('address'),
-                           cache_stats=None)
+@router.get('/profile', response_class=HTMLResponse)
+def profile(request: Request):
+    if not request.session.get('address'):
+        return RedirectResponse('/')
+    return templates.TemplateResponse('profile.html', {
+        'request': request,
+        'address': request.session.get('address'),
+    })
 
 
-@auth_bp.route('/wallet')
-def wallet_page():
-    if 'address' not in session:
-        return redirect(url_for('auth.index'))
-    return render_template('wallet.html', address=session['address'])
+@router.get('/wallet', response_class=HTMLResponse)
+def wallet_page(request: Request):
+    if not request.session.get('address'):
+        return RedirectResponse('/')
+    return templates.TemplateResponse('wallet.html', {
+        'request': request,
+        'address': request.session['address'],
+    })
 
 
-@auth_bp.route('/create_wallet', methods=['POST'])
-def create_wallet():
+# =============================================================================
+# API
+# =============================================================================
+
+@router.post('/create_wallet', status_code=201)
+def create_wallet(body: CreateWalletRequest, request: Request):
     """
     Клиент присылает готовый адрес и публичный ключ (base64).
-    Сервер сохраняет их, создаёт сессию и начисляет аирдроп.
+    Сервер сохраняет, создаёт сессию, начисляет аирдроп.
     """
+    address    = body.address
+    pubkey_b64 = body.public_key
+
+    if not verify_address_matches_pubkey(address, pubkey_b64):
+        raise HTTPException(400, 'Public key does not match address')
+
     try:
-        data = request.get_json(silent=True) or {}
-        address = data.get('address', '').strip()
-        pubkey_b64 = data.get('public_key', '').strip()
-
-        # Проверка формата
-        if len(address) != 64 or not pubkey_b64:
-            return jsonify({'error': 'Missing or invalid address/public_key'}), 400
-
-        # Проверяем, что адрес соответствует публичному ключу
-        if not verify_address_matches_pubkey(address, pubkey_b64):
-            return jsonify({'error': 'Public key does not match address'}), 400
-
-        # Создаём сессию (мнемоники на сервере нет!)
-        session['address'] = address
-        session.permanent = True
-
-        # Кэшируем публичный ключ
-        cache_public_key(address, pubkey_b64, source='self', verified=True)
-
-        # Начисляем аирдроп
         from database import get_db_cursor, DATABASE_PATH
         with get_db_cursor(DATABASE_PATH) as cursor:
             cursor.execute(
@@ -103,90 +113,72 @@ def create_wallet():
                 ('airdrop', address, AIRDROP_AMOUNT, time.time())
             )
 
+        request.session['address'] = address
+        cache_public_key(address, pubkey_b64, source='self', verified=True)
         logger.info(f"New wallet registered: {address[:16]}...")
-        return jsonify({
-            'address': address,
-            'public_key': pubkey_b64
-        }), 201
+        return {'address': address, 'public_key': pubkey_b64}
 
     except Exception as e:
         logger.error(f"Create wallet error: {e}")
-        return jsonify({'error': 'Wallet creation failed'}), 500
+        raise HTTPException(500, 'Wallet creation failed')
 
 
-@auth_bp.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        try:
-            data = request.get_json(silent=True) or {}
-            address = data.get('address', '').strip()
-            pubkey_b64 = data.get('public_key', '').strip()
-            signature_hex = data.get('signature', '').strip()
-            nonce = session.pop('login_nonce', None)
-
-            if not nonce:
-                return jsonify({'error': 'No challenge found. Refresh the page.'}), 400
-            if not address or len(address) != 64 or not pubkey_b64 or not signature_hex:
-                return jsonify({'error': 'Missing required fields'}), 400
-
-            # 1. Соответствие адреса публичному ключу
-            if not verify_address_matches_pubkey(address, pubkey_b64):
-                return jsonify({'error': 'Public key does not match address'}), 400
-
-            # 2. Проверка подписи (ECDSA P-256)
-            from cryptography.hazmat.primitives.asymmetric import ec
-            from cryptography.hazmat.primitives import hashes
-
-            try:
-                # Клиент передаёт сырую подпись (64 байта: r || s)
-                raw_signature = bytes.fromhex(signature_hex)
-                if len(raw_signature) != 64:
-                    return jsonify({'error': 'Invalid signature format (must be 64 bytes raw)'}), 400
-
-                # Разделяем на r и s (по 32 байта)
-                r = int.from_bytes(raw_signature[:32], 'big')
-                s = int.from_bytes(raw_signature[32:], 'big')
-
-                # Кодируем в DER
-                der_signature = encode_dss_signature(r, s)
-
-                # Загружаем открытый ключ и проверяем DER-подпись
-                pubkey = load_public_key_from_b64(pubkey_b64)
-                pubkey.verify(
-                    der_signature,
-                    nonce.encode('utf-8'),
-                    ec.ECDSA(hashes.SHA256())
-                )
-            except Exception as e:
-                logger.warning(f"Signature verification failed: {e}")
-                return jsonify({'error': 'Invalid signature'}), 403
-
-            # Успешно
-            session['address'] = address
-            session.permanent = True
-            cache_public_key(address, pubkey_b64, source='self', verified=True)
-            logger.info(f"User logged in: {address[:16]}...")
-            return jsonify({'address': address}), 200
-
-        except Exception as e:
-            logger.error(f"Login error: {e}")
-            return jsonify({'error': 'Login failed'}), 500
-
-    # GET: отдаём страницу с nonce
+@router.get('/login', response_class=HTMLResponse)
+def login_page(request: Request):
     nonce = secrets.token_hex(32)
-    session['login_nonce'] = nonce
-    return render_template('login.html', nonce=nonce)
+    request.session['login_nonce'] = nonce
+    return templates.TemplateResponse('login.html', {'request': request, 'nonce': nonce})
 
-@auth_bp.route('/check_session')
-def check_session():
-    """Проверка статуса авторизации (для клиентской логики)"""
-    return jsonify({
-        'authenticated': 'address' in session,
-        'address': session.get('address')
-    })
 
-@auth_bp.route('/logout')
-def logout():
+@router.post('/login')
+def login(body: LoginRequest, request: Request):
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes
+
+    nonce = request.session.pop('login_nonce', None)
+    if not nonce:
+        raise HTTPException(400, 'No challenge found. Refresh the page.')
+
+    address       = body.address
+    pubkey_b64    = body.public_key
+    signature_hex = body.signature.strip()
+
+    if not verify_address_matches_pubkey(address, pubkey_b64):
+        raise HTTPException(400, 'Public key does not match address')
+
+    try:
+        raw_signature = bytes.fromhex(signature_hex)
+        if len(raw_signature) != 64:
+            raise HTTPException(400, 'Invalid signature format (must be 64 bytes raw)')
+
+        r = int.from_bytes(raw_signature[:32], 'big')
+        s = int.from_bytes(raw_signature[32:], 'big')
+        der_signature = encode_dss_signature(r, s)
+
+        pubkey = load_public_key_from_b64(pubkey_b64)
+        pubkey.verify(der_signature, nonce.encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Signature verification failed: {e}")
+        raise HTTPException(403, 'Invalid signature')
+
+    request.session['address'] = address
+    cache_public_key(address, pubkey_b64, source='self', verified=True)
+    logger.info(f"User logged in: {address[:16]}...")
+    return {'address': address}
+
+
+@router.get('/check_session')
+def check_session(request: Request):
+    return {
+        'authenticated': 'address' in request.session,
+        'address':       request.session.get('address'),
+    }
+
+
+@router.get('/logout')
+def logout(request: Request):
     clear_all_caches()
-    session.clear()
-    return redirect(url_for('auth.index'))
+    request.session.clear()
+    return RedirectResponse('/')

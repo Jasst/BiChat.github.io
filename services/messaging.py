@@ -3,6 +3,7 @@ services/messaging.py — Список диалогов (без расшифро
 """
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from cache import (
@@ -27,12 +28,11 @@ def _db():
 
 def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     """
-    Возвращает список диалогов пользователя (оптимизировано: 2 запроса вместо N+1).
+    Возвращает список диалогов пользователя (2 запроса вместо N+1).
     """
     conversations = []
     try:
         with _db() as cursor:
-            # 1. Получаем последнее сообщение для каждого партнёра
             cursor.execute('''
                 SELECT
                     partner,
@@ -51,14 +51,13 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 ) AS t
                 WHERE partner IS NOT NULL AND partner != ?
                 GROUP BY partner
-            ''', (user_address, user_address, user_address, user_address, user_address, user_address))
+            ''', (user_address,) * 6)
 
             rows = cursor.fetchall()
             if not rows:
                 return []
 
-            # 2. Получаем статусы чтения для всех чатов одним запросом
-            chat_ids = [row['partner'] for row in rows]
+            chat_ids     = [row['partner'] for row in rows]
             placeholders = ','.join('?' * len(chat_ids))
             cursor.execute(f'''
                 SELECT chat_id, last_read_message_id
@@ -67,26 +66,23 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
             ''', (user_address, *chat_ids))
             read_map = {row['chat_id']: row['last_read_message_id'] for row in cursor.fetchall()}
 
-            # 3. Формируем результат
             for row in rows:
-                partner = row['partner']
-                last_msg_id = row['last_msg_id']
-                last_ts = row['last_ts']
-                last_sender = row['last_sender']
+                partner      = row['partner']
+                last_msg_id  = row['last_msg_id']
+                last_ts      = row['last_ts']
+                last_sender  = row['last_sender']
                 last_read_id = read_map.get(partner, 0)
 
-                # preview
                 if last_read_id >= last_msg_id:
                     preview = "✓ Прочитано"
                 else:
                     preview = "💬 Новое сообщение" if last_sender != user_address else "Вы: сообщение"
 
-                # имя и тип
                 if partner.startswith('group:'):
                     group_id = partner.split(':', 1)[1]
-                    groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
-                    group = next((g for g in groups if g['id'] == group_id), None)
-                    name = group['name'] if group else f'Группа {group_id[:8]}...'
+                    groups   = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
+                    group    = next((g for g in groups if g['id'] == group_id), None)
+                    name     = group['name'] if group else f'Группа {group_id[:8]}...'
                     is_group = True
                 else:
                     name = (get_contact_name_cached(user_address, partner,
@@ -95,55 +91,38 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                     is_group = False
 
                 conversations.append({
-                    'address': partner,
-                    'name': name,
-                    'is_group': is_group,
+                    'address':      partner,
+                    'name':         name,
+                    'is_group':     is_group,
                     'last_preview': preview,
-                    'last_ts': last_ts,
+                    'last_ts':      last_ts,
                 })
 
     except Exception as e:
-        logger.error(f"Get conversations error: {e}")
-        # выводим traceback для отладки
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Get conversations error: {e}", exc_info=True)
 
     return sorted(conversations, key=lambda x: x.get('last_ts', 0), reverse=True)
 
 
-# services/messaging.py (добавить в конец файла)
-
 # =============================================================================
-# КЭШ ДЛЯ СПИСКА ДИАЛОГОВ
+# Cache for conversations list
 # =============================================================================
 
-from functools import lru_cache
-import time
-from typing import List, Dict, Any
-
-_conversations_cache = {}
-_CONV_CACHE_TTL = 2  # секунды
+_conversations_cache: dict = {}
+_CONV_CACHE_TTL = 2  # seconds
 
 
 def get_conversations_list_cached(user_address: str) -> List[Dict[str, Any]]:
-    """
-    Кэшированная версия get_conversations_list.
-    TTL = 2 секунды, чтобы не кэшировать слишком долго.
-    """
-    now = time.time()
+    now    = time.time()
     cached = _conversations_cache.get(user_address)
     if cached and now - cached[1] < _CONV_CACHE_TTL:
         return cached[0]
-
     result = get_conversations_list(user_address)
     _conversations_cache[user_address] = (result, now)
     return result
 
 
-def invalidate_conversations_cache(user_address: str = None):
-    """
-    Сброс кэша диалогов (вызывать при отправке/получении сообщения)
-    """
+def invalidate_conversations_cache(user_address: str = None) -> None:
     if user_address:
         _conversations_cache.pop(user_address, None)
     else:
