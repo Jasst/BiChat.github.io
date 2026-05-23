@@ -27,7 +27,7 @@ class ConnectionPool:
 
     def __init__(self, db_path: str, max_connections: int = None):
         self.db_path = db_path
-        self.max_connections = max_connections or DB_POOL_SIZE
+        self.max_connections = max_connections or CONFIG.get('DB_POOL_SIZE', 10)
         self._pool = Queue(maxsize=self.max_connections)
         self._all_connections = []
         self._lock = threading.Lock()
@@ -46,7 +46,7 @@ class ConnectionPool:
     def _create_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(
             self.db_path,
-            timeout=DB_TIMEOUT,
+            timeout=CONFIG['DB_TIMEOUT'],
             check_same_thread=False,
             detect_types=sqlite3.PARSE_DECLTYPES,
         )
@@ -55,9 +55,6 @@ class ConnectionPool:
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.execute("PRAGMA cache_size = -64000")
-        # ⭐ ДОБАВИТЬ:
-        cursor.execute("PRAGMA wal_autocheckpoint = 1000")  # реже делать чекпоинты
-        cursor.execute("PRAGMA mmap_size = 268435456")  # 256 MB memory-mapped I/O
         cursor.execute("PRAGMA busy_timeout = 30000")
         cursor.execute("PRAGMA temp_store = MEMORY")
         cursor.execute("PRAGMA foreign_keys = ON")

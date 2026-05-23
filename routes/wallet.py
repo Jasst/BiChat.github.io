@@ -219,52 +219,58 @@ def last_proof():
     _mining_challenges[address][challenge] = time.time() + _CHALLENGE_TTL
     return jsonify({
         'last_proof': last.get('proof', 0),
+        'last_index': last.get('index', 0),   # ← добавить номер блока
         'difficulty': CONFIG['POW_DIFFICULTY'],
         'challenge': challenge
     })
 
 
 @wallet_bp.route('/wallet/mine', methods=['POST'])
-@rate_limit(limit=3)   # теперь rate_limit определён
+@rate_limit(limit=3)
 def mine():
     if not ENABLE_MINING:
         return jsonify({'error': 'Mining disabled'}), 403
     if 'address' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.get_json()
     proof = data.get('proof')
     challenge = data.get('challenge')
+    last_proof = data.get('last_proof')
+    last_index = data.get('last_index')
     address = session['address']
 
-    if not proof or not challenge:
-        return jsonify({'error': 'proof and challenge required'}), 400
+    # Валидация входных данных
+    if not all([proof, challenge, last_proof is not None, last_index is not None]):
+        return jsonify({'error': 'proof, challenge, last_proof and last_index required'}), 400
 
+    # Проверяем challenge (временный, вне транзакции БД)
     challenges = _mining_challenges.get(address, {})
     if challenge not in challenges or time.time() > challenges[challenge]:
         return jsonify({'error': 'Invalid or expired challenge'}), 400
+
+    # Удаляем использованный challenge
     del _mining_challenges[address][challenge]
 
-    from database import get_db_cursor
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        cursor.execute("BEGIN IMMEDIATE")
-        last = _blockchain._last_block_raw(cursor)
-        if not last:
-            return jsonify({'error': 'No blockchain'}), 500
+    # Атомарная попытка создать блок
+    success, error_msg, reward_amount, block_index = _blockchain.try_mine_block(
+        last_proof, last_index, proof, challenge, address
+    )
 
-        # Защита от слишком частого майнинга (не чаще 1 блока в 2 минуты)
-        if time.time() - last['timestamp'] < 120:
-            return jsonify({'error': 'Too fast, wait before next block'}), 429
+    if not success:
+        # Логируем ошибку для диагностики
+        logger.warning(f"Mining failed for {address}: {error_msg}")
+        return jsonify({'error': error_msg}), 400 if error_msg != "Blockchain moved, try again" else 409
 
-        import hashlib
-        guess = f"{last['proof']}{challenge}{proof}".encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        if not guess_hash.startswith('0' * CONFIG['POW_DIFFICULTY']):
-            return jsonify({'error': 'Invalid proof'}), 400
+    # Успешный майнинг
+    logger.info(f"✅ Block {block_index} mined by {address}, reward: {reward_amount}")
 
-        _blockchain._new_block_raw(cursor, proof, miner_address=address)
-        cursor.execute("COMMIT")
-
-    return jsonify({'message': 'Block mined', 'reward': BLOCK_REWARD}), 200
+    return jsonify({
+        'message': 'Block mined',
+        'reward': reward_amount,
+        'block_index': block_index,
+        'coin_name': COIN_NAME
+    }), 200
 
 @wallet_bp.route('/wallet/global-stats')
 def wallet_global_stats():
@@ -309,3 +315,17 @@ def wallet_global_stats():
         'remaining_supply': remaining,
         'message_fee': MESSAGE_FEE,
     })
+
+
+@wallet_bp.route('/wallet/stats')
+def wallet_stats():
+    if 'address' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    stats = _blockchain.get_conversation_stats(session['address'])
+    db_stats = _blockchain.get_database_stats()
+
+    return jsonify({
+        'user_stats': stats,
+        'database_stats': db_stats
+    }), 200

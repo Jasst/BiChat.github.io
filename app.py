@@ -1,6 +1,10 @@
 """
 app.py — Точка входа: создание Flask-приложения, регистрация blueprint'ов, старт.
 """
+
+#from gevent import monkey
+#monkey.patch_all()
+
 import os
 from datetime import timedelta
 
@@ -17,6 +21,8 @@ from setup import setup_logging
 from setup import rate_limit, message_limiter, api_limiter, get_rate_limit_stats
 from setup import balance_cache, contact_cache, group_cache
 from routes.status import status_bp
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 
 # ── Логирование ─────────────────────────────────────────────────────────────
 setup_logging()
@@ -38,6 +44,9 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(seconds=CONFIG['SESSION_LIFETIME']),
 )
 app.session_interface = SecureCookieSessionInterface()
+# Добавьте эту строку. Число 1 означает, что доверять одному прокси-серверу.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 
 Compress(app)
 
@@ -152,10 +161,14 @@ def health_notifier():
     })
 
 
-
-
 # ── Запуск (для локального тестирования) ───────────────────────────────────
 if __name__ == '__main__':
+    import sys
+
+    if 'waitress' in sys.modules:
+        print("Ошибка: Не запускайте app.py напрямую в продакшене! Используйте run.py")
+        sys.exit(1)
+
     is_production = os.getenv('FLASK_ENV') == 'production'
     app.run(
         host='127.0.0.1' if is_production else '0.0.0.0',

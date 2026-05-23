@@ -30,6 +30,9 @@ def add_contact_route():
     try:
         data = ContactSchema().load(request.get_json())
         if add_contact(session['address'], data['address'], data['name']):
+            # ⭐ Инвалидация кэша диалогов при добавлении контакта
+            from services.messaging import invalidate_conversations_cache
+            invalidate_conversations_cache(session['address'])
             return jsonify({'message': 'Contact added'}), 201
         return jsonify({'error': 'Failed to add contact'}), 500
     except ValidationError as err:
@@ -52,6 +55,9 @@ def add_contact_from_chat():
         if not contact_name:
             contact_name = contact_address[:10] + '...'
         if add_contact(session['address'], contact_address, contact_name):
+            # ⭐ Инвалидация кэша диалогов при добавлении контакта из чата
+            from services.messaging import invalidate_conversations_cache
+            invalidate_conversations_cache(session['address'])
             logger.info(f"Contact {contact_address[:16]}... added from chat")
             return jsonify({'message': 'Contact added'}), 201
         return jsonify({'error': 'Failed to save to database'}), 500
@@ -101,6 +107,11 @@ def delete_contact_route():
             )
             deleted = cursor.rowcount
         bump_contact_cache_version()
+
+        # ⭐ Инвалидация кэша диалогов при удалении контакта
+        from services.messaging import invalidate_conversations_cache
+        invalidate_conversations_cache(user_addr)
+
         if deleted:
             logger.info(f"Contact {contact_address[:16]}... deleted by {user_addr[:16]}...")
             return jsonify({'message': 'Contact deleted'}), 200
@@ -135,6 +146,9 @@ def edit_contact_route():
         if old_name == new_name:
             return jsonify({'message': 'No changes', 'unchanged': True}), 200
         if update_contact_name(user_addr, contact_address, new_name):
+            # ⭐ Инвалидация кэша диалогов при изменении имени контакта
+            from services.messaging import invalidate_conversations_cache
+            invalidate_conversations_cache(user_addr)
             return jsonify({'message': 'Contact name updated',
                             'old_name': old_name, 'new_name': new_name}), 200
         return jsonify({'error': 'Failed to update contact name'}), 500

@@ -58,6 +58,13 @@ def create_group():
                 (group_id, name, creator, json.dumps(members_clean), time.time())
             )
         bump_groups_cache_version()
+
+        # ⭐ Инвалидация кэша диалогов для создателя и всех участников
+        from services.messaging import invalidate_conversations_cache
+        invalidate_conversations_cache(creator)  # создатель
+        for member in members_clean:
+            invalidate_conversations_cache(member)  # все участники
+
         logger.info(f"Group '{name}' created by {creator[:16]}... with {len(members_clean)} members")
         return jsonify({
             'message': 'Group created', 'group_id': group_id, 'name': name,
@@ -82,15 +89,22 @@ def delete_group():
         user_addr = session['address']
         from database import get_db_cursor
         with get_db_cursor(_blockchain.db_path) as cursor:
-            cursor.execute('SELECT id, name, creator FROM groups WHERE id = ?', (group_id,))
+            cursor.execute('SELECT id, name, creator, members FROM groups WHERE id = ?', (group_id,))
             row = cursor.fetchone()
             if not row:
                 return jsonify({'error': 'Group not found'}), 404
             if row[2] != user_addr:
                 return jsonify({'error': 'Only the group creator can delete this group'}), 403
             group_name = row[1]
+            members = json.loads(row[3]) if row[3] else []
             cursor.execute('DELETE FROM groups WHERE id = ?', (group_id,))
         bump_groups_cache_version()
+
+        # ⭐ Инвалидация кэша диалогов для всех участников группы
+        from services.messaging import invalidate_conversations_cache
+        for member in members:
+            invalidate_conversations_cache(member)
+
         logger.info(f"Group '{group_name}' (ID: {group_id}) deleted by {user_addr[:16]}...")
         return jsonify({'message': 'Group deleted', 'group_id': group_id,
                         'group_name': group_name}), 200
@@ -114,14 +128,21 @@ def rename_group():
         user_addr = session['address']
         from database import get_db_cursor
         with get_db_cursor(_blockchain.db_path) as cursor:
-            cursor.execute('SELECT creator FROM groups WHERE id = ?', (group_id,))
+            cursor.execute('SELECT creator, members FROM groups WHERE id = ?', (group_id,))
             row = cursor.fetchone()
             if not row:
                 return jsonify({'error': 'Group not found'}), 404
             if row[0] != user_addr:
                 return jsonify({'error': 'Only the creator can rename this group'}), 403
+            members = json.loads(row[1]) if row[1] else []
             cursor.execute('UPDATE groups SET name = ? WHERE id = ?', (new_name, group_id))
         bump_groups_cache_version()
+
+        # ⭐ Инвалидация кэша диалогов для всех участников группы
+        from services.messaging import invalidate_conversations_cache
+        for member in members:
+            invalidate_conversations_cache(member)
+
         logger.info(f"Group {group_id} renamed to '{new_name}' by {user_addr[:16]}...")
         return jsonify({'message': 'Group renamed', 'name': new_name}), 200
     except Exception as e:
@@ -160,6 +181,12 @@ def add_group_member():
             cursor.execute('UPDATE groups SET members = ? WHERE id = ?',
                            (json.dumps(members), group_id))
         bump_groups_cache_version()
+
+        # ⭐ Инвалидация кэша диалогов для создателя и нового участника
+        from services.messaging import invalidate_conversations_cache
+        invalidate_conversations_cache(user_addr)   # создатель
+        invalidate_conversations_cache(new_member)  # новый участник
+
         logger.info(f"Member {new_member[:16]}... added to group {group_id} by {user_addr[:16]}...")
         return jsonify({'message': 'Member added', 'members': members}), 200
     except Exception as e:
@@ -200,6 +227,12 @@ def remove_group_member():
             cursor.execute('UPDATE groups SET members = ? WHERE id = ?',
                            (json.dumps(members), group_id))
         bump_groups_cache_version()
+
+        # ⭐ Инвалидация кэша диалогов для удалённого участника и создателя
+        from services.messaging import invalidate_conversations_cache
+        invalidate_conversations_cache(user_addr)   # создатель
+        invalidate_conversations_cache(target)      # удалённый участник
+
         logger.info(f"Member {target[:16]}... removed from group {group_id} by {user_addr[:16]}...")
         return jsonify({'message': 'Member removed', 'members': members}), 200
     except Exception as e:

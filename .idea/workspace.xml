@@ -4,9 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB">
+    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/blockchain.db-wal" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -43,7 +42,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATEDCLEAN2" />
+        <entry key="$PROJECT_DIR$" value="mainUPDATEASICIO4" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -90,17 +89,24 @@
     "Python.Socket.executor": "Run",
     "Python.__init__.executor": "Run",
     "Python.app.executor": "Run",
+    "Python.app_async.executor": "Run",
     "Python.auth.executor": "Run",
     "Python.blockchain.executor": "Run",
     "Python.bot.executor": "Run",
     "Python.bot_script.executor": "Run",
+    "Python.ch.executor": "Run",
     "Python.check_env.executor": "Run",
+    "Python.chek.executor": "Run",
     "Python.config.executor": "Debug",
     "Python.cripto_manager.executor": "Run",
     "Python.crypto_manager.executor": "Run",
+    "Python.files.executor": "Run",
     "Python.python app.py.executor": "Run",
     "Python.pythonProject1.executor": "Run",
     "Python.routes.executor": "Run",
+    "Python.run.executor": "Run",
+    "Python.run_waitress.executor": "Run",
+    "Python.run_win.executor": "Run",
     "Python.sec.executor": "Run",
     "Python.setup.executor": "Run",
     "Python.sync_peers.executor": "Run",
@@ -110,8 +116,8 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "mainUPDATEDCLEAN3",
-    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/static",
+    "git-widget-placeholder": "mainUPDATEASICIO5",
+    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -124,8 +130,8 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io" />
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io\static" />
       <recent name="C:\Users\Нел\Documents\GitHub\BiChat" />
@@ -222,22 +228,6 @@
       <workItem from="1720513636923" duration="7525000" />
       <workItem from="1724683315330" duration="603000" />
       <workItem from="1732215911360" duration="2005000" />
-    </task>
-    <task id="LOCAL-00046" summary="Split">
-      <option name="closed" value="true" />
-      <created>1718129048267</created>
-      <option name="number" value="00046" />
-      <option name="presentableId" value="LOCAL-00046" />
-      <option name="project" value="LOCAL" />
-      <updated>1718129048267</updated>
-    </task>
-    <task id="LOCAL-00047" summary="Split">
-      <option name="closed" value="true" />
-      <created>1718135188985</created>
-      <option name="number" value="00047" />
-      <option name="presentableId" value="LOCAL-00047" />
-      <option name="project" value="LOCAL" />
-      <updated>1718135188985</updated>
     </task>
     <task id="LOCAL-00048" summary="Split">
       <option name="closed" value="true" />
@@ -615,7 +605,23 @@
       <option name="project" value="LOCAL" />
       <updated>1720514127909</updated>
     </task>
-    <option name="localTasksCounter" value="95" />
+    <task id="LOCAL-00095" summary="DB">
+      <option name="closed" value="true" />
+      <created>1779292333864</created>
+      <option name="number" value="00095" />
+      <option name="presentableId" value="LOCAL-00095" />
+      <option name="project" value="LOCAL" />
+      <updated>1779292333864</updated>
+    </task>
+    <task id="LOCAL-00096" summary="DB UNICORN">
+      <option name="closed" value="true" />
+      <created>1779292467138</created>
+      <option name="number" value="00096" />
+      <option name="presentableId" value="LOCAL-00096" />
+      <option name="project" value="LOCAL" />
+      <updated>1779292467138</updated>
+    </task>
+    <option name="localTasksCounter" value="97" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -645,7 +651,8 @@
     <MESSAGE value="Split" />
     <MESSAGE value="DB1" />
     <MESSAGE value="DB" />
-    <option name="LAST_COMMIT_MESSAGE" value="DB" />
+    <MESSAGE value="DB UNICORN" />
+    <option name="LAST_COMMIT_MESSAGE" value="DB UNICORN" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -676,24 +683,14 @@
           <option name="timeStamp" value="62" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/services/wallet.py</url>
-          <line>107</line>
+          <url>file://$PROJECT_DIR$/database.py</url>
+          <line>324</line>
           <option name="timeStamp" value="63" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/routes/wallet.py</url>
-          <line>228</line>
-          <option name="timeStamp" value="65" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/routes/wallet.py</url>
-          <line>88</line>
-          <option name="timeStamp" value="66" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/app.py</url>
-          <line>86</line>
-          <option name="timeStamp" value="68" />
+          <line>229</line>
+          <option name="timeStamp" value="64" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

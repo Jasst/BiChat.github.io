@@ -1,7 +1,28 @@
-Flask==2.3.3
-flask-compress==1.14
-marshmallow==3.20.1
-mnemonic==0.20
+# Core
+flask~=3.1.3
+quart==0.19.4
+quart-cors==0.6.0
+hypercorn==0.14.3
+
+# Database
+asyncpg==0.29.0
+
+# Redis
+redis==5.0.1
+
+# Cryptography
 cryptography==41.0.7
-cachetools==5.3.1
+
+# Utils
 python-dotenv==1.0.0
+werkzeug~=3.1.8
+
+# Templates
+jinja2==3.1.2
+
+# Compression
+brotli==1.1.0
+Flask-Compress~=1.14
+marshmallow~=3.20.1
+requests~=2.34.2
+waitress~=3.0.2
