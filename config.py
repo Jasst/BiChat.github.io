@@ -57,22 +57,22 @@ if sys.platform == 'win32':
 os.makedirs(os.path.dirname(DATABASE_PATH) or '.', exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-COIN          = 1_000_000
+COIN          = 1000000
 COIN_NAME     = "BlockCoin"
-TRANSFER_FEE  = 50_000
+TRANSFER_FEE  = int(os.getenv('TRANSFER_FEE', 50000))
+MESSAGE_FEE = int(os.getenv('MESSAGE_FEE', 100))
 MIN_BALANCE   = 0
 
-AIRDROP_AMOUNT = 10_00
+AIRDROP_AMOUNT  = int(os.getenv('AIRDROP_AMOUNT', 1000))
 
-MIN_STAKE_AMOUNT  = 10 * COIN
+MIN_STAKE_AMOUNT  = int(os.getenv('MIN_STAKE_AMOUNT', 10 * COIN))
 STAKE_LOCK_BLOCKS = int(os.getenv('STAKE_LOCK_BLOCKS', 100))
+BLOCK_REWARD = int(os.getenv('BLOCK_REWARD', 0.1*COIN))
 
-BLOCK_REWARD = 0.1 * COIN
+
 
 ENABLE_MINING  = os.getenv('ENABLE_MINING', '1') == '1'
 ENABLE_STAKING = os.getenv('ENABLE_STAKING', '1') == '1'
-
-MESSAGE_FEE = 100
 
 STAKING_FEE_POOL_ADDRESS = 'staking_fee_pool'
 
@@ -82,7 +82,7 @@ if not SECRET_KEY or len(SECRET_KEY) < 32:
     logging.warning("SECRET_KEY NOT FOUND in env! Sessions will reset on restart!")
 
 MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
-MAX_SUPPLY = 21_000_000 * COIN
+MAX_SUPPLY = 21_000_000
 
 ARCHIVE_OLD_MESSAGES_DAYS = int(os.getenv('ARCHIVE_OLD_MESSAGES_DAYS', 90))
 ARCHIVE_ENABLED = os.getenv('ARCHIVE_ENABLED', '1') == '1'
