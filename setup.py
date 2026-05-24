@@ -163,6 +163,14 @@ class QueryCache:
             self._misses += 1
             return None
 
+    def get_or_set(self, key, value_factory):
+        with self._lock:
+            value = self.get(key)
+            if value is None:
+                value = value_factory()
+                self.set(key, value)
+            return value
+
     def set(self, key: str, value) -> None:
         with self._lock:
             self._cache[key] = (value, time.time() + self.ttl_seconds)

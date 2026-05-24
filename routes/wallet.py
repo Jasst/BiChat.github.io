@@ -10,18 +10,22 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from config import (
     COIN, COIN_NAME, TRANSFER_FEE, MIN_STAKE_AMOUNT, BLOCK_REWARD, CONFIG,
-    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE, MAX_SUPPLY,
+    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE, MAX_SUPPLY,MINING_CHALLENGE_TTL
 )
 from dependencies import require_auth, make_rate_limit_dep
 from models import TransferRequest, StakeRequest, MineRequest
 from services.wallet import staking_manager
 from setup import general_limiter
+from threading import Lock
+
+_mining_challenges = {}
+_mining_challenges_lock = Lock()
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/wallet', tags=['wallet'])
 
-_mining_challenges: dict = defaultdict(dict)
-_CHALLENGE_TTL = 60  # seconds
+
+_CHALLENGE_TTL = MINING_CHALLENGE_TTL  # seconds
 
 _blockchain = None
 
@@ -181,7 +185,9 @@ def last_proof(address: str = Depends(require_auth)):
         last = _blockchain._last_block_raw(cursor)
 
     challenge = secrets.token_hex(16)
-    _mining_challenges[address][challenge] = time.time() + _CHALLENGE_TTL
+    with _mining_challenges_lock:
+        _mining_challenges.setdefault(address, {})[challenge] = time.time() + _CHALLENGE_TTL
+
     return {
         'last_proof': last.get('proof', 0),
         'last_index': last.get('index', 0),
@@ -195,11 +201,14 @@ def mine(body: MineRequest, address: str = Depends(require_auth)):
     if not ENABLE_MINING:
         raise HTTPException(403, 'Mining disabled')
 
-    challenges = _mining_challenges.get(address, {})
-    if body.challenge not in challenges or time.time() > challenges[body.challenge]:
-        raise HTTPException(400, 'Invalid or expired challenge')
-
-    del _mining_challenges[address][body.challenge]
+    # Блокировка для доступа к _mining_challenges
+    with _mining_challenges_lock:
+        challenges = _mining_challenges.get(address, {})
+        if body.challenge not in challenges or time.time() > challenges[body.challenge]:
+            raise HTTPException(400, 'Invalid or expired challenge')
+        del _mining_challenges[address][body.challenge]
+        if not _mining_challenges[address]:  # если словарь стал пустым – удаляем ключ
+            del _mining_challenges[address]
 
     success, error_msg, reward_amount, block_index = _blockchain.try_mine_block(
         body.last_proof, body.last_index, body.proof, body.challenge, address
@@ -217,7 +226,6 @@ def mine(body: MineRequest, address: str = Depends(require_auth)):
         'block_index': block_index,
         'coin_name':   COIN_NAME,
     }
-
 
 @router.get('/global-stats')
 def wallet_global_stats():
@@ -252,9 +260,3 @@ def wallet_global_stats():
         'message_fee':          MESSAGE_FEE,
     }
 
-
-@router.get('/stats')
-def wallet_stats(address: str = Depends(require_auth)):
-    stats    = _blockchain.get_conversation_stats(address)
-    db_stats = _blockchain.get_database_stats()
-    return {'user_stats': stats, 'database_stats': db_stats}

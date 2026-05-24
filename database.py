@@ -14,7 +14,7 @@ from queue import Queue
 from typing import Optional, List, Dict, Any
 
 from config import CONFIG, DATABASE_PATH, BLOCK_REWARD, ENABLE_MINING, DB_POOL_SIZE, DB_TIMEOUT
-from config import ARCHIVE_OLD_MESSAGES_DAYS, ARCHIVE_ENABLED, FTS_ENABLED
+from config import ARCHIVE_OLD_MESSAGES_DAYS, ARCHIVE_ENABLED, FTS_ENABLED, ARCHIVE_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -90,15 +90,19 @@ class ConnectionPool:
         self._cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
         self._cleanup_thread.start()
 
-    def get_connection(self) -> sqlite3.Connection:
+    def get_connection(self, timeout: float = None) -> sqlite3.Connection:
         if self._closed:
             raise RuntimeError("Connection pool is closed")
-        # Ленивая проверка: если соединение из очереди мёртвое, заменяем
+        if timeout is None:
+            timeout = DB_TIMEOUT
+        try:
+            conn = self._pool.get(timeout=timeout)
+        except Exception:
+            raise RuntimeError("Could not get database connection from pool")
         while True:
-            conn = self._pool.get()
             if self._is_conn_alive(conn):
                 return conn
-            # Мёртвое – заменяем
+            # мёртвое – заменяем
             with self._lock:
                 try:
                     conn.close()
@@ -142,7 +146,7 @@ def init_connection_pool(db_path: str, max_connections: int = 10) -> None:
 @contextmanager
 def get_db_cursor(db_path: str = None):
     if _connection_pool:
-        conn = _connection_pool.get_connection()
+        conn = _connection_pool.get_connection(timeout=DB_TIMEOUT)
         use_pool = True
     else:
         conn = sqlite3.connect(
@@ -468,10 +472,11 @@ class Blockchain:
                     VALUES (new.id, new.content, new.sender, new.recipient);
                 END
             ''')
+            
             # Индексация существующих данных пакетами
             cursor.execute("SELECT COUNT(*) FROM transactions")
             total = cursor.fetchone()[0]
-            batch_size = 10000
+            batch_size = ARCHIVE_BATCH_SIZE
             for offset in range(0, total, batch_size):
                 cursor.execute('''
                     INSERT INTO messages_fts(rowid, content, sender, recipient)
@@ -532,7 +537,7 @@ class Blockchain:
 
         if archived_count > 0:
             # Удаляем пачками по 1000, используя тот же archive_time
-            batch_size = 1000
+            batch_size = ARCHIVE_BATCH_SIZE
             total_deleted = 0
             while True:
                 cursor.execute('''

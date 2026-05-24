@@ -65,6 +65,9 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 WHERE user_address = ? AND chat_id IN ({placeholders})
             ''', (user_address, *chat_ids))
             read_map = {row['chat_id']: row['last_read_message_id'] for row in cursor.fetchall()}
+            # Получить группы один раз до цикла
+            user_groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
+            groups_by_id = {g['id']: g for g in user_groups}
 
             for row in rows:
                 partner      = row['partner']
@@ -73,22 +76,20 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 last_sender  = row['last_sender']
                 last_read_id = read_map.get(partner, 0)
 
+                if partner.startswith('group:'):
+                    group_id = partner.split(':', 1)[1]
+                    group = groups_by_id.get(group_id)
+                    name = group['name'] if group else f'Группа {group_id[:8]}...'
+                    is_group = True
+                else:
+                    name = (get_contact_name_cached(user_address, partner, cache_version=get_contact_cache_version())
+                            or partner[:10] + "...")
+                    is_group = False
+
                 if last_read_id >= last_msg_id:
                     preview = "✓ Прочитано"
                 else:
                     preview = "💬 Новое сообщение" if last_sender != user_address else "Вы: сообщение"
-
-                if partner.startswith('group:'):
-                    group_id = partner.split(':', 1)[1]
-                    groups   = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
-                    group    = next((g for g in groups if g['id'] == group_id), None)
-                    name     = group['name'] if group else f'Группа {group_id[:8]}...'
-                    is_group = True
-                else:
-                    name = (get_contact_name_cached(user_address, partner,
-                                                    cache_version=get_contact_cache_version())
-                            or partner[:10] + "...")
-                    is_group = False
 
                 conversations.append({
                     'address':      partner,

@@ -120,11 +120,10 @@ async def wait_for_messages(
     from database import get_db_cursor
     with get_db_cursor(_blockchain.db_path) as cursor:
         cache_key = f"user_exists:{address}"
-        exists = balance_cache.get(cache_key)
-        if exists is None:
-            cursor.execute('SELECT 1 FROM wallets WHERE address = ?', (address,))
-            exists = cursor.fetchone() is not None
-            balance_cache.set(cache_key, exists)
+        exists = balance_cache.get_or_set(
+            cache_key,
+            lambda: cursor.execute('SELECT 1 FROM wallets WHERE address = ?', (address,)).fetchone() is not None
+        )
         if not exists:
             raise HTTPException(403, 'Invalid user')
 
@@ -320,17 +319,30 @@ def get_conversation(
     with get_db_cursor(_blockchain.db_path) as cursor:
         if chat_with.startswith('group:'):
             group_id = chat_with.split(':', 1)[1]
-            groups   = get_user_groups_cached(address, cache_version=get_groups_cache_version())
+            groups = get_user_groups_cached(address, cache_version=get_groups_cache_version())
             if not any(g['id'] == group_id and address in g['members'] for g in groups):
                 raise HTTPException(403, 'No access')
-            query  = ('SELECT id, sender, recipient, content, image, timestamp, metadata '
-                      'FROM transactions WHERE recipient = ?')
+            query = ('SELECT id, sender, recipient, content, image, timestamp, metadata '
+                     'FROM transactions WHERE recipient = ?')
             params = [chat_with]
+
+            # Преобразуем last_message_id и before_id в timestamp для надёжной пагинации
             if last_message_id:
-                query += ' AND id > ?'; params.append(last_message_id)
+                cursor.execute("SELECT timestamp FROM transactions WHERE id = ?", (last_message_id,))
+                row_ts = cursor.fetchone()
+                if row_ts:
+                    query += ' AND timestamp > ?'
+                    params.append(row_ts[0])
             if before_id:
-                query += ' AND id < ?';  params.append(before_id)
-            query += ' ORDER BY timestamp ASC LIMIT ?'; params.append(limit)
+                cursor.execute("SELECT timestamp FROM transactions WHERE id = ?", (before_id,))
+                row_ts = cursor.fetchone()
+                if row_ts:
+                    query += ' AND timestamp < ?'
+                    params.append(row_ts[0])
+
+            query += ' ORDER BY timestamp ASC LIMIT ?'
+            params.append(limit)
+            cursor.execute(query, params)
         else:
             # Используем UNION ALL с подзапросом, условиями и алиасом
             base_query = """

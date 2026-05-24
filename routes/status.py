@@ -9,11 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from database import get_db_cursor
 from dependencies import require_auth
 from models import HeartbeatRequest, ManyStatusesRequest
+from config import ONLINE_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['status'])
 
-ONLINE_TIMEOUT = 60  # seconds
+ONLINE_TIMEOUT = ONLINE_TIMEOUT_SECONDS
 
 
 @router.post('/heartbeat')
