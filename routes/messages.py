@@ -22,7 +22,7 @@ from services.messaging import (get_conversations_list_cached,
                                 invalidate_conversations_cache)
 from services.notifier import message_notifier
 from services.wallet import staking_manager, mine_block_async
-from setup import message_limiter
+from setup import message_limiter, balance_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['messages'])
@@ -115,11 +115,16 @@ async def wait_for_messages(
         return JSONResponse({'messages': [], 'throttled': True, 'timestamp': now},
                             headers=_no_cache_headers())
 
-    # Validate user exists
+    # Validate user exists (кэшированная проверка)
     from database import get_db_cursor
     with get_db_cursor(_blockchain.db_path) as cursor:
-        cursor.execute('SELECT 1 FROM wallets WHERE address = ?', (address,))
-        if not cursor.fetchone():
+        cache_key = f"user_exists:{address}"
+        exists = balance_cache.get(cache_key)
+        if exists is None:
+            cursor.execute('SELECT 1 FROM wallets WHERE address = ?', (address,))
+            exists = cursor.fetchone() is not None
+            balance_cache.set(cache_key, exists)
+        if not exists:
             raise HTTPException(403, 'Invalid user')
 
     # Run blocking wait in thread pool so we don't block the event loop
@@ -326,25 +331,29 @@ def get_conversation(
                 query += ' AND id < ?';  params.append(before_id)
             query += ' ORDER BY timestamp ASC LIMIT ?'; params.append(limit)
         else:
-            query = '''
+            # Используем UNION ALL с подзапросом, условиями и алиасом
+            base_query = """
                 SELECT id, sender, recipient, content, image, timestamp, metadata
                 FROM (
                     SELECT * FROM transactions WHERE sender = ? AND recipient = ?
                     UNION ALL
                     SELECT * FROM transactions WHERE sender = ? AND recipient = ?
-                )
-            '''
-            params  = [address, chat_with, chat_with, address]
-            filters = []
+                ) AS t
+            """
+            params = [address, chat_with, chat_with, address]
+            conditions = []
             if last_message_id:
-                filters.append('id > ?'); params.append(last_message_id)
+                conditions.append("id > ?")
+                params.append(last_message_id)
             if before_id:
-                filters.append('id < ?');  params.append(before_id)
-            if filters:
-                query += ' WHERE ' + ' AND '.join(filters)
-            query += ' ORDER BY timestamp DESC LIMIT ?'; params.append(limit)
+                conditions.append("id < ?")
+                params.append(before_id)
+            if conditions:
+                base_query += " WHERE " + " AND ".join(conditions)
+            base_query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+            cursor.execute(base_query, params)
 
-        cursor.execute(query, params)
         rows = cursor.fetchall()
 
     messages = []

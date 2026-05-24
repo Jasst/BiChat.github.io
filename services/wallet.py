@@ -98,19 +98,19 @@ class StakingManager:
         with self.lock:
             with get_db_cursor(_db_path) as cursor:
                 cursor.execute("BEGIN IMMEDIATE")
-                # ✅ Ограничение: не более 10 активных стейков на пользователя
                 cursor.execute('SELECT COUNT(*) FROM stakes WHERE address=? AND active=1', (address,))
                 if cursor.fetchone()[0] >= 10:
                     logger.warning(f"Stake limit exceeded for {address}")
                     return -1
 
-                cursor.execute('SELECT balance FROM wallets WHERE address=?', (address,))
-                row = cursor.fetchone()
-                if not row or row[0] < amount_sats:
+                # --- ВМЕСТО SELECT + UPDATE -> UPDATE с проверкой ---
+                cursor.execute(
+                    'UPDATE wallets SET balance = balance - ? WHERE address = ? AND balance >= ?',
+                    (amount_sats, address, amount_sats)
+                )
+                if cursor.rowcount == 0:
                     return -1
-
-                # Блокируем средства
-                cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?', (amount_sats, address))
+                # ----------------------------------------------------
                 cursor.execute(
                     'INSERT INTO wallets (address, balance) VALUES (?, ?) '
                     'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',

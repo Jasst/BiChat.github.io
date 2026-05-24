@@ -413,12 +413,19 @@ class Blockchain:
             'CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)',
             'CREATE INDEX IF NOT EXISTS idx_archive_timestamp ON transactions_archive(timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_archive_sender ON transactions_archive(sender)',
-            # Составной индекс для ускорения архивации (статус + время)
             'CREATE INDEX IF NOT EXISTS idx_transactions_archive_scan ON transactions(timestamp, status)',
         ]
         trans_cols = [row[1] for row in cursor.execute("PRAGMA table_info('transactions')")]
         if 'status' in trans_cols:
             indexes.append('CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)')
+
+        # --- НОВЫЕ ИНДЕКСЫ ---
+        indexes.append(
+            'CREATE INDEX IF NOT EXISTS idx_tx_sender_recipient_ts ON transactions(sender, recipient, timestamp)')
+        indexes.append(
+            'CREATE INDEX IF NOT EXISTS idx_tx_recipient_sender_ts ON transactions(recipient, sender, timestamp)')
+        indexes.append('CREATE INDEX IF NOT EXISTS idx_tx_timestamp_sender ON transactions(timestamp DESC, sender)')
+        # ---------------------
 
         for sql in indexes:
             try:
@@ -698,6 +705,25 @@ class Blockchain:
              sender_pubkey, json.dumps(metadata) if metadata else None)
         )
         return cursor.lastrowid
+
+    def new_transactions_batch(self, cursor: sqlite3.Cursor, transactions: list) -> list:
+        """
+        transactions: список кортежей (sender, recipient, content, image, sender_pubkey, metadata)
+        Возвращает список id вставленных записей.
+        """
+        cursor.execute("BEGIN IMMEDIATE")
+        ids = []
+        for tx in transactions:
+            cursor.execute(
+                'INSERT INTO transactions '
+                '(sender, recipient, content, image, timestamp, sender_pubkey, metadata) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (tx[0], tx[1], tx[2], tx[3], time.time(), tx[4],
+                 json.dumps(tx[5]) if tx[5] else None)
+            )
+            ids.append(cursor.lastrowid)
+        cursor.execute("COMMIT")
+        return ids
 
     def proof_of_work(self, last_proof: int) -> int:
         proof = 0

@@ -92,14 +92,15 @@ def wallet_send(body: TransferRequest, address: str = Depends(require_auth)):
     from database import get_db_cursor
     with get_db_cursor(_blockchain.db_path) as cursor:
         cursor.execute('BEGIN IMMEDIATE')
-        cursor.execute('SELECT balance FROM wallets WHERE address = ?', (address,))
-        row     = cursor.fetchone()
-        balance = row[0] if row else 0
-        if balance < total:
+        # --- ВМЕСТО SELECT + UPDATE -> один UPDATE с проверкой ---
+        cursor.execute(
+            'UPDATE wallets SET balance = balance - ? WHERE address = ? AND balance >= ?',
+            (total, address, total)
+        )
+        if cursor.rowcount == 0:
             cursor.execute('ROLLBACK')
             raise HTTPException(400, f'Insufficient balance. Need {total / COIN} {COIN_NAME}')
-
-        cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?', (total, address))
+        # ---------------------------------------------------------
         cursor.execute(
             'INSERT INTO wallets (address, balance) VALUES (?, ?) '
             'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
@@ -126,7 +127,6 @@ def wallet_send(body: TransferRequest, address: str = Depends(require_auth)):
         cursor.execute('COMMIT')
 
     return {'message': 'Sent', 'amount': body.amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}
-
 
 @router.post('/stake')
 def stake(body: StakeRequest, address: str = Depends(require_auth)):

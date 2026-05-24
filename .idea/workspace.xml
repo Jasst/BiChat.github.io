@@ -5,16 +5,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
+      <change afterPath="$PROJECT_DIR$/tests/pytest-benchmark.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/start_app.bat" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_db_benchmark.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/SECURITY.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.pid" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/databaseFiX.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/install_autostart_task.bat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_win.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_win_dev.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/wallet.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/wallet.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -51,7 +49,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="PostgreSQLFastApi" />
+        <entry key="$PROJECT_DIR$" value="PostgreSQLFastApi2" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -91,6 +89,7 @@
     "Flask server.BiChat.github.io.executor": "Run",
     "Flask server.Flask (app.py).executor": "Run",
     "Node.js.Privet.js.executor": "Run",
+    "Python tests.Python tests in BENCHMARK.PY.executor": "Run",
     "Python.Bot 2.executor": "Run",
     "Python.Interface.executor": "Run",
     "Python.Jarvis.executor": "Run",
@@ -110,6 +109,7 @@
     "Python.cripto_manager.executor": "Run",
     "Python.crypto_manager.executor": "Run",
     "Python.files.executor": "Run",
+    "Python.pytest-benchmark.executor": "Run",
     "Python.python app.py.executor": "Run",
     "Python.pythonProject1.executor": "Run",
     "Python.routes.executor": "Run",
@@ -125,8 +125,8 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "PostgreSQLFastApi2",
-    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/services",
+    "git-widget-placeholder": "PostgreSQLFastApi3",
+    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/tests",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -139,11 +139,11 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\tests" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\data" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\services" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
-      <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io" />
-      <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io\static" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\Trash" />
@@ -700,6 +700,16 @@
           <url>file://$PROJECT_DIR$/routes/wallet.py</url>
           <line>194</line>
           <option name="timeStamp" value="64" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/database.py</url>
+          <line>401</line>
+          <option name="timeStamp" value="67" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/tests/test_db_benchmark.py</url>
+          <line>141</line>
+          <option name="timeStamp" value="69" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
