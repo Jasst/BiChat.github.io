@@ -24,6 +24,7 @@ from services.notifier import message_notifier
 from services.wallet import staking_manager, mine_block_async
 from setup import message_limiter, balance_cache
 
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['messages'])
 
@@ -463,7 +464,7 @@ def get_message_statuses(body: MessageStatusesRequest, address: str = Depends(re
 # =============================================================================
 
 @router.get('/get_public_key/{addr}')
-def get_public_key(addr: str):
+def get_public_key(addr: str, address: str = Depends(require_auth)):
     from cache import (get_cached_public_key, get_pubkey_cache_version,
                        fetch_public_key_from_chain)
     pubkey, verified = get_cached_public_key(addr, cache_version=get_pubkey_cache_version())

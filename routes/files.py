@@ -53,6 +53,9 @@ async def upload_file(
     file: UploadFile = File(...),
     address: str = Depends(require_auth),
 ):
+    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    ALLOWED_MIMES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+
     filepath = None
     try:
         content = await file.read()
@@ -61,24 +64,29 @@ async def upload_file(
         if not file.filename:
             raise HTTPException(400, 'Empty filename')
 
-        # Sanitize filename
-        safe_name   = os.path.basename(file.filename).replace(' ', '_')
-        unique_name = f"{uuid.uuid4().hex}_{safe_name}"
-        filepath    = os.path.join(UPLOAD_FOLDER, unique_name)
+        # 1. Проверка MIME по содержимому
+        detected_mime = validate_image_file(content[:12])
+        if not detected_mime:
+            raise HTTPException(400, 'Only image files are allowed')
+
+        # 2. Проверка заявленного MIME (если есть)
+        if file.content_type and file.content_type not in ALLOWED_MIMES:
+            raise HTTPException(400, 'Invalid image MIME type')
+
+        # 3. Проверка расширения
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(400, 'Unsupported file extension')
+
+        # 4. Безопасное имя файла (без расширения)
+        safe_name = uuid.uuid4().hex
+        filepath = os.path.join(UPLOAD_FOLDER, safe_name)
 
         with open(filepath, 'wb') as f:
             f.write(content)
 
-        detected_mime = validate_image_file(content[:12])
-        declared_mime = file.content_type or ''
-
-        if declared_mime.startswith('image/') or detected_mime:
-            if detected_mime:
-                b64 = base64.b64encode(content).decode()
-                os.remove(filepath)
-                return {'file_url': f"{detected_mime};base64,{b64}"}
-
-        return {'file_url': f"/uploads/{unique_name}"}
+        # 5. Возвращаем ссылку на файл (можно также вернуть base64, но безопаснее ссылку)
+        return {'file_url': f"/uploads/{safe_name}"}
 
     except HTTPException:
         raise
@@ -90,11 +98,21 @@ async def upload_file(
 
 
 @router.get('/uploads/{filename}')
-def serve_upload(filename: str):
+def serve_upload(filename: str, address: str = Depends(require_auth)):  # <-- добавить auth
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     if not os.path.exists(filepath):
         raise HTTPException(404, 'File not found')
-    return FileResponse(filepath)
+
+    # Проверим MIME по содержимому
+    with open(filepath, 'rb') as f:
+        content = f.read(12)
+    mime = validate_image_file(content)
+    if not mime:
+        raise HTTPException(403, 'Forbidden')
+
+    return FileResponse(filepath, media_type=mime, headers={
+        'Content-Disposition': 'inline' if mime.startswith('image/') else 'attachment'
+    })
 
 
 @router.post('/delete_message')
