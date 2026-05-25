@@ -148,7 +148,7 @@ class QueryCache:
     def __init__(self, ttl_seconds: float = 5.0):
         self.ttl_seconds = ttl_seconds
         self._cache: Dict[str, tuple] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._hits = 0
         self._misses = 0
 

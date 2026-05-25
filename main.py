@@ -17,6 +17,7 @@ from database import Blockchain, init_sqlite_optimizations, warmup_database, ini
 from setup import setup_logging, get_rate_limit_stats
 from setup import balance_cache, contact_cache, group_cache
 
+
 # ── Логирование ─────────────────────────────────────────────────────────────
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -131,6 +132,7 @@ from routes.groups   import router as groups_router
 from routes.wallet   import router as wallet_router
 from routes.files    import router as files_router
 from routes.status   import router as status_router
+from routes.ai_assistant import router as ai_router
 
 app.include_router(auth_router)
 app.include_router(messages_router)
@@ -139,7 +141,7 @@ app.include_router(groups_router)
 app.include_router(wallet_router)
 app.include_router(files_router)
 app.include_router(status_router)
-
+app.include_router(ai_router)
 
 # ── Cache headers middleware ──────────────────────────────────────────────────
 

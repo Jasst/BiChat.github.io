@@ -1,3 +1,18 @@
+// Глобальный объект Utils для escape-функций
+(function() {
+    if (window.chatJsLoaded) return;
+    window.chatJsLoaded = true;
+
+window.Utils = window.Utils || {};
+Utils.escapeHtml = function(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+};
 
 // =============================================================================
 // === Инициализация ===
@@ -24,7 +39,7 @@ const State = {
   pendingImageData: null,
   topObserver: null
 };
-
+window.State = State;
 let isSending = false;
 let userKeys = null;
 const pubKeyCache = new Map();
@@ -618,6 +633,12 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 // === sendMessage ===
 // =============================================================================
 async function sendMessage() {
+   // ✅ Добавьте эти 3 строки в самое начало
+  if (window.isAiChatActive === true || (window.State && window.State.currentChatAddress === 'ai_bot')) {
+        console.log('⛔ sendMessage ignored because AI chat is active');
+        return;
+    }
+  console.log('[CHAT] sendMessage called, State.pendingImageData=', State.pendingImageData);
   const contentEl = document.getElementById('messageContent');
   const sendBtn = document.getElementById('sendButton');
   const attachBtn = document.getElementById('attachImageButton');
@@ -1375,3 +1396,6 @@ window.handleImageSelection = handleImageSelection;
 window.addContactFromChat = addContactFromChat;
 window.clearConversation = clearConversation;
 window.processMessageDecryption = processMessageDecryption;
+window.setupLongPolling = setupLongPolling;
+
+})();
