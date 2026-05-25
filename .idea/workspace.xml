@@ -5,16 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
-      <change afterPath="$PROJECT_DIR$/1.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/bot.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/ai_assistant.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/static/js/AiChat.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/routes/ai_assistantTEST.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/setup.py" beforeDir="false" afterPath="$PROJECT_DIR$/setup.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/LongPollingClient.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/LongPollingClient.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/chat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/chat.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.pid" beforeDir="false" afterPath="$PROJECT_DIR$/app.pid" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -51,7 +44,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="PostgreSQLFastApi3" />
+        <entry key="$PROJECT_DIR$" value="PostgreSQLFastApiAI" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -128,8 +121,8 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "PostgreSQLFastApi4",
-    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/tests",
+    "git-widget-placeholder": "PostgreSQLFastApiAI2",
+    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/routes",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -142,11 +135,11 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\routes" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\tests" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\data" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\services" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
