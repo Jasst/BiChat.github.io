@@ -5,9 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
-      <change afterPath="$PROJECT_DIR$/routes/ai_assistantTEST.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/routes/ai_assistantVISION.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.pid" beforeDir="false" afterPath="$PROJECT_DIR$/app.pid" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/ai_assistant.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/ai_assistant.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -91,6 +91,7 @@
     "Python.Qbyte.executor": "Run",
     "Python.Socket.executor": "Run",
     "Python.__init__.executor": "Run",
+    "Python.ai_assistant.executor": "Run",
     "Python.app.executor": "Run",
     "Python.app_async.executor": "Run",
     "Python.auth.executor": "Run",
@@ -153,16 +154,6 @@
     <option name="myCommands">
       <command value="pip install -r requirements.txt" />
     </option>
-  </component>
-  <component name="RunManager">
-    <recent_temporary>
-      <list>
-        <item itemvalue="Python.python app.py" />
-        <item itemvalue="Python.python app.py" />
-        <item itemvalue="Python.python app.py" />
-        <item itemvalue="Python.python app.py" />
-      </list>
-    </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -688,6 +679,11 @@
           <url>file://$PROJECT_DIR$/bot.py</url>
           <line>8</line>
           <option name="timeStamp" value="70" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/routes/ai_assistant.py</url>
+          <line>303</line>
+          <option name="timeStamp" value="71" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
