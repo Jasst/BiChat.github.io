@@ -1397,5 +1397,6 @@ window.addContactFromChat = addContactFromChat;
 window.clearConversation = clearConversation;
 window.processMessageDecryption = processMessageDecryption;
 window.setupLongPolling = setupLongPolling;
+window.closeNewChatModal = closeNewChatModal;
 
 })();
