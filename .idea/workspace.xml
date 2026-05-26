@@ -6,13 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.pid" beforeDir="false" afterPath="$PROJECT_DIR$/app.pid" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/ai_assistant.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/ai_assistant.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/AiChat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/AiChat.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/LongPollingClient.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/LongPollingClient.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/chat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/chat.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/contacts.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/contacts.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.pid" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
