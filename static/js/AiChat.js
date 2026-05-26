@@ -1,36 +1,60 @@
-// AiChat.js — AI Assistant с потоковым отображением ответа (исправленная версия)
+// AiChat.js — полностью изолированный AI-чат (работает только со своим контейнером)
 (function() {
+    if (window._aiChatLoaded) return;
+    window._aiChatLoaded = true;
+
     let aiChatActive = false;
-    let originalSelectConversation = null;
-    let typingIndicator = null;
     let pendingImageFile = null;
     let currentStreamingMessage = null;
     let currentStreamingText = '';
     let currentStreamReader = null;
+    let isSending = false;
+    let currentImagePreviewUrl = null;
+
+    // DOM-элементы AI-чата
+    let aiMessagesContainer = null;
+    let aiMessageInput = null;
+    let aiSendBtn = null;
+    let aiAttachBtn = null;
+    let aiImageInput = null;
+    let aiClearHistoryBtn = null;
+    let closeAiChatBtn = null;
+
+    const CONFIG = {
+        historyMaxLength: 200,
+        imageMaxWidth: 800,
+        imageQuality: 0.7,
+        apiEndpoint: '/ai/chat'
+    };
 
     function escapeHtml(str) {
         if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
+        return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))
+                  .replace(/['"]/g, m => ({ "'": '&#39;', '"': '&quot;' }[m]));
     }
 
+    function getStoredHistory() {
+        try {
+            return JSON.parse(localStorage.getItem('ai_chat_history') || '[]');
+        } catch (e) {
+            return [];
+        }
+    }
+    function setStoredHistory(history) {
+        try {
+            localStorage.setItem('ai_chat_history', JSON.stringify(history));
+        } catch (e) {}
+    }
     function saveAiMessage(role, text, timestamp = Date.now()) {
-        const chatId = 'ai_bot';
-        let history = JSON.parse(localStorage.getItem(`ai_chat_${chatId}`) || '[]');
+        let history = getStoredHistory();
         history.push({ role, text, timestamp });
-        if (history.length > 200) history = history.slice(-200);
-        localStorage.setItem(`ai_chat_${chatId}`, JSON.stringify(history));
+        if (history.length > CONFIG.historyMaxLength) history = history.slice(-CONFIG.historyMaxLength);
+        setStoredHistory(history);
     }
-
     function loadAiHistory() {
-        const container = document.getElementById('messagesContainer');
-        if (!container) return;
-        const history = JSON.parse(localStorage.getItem('ai_chat_ai_bot') || '[]');
-        container.innerHTML = '';
+        if (!aiMessagesContainer) return;
+        const history = getStoredHistory();
+        aiMessagesContainer.innerHTML = '';
         history.forEach(msg => {
             displayAiMessage(msg.text, msg.role === 'user', null, false);
         });
@@ -40,23 +64,65 @@
     }
 
     function clearAiHistory() {
-        if (confirm('Очистить всю историю диалога с AI-ботом?')) {
-            localStorage.removeItem('ai_chat_ai_bot');
-            const container = document.getElementById('messagesContainer');
-            if (container) {
-                container.innerHTML = '';
-                displayAiMessage('История очищена. Начните новый диалог.', false, null, false);
+        const modalId = 'confirmClearAiModal';
+        let modal = document.getElementById(modalId);
+        if (!modal && window.ModalManager) {
+            modal = document.createElement('div');
+            modal.id = modalId;
+            modal.className = 'modal-overlay hidden';
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 400px;">
+                    <header class="modal-header">
+                        <h3>Очистить историю?</h3>
+                        <button class="modal-close" onclick="ModalManager.close('${modalId}')">&times;</button>
+                    </header>
+                    <div class="modal-body">
+                        <p>Вы уверены, что хотите очистить всю историю диалога с AI-ботом?</p>
+                    </div>
+                    <footer class="modal-footer">
+                        <button class="btn btn-ghost" onclick="ModalManager.close('${modalId}')">Отмена</button>
+                        <button class="btn btn-primary" id="confirmClearAiBtn">Очистить</button>
+                    </footer>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        if (window.ModalManager) {
+            // Устанавливаем обработчик на кнопку подтверждения (убираем старый, чтобы не дублировать)
+            const confirmBtn = modal.querySelector('#confirmClearAiBtn');
+            const oldHandler = confirmBtn.onclick;
+            confirmBtn.onclick = () => {
+                if (oldHandler) oldHandler();
+                localStorage.removeItem('ai_chat_history');
+                if (aiMessagesContainer) {
+                    aiMessagesContainer.innerHTML = '';
+                    displayAiMessage('История очищена. Начните новый диалог.', false, null, false);
+                }
+                ModalManager.close(modalId);
+                showToast('История очищена', 'success');
+            };
+            ModalManager.open(modalId);
+        } else {
+            // fallback
+            if (confirm('Очистить всю историю диалога с AI-ботом?')) {
+                localStorage.removeItem('ai_chat_history');
+                if (aiMessagesContainer) {
+                    aiMessagesContainer.innerHTML = '';
+                    displayAiMessage('История очищена. Начните новый диалог.', false, null, false);
+                }
             }
         }
     }
 
-    async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
+    async function compressImage(dataUrl, maxWidth = CONFIG.imageMaxWidth, quality = CONFIG.imageQuality) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
+                let width = img.width, height = img.height;
                 if (width > maxWidth || height > maxWidth) {
                     if (width > height) {
                         height = height * (maxWidth / width);
@@ -68,8 +134,7 @@
                 }
                 canvas.width = width;
                 canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
                 resolve(canvas.toDataURL('image/jpeg', quality));
             };
             img.onerror = reject;
@@ -86,20 +151,16 @@
     }
 
     function displayAiMessage(text, isUser, imagePreview = null, saveToStorage = true) {
-        const container = document.getElementById('messagesContainer');
-        if (!container) return;
-
+        if (!aiMessagesContainer) return;
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${isUser ? 'sent' : 'received'} animate-fade`;
         const avatar = isUser ? '👤' : '🤖';
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const content = escapeHtml(text);
-
         let imageHtml = '';
         if (imagePreview) {
-            imageHtml = `<img src="${escapeHtml(imagePreview)}" alt="Attached" style="max-width: 200px; max-height: 150px; border-radius: 8px; margin-bottom: 8px; cursor: pointer;" onclick="window.openImageModal && window.openImageModal('${escapeHtml(imagePreview)}')">`;
+            imageHtml = `<img src="${escapeHtml(imagePreview)}" alt="Attached" style="max-width:200px;max-height:150px;border-radius:8px;margin-bottom:8px;cursor:pointer;" onclick="window.openImageModal && window.openImageModal('${escapeHtml(imagePreview)}')">`;
         }
-
         msgDiv.innerHTML = `
             <div class="avatar">${avatar}</div>
             <div class="content">
@@ -108,9 +169,8 @@
                 <div class="meta"><span>${time}</span></div>
             </div>
         `;
-        container.appendChild(msgDiv);
-        container.scrollTop = container.scrollHeight;
-
+        aiMessagesContainer.appendChild(msgDiv);
+        aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
         if (saveToStorage && text && !(isUser === false && text.includes('Привет! Я AI-ассистент'))) {
             saveAiMessage(isUser ? 'user' : 'assistant', text);
         }
@@ -118,34 +178,45 @@
     }
 
     function showAiTypingIndicator(show) {
-        const container = document.getElementById('messagesContainer');
-        if (!container) return;
+        if (!aiMessagesContainer) return;
+        let indicator = aiMessagesContainer.querySelector('.typing-indicator-message');
         if (show) {
-            if (typingIndicator) typingIndicator.remove();
-            typingIndicator = document.createElement('div');
-            typingIndicator.className = 'message received typing-indicator-message';
-            typingIndicator.innerHTML = `
+            if (indicator) indicator.remove();
+            indicator = document.createElement('div');
+            indicator.className = 'message received typing-indicator-message';
+            indicator.innerHTML = `
                 <div class="avatar">🤖</div>
                 <div class="typing-indicator">
                     <span></span><span></span><span></span>
                 </div>
             `;
-            container.appendChild(typingIndicator);
-            container.scrollTop = container.scrollHeight;
+            aiMessagesContainer.appendChild(indicator);
+            aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
         } else {
-            if (typingIndicator) {
-                typingIndicator.remove();
-                typingIndicator = null;
-            }
+            if (indicator) indicator.remove();
         }
     }
 
     async function sendToAi(messageText, imageFile) {
-        console.log('[AI] sendToAi called', { messageText, imageFile });
+        if (isSending) {
+            showToast('Подождите, предыдущий запрос ещё обрабатывается', 'warning');
+            return;
+        }
         if (!messageText.trim() && !imageFile) {
             showToast('Введите сообщение или выберите изображение', 'warning');
             return;
         }
+        if (currentStreamReader) {
+            try { currentStreamReader.cancel(); } catch(e) {}
+            currentStreamReader = null;
+        }
+        if (currentStreamingMessage && currentStreamingMessage.parentNode) {
+            const errP = currentStreamingMessage.querySelector('.content p');
+            if (errP && !currentStreamingText) errP.textContent = '⚠️ Ответ прерван.';
+        }
+        currentStreamingMessage = null;
+        currentStreamingText = '';
+        isSending = true;
 
         let previewUrl = null;
         if (imageFile) {
@@ -154,17 +225,10 @@
         } else {
             displayAiMessage(messageText, true, null, true);
         }
-
         showAiTypingIndicator(true);
 
-        if (currentStreamReader) {
-            try { currentStreamReader.cancel(); } catch(e) {}
-            currentStreamReader = null;
-        }
-
         try {
-            let imageBase64 = null;
-            let imageMime = null;
+            let imageBase64 = null, imageMime = null;
             if (imageFile) {
                 const reader = new FileReader();
                 const compressedDataUrl = await new Promise((resolve) => {
@@ -178,10 +242,9 @@
                 imageBase64 = parts[1];
                 const mimeMatch = parts[0].match(/^data:(image\/[a-zA-Z]+);?/);
                 imageMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-                console.log('[AI] Image prepared', { mime: imageMime, base64Len: imageBase64?.length });
             }
 
-            const response = await fetch('/ai/chat', {
+            const response = await fetch(CONFIG.apiEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -201,13 +264,13 @@
             currentStreamingText = '';
             const contentParagraph = currentStreamingMessage.querySelector('.content p');
             let firstTokenReceived = false;
-
+            let streamFinished = false;
             const reader = response.body.getReader();
             currentStreamReader = reader;
             const decoder = new TextDecoder();
             let buffer = '';
 
-            while (true) {
+            while (!streamFinished) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 buffer += decoder.decode(value, { stream: true });
@@ -215,8 +278,9 @@
                 buffer = lines.pop() || '';
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
-                        const dataStr = line.slice(6);
+                        const dataStr = line.slice(6).trim();
                         if (dataStr === '[DONE]') {
+                            streamFinished = true;
                             break;
                         }
                         try {
@@ -228,19 +292,21 @@
                                 }
                                 currentStreamingText += data.token;
                                 contentParagraph.textContent = currentStreamingText;
-                                const container = document.getElementById('messagesContainer');
-                                if (container) container.scrollTop = container.scrollHeight;
+                                if (aiMessagesContainer) aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
                             } else if (data.error) {
                                 contentParagraph.textContent = '❌ ' + data.error;
                                 firstTokenReceived = true;
+                                streamFinished = true;
+                                break;
                             }
-                        } catch (e) {}
+                        } catch(e) {}
                     }
                 }
             }
+
             if (!firstTokenReceived) {
                 showAiTypingIndicator(false);
-                contentParagraph.textContent = '🤖 Нет ответа от модели.';
+                if (contentParagraph) contentParagraph.textContent = '🤖 Нет ответа от модели.';
             } else if (currentStreamingText) {
                 saveAiMessage('assistant', currentStreamingText);
             }
@@ -261,215 +327,99 @@
             }
             currentStreamingMessage = null;
             currentStreamingText = '';
+            isSending = false;
         }
     }
 
-    function setupAiInputUI() {
-        let inputActions = document.querySelector('.input-actions');
-        if (!inputActions) {
-            setTimeout(setupAiInputUI, 100);
-            return;
-        }
-
-        // Удаляем старые кнопки AI, чтобы не дублировать
-        const oldAttach = document.getElementById('aiAttachBtn');
-        if (oldAttach) oldAttach.remove();
-        const oldFileInput = document.getElementById('aiImageInput');
-        if (oldFileInput) oldFileInput.remove();
-        const oldClearBtn = document.getElementById('aiClearHistoryBtn');
-        if (oldClearBtn) oldClearBtn.remove();
-
-        const attachBtn = document.createElement('button');
-        attachBtn.type = 'button';
-        attachBtn.id = 'aiAttachBtn';
-        attachBtn.className = 'btn btn-icon';
-        attachBtn.innerHTML = '📎';
-        attachBtn.title = 'Attach image';
-
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.id = 'aiImageInput';
-        fileInput.accept = 'image/*';
-        fileInput.style.display = 'none';
-
-        attachBtn.onclick = () => fileInput.click();
-
-        fileInput.onchange = async (e) => {
-            const file = e.target.files[0];
-            console.log('[AI] File selected', file);
-            if (file && file.type.startsWith('image/')) {
-                pendingImageFile = file;
-                let previewContainer = document.getElementById('aiImagePreview');
-                if (!previewContainer) {
-                    previewContainer = document.createElement('div');
-                    previewContainer.id = 'aiImagePreview';
-                    previewContainer.style.cssText = 'margin-top: 8px; display: flex; align-items: center; gap: 8px;';
-                    inputActions.parentNode.insertBefore(previewContainer, inputActions.nextSibling);
-                }
-                previewContainer.innerHTML = `
-                    <img src="${URL.createObjectURL(file)}" style="max-width: 60px; max-height: 60px; border-radius: 8px;">
-                    <button type="button" id="clearAiImage" class="btn btn-icon" style="font-size: 14px;">✕</button>
-                `;
-                document.getElementById('clearAiImage')?.addEventListener('click', () => {
-                    pendingImageFile = null;
-                    if (previewContainer) previewContainer.remove();
-                });
-            } else {
-                showToast('Пожалуйста, выберите изображение', 'warning');
-            }
-            fileInput.value = '';
-        };
-
-        const clearHistoryBtn = document.createElement('button');
-        clearHistoryBtn.type = 'button';
-        clearHistoryBtn.id = 'aiClearHistoryBtn';
-        clearHistoryBtn.className = 'btn btn-icon';
-        clearHistoryBtn.innerHTML = '🗑';
-        clearHistoryBtn.title = 'Clear AI history';
-        clearHistoryBtn.onclick = clearAiHistory;
-
-        inputActions.insertBefore(attachBtn, inputActions.firstChild);
-        inputActions.insertBefore(fileInput, inputActions.firstChild);
-        inputActions.insertBefore(clearHistoryBtn, inputActions.firstChild);
-    }
-
-    function activateAiChat() {
-        if (aiChatActive) return;
-        aiChatActive = true;
-        // ✅ Устанавливаем флаг для блокировки обычной отправки
-        if (window.State) {
-        window.State.currentChatAddress = 'ai_bot';
-        window.State.currentChatIsGroup = false;
-        window.isAiChatActive = true;
-
-    }
-        pendingImageFile = null;
-
-        const oldPreview = document.getElementById('aiImagePreview');
-        if (oldPreview) oldPreview.remove();
-
-        const addBtn = document.getElementById('addToContactsBtn');
-        const clearBtn = document.getElementById('clearConversationBtn');
-        if (addBtn) addBtn.disabled = true;
-        if (clearBtn) clearBtn.disabled = true;
-
-        const messageInput = document.getElementById('messageContent');
-        const sendBtn = document.getElementById('sendButton');
-        const originalAttachBtn = document.getElementById('attachImageButton');
-        if (messageInput) messageInput.disabled = false;
-        if (sendBtn) sendBtn.disabled = false;
-        if (originalAttachBtn) originalAttachBtn.disabled = true;
-
-        loadAiHistory();
-
-        const nameEl = document.getElementById('currentChatName');
-        const subEl = document.getElementById('chatSubtitle');
-        if (nameEl) nameEl.textContent = '🤖 AI Assistant';
-        if (subEl) subEl.textContent = 'Streaming response';
-
-        setupAiInputUI();
-
-        if (!window.__aiOriginalSendHandler) {
-            window.__aiOriginalSendHandler = sendBtn?.onclick;
-            window.__aiOriginalKeydown = messageInput?.onkeydown;
-        }
-
-        const newSendHandler = () => {
-            const text = messageInput.value.trim();
+    function setupAiUI() {
+        if (!aiSendBtn) return;
+        aiSendBtn.onclick = () => {
+            const text = aiMessageInput ? aiMessageInput.value.trim() : '';
             const image = pendingImageFile;
-            console.log('[AI] Send clicked', { text, image });
-            console.log('[AI] Send clicked, text="%s", image=%o, pendingImageFile=%o', text, image, pendingImageFile);
             if (!text && !image) {
                 showToast('Введите сообщение или прикрепите изображение', 'warning');
                 return;
             }
-            messageInput.value = '';
+            if (aiMessageInput) aiMessageInput.value = '';
             if (pendingImageFile) {
                 const previewContainer = document.getElementById('aiImagePreview');
                 if (previewContainer) previewContainer.remove();
+                if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
                 pendingImageFile = null;
+                currentImagePreviewUrl = null;
             }
             sendToAi(text, image);
         };
-        sendBtn.onclick = newSendHandler;
-        messageInput.onkeydown = (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendBtn.click();
-            }
-        };
-
-        if (window.longPollingClient && window.longPollingClient.stop) {
-            window.longPollingClient.stop();
-        }
-
-        if (window.innerWidth <= 768 && typeof closeSidebar === 'function') {
-            closeSidebar();
-        }
-
-        document.querySelectorAll('.conversation-item').forEach(item => item.classList.remove('active'));
-    }
-
-    function deactivateAiChat() {
-    if (!aiChatActive) return;
-    aiChatActive = false;
-    window.isAiChatActive = false;
-    // НЕ меняем window.State.currentChatAddress – он перезапишется при выборе другого чата.
-
-    const aiAttachBtn = document.getElementById('aiAttachBtn');
-    const aiImageInput = document.getElementById('aiImageInput');
-    const previewContainer = document.getElementById('aiImagePreview');
-    const aiClearHistoryBtn = document.getElementById('aiClearHistoryBtn');
-    if (aiAttachBtn) aiAttachBtn.remove();
-    if (aiImageInput) aiImageInput.remove();
-    if (previewContainer) previewContainer.remove();
-    if (aiClearHistoryBtn) aiClearHistoryBtn.remove();
-
-    const sendBtn = document.getElementById('sendButton');
-    const messageInput = document.getElementById('messageContent');
-    if (window.__aiOriginalSendHandler) {
-        sendBtn.onclick = window.__aiOriginalSendHandler;
-        messageInput.onkeydown = window.__aiOriginalKeydown;
-    }
-
-    if (typeof setupLongPolling === 'function') {
-        setupLongPolling();
-    } else if (window.setupLongPolling) {
-        window.setupLongPolling();
-    }
-}
-
-    function interceptSelectConversation() {
-        if (window.selectConversation && !window._aiIntercepted) {
-            originalSelectConversation = window.selectConversation;
-            window.selectConversation = function(address, name, isGroup) {
-                if (address === 'ai_bot') {
-                    deactivateAiChat();
-                    activateAiChat();
-                    return;
-                } else {
-                    deactivateAiChat();
-                    originalSelectConversation(address, name, isGroup);
+        if (aiMessageInput) {
+            aiMessageInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    aiSendBtn?.click();
                 }
             };
-            window._aiIntercepted = true;
+        }
+        if (aiAttachBtn && aiImageInput) {
+            aiAttachBtn.onclick = () => aiImageInput.click();
+            aiImageInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    pendingImageFile = file;
+                    let previewContainer = document.getElementById('aiImagePreview');
+                    if (!previewContainer) {
+                        previewContainer = document.createElement('div');
+                        previewContainer.id = 'aiImagePreview';
+                        previewContainer.style.cssText = 'margin-top:8px;display:flex;align-items:center;gap:8px;';
+                        const inputActions = aiAttachBtn.closest('.input-actions');
+                        if (inputActions) inputActions.parentNode.insertBefore(previewContainer, inputActions.nextSibling);
+                    }
+                    const blobUrl = URL.createObjectURL(file);
+                    if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+                    currentImagePreviewUrl = blobUrl;
+                    previewContainer.innerHTML = `
+                        <img src="${blobUrl}" style="max-width:60px;max-height:60px;border-radius:8px;">
+                        <button type="button" id="clearAiImage" class="btn btn-icon" style="font-size:14px;">✕</button>
+                    `;
+                    document.getElementById('clearAiImage')?.addEventListener('click', () => {
+                        if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+                        pendingImageFile = null;
+                        if (previewContainer) previewContainer.remove();
+                        currentImagePreviewUrl = null;
+                    });
+                } else {
+                    showToast('Пожалуйста, выберите изображение', 'warning');
+                }
+                aiImageInput.value = '';
+            };
+        }
+        if (aiClearHistoryBtn) aiClearHistoryBtn.onclick = clearAiHistory;
+        if (closeAiChatBtn) {
+            closeAiChatBtn.onclick = () => {
+                if (window.selectConversation && window.State && window.State.currentChatAddress === 'ai_bot') {
+                    const firstConv = document.querySelector('.conversation-item');
+                    if (firstConv && firstConv.dataset.address) {
+                        window.selectConversation(firstConv.dataset.address, '', firstConv.dataset.isGroup === '1');
+                    } else {
+                        window.selectConversation('', '', false);
+                    }
+                }
+            };
         }
     }
 
-    function init() {
-        interceptSelectConversation();
-        const aiBtn = document.getElementById('aiChatBtn');
-        if (aiBtn) {
-            aiBtn.addEventListener('click', () => {
-                deactivateAiChat();
-                activateAiChat();
-            });
-        }
+    function initAiChat() {
+        if (aiChatActive) return;
+        aiChatActive = true;
+        aiMessagesContainer = document.getElementById('aiMessagesContainer');
+        aiMessageInput = document.getElementById('aiMessageInput');
+        aiSendBtn = document.getElementById('aiSendBtn');
+        aiAttachBtn = document.getElementById('aiAttachBtn');
+        aiImageInput = document.getElementById('aiImageInput');
+        aiClearHistoryBtn = document.getElementById('aiClearHistoryBtn');
+        closeAiChatBtn = document.getElementById('closeAiChatBtn');
+        if (!aiMessagesContainer) return;
+        loadAiHistory();
+        setupAiUI();
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
+    window.initAiChat = initAiChat;
 })();

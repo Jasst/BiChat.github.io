@@ -100,6 +100,29 @@
         </div>
       </div>
     </form>
+      <div id="aiChatContainer" class="hidden" style="display: flex; flex-direction: column; height: 100%; background: var(--bg-primary);">
+  <header class="chat-header">
+    <div class="title">
+      <span>🤖 AI Assistant</span>
+      <span class="subtitle">Streaming response</span>
+    </div>
+    <div class="actions">
+      <button id="closeAiChatBtn" class="btn btn-icon" title="Close AI chat">✕</button>
+    </div>
+  </header>
+  <div id="aiMessagesContainer" class="messages"></div>
+  <form class="input-area" onsubmit="return false;">
+    <div class="input-wrapper">
+      <textarea id="aiMessageInput" placeholder="Ask AI... (Enter to send, Shift+Enter for new line)" rows="1"></textarea>
+      <div class="input-actions">
+        <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
+        <button type="button" id="aiAttachBtn" class="btn btn-icon" title="Attach image">📎</button>
+        <button type="submit" id="aiSendBtn" class="btn btn-primary">➤</button>
+        <button type="button" id="aiClearHistoryBtn" class="btn btn-icon" title="Clear AI history">🗑</button>
+      </div>
+    </div>
+  </form>
+</div>
   </main>
 </div>
 

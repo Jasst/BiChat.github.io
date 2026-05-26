@@ -6,12 +6,8 @@
 window.Utils = window.Utils || {};
 Utils.escapeHtml = function(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))
+              .replace(/['"]/g, m => ({ "'": '&#39;', '"': '&quot;' }[m]));
 };
 
 // =============================================================================
@@ -277,10 +273,6 @@ async function loadConversations() {
 // === Обновление статусов пользователей ===
 // =============================================================================
 
-// =============================================================================
-// === Обновление статусов пользователей ===
-// =============================================================================
-
 async function updateUsersStatus() {
     // Собираем все адреса из диалогов (только личные, не группы)
     const conversationItems = document.querySelectorAll('.conversation-item');
@@ -352,12 +344,49 @@ setInterval(updateUsersStatus, 30000);
 setTimeout(updateUsersStatus, 1000);
 
 async function selectConversation(address, name, isGroup) {
+  // ✅ Очистка topObserver при смене чата
+  if (State.topObserver) {
+      State.topObserver.disconnect();
+      State.topObserver = null;
+  }
   if (isSending) isSending = false;
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   State.currentChatUnsub = null;
   State.currentChatAddress = address;
   State.currentChatIsGroup = !!isGroup;
   State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
+
+  // ========== УПРАВЛЕНИЕ AI-ЧАТОМ ==========
+  const aiContainer = document.getElementById('aiChatContainer');
+  const mainContainer = document.getElementById('messagesContainer');
+  const mainInputArea = document.querySelector('.main-content .input-area');
+  const mainChatHeader = document.querySelector('.main-content .chat-header');
+
+  if (address === 'ai_bot') {
+    // Скрыть обычный чат, показать AI-контейнер
+    if (mainContainer) mainContainer.style.display = 'none';
+    if (mainInputArea) mainInputArea.style.display = 'none';
+    if (mainChatHeader) mainChatHeader.style.display = 'none';
+    if (aiContainer) aiContainer.classList.remove('hidden');
+    if (typeof window.initAiChat === 'function') window.initAiChat();
+    // Обновляем заголовок (хотя он скрыт, но для порядка)
+    const nameEl = document.getElementById('currentChatName');
+    if (nameEl) nameEl.textContent = '🤖 AI Assistant';
+    const subtitleEl = document.getElementById('chatSubtitle');
+    if (subtitleEl) subtitleEl.textContent = 'Streaming response';
+    // Не загружаем обычные сообщения
+    _enableChatControls();
+    // Отмечаем активный элемент в списке (если есть AI-пункт)
+    document.querySelectorAll('.conversation-item').forEach(item => item.classList.remove('active'));
+    return;
+  } else {
+    // Скрыть AI-контейнер, показать обычный чат
+    if (aiContainer) aiContainer.classList.add('hidden');
+    if (mainContainer) mainContainer.style.display = '';
+    if (mainInputArea) mainInputArea.style.display = '';
+    if (mainChatHeader) mainChatHeader.style.display = '';
+  }
+  // ========================================
 
   if (isGroup) {
     try {
@@ -417,7 +446,7 @@ function _disableChatControls() {
 }
 
 function _enableChatControls() {
-  ['messageContent', 'attachImageButton', 'sendButton', 'clearConversationBtn'].forEach(id => {
+  ['messageContent', 'attachImageButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = false;
   });
@@ -540,9 +569,13 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     const messages = [];
 
     for (const msg of rawMessages) {
-
-      const decrypted = await processMessageDecryption(msg);
-      messages.push(decrypted);
+       try {
+            const decrypted = await processMessageDecryption(msg);
+            messages.push(decrypted);
+       } catch (e) {
+        console.error('Failed to decrypt message', msg.id, e);
+        messages.push({ ...msg, content: '🔒 Ошибка расшифровки', image: null });
+       }
     }
 
     if (!messages.length) {
@@ -584,11 +617,18 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       markConversationAsRead(chatWithAddress, messages[messages.length - 1].id);
     }
 
+    // ✅ Плавный скролл без множества таймаутов
     if (!isNewMessage) {
-      container.scrollTop = container.scrollHeight;
-      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 100);
-      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 350);
-      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 650);
+        function smoothScrollToBottom() {
+            const prevHeight = container.scrollHeight;
+            container.scrollTop = prevHeight;
+            requestAnimationFrame(() => {
+                if (container.scrollHeight !== prevHeight) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            });
+        }
+        smoothScrollToBottom();
     } else {
       const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
       if (wasNearBottom) {
@@ -633,11 +673,11 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 // === sendMessage ===
 // =============================================================================
 async function sendMessage() {
-   // ✅ Добавьте эти 3 строки в самое начало
-  if (window.isAiChatActive === true || (window.State && window.State.currentChatAddress === 'ai_bot')) {
-        console.log('⛔ sendMessage ignored because AI chat is active');
-        return;
-    }
+  // Защита от отправки в AI-чат (на всякий случай, хотя UI скрыт)
+  if (State.currentChatAddress === 'ai_bot') {
+    console.log('⛔ sendMessage ignored because AI chat is active');
+    return;
+  }
   console.log('[CHAT] sendMessage called, State.pendingImageData=', State.pendingImageData);
   const contentEl = document.getElementById('messageContent');
   const sendBtn = document.getElementById('sendButton');
@@ -968,7 +1008,7 @@ function startStatusPolling() {
         } catch (e) {
             console.warn('Status polling error', e);
         }
-    }, 30000);  // каждые 10 секунд
+    }, 30000);  // каждые 30 секунд
 }
 
 function stopStatusPolling() {
@@ -1158,18 +1198,25 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('imageModal')?.addEventListener('click', e => { if (e.target.id === 'imageModal') closeImageModal(); });
   window.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) { e.target.classList.add('hidden'); if (window.QRScanner) QRScanner.close(); } });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); if (window.QRScanner) QRScanner.close(); } });
+
+  // ✅ Кнопка AI-чата
+  const aiBtn = document.getElementById('aiChatBtn');
+  if (aiBtn) {
+    aiBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Закрываем сайдбар на мобильных устройствах
+        if (window.innerWidth <= 768 && typeof closeSidebar === 'function') {
+            closeSidebar();
+        }
+        selectConversation('ai_bot', 'AI Assistant', false);
+    });
+}
 });
 
 // =============================================================================
 // === Cleanup ===
 // =============================================================================
-// =============================================================================
-// === Cleanup / Before Unload ===
-// =============================================================================
-
 window.addEventListener('beforeunload', () => {
-
-
     // ✅ Остановка Long Polling клиента
     if (longPollingClient) {
         longPollingClient.stop();
@@ -1181,7 +1228,6 @@ window.addEventListener('beforeunload', () => {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
     }
-
 
     // ✅ Закрытие QR сканера (если открыт)
     if (window.QRScanner && typeof QRScanner.close === 'function') {
@@ -1198,7 +1244,6 @@ window.addEventListener('beforeunload', () => {
         State.topObserver = null;
     }
 
-
     // ✅ Очистка менеджера уведомлений
     if (window.NotificationManager && typeof window.NotificationManager.destroy === 'function') {
         try {
@@ -1206,12 +1251,6 @@ window.addEventListener('beforeunload', () => {
         } catch(e) {
             console.debug('NotificationManager destroy error:', e);
         }
-    }
-
-    // ✅ Остановка heartbeat (если используется)
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
     }
 
     // ✅ Отмена текущего fetch запроса (на всякий случай)
@@ -1222,8 +1261,6 @@ window.addEventListener('beforeunload', () => {
             // игнорируем
         }
     }
-    // Небольшая задержка для завершения отправки данных (опционально)
-    // navigator.sendBeacon('/logout', JSON.stringify({}));
 });
 
 // =============================================================================
@@ -1243,9 +1280,7 @@ async function setupLongPolling() {
         timeout: 25000,
         debug: false,
         onMessages: async (messages) => {
-           // console.log('📬 New messages via Long Polling:', messages.length);
-           // console.log('🔍 Полные объекты сообщений:', JSON.parse(JSON.stringify(messages)));
-           // console.log('🔍 Текущий чат (State.currentChatAddress):', State.currentChatAddress);
+            const currentChatAtStart = State.currentChatAddress; // ✅ сохраняем чат
             if (!messages.length) return;
 
             const userAddr = State.userAddress;
@@ -1272,10 +1307,7 @@ async function setupLongPolling() {
                 grouped.get(msg.chatId).push(msg);
             }
 
-            //console.log('Сравнение адресов: текущий чат =', State.currentChatAddress);
-           // console.log('Ключи grouped:', Array.from(grouped.keys()));
-
-            const currentChat = String(State.currentChatAddress).trim();
+            const currentChat = String(currentChatAtStart).trim();
 
             // Проверяем, есть ли сообщения для текущего чата (по chatId = адрес собеседника)
             const hasChat = Array.from(grouped.keys()).some(key => {
@@ -1283,17 +1315,12 @@ async function setupLongPolling() {
                return keyStr === currentChat || keyStr === userAddr;
             });
             if (currentChat && hasChat) {
-               // console.log('🔍 ВОШЛИ в блок обработки текущего чата');
-                                // Ищем ключ, который соответствует либо текущему чату, либо адресу пользователя
                 const foundKey = Array.from(grouped.keys()).find(key => {
-                const keyStr = String(key).trim();
-                return keyStr === currentChat || keyStr === userAddr;
+                    const keyStr = String(key).trim();
+                    return keyStr === currentChat || keyStr === userAddr;
                 });
-               // console.log('🔍 Найденный ключ:', foundKey);
                 const newMessages = grouped.get(foundKey);
-               // console.log('🔍 Количество сообщений для чата:', newMessages.length);
                 const container = document.getElementById('messagesContainer');
-              //  console.log('🔍 Контейнер найден:', container !== null);
                 if (container) {
                     const wasAtBottom = isUserAtBottom(container, 30);
                     for (const msg of newMessages) {
@@ -1317,7 +1344,7 @@ async function setupLongPolling() {
                         showNewMessagesBadge();
                     }
                 }
-                grouped.delete(State.currentChatAddress);
+                grouped.delete(currentChatAtStart);
             }
 
             // Для остальных чатов обновляем список диалогов
@@ -1342,6 +1369,13 @@ async function setupLongPolling() {
         },
         onError: (error) => {
             console.warn('⚠️ Long polling connection issue:', error.message);
+            let reconnectDelay = 1000;
+            const maxDelay = 30000;
+            const attemptReconnect = () => {
+                if (longPollingClient) longPollingClient.start();
+                reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
+            };
+            setTimeout(attemptReconnect, reconnectDelay);
         },
         onConnect: () => {
             console.log('✅ Long polling connected');
@@ -1398,5 +1432,5 @@ window.clearConversation = clearConversation;
 window.processMessageDecryption = processMessageDecryption;
 window.setupLongPolling = setupLongPolling;
 window.closeNewChatModal = closeNewChatModal;
-
+window.openNewChatModal = openNewChatModal;
 })();

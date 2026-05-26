@@ -110,27 +110,21 @@
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
 {% block scripts %}
-<!-- Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-
 <script>
 ;(function() {
   'use strict';
 
-  // ✅ Защита от повторного выполнения
   if (window._contactsScriptLoaded) return;
   window._contactsScriptLoaded = true;
 
-  // === Constants ===
   const MAX_NAME_LENGTH = 50;
   const ADDRESS_LENGTH = 64;
   const ADDRESS_REGEX = /^[0-9a-f]{64}$/i;
 
-  // === State ===
   let allContacts = [];
   let csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-  // === Helpers ===
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (str) => {
     const div = document.createElement('div');
@@ -144,7 +138,7 @@
     return n.length >= 1 && n.length <= MAX_NAME_LENGTH && !/[\u0000-\u001F\u007F]/.test(n);
   };
 
-  // === Fetch wrapper with CSRF & error handling ===
+  // === Fetch wrapper ===
   async function secureFetch(url, options = {}) {
     const headers = {
       'Content-Type': 'application/json',
@@ -164,6 +158,76 @@
       window.NotificationManager?.showToast('Connection failed', 'error');
       return null;
     }
+  }
+
+  // === Кастомное модальное окно (prompt / confirm) ===
+  function showCustomModal(options) {
+    return new Promise((resolve) => {
+      const modalId = 'custom-modal-' + Date.now();
+      const modalHtml = `
+        <div id="${modalId}" class="modal-overlay hidden" role="dialog" aria-modal="true">
+          <div class="modal" style="max-width: 400px;">
+            <header class="modal-header">
+              <h3>${escapeHtml(options.title)}</h3>
+              <button class="modal-close" data-close>&times;</button>
+            </header>
+            <div class="modal-body">
+              ${options.bodyHtml || ''}
+            </div>
+            <footer class="modal-footer">
+              ${options.buttons.map(btn => `<button class="btn ${btn.className || ''}" data-action="${btn.action}">${escapeHtml(btn.label)}</button>`).join('')}
+            </footer>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      const modalEl = document.getElementById(modalId);
+      ModalManager.open(modalId, { closeOnOverlay: false, preventEscClose: false });
+
+      const handleClose = () => {
+        ModalManager.close(modalId);
+        modalEl.remove();
+      };
+
+      modalEl.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => {
+        resolve(null);
+        handleClose();
+      }));
+
+      options.buttons.forEach(btn => {
+        const btnEl = modalEl.querySelector(`[data-action="${btn.action}"]`);
+        if (btnEl) {
+          btnEl.addEventListener('click', () => {
+            let result = btn.value;
+            if (btn.getValue) result = btn.getValue(modalEl);
+            resolve(result);
+            handleClose();
+          });
+        }
+      });
+    });
+  }
+
+  async function showPromptModal(title, placeholder, defaultValue = '') {
+    return await showCustomModal({
+      title: title,
+      bodyHtml: `<input type="text" id="prompt-input" class="input" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(defaultValue)}" style="width: 100%;">`,
+      buttons: [
+        { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: null },
+        { label: 'Save', className: 'btn-primary', action: 'save', getValue: (modal) => modal.querySelector('#prompt-input').value }
+      ]
+    });
+  }
+
+  async function showConfirmModal(title, message) {
+    return await showCustomModal({
+      title: title,
+      bodyHtml: `<p>${escapeHtml(message)}</p>`,
+      buttons: [
+        { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: false },
+        { label: 'Delete', className: 'btn-error', action: 'confirm', value: true }
+      ]
+    });
   }
 
   // === Load Contacts ===
@@ -215,7 +279,6 @@
         container.appendChild(item);
       });
 
-      // Клик по адресу → копирование
       container.querySelectorAll('.address').forEach(el => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -290,7 +353,6 @@
       return false;
     }
 
-    // Проверка на дубликат
     const exists = allContacts.some(c => c.address.toLowerCase() === address);
     if (exists) {
       window.NotificationManager?.showToast('Contact already exists', 'warning');
@@ -323,22 +385,22 @@
     }
   }
 
-  // === Edit Contact Name ===
+  // === Edit Contact (кастомная модалка) ===
   async function editContact(address, currentName, btn) {
     if (!isValidAddress(address)) {
       window.NotificationManager?.showToast('Invalid contact', 'error');
       return;
     }
 
-    const newName = prompt('Edit contact name:', currentName);
-    if (newName === null) return; // отмена
+    const newName = await showPromptModal('Edit Contact Name', 'Enter new name', currentName);
+    if (newName === null) return;
     const trimmed = newName.trim();
 
     if (!isValidName(trimmed)) {
       window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning');
       return;
     }
-    if (trimmed === currentName) return; // без изменений
+    if (trimmed === currentName) return;
 
     try {
       btn.disabled = true;
@@ -353,12 +415,10 @@
 
       const data = await res.json();
       if (res.ok) {
-        // Обновляем в интерфейсе
         const item = btn.closest('.list-item');
         const nameEl = item?.querySelector('.name');
         if (nameEl) nameEl.textContent = escapeHtml(trimmed);
 
-        // Обновляем кэш
         const idx = allContacts.findIndex(c => c.address.toLowerCase() === address.toLowerCase());
         if (idx !== -1) allContacts[idx].name = trimmed;
 
@@ -375,15 +435,15 @@
     }
   }
 
-  // === Delete Contact ===
+  // === Delete Contact (кастомная модалка) ===
   async function deleteContact(address, btn) {
     if (!isValidAddress(address)) return;
 
-    if (!confirm('Delete this contact?\n\n' + address)) return;
+    const confirmed = await showConfirmModal('Delete Contact', `Delete this contact?\n\n${address}`);
+    if (!confirmed) return;
 
     try {
       btn.disabled = true;
-      const originalText = btn.innerHTML;
       btn.innerHTML = '⏳';
 
       const res = await secureFetch('/delete_contact', {
@@ -396,7 +456,6 @@
         const item = btn.closest('.list-item');
         item?.remove();
 
-        // Обновляем кэш
         allContacts = allContacts.filter(c => c.address.toLowerCase() !== address.toLowerCase());
 
         window.NotificationManager?.showToast('Contact deleted', 'success');
@@ -427,7 +486,6 @@
   document.addEventListener('DOMContentLoaded', function() {
     loadContacts();
 
-    // Enter в поле адреса → добавить контакт
     $('contactAddress')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -435,10 +493,8 @@
       }
     });
 
-    // Автофокус на поле имени при загрузке
     setTimeout(() => $('contactName')?.focus(), 300);
 
-    // Обработка параметров из строки поиска (переход из другого раздела)
     const params = new URLSearchParams(window.location.search);
     const startWith = params.get('start_with');
     const startName = params.get('name');
@@ -449,14 +505,12 @@
     }
   });
 
-  // ✅ Экспорт функций в глобальную область (для onclick в HTML)
   window.addContact = addContact;
   window.startChat = startChat;
   window.loadContacts = loadContacts;
   window.copyAddress = copyAddress;
   window.editContact = editContact;
   window.deleteContact = deleteContact;
-
 })();
 </script>
 {% endblock %}

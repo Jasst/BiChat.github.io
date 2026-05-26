@@ -227,6 +227,96 @@ let selectedMembers = {};
 let currentGroup  = null;
 
 // ═══════════════════════════════════════════════════════════
+// Кастомные модальные окна (вместо confirm/prompt)
+// ═══════════════════════════════════════════════════════════
+function showCustomModal(options) {
+  return new Promise((resolve) => {
+    const modalId = 'custom-modal-' + Date.now();
+    const modalHtml = `
+      <div id="${modalId}" class="modal-overlay hidden" role="dialog" aria-modal="true">
+        <div class="modal" style="max-width: 400px;">
+          <header class="modal-header">
+            <h3>${Utils.escapeHtml(options.title)}</h3>
+            <button class="modal-close" data-close>&times;</button>
+          </header>
+          <div class="modal-body">
+            ${options.bodyHtml || ''}
+          </div>
+          <footer class="modal-footer">
+            ${options.buttons.map(btn => `<button class="btn ${btn.className || ''}" data-action="${btn.action}">${Utils.escapeHtml(btn.label)}</button>`).join('')}
+          </footer>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modalEl = document.getElementById(modalId);
+    ModalManager.open(modalId, { closeOnOverlay: false, preventEscClose: false });
+
+    const handleClose = () => {
+      ModalManager.close(modalId);
+      modalEl.remove();
+    };
+
+    modalEl.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => {
+      resolve(null);
+      handleClose();
+    }));
+
+    options.buttons.forEach(btn => {
+      const btnEl = modalEl.querySelector(`[data-action="${btn.action}"]`);
+      if (btnEl) {
+        btnEl.addEventListener('click', () => {
+          let result = btn.value;
+          if (btn.getValue) result = btn.getValue(modalEl);
+          resolve(result);
+          handleClose();
+        });
+      }
+    });
+  });
+}
+
+async function showConfirmModal(title, message) {
+  return await showCustomModal({
+    title: title,
+    bodyHtml: `<p>${Utils.escapeHtml(message)}</p>`,
+    buttons: [
+      { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: false },
+      { label: 'Confirm', className: 'btn-primary', action: 'confirm', value: true }
+    ]
+  });
+}
+
+async function showPromptModal(title, placeholder, defaultValue = '') {
+  return await showCustomModal({
+    title: title,
+    bodyHtml: `<input type="text" id="prompt-input" class="input" placeholder="${Utils.escapeHtml(placeholder)}" value="${Utils.escapeHtml(defaultValue)}" style="width: 100%;">`,
+    buttons: [
+      { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: null },
+      { label: 'Save', className: 'btn-primary', action: 'save', getValue: (modal) => modal.querySelector('#prompt-input').value }
+    ]
+  });
+}
+
+async function showDeleteGroupModal(name) {
+  return await showCustomModal({
+    title: 'Delete Group',
+    bodyHtml: `<p>Delete group "${Utils.escapeHtml(name)}"?<br><span style="color: var(--status-error);">⚠️ This cannot be undone.</span></p>
+               <div class="form-group" style="margin-top: var(--space-md);">
+                 <label class="text-secondary" style="font-size: 12px;">Type "DELETE" to confirm:</label>
+                 <input type="text" id="delete-confirm-input" class="input" placeholder="DELETE" style="margin-top: var(--space-xs);">
+               </div>`,
+    buttons: [
+      { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: null },
+      { label: 'Delete', className: 'btn-error', action: 'delete', getValue: (modal) => {
+          const input = modal.querySelector('#delete-confirm-input');
+          return input && input.value.trim().toUpperCase() === 'DELETE' ? true : false;
+        } }
+    ]
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
 // Load Groups
 // ═══════════════════════════════════════════════════════════
 async function loadGroups() {
@@ -250,10 +340,8 @@ async function loadGroups() {
     }
 
     container.innerHTML = '';
-    // ✅ Не устанавливаем display: grid вручную — это делает CSS
 
     data.groups.forEach(g => {
-      // ✅ Добавляем класс group-card для стилей
       const card = DOM.createElement('div', {
         className: 'list-item group-card',
         dataset: { id: g.id }
@@ -409,7 +497,9 @@ async function submitCreate() {
     if (!res.ok) { showError(data.error || 'Failed to create'); return; }
     ModalManager.close('createModal');
     await loadGroups();
-    if (confirm(`Group "${name}" created!\nOpen chat now?`)) {
+    // Заменяем confirm на кастомную модалку
+    const confirmed = await showConfirmModal('Group Created', `Group "${name}" created!\nOpen chat now?`);
+    if (confirmed) {
       openGroupChatById('group:' + data.group_id, name);
     }
   } catch (err) {
@@ -441,15 +531,12 @@ async function openDetail(groupJson) {
 
   const isCreator = g.creator === MY_ADDR;
 
-  // Show / hide manage tab
   const tabs = DOM.getById('detailTabs');
   if (isCreator) DOM.show(tabs);
   else           DOM.hide(tabs);
 
-  // Reset to Info tab
   switchTab('info');
 
-  // Populate Info panel
   DOM.getById('detailTitle').textContent   = g.name;
   DOM.getById('detailId').textContent      = g.id;
   DOM.getById('detailCreator').textContent = g.creator === MY_ADDR ? g.creator + ' (You)' : g.creator;
@@ -460,7 +547,6 @@ async function openDetail(groupJson) {
   ModalManager.open('detailModal');
 }
 
-/** Render a member list row. removeBtn=true adds a ✕ for creator. */
 function renderMemberList(members, container, removeBtn) {
   container.innerHTML = '';
   members.forEach(addr => {
@@ -489,9 +575,7 @@ function renderMemberList(members, container, removeBtn) {
   });
 }
 
-// ── Manage panel ─────────────────────────────────────────
 async function loadManagePanel(g) {
-  // Pre-fill rename input
   DOM.getById('renameInput').value = g.name;
   DOM.getById('manageCount').textContent = g.members.length;
   renderMemberList(g.members, DOM.getById('manageMembers'), true);
@@ -541,7 +625,6 @@ function showManageError(msg) {
   DOM.show(el);
 }
 
-// ── Rename ────────────────────────────────────────────────
 async function submitRename() {
   if (!currentGroup) return;
   const name = DOM.getById('renameInput').value.trim();
@@ -556,7 +639,6 @@ async function submitRename() {
     const data = await res.json();
     if (!res.ok) { showManageError(data.error || 'Failed'); return; }
 
-    // Update local state & UI
     currentGroup.name = name;
     DOM.getById('detailTitle').textContent = name;
     window.NotificationManager?.showToast('Group renamed', 'success');
@@ -567,7 +649,6 @@ async function submitRename() {
   }
 }
 
-// ── Add member ────────────────────────────────────────────
 async function submitAddMember() {
   const addr = DOM.getById('addMemberInput').value.trim();
   if (!addr || addr.length !== 64) { showManageError('Invalid address (64 hex chars required)'); return; }
@@ -587,7 +668,6 @@ async function submitAddMemberAddr(addr) {
     const data = await res.json();
     if (!res.ok) { showManageError(data.error || 'Failed'); return; }
 
-    // Update local state
     currentGroup.members = data.members;
     DOM.getById('manageCount').textContent  = currentGroup.members.length;
     DOM.getById('detailCount').textContent  = currentGroup.members.length;
@@ -602,10 +682,10 @@ async function submitAddMemberAddr(addr) {
   }
 }
 
-// ── Remove member ─────────────────────────────────────────
 async function submitRemoveMember(addr) {
   if (!currentGroup) return;
-  if (!confirm(`Remove ${addr.slice(0, 16)}… from the group?`)) return;
+  const confirmed = await showConfirmModal('Remove Member', `Remove ${addr.slice(0, 16)}… from the group?`);
+  if (!confirmed) return;
 
   try {
     const res  = await fetch('/remove_group_member', {
@@ -643,15 +723,12 @@ function openGroupChat() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Delete Group
+// Delete Group (кастомная модалка)
 // ═══════════════════════════════════════════════════════════
 async function deleteGroup(id, name) {
-  if (!confirm(`Delete group "${name}"?\n\n⚠️ This cannot be undone.`)) return;
-  const confirmInput = prompt('Type "DELETE" to confirm:');
-  if (!confirmInput || confirmInput.trim().toUpperCase() !== 'DELETE') {
-    window.NotificationManager?.showToast('Cancelled', 'warning');
-    return;
-  }
+  const confirmed = await showDeleteGroupModal(name);
+  if (!confirmed) return;
+
   try {
     const res  = await fetch('/delete_group', {
       method: 'POST',

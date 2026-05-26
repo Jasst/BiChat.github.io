@@ -93,8 +93,8 @@
         }
 
         _isSessionValid() {
-            return document.querySelector('[data-user-address]') !== null;
-        }
+            return window.AppData && window.AppData.userAddress;
+}
 
         _sanitizeTimestamp(ts) {
             const now = Date.now() / 1000;
