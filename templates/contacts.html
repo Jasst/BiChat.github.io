@@ -112,9 +112,7 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
-;(function() {
-  'use strict';
-
+(function() {
   if (window._contactsScriptLoaded) return;
   window._contactsScriptLoaded = true;
 
@@ -385,7 +383,7 @@
     }
   }
 
-  // === Edit Contact (кастомная модалка) ===
+  // === Edit Contact ===
   async function editContact(address, currentName, btn) {
     if (!isValidAddress(address)) {
       window.NotificationManager?.showToast('Invalid contact', 'error');
@@ -435,7 +433,7 @@
     }
   }
 
-  // === Delete Contact (кастомная модалка) ===
+  // === Delete Contact ===
   async function deleteContact(address, btn) {
     if (!isValidAddress(address)) return;
 
@@ -505,12 +503,16 @@
     }
   });
 
+  // Экспорт глобальных функций для вызова из HTML (onclick)
   window.addContact = addContact;
   window.startChat = startChat;
   window.loadContacts = loadContacts;
   window.copyAddress = copyAddress;
   window.editContact = editContact;
   window.deleteContact = deleteContact;
+  // также нужны для модальных окон (если используются в HTML)
+  window.showConfirmModal = showConfirmModal;
+  window.showPromptModal = showPromptModal;
 })();
 </script>
 {% endblock %}
