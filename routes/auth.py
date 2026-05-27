@@ -1,5 +1,5 @@
 """
-routes/auth.py — Регистрация, вход, выход
+routes/auth.py — Регистрация, вход, выход (асинхронная версия)
 """
 import logging
 import secrets
@@ -17,14 +17,10 @@ from setup import verify_address_matches_pubkey, load_public_key_from_b64
 
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
-logger    = logging.getLogger(__name__)
-router    = APIRouter(tags=['auth'])
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=['auth'])
 templates = Jinja2Templates(directory=TEMPLATE_FOLDER)
 
-
-# =============================================================================
-# Pages (HTML)
-# =============================================================================
 
 @router.get('/', response_class=HTMLResponse)
 def index(request: Request):
@@ -69,7 +65,7 @@ def profile(request: Request):
         return RedirectResponse('/')
     return templates.TemplateResponse('profile.html', {
         'request': request,
-        'address': request.session.get('address'),
+        'address': request.session['address'],
     })
 
 
@@ -83,41 +79,29 @@ def wallet_page(request: Request):
     })
 
 
-# =============================================================================
-# API
-# =============================================================================
-
 @router.post('/create_wallet', status_code=201)
-def create_wallet(body: CreateWalletRequest, request: Request):
-    """
-    Клиент присылает готовый адрес и публичный ключ (base64).
-    Сервер сохраняет, создаёт сессию, начисляет аирдроп.
-    """
-    address    = body.address
+async def create_wallet(body: CreateWalletRequest, request: Request):
+    address = body.address
     pubkey_b64 = body.public_key
-
     if not verify_address_matches_pubkey(address, pubkey_b64):
         raise HTTPException(400, 'Public key does not match address')
-
+    from database import get_db_cursor
     try:
-        from database import get_db_cursor, DATABASE_PATH
-        with get_db_cursor(DATABASE_PATH) as cursor:
-            cursor.execute(
+        async with get_db_cursor() as cursor:
+            await cursor.execute(
                 'INSERT INTO wallets (address, balance) VALUES (?, ?) '
                 'ON CONFLICT(address) DO NOTHING',
                 (address, AIRDROP_AMOUNT)
             )
-            cursor.execute(
+            await cursor.execute(
                 'INSERT INTO coin_transactions (tx_type, recipient, amount, timestamp) '
                 'VALUES (?,?,?,?)',
                 ('airdrop', address, AIRDROP_AMOUNT, time.time())
             )
-
         request.session['address'] = address
-        cache_public_key(address, pubkey_b64, source='self', verified=True)
+        await cache_public_key(address, pubkey_b64, source='self', verified=True)
         logger.info(f"New wallet registered: {address[:16]}...")
         return {'address': address, 'public_key': pubkey_b64}
-
     except Exception as e:
         logger.error(f"Create wallet error: {e}")
         raise HTTPException(500, 'Wallet creation failed')
@@ -131,30 +115,24 @@ def login_page(request: Request):
 
 
 @router.post('/login')
-def login(body: LoginRequest, request: Request):
+async def login(body: LoginRequest, request: Request):
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives import hashes
-
     nonce = request.session.pop('login_nonce', None)
     if not nonce:
         raise HTTPException(400, 'No challenge found. Refresh the page.')
-
-    address       = body.address
-    pubkey_b64    = body.public_key
+    address = body.address
+    pubkey_b64 = body.public_key
     signature_hex = body.signature.strip()
-
     if not verify_address_matches_pubkey(address, pubkey_b64):
         raise HTTPException(400, 'Public key does not match address')
-
     try:
         raw_signature = bytes.fromhex(signature_hex)
         if len(raw_signature) != 64:
             raise HTTPException(400, 'Invalid signature format (must be 64 bytes raw)')
-
         r = int.from_bytes(raw_signature[:32], 'big')
         s = int.from_bytes(raw_signature[32:], 'big')
         der_signature = encode_dss_signature(r, s)
-
         pubkey = load_public_key_from_b64(pubkey_b64)
         pubkey.verify(der_signature, nonce.encode('utf-8'), ec.ECDSA(hashes.SHA256()))
     except HTTPException:
@@ -162,9 +140,8 @@ def login(body: LoginRequest, request: Request):
     except Exception as e:
         logger.warning(f"Signature verification failed: {e}")
         raise HTTPException(403, 'Invalid signature')
-
     request.session['address'] = address
-    cache_public_key(address, pubkey_b64, source='self', verified=True)
+    await cache_public_key(address, pubkey_b64, source='self', verified=True)
     logger.info(f"User logged in: {address[:16]}...")
     return {'address': address}
 
@@ -173,12 +150,12 @@ def login(body: LoginRequest, request: Request):
 def check_session(request: Request):
     return {
         'authenticated': 'address' in request.session,
-        'address':       request.session.get('address'),
+        'address': request.session.get('address'),
     }
 
 
 @router.get('/logout')
-def logout(request: Request):
-    clear_all_caches()
+async def logout(request: Request):
+    await clear_all_caches()
     request.session.clear()
     return RedirectResponse('/')

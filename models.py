@@ -203,6 +203,7 @@ class SendMessageRequest(BaseModel):
     message_type:   str = 'direct'
     group_id:       Optional[str] = None
     encrypted_map:  Optional[dict] = None
+    sender_pubkey: Optional[str] = None
 
     @field_validator('message_type')
     @classmethod

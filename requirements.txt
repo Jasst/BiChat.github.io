@@ -1,32 +1,44 @@
-# BiChat Messenger — FastAPI backend dependencies
+# BiChat Messenger — FastAPI backend dependencies (async version)
 
 # Core framework
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0   # includes uvloop + httptools for production
-starlette>=0.37.0            # SessionMiddleware, StaticFiles, etc.
+starlette>=0.37.0
 
-# Session (signed cookie, Starlette built-in)
-itsdangerous>=2.1.2          # used internally by SessionMiddleware
+# Session middleware
+itsdangerous>=2.1.2
 
-# Template rendering (Jinja2 for existing HTML templates)
+# Templates
 jinja2>=3.1.4
 
 # File uploads
 python-multipart>=0.0.9
 
-# Crypto (existing)
+# Crypto
 cryptography>=42.0.0
 
-# Pydantic v2 (FastAPI uses it natively)
+# Pydantic v2
 pydantic>=2.7.0
 
-# Optional: load .env
+# Environment
 python-dotenv>=1.0.0
+
+# Async SQLite (replaces sqlite3)
+aiosqlite>=0.19.0
+
+# Optional caching utilities (TTLCache)
+cachetools>=5.3.0
 
 # Optional: faster JSON
 orjson>=3.10.0
 
+# Optional: file type detection for uploads
+python-magic>=0.4.27
+
+# Async file I/O (optional, if needed)
+aiofiles>=23.2.1
+
 # Dev / testing
-httpx>=0.27.0                # async test client for FastAPI
+httpx>=0.27.0
 pytest>=8.2.0
 pytest-asyncio>=0.23.0

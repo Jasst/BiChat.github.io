@@ -6,7 +6,38 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.pid" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f3a66435069515be65e9a9f58f2087265c5e9b9e2adce3f07675661a0c1f44de/cache.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f3a66435069515be65e9a9f58f2087265c5e9b9e2adce3f07675661a0c1f44de/image_cache.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f3a66435069515be65e9a9f58f2087265c5e9b9e2adce3f07675661a0c1f44de/memory.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f3a66435069515be65e9a9f58f2087265c5e9b9e2adce3f07675661a0c1f44de/neural.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f8ec334b2007d72f51ccb445d712acbc09a42c7ee161fe4caed93a897ccdd527/cache.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f8ec334b2007d72f51ccb445d712acbc09a42c7ee161fe4caed93a897ccdd527/image_cache.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f8ec334b2007d72f51ccb445d712acbc09a42c7ee161fe4caed93a897ccdd527/memory.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai_memory_v3/f8ec334b2007d72f51ccb445d712acbc09a42c7ee161fe4caed93a897ccdd527/neural.pkl.gz" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/cache.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/ai_assistantTEST.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/ai_assistantVision2.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/auth.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/contacts.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/contacts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/files.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/files.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/groups.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/groups.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/status.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/status.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/wallet.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/contacts.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/contacts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/messaging.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/messaging.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/notifier.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/notifier.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/wallet.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/wallet.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/js/LongPollingClient.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/LongPollingClient.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/js/chat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/chat.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/js/common.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/common.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/js/global-notifications.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/global-notifications.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/static/js/mnemonic-manager.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/mnemonic-manager.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -43,7 +74,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="PostgreSQLFastApiAI3" />
+        <entry key="$PROJECT_DIR$" value="PostgreSQLFastApiAI4" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -121,7 +152,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "PostgreSQLFastApiAI4",
+    "git-widget-placeholder": "ASINCSQLFastApI",
     "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/routes",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -656,17 +687,17 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/database.py</url>
-          <line>328</line>
+          <line>118</line>
           <option name="timeStamp" value="63" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/routes/wallet.py</url>
-          <line>200</line>
+          <line>192</line>
           <option name="timeStamp" value="64" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/database.py</url>
-          <line>405</line>
+          <line>225</line>
           <option name="timeStamp" value="67" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">

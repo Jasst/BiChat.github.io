@@ -1,6 +1,8 @@
 /**
  * mnemonic-manager.js — Безопасное управление мнемоническими фразами
  * ✅ Защита от повторной загрузки + ФИКС копирования
+ * ✅ Добавлено управление глобальным флагом window.modalOpen
+ * ✅ Обработка закрытия модалки через крестик
  */
 
 // === 🛡️ Защита от повторного объявления ===
@@ -22,9 +24,18 @@ if (typeof window.MnemonicManager !== 'undefined') {
         if (modal) {
           modal.classList.remove('hidden');
           modal.setAttribute('aria-hidden', 'false');
+          // ✅ Устанавливаем глобальный флаг, чтобы Long Polling не обновлял UI
+          window.modalOpen = true;
         }
         this._startAutoClear(modalId);
         this._preventEscClose(modalId, true);
+
+        // ✅ Добавляем обработчик для крестика, чтобы корректно закрыть модалку через hide()
+        const closeBtn = modal?.querySelector('.modal-close');
+        if (closeBtn && !closeBtn._mnemonicHandler) {
+          closeBtn._mnemonicHandler = () => this.hide(modalId);
+          closeBtn.addEventListener('click', closeBtn._mnemonicHandler);
+        }
       },
 
       hide(modalId = 'mnemonicModal') {
@@ -35,6 +46,8 @@ if (typeof window.MnemonicManager !== 'undefined') {
           modal.classList.add('hidden');
           modal.setAttribute('aria-hidden', 'true');
           this._preventEscClose(modalId, false);
+          // ✅ Сбрасываем глобальный флаг
+          window.modalOpen = false;
         }
         window.NotificationManager?.showToast('🧹 Mnemonic cleared from memory', 'success');
       },
@@ -47,23 +60,19 @@ if (typeof window.MnemonicManager !== 'undefined') {
             return false;
           }
 
-          // ✅ Проверяем, доступен ли Utils из common.js
           if (typeof Utils !== 'undefined' && typeof Utils.copyToClipboard === 'function') {
             return await Utils.copyToClipboard(this._mnemonic, onSuccess, onError);
           }
 
-          // ✅ Фолбэк: нативное копирование, если Utils недоступен
           console.log('📋 Using fallback clipboard method');
           const text = this._mnemonic;
 
-          // Метод 1: navigator.clipboard (современные браузеры)
           if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(text);
             onSuccess?.();
             return true;
           }
 
-          // Метод 2: document.execCommand (устаревший, но работает везде)
           const textarea = document.createElement('textarea');
           textarea.value = text;
           textarea.style.position = 'fixed';
@@ -83,7 +92,6 @@ if (typeof window.MnemonicManager !== 'undefined') {
         } catch (e) {
           console.error('❌ Copy failed:', e);
           onError?.(e.message || 'Copy failed');
-          // Показываем ошибку пользователю, если есть NotificationManager
           window.NotificationManager?.showToast('Copy failed: ' + e.message, 'error');
           return false;
         }
@@ -124,7 +132,6 @@ if (typeof window.MnemonicManager !== 'undefined') {
         if (this._clearTimer) { clearInterval(this._clearTimer); this._clearTimer = null; }
       },
 
-      // ✅ СТАЛО — просто обнуляем ссылку (GC сделает остальное)
       _wipe() {
         this._mnemonic = null;
       },
@@ -143,7 +150,6 @@ if (typeof window.MnemonicManager !== 'undefined') {
       }
     };
 
-    // ✅ Экспорт в window
     window.MnemonicManager = MnemonicManager;
     console.log('✅ MnemonicManager loaded');
   })();

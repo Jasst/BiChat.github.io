@@ -60,6 +60,7 @@
                 this.abortController = null;
             }
             this.currentRequest = null;
+            // ✅ Очистка кэша ID сообщений
             this._processedMessageIds.clear();
             this.onDisconnect();
         }
@@ -94,7 +95,7 @@
 
         _isSessionValid() {
             return window.AppData && window.AppData.userAddress;
-}
+        }
 
         _sanitizeTimestamp(ts) {
             const now = Date.now() / 1000;

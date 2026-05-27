@@ -1,5 +1,5 @@
 """
-services/contacts.py — Бизнес-логика работы с контактами
+services/contacts.py — Бизнес-логика работы с контактами (асинхронная версия)
 """
 import logging
 import time
@@ -17,17 +17,15 @@ def set_db_path(path: str) -> None:
     _db_path = path
 
 
-def _db():
-    from database import get_db_cursor
-    return get_db_cursor(_db_path)
+from database import get_db_cursor
 
 
-def add_contact(user_address: str, contact_address: str, contact_name: str) -> bool:
+async def add_contact(user_address: str, contact_address: str, contact_name: str) -> bool:
     if not contact_name or not contact_name.strip():
         contact_name = contact_address[:10] + "..."
     try:
-        with _db() as cursor:
-            cursor.execute(
+        async with get_db_cursor(_db_path) as cursor:
+            await cursor.execute(
                 'INSERT OR REPLACE INTO contacts '
                 '(user_address, contact_address, contact_name, created_at) '
                 'VALUES (?, ?, ?, ?)',
@@ -40,29 +38,30 @@ def add_contact(user_address: str, contact_address: str, contact_name: str) -> b
         return False
 
 
-def get_contacts(user_address: str) -> List[Dict[str, Any]]:
-    with _db() as cursor:
-        cursor.execute(
+async def get_contacts(user_address: str) -> List[Dict[str, Any]]:
+    async with get_db_cursor(_db_path) as cursor:
+        await cursor.execute(
             'SELECT contact_address, contact_name, contact_pubkey, created_at '
             'FROM contacts WHERE user_address = ? '
             'ORDER BY contact_name COLLATE NOCASE',
             (user_address,)
         )
+        rows = await cursor.fetchall()
         return [
             {'address': row[0], 'name': row[1], 'pubkey': row[2], 'created_at': row[3]}
-            for row in cursor.fetchall()
+            for row in rows
         ]
 
 
-def update_contact_name(user_address: str, contact_address: str, new_name: str) -> bool:
+async def update_contact_name(user_address: str, contact_address: str, new_name: str) -> bool:
     if not new_name or not new_name.strip():
         return False
     clean_name = ''.join(c for c in new_name.strip() if ord(c) >= 32 and ord(c) != 127)
     if not clean_name or len(clean_name) > 50:
         return False
     try:
-        with _db() as cursor:
-            cursor.execute(
+        async with get_db_cursor(_db_path) as cursor:
+            await cursor.execute(
                 'UPDATE contacts SET contact_name = ? '
                 'WHERE user_address = ? AND contact_address = ?',
                 (clean_name, user_address, contact_address.lower())

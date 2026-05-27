@@ -1,5 +1,5 @@
 """
-services/messaging.py — Список диалогов (без расшифровки)
+services/messaging.py — Список диалогов (асинхронная версия)
 """
 import json
 import logging
@@ -21,19 +21,14 @@ def set_db_path(path: str) -> None:
     _db_path = path
 
 
-def _db():
-    from database import get_db_cursor
-    return get_db_cursor(_db_path)
+from database import get_db_cursor
 
 
-def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
-    """
-    Возвращает список диалогов пользователя (2 запроса вместо N+1).
-    """
+async def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     conversations = []
     try:
-        with _db() as cursor:
-            cursor.execute('''
+        async with get_db_cursor(_db_path) as cursor:
+            await cursor.execute('''
                 SELECT
                     partner,
                     MAX(id) AS last_msg_id,
@@ -53,27 +48,27 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 GROUP BY partner
             ''', (user_address,) * 6)
 
-            rows = cursor.fetchall()
+            rows = await cursor.fetchall()
             if not rows:
                 return []
 
-            chat_ids     = [row['partner'] for row in rows]
+            chat_ids = [row['partner'] for row in rows]
             placeholders = ','.join('?' * len(chat_ids))
-            cursor.execute(f'''
+            await cursor.execute(f'''
                 SELECT chat_id, last_read_message_id
                 FROM read_status
                 WHERE user_address = ? AND chat_id IN ({placeholders})
             ''', (user_address, *chat_ids))
-            read_map = {row['chat_id']: row['last_read_message_id'] for row in cursor.fetchall()}
-            # Получить группы один раз до цикла
-            user_groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
+            read_map = {row['chat_id']: row['last_read_message_id'] for row in await cursor.fetchall()}
+
+            user_groups = await get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
             groups_by_id = {g['id']: g for g in user_groups}
 
             for row in rows:
-                partner      = row['partner']
-                last_msg_id  = row['last_msg_id']
-                last_ts      = row['last_ts']
-                last_sender  = row['last_sender']
+                partner = row['partner']
+                last_msg_id = row['last_msg_id']
+                last_ts = row['last_ts']
+                last_sender = row['last_sender']
                 last_read_id = read_map.get(partner, 0)
 
                 if partner.startswith('group:'):
@@ -82,21 +77,20 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                     name = group['name'] if group else f'Группа {group_id[:8]}...'
                     is_group = True
                 else:
-                    name = (get_contact_name_cached(user_address, partner, cache_version=get_contact_cache_version())
+                    name = (await get_contact_name_cached(user_address, partner, cache_version=get_contact_cache_version())
                             or partner[:10] + "...")
                     is_group = False
 
-                if last_read_id >= last_msg_id:
-                    preview = "✓ Прочитано"
-                else:
-                    preview = "💬 Новое сообщение" if last_sender != user_address else "Вы: сообщение"
+                preview = "✓ Прочитано" if last_read_id >= last_msg_id else (
+                    "💬 Новое сообщение" if last_sender != user_address else "Вы: сообщение"
+                )
 
                 conversations.append({
-                    'address':      partner,
-                    'name':         name,
-                    'is_group':     is_group,
+                    'address': partner,
+                    'name': name,
+                    'is_group': is_group,
                     'last_preview': preview,
-                    'last_ts':      last_ts,
+                    'last_ts': last_ts,
                 })
 
     except Exception as e:
@@ -105,25 +99,21 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     return sorted(conversations, key=lambda x: x.get('last_ts', 0), reverse=True)
 
 
-# =============================================================================
-# Cache for conversations list
-# =============================================================================
-
 _conversations_cache: dict = {}
-_CONV_CACHE_TTL = 2  # seconds
+_CONV_CACHE_TTL = 2
 
 
-def get_conversations_list_cached(user_address: str) -> List[Dict[str, Any]]:
-    now    = time.time()
+async def get_conversations_list_cached(user_address: str) -> List[Dict[str, Any]]:
+    now = time.time()
     cached = _conversations_cache.get(user_address)
     if cached and now - cached[1] < _CONV_CACHE_TTL:
         return cached[0]
-    result = get_conversations_list(user_address)
+    result = await get_conversations_list(user_address)
     _conversations_cache[user_address] = (result, now)
     return result
 
 
-def invalidate_conversations_cache(user_address: str = None) -> None:
+async def invalidate_conversations_cache(user_address: str = None) -> None:
     if user_address:
         _conversations_cache.pop(user_address, None)
     else:

@@ -11,6 +11,8 @@
     return;
   }
   global.DarkMsgCommonLoaded = true;
+  // В начале common.js, после защиты от повторной загрузки
+  window.modalOpen = false;
 
 // =============================================================================
 // === 🛡️ Security Module ===
@@ -184,6 +186,7 @@ const ModalManager = {
   modals: new Map(),
 
   open(id, options = {}) {
+    window.modalOpen = true;
     const modal = DOM.getById(id);
     if (!modal) return false;
     if (options.closeOthers) {
@@ -213,6 +216,7 @@ const ModalManager = {
   },
 
   close(id) {
+    window.modalOpen = false;
     const modal = DOM.getById(id);
     if (!modal) return false;
     const data = this.modals.get(id);
