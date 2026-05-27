@@ -1,4 +1,5 @@
-// AiChat.js — полностью изолированный AI-чат (работает только со своим контейнером)
+// AiChat.js — полностью изолированный AI-чат
+// Версия: 4.2 — исправлена кнопка копирования и мобильная вёрстка
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
@@ -11,7 +12,6 @@
     let isSending = false;
     let currentImagePreviewUrl = null;
 
-    // DOM-элементы AI-чата
     let aiMessagesContainer = null;
     let aiMessageInput = null;
     let aiSendBtn = null;
@@ -27,12 +27,73 @@
         apiEndpoint: '/ai/chat'
     };
 
+    // ========== НАСТРОЙКИ MARKDOWN ==========
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false,
+            async: false
+        });
+    }
+
+    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))
                   .replace(/['"]/g, m => ({ "'": '&#39;', '"': '&quot;' }[m]));
     }
 
+    // Подсветка кода и добавление кнопок копирования в контейнер
+    function enhanceCodeBlocks(container) {
+        if (!container) return;
+        // Подсветка синтаксиса
+        container.querySelectorAll('pre code').forEach(block => {
+            hljs.highlightElement(block);
+        });
+        // Добавление кнопок копирования
+        container.querySelectorAll('pre').forEach(pre => {
+            if (pre.querySelector('.copy-code-btn')) return;
+            const btn = document.createElement('button');
+            btn.textContent = '📋 Копировать';
+            btn.className = 'copy-code-btn';
+            btn.style.cssText = 'position:absolute;top:8px;right:8px;background:#3c3c3c;border:none;color:#ccc;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;z-index:1;transition:0.2s;';
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const code = pre.querySelector('code');
+                if (!code) return;
+                navigator.clipboard.writeText(code.innerText).then(() => {
+                    btn.textContent = '✅ Скопировано!';
+                    setTimeout(() => btn.textContent = '📋 Копировать', 2000);
+                }).catch(() => {
+                    alert('Не удалось скопировать. Попробуйте выделить вручную.');
+                });
+            };
+            pre.style.position = 'relative';
+            pre.style.paddingTop = '32px';
+            pre.appendChild(btn);
+        });
+    }
+
+    function renderMarkdown(text) {
+        if (!text) return '';
+        try {
+            let html = marked.parse(text);
+            return html;
+        } catch(e) {
+            console.warn('Markdown error', e);
+            return escapeHtml(text);
+        }
+    }
+
+    // ========== УПРАВЛЕНИЕ ИСТОРИЕЙ ==========
     function getStoredHistory() {
         try {
             return JSON.parse(localStorage.getItem('ai_chat_history') || '[]');
@@ -40,17 +101,20 @@
             return [];
         }
     }
+
     function setStoredHistory(history) {
         try {
             localStorage.setItem('ai_chat_history', JSON.stringify(history));
         } catch (e) {}
     }
+
     function saveAiMessage(role, text, timestamp = Date.now()) {
         let history = getStoredHistory();
         history.push({ role, text, timestamp });
         if (history.length > CONFIG.historyMaxLength) history = history.slice(-CONFIG.historyMaxLength);
         setStoredHistory(history);
     }
+
     function loadAiHistory() {
         if (!aiMessagesContainer) return;
         const history = getStoredHistory();
@@ -63,6 +127,7 @@
         }
     }
 
+    // ========== ОЧИСТКА ИСТОРИИ ==========
     function clearAiHistory() {
         const modalId = 'confirmClearAiModal';
         let modal = document.getElementById(modalId);
@@ -91,7 +156,6 @@
         }
 
         if (window.ModalManager) {
-            // Устанавливаем обработчик на кнопку подтверждения (убираем старый, чтобы не дублировать)
             const confirmBtn = modal.querySelector('#confirmClearAiBtn');
             const oldHandler = confirmBtn.onclick;
             confirmBtn.onclick = () => {
@@ -106,7 +170,6 @@
             };
             ModalManager.open(modalId);
         } else {
-            // fallback
             if (confirm('Очистить всю историю диалога с AI-ботом?')) {
                 localStorage.removeItem('ai_chat_history');
                 if (aiMessagesContainer) {
@@ -117,6 +180,7 @@
         }
     }
 
+    // ========== СЖАТИЕ ИЗОБРАЖЕНИЙ ==========
     async function compressImage(dataUrl, maxWidth = CONFIG.imageMaxWidth, quality = CONFIG.imageQuality) {
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -150,25 +214,41 @@
         }
     }
 
+    // ========== ОТОБРАЖЕНИЕ СООБЩЕНИЯ ==========
     function displayAiMessage(text, isUser, imagePreview = null, saveToStorage = true) {
         if (!aiMessagesContainer) return;
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${isUser ? 'sent' : 'received'} animate-fade`;
         const avatar = isUser ? '👤' : '🤖';
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const content = escapeHtml(text);
         let imageHtml = '';
         if (imagePreview) {
             imageHtml = `<img src="${escapeHtml(imagePreview)}" alt="Attached" style="max-width:200px;max-height:150px;border-radius:8px;margin-bottom:8px;cursor:pointer;" onclick="window.openImageModal && window.openImageModal('${escapeHtml(imagePreview)}')">`;
         }
-        msgDiv.innerHTML = `
-            <div class="avatar">${avatar}</div>
-            <div class="content">
-                ${imageHtml}
-                <p>${content}</p>
-                <div class="meta"><span>${time}</span></div>
-            </div>
-        `;
+
+        if (isUser) {
+            msgDiv.innerHTML = `
+                <div class="avatar">${avatar}</div>
+                <div class="content">
+                    ${imageHtml}
+                    <div class="markdown-body">${escapeHtml(text)}</div>
+                    <div class="meta"><span>${time}</span></div>
+                </div>
+            `;
+        } else {
+            const html = renderMarkdown(text);
+            msgDiv.innerHTML = `
+                <div class="avatar">${avatar}</div>
+                <div class="content">
+                    ${imageHtml}
+                    <div class="markdown-body">${html}</div>
+                    <div class="meta"><span>${time}</span></div>
+                </div>
+            `;
+            const markdownBody = msgDiv.querySelector('.markdown-body');
+            if (markdownBody) enhanceCodeBlocks(markdownBody);
+        }
+
         aiMessagesContainer.appendChild(msgDiv);
         aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
         if (saveToStorage && text && !(isUser === false && text.includes('Привет! Я AI-ассистент'))) {
@@ -177,6 +257,7 @@
         return msgDiv;
     }
 
+    // ========== ИНДИКАТОР ПЕЧАТИ ==========
     function showAiTypingIndicator(show) {
         if (!aiMessagesContainer) return;
         let indicator = aiMessagesContainer.querySelector('.typing-indicator-message');
@@ -197,6 +278,7 @@
         }
     }
 
+    // ========== ОТПРАВКА ЗАПРОСА И СТРИМИНГ ==========
     async function sendToAi(messageText, imageFile) {
         if (isSending) {
             showToast('Подождите, предыдущий запрос ещё обрабатывается', 'warning');
@@ -211,8 +293,8 @@
             currentStreamReader = null;
         }
         if (currentStreamingMessage && currentStreamingMessage.parentNode) {
-            const errP = currentStreamingMessage.querySelector('.content p');
-            if (errP && !currentStreamingText) errP.textContent = '⚠️ Ответ прерван.';
+            const errDiv = currentStreamingMessage.querySelector('.content .markdown-body');
+            if (errDiv && !currentStreamingText) errDiv.textContent = '⚠️ Ответ прерван.';
         }
         currentStreamingMessage = null;
         currentStreamingText = '';
@@ -262,7 +344,11 @@
 
             currentStreamingMessage = displayAiMessage('', false, null, false);
             currentStreamingText = '';
-            const contentParagraph = currentStreamingMessage.querySelector('.content p');
+            const markdownBody = currentStreamingMessage.querySelector('.content .markdown-body');
+            if (!markdownBody) {
+                console.error('Markdown body not found');
+                throw new Error('UI error');
+            }
             let firstTokenReceived = false;
             let streamFinished = false;
             const reader = response.body.getReader();
@@ -291,10 +377,10 @@
                                     firstTokenReceived = true;
                                 }
                                 currentStreamingText += data.token;
-                                contentParagraph.textContent = currentStreamingText;
+                                markdownBody.textContent = currentStreamingText;
                                 if (aiMessagesContainer) aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
                             } else if (data.error) {
-                                contentParagraph.textContent = '❌ ' + data.error;
+                                markdownBody.textContent = '❌ ' + data.error;
                                 firstTokenReceived = true;
                                 streamFinished = true;
                                 break;
@@ -306,16 +392,19 @@
 
             if (!firstTokenReceived) {
                 showAiTypingIndicator(false);
-                if (contentParagraph) contentParagraph.textContent = '🤖 Нет ответа от модели.';
+                if (markdownBody) markdownBody.textContent = '🤖 Нет ответа от модели.';
             } else if (currentStreamingText) {
+                const finalHtml = renderMarkdown(currentStreamingText);
+                markdownBody.innerHTML = finalHtml;
+                enhanceCodeBlocks(markdownBody);
                 saveAiMessage('assistant', currentStreamingText);
             }
         } catch (err) {
             console.error('AI error:', err);
             showAiTypingIndicator(false);
             if (currentStreamingMessage && currentStreamingMessage.parentNode) {
-                const errP = currentStreamingMessage.querySelector('.content p');
-                if (errP) errP.textContent = '❌ Ошибка связи с AI-сервером. Проверьте, запущен ли LM Studio.';
+                const errDiv = currentStreamingMessage.querySelector('.content .markdown-body');
+                if (errDiv) errDiv.textContent = '❌ Ошибка связи с AI-сервером. Проверьте, запущен ли LM Studio.';
             } else {
                 displayAiMessage('❌ Ошибка связи с AI-сервером. Проверьте, запущен ли LM Studio.', false, null, true);
             }
@@ -331,6 +420,7 @@
         }
     }
 
+    // ========== НАСТРОЙКА UI ==========
     function setupAiUI() {
         if (!aiSendBtn) return;
         aiSendBtn.onclick = () => {
@@ -406,6 +496,7 @@
         }
     }
 
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
     function initAiChat() {
         if (aiChatActive) return;
         aiChatActive = true;
