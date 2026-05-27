@@ -847,7 +847,9 @@ class SelfImprovingAssistant:
                         return
 
                     buffer = ""
-                    async for chunk in resp.content:
+                    async for chunk in resp.content.iter_any():
+                        if not chunk:
+                            continue
                         chunk_str = chunk.decode('utf-8', errors='ignore')
                         buffer += chunk_str
                         while "\n" in buffer:
@@ -872,7 +874,9 @@ class SelfImprovingAssistant:
                                 continue
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
-            yield f"data: {json.dumps({'error': 'Stream interrupted'})}\n\n"
+            yield f"data: {json.dumps({'token': '❌ Ошибка связи с AI-сервером.'})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
         if full_response:
             quality = min(1.0, len(full_response) / 300)
@@ -963,7 +967,11 @@ async def chat_with_ai(body: AIRequest, address: str = Depends(require_auth)):
                 image_base64=body.image_base64,
                 image_mime=body.image_mime
             ),
-            media_type="text/event-stream"
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Accel-Buffering": "no"
+            }
         )
     else:
         response, meta = await assistant.get_response(
