@@ -14,7 +14,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from config import CONFIG, DATABASE_PATH, SECRET_KEY, STATIC_FOLDER, UPLOAD_FOLDER
 from database import Blockchain, init_sqlite_optimizations, warmup_database
 from setup import setup_logging, get_rate_limit_stats
-from setup import balance_cache, contact_cache, group_cache
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -29,29 +28,13 @@ async def lifespan(app: FastAPI):
     await warmup_database(DATABASE_PATH)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+    # Инициализация кэшей (они уже импортированы из cache.py)
     import cache as cache_module
-    cache_module.set_db_path(DATABASE_PATH)
+    # set_db_path больше не нужен, т.к. get_db_cursor() использует DATABASE_PATH из config
 
-    import services.contacts as svc_contacts
-    svc_contacts.set_db_path(DATABASE_PATH)
+    # Сервисы больше не требуют set_db_path
 
-    import services.messaging as svc_messaging
-    svc_messaging.set_db_path(DATABASE_PATH)
-
-    import services.wallet as svc_wallet
-    svc_wallet.init_wallet_service(DATABASE_PATH, blockchain)
-
-    from routes.messages import init_messages
-    from routes.contacts import init_contacts
-    from routes.groups import init_groups
-    from routes.wallet import init_wallet_routes
-    from routes.files import init_files
-
-    init_messages(blockchain)
-    init_contacts(blockchain)
-    init_groups(blockchain)
-    init_wallet_routes(blockchain)
-    init_files(blockchain)
+    # Роутеры теперь получают blockchain через request.app.state, поэтому init_* не нужны
 
     app.state.blockchain = blockchain
     logger.info("BiChat server started (async) ✅")
@@ -127,14 +110,15 @@ async def add_cache_headers(request: Request, call_next):
 async def health_check(request: Request):
     blockchain: Blockchain = request.app.state.blockchain
     db_health = await blockchain.health_check()
+    from cache import balance_cache, contact_cache, group_cache
     return {
         'status': 'ok' if db_health.get('status') == 'healthy' else 'degraded',
         'database': db_health,
         'rate_limits': get_rate_limit_stats(),
         'caches': {
-            'balance': balance_cache.get_stats(),
-            'contacts': contact_cache.get_stats(),
-            'groups': group_cache.get_stats(),
+            'balance': await balance_cache.get_stats(),
+            'contacts': await contact_cache.get_stats(),
+            'groups': await group_cache.get_stats(),
         },
         'connection_pool_size': None,
     }

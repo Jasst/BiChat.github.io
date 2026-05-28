@@ -10,24 +10,15 @@ from cache import (
     get_contact_name_cached, get_contact_cache_version,
     get_user_groups_cached, get_groups_cache_version,
 )
+from database import get_db_cursor
 
 logger = logging.getLogger(__name__)
-
-_db_path: Optional[str] = None
-
-
-def set_db_path(path: str) -> None:
-    global _db_path
-    _db_path = path
-
-
-from database import get_db_cursor
 
 
 async def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     conversations = []
     try:
-        async with get_db_cursor(_db_path) as cursor:
+        async with get_db_cursor() as cursor:
             await cursor.execute('''
                 SELECT
                     partner,

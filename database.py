@@ -1,6 +1,5 @@
 """
-database.py — Асинхронная версия с aiosqlite, без пула соединений.
-Полный код без сокращений.
+database.py — Асинхронная версия с aiosqlite, с версионированием схемы.
 """
 import asyncio
 import hashlib
@@ -103,7 +102,7 @@ class Blockchain:
         async with self._init_lock:
             async with get_db_cursor(self.db_path) as cursor:
                 await self._create_tables(cursor)
-                await self._migrate_schema(cursor)
+                await self._apply_migrations(cursor)   # вместо _migrate_schema
                 await self._create_indexes(cursor)
                 chain = await self._get_chain_raw(cursor)
                 if not chain:
@@ -222,35 +221,69 @@ class Blockchain:
             messages_count INTEGER,
             created_at REAL NOT NULL
         )''')
+        # Таблица версий схемы
+        await cursor.execute('''
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at REAL
+            )
+        ''')
+        await cursor.execute("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (0, ?)", (time.time(),))
 
-    async def _migrate_schema(self, cursor: aiosqlite.Cursor) -> None:
-        # blockchain
-        await cursor.execute("PRAGMA table_info('blockchain')")
-        cols = [row[1] for row in await cursor.fetchall()]
-        if 'coin_transactions' not in cols:
-            await cursor.execute("ALTER TABLE blockchain ADD COLUMN coin_transactions TEXT DEFAULT '[]'")
-            await cursor.execute("UPDATE blockchain SET coin_transactions = '[]' WHERE coin_transactions IS NULL")
-        # coin_transactions
-        await cursor.execute("PRAGMA table_info('coin_transactions')")
-        tx_cols = [row[1] for row in await cursor.fetchall()]
-        if 'block_ref' not in tx_cols:
-            await cursor.execute("ALTER TABLE coin_transactions ADD COLUMN block_ref INTEGER")
-        if 'note' not in tx_cols:
-            await cursor.execute("ALTER TABLE coin_transactions ADD COLUMN note TEXT")
-        # stakes
-        await cursor.execute("PRAGMA table_info('stakes')")
-        stakes_cols = [row[1] for row in await cursor.fetchall()]
-        if 'reward_debt' not in stakes_cols:
-            await cursor.execute("ALTER TABLE stakes ADD COLUMN reward_debt INTEGER DEFAULT 0")
-        # transactions
-        await cursor.execute("PRAGMA table_info('transactions')")
-        trans_cols = [row[1] for row in await cursor.fetchall()]
-        if 'status' not in trans_cols:
-            await cursor.execute("ALTER TABLE transactions ADD COLUMN status TEXT DEFAULT 'sent'")
-            logger.info("✅ Added 'status' column to transactions")
-        if 'read_at' not in trans_cols:
-            await cursor.execute("ALTER TABLE transactions ADD COLUMN read_at REAL")
-            logger.info("✅ Added 'read_at' column to transactions")
+    async def _apply_migrations(self, cursor: aiosqlite.Cursor) -> None:
+        """Применяет миграции последовательно, начиная с текущей версии."""
+        await cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+        row = await cursor.fetchone()
+        current_version = row[0] if row else 0
+
+        # Миграция к версии 1: добавить статусы и read_at в transactions
+        if current_version < 1:
+            await cursor.execute("PRAGMA table_info('transactions')")
+            cols = [c[1] for c in await cursor.fetchall()]
+            if 'status' not in cols:
+                await cursor.execute("ALTER TABLE transactions ADD COLUMN status TEXT DEFAULT 'sent'")
+            if 'read_at' not in cols:
+                await cursor.execute("ALTER TABLE transactions ADD COLUMN read_at REAL")
+            # Обновляем версию
+            await cursor.execute("UPDATE schema_version SET version = 1 WHERE version = 0")
+            if cursor.rowcount == 0:
+                await cursor.execute("INSERT INTO schema_version (version, applied_at) VALUES (1, ?)", (time.time(),))
+            current_version = 1
+            logger.info("Migration to version 1 applied")
+
+        # Миграция к версии 2: добавить coin_transactions в blockchain
+        if current_version < 2:
+            await cursor.execute("PRAGMA table_info('blockchain')")
+            cols = [c[1] for c in await cursor.fetchall()]
+            if 'coin_transactions' not in cols:
+                await cursor.execute("ALTER TABLE blockchain ADD COLUMN coin_transactions TEXT DEFAULT '[]'")
+            await cursor.execute("UPDATE schema_version SET version = 2")
+            current_version = 2
+            logger.info("Migration to version 2 applied")
+
+        # Миграция к версии 3: добавить block_ref и note в coin_transactions
+        if current_version < 3:
+            await cursor.execute("PRAGMA table_info('coin_transactions')")
+            cols = [c[1] for c in await cursor.fetchall()]
+            if 'block_ref' not in cols:
+                await cursor.execute("ALTER TABLE coin_transactions ADD COLUMN block_ref INTEGER")
+            if 'note' not in cols:
+                await cursor.execute("ALTER TABLE coin_transactions ADD COLUMN note TEXT")
+            await cursor.execute("UPDATE schema_version SET version = 3")
+            current_version = 3
+            logger.info("Migration to version 3 applied")
+
+        # Миграция к версии 4: добавить reward_debt в stakes
+        if current_version < 4:
+            await cursor.execute("PRAGMA table_info('stakes')")
+            cols = [c[1] for c in await cursor.fetchall()]
+            if 'reward_debt' not in cols:
+                await cursor.execute("ALTER TABLE stakes ADD COLUMN reward_debt INTEGER DEFAULT 0")
+            await cursor.execute("UPDATE schema_version SET version = 4")
+            current_version = 4
+            logger.info("Migration to version 4 applied")
+
+        logger.info(f"Database schema at version {current_version}")
 
     async def _create_indexes(self, cursor: aiosqlite.Cursor) -> None:
         indexes = [

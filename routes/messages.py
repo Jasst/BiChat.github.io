@@ -26,13 +26,6 @@ from setup import message_limiter
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['messages'])
 
-_blockchain = None
-
-
-def init_messages(blockchain) -> None:
-    global _blockchain
-    _blockchain = blockchain
-
 
 def _sanitize_message(msg: dict) -> dict:
     return {
@@ -48,11 +41,12 @@ def _sanitize_message(msg: dict) -> dict:
     }
 
 
-async def _fetch_new_messages_from_db(user_addr: str, since_timestamp: float,
+async def _fetch_new_messages_from_db(request: Request, user_addr: str, since_timestamp: float,
                                       limit: int = 50) -> List[dict]:
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
     try:
-        async with get_db_cursor(_blockchain.db_path) as cursor:
+        async with get_db_cursor(blockchain.db_path) as cursor:
             await cursor.execute('''
                 SELECT id, sender, recipient, content, image, timestamp, metadata
                 FROM transactions
@@ -104,7 +98,7 @@ async def wait_for_messages(
              'timestamp': time.time(), 'from_buffer': True, 'waited': waited},
             headers=_no_cache_headers(),
         )
-    db_messages = await _fetch_new_messages_from_db(address, since)
+    db_messages = await _fetch_new_messages_from_db(request, address, since)
     if db_messages:
         for msg in db_messages:
             await message_notifier.add_message(address, msg)
@@ -132,11 +126,12 @@ def _no_cache_headers() -> dict:
 
 @router.post('/send_message', status_code=201,
              dependencies=[Depends(make_rate_limit_dep(message_limiter, limit=30))])
-async def send_message(body: SendMessageRequest, address: str = Depends(require_auth)):
+async def send_message(body: SendMessageRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     sender = address
     msg_type = body.message_type
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('BEGIN IMMEDIATE')
         if MESSAGE_FEE > 0:
             await cursor.execute('SELECT balance FROM wallets WHERE address = ?', (sender,))
@@ -166,15 +161,15 @@ async def send_message(body: SendMessageRequest, address: str = Depends(require_
             if not body.encrypted_map:
                 await cursor.execute('ROLLBACK')
                 raise HTTPException(400, 'Missing encrypted_map')
-            groups = await get_user_groups_cached(sender, cache_version=get_groups_cache_version())
+            groups = await get_user_groups_cached(sender, cache_version=await get_groups_cache_version())
             group = next((g for g in groups if g['id'] == body.group_id), None)
             if not group or sender not in group['members']:
                 await cursor.execute('ROLLBACK')
                 raise HTTPException(403, 'Access denied')
-            tx_id = await _blockchain.new_transaction(
+            tx_id = await blockchain.new_transaction(
                 cursor, sender, f"group:{body.group_id}",
                 json.dumps({'encrypted_map': body.encrypted_map}), None,
-                sender_pubkey=body.sender_pubkey,  # <-- передаём из запроса
+                sender_pubkey=body.sender_pubkey,
                 metadata={'encryption': 'group-ecdh-v4', 'group_id': body.group_id}
             )
             message_obj = {
@@ -198,10 +193,10 @@ async def send_message(body: SendMessageRequest, address: str = Depends(require_
             if not body.payload or not isinstance(body.payload, dict):
                 await cursor.execute('ROLLBACK')
                 raise HTTPException(400, 'Missing encrypted payload')
-            tx_id = await _blockchain.new_transaction(
+            tx_id = await blockchain.new_transaction(
                 cursor, sender, recipient,
                 json.dumps(body.payload), None,
-                sender_pubkey=body.sender_pubkey,  # <-- передаём из запроса
+                sender_pubkey=body.sender_pubkey,
                 metadata={'encryption': 'hybrid-v2'}
             )
             message_obj = {
@@ -225,7 +220,7 @@ async def send_message(body: SendMessageRequest, address: str = Depends(require_
             await invalidate_conversations_cache(sender)
             await invalidate_conversations_cache(body.recipient)
         if CONFIG.get('ENABLE_MINING', False):
-            last = await _blockchain._last_block_raw(cursor)
+            last = await blockchain._last_block_raw(cursor)
             if last:
                 asyncio.create_task(mine_block_async_async(last.get('proof', 0), sender))
         return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
@@ -233,21 +228,23 @@ async def send_message(body: SendMessageRequest, address: str = Depends(require_
 
 @router.get('/get_conversation')
 async def get_conversation(
+    request: Request,
     address: str = Depends(require_auth),
     with_:   str = Query(alias='with', default=None),
     last_message_id: Optional[int] = Query(default=None),
     limit:   int = Query(default=30),
     before_id: Optional[int] = Query(default=None),
 ):
+    blockchain = request.app.state.blockchain
     if not with_:
         raise HTTPException(400, 'Missing "with" parameter')
     chat_with = with_
     limit = min(limit, 50)
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         if chat_with.startswith('group:'):
             group_id = chat_with.split(':', 1)[1]
-            groups = await get_user_groups_cached(address, cache_version=get_groups_cache_version())
+            groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             if not any(g['id'] == group_id and address in g['members'] for g in groups):
                 raise HTTPException(403, 'No access')
             query = ('SELECT id, sender, recipient, content, image, timestamp, metadata '
@@ -303,9 +300,9 @@ async def get_conversation(
             'sender_pubkey': None,
             'metadata':     r[6],
             'sender_name':  (await get_contact_name_cached(address, r[1],
-                             cache_version=get_contact_cache_version()) or r[1][:10] + '...'),
+                             cache_version=await get_contact_cache_version()) or r[1][:10] + '...'),
             'recipient_name': (await get_contact_name_cached(address, r[2],
-                               cache_version=get_contact_cache_version()) or r[2][:10] + '...'),
+                               cache_version=await get_contact_cache_version()) or r[2][:10] + '...'),
             'is_mine': (r[1] == address),
         })
     if not chat_with.startswith('group:'):
@@ -319,13 +316,14 @@ async def get_conversations(address: str = Depends(require_auth)):
 
 
 @router.post('/mark_conversation_read')
-async def mark_conversation_read(body: MarkReadRequest, address: str = Depends(require_auth)):
+async def mark_conversation_read(body: MarkReadRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     chat_with = body.chat_with.strip()
     if not chat_with:
         raise HTTPException(400, 'Missing chat_with')
     last_message_id = body.last_message_id
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         if last_message_id is None:
             if chat_with.startswith('group:'):
                 await cursor.execute('SELECT MAX(id) FROM transactions WHERE recipient = ?', (chat_with,))
@@ -348,9 +346,10 @@ async def mark_conversation_read(body: MarkReadRequest, address: str = Depends(r
 
 
 @router.post('/message/{message_id}/delivered')
-async def mark_delivered(message_id: int, address: str = Depends(require_auth)):
+async def mark_delivered(message_id: int, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('''
             UPDATE transactions
             SET status = 'delivered'
@@ -360,9 +359,10 @@ async def mark_delivered(message_id: int, address: str = Depends(require_auth)):
 
 
 @router.post('/message/{message_id}/read')
-async def mark_read(message_id: int, address: str = Depends(require_auth)):
+async def mark_read(message_id: int, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('''
             UPDATE transactions
             SET status = 'read', read_at = ?
@@ -372,11 +372,12 @@ async def mark_read(message_id: int, address: str = Depends(require_auth)):
 
 
 @router.post('/message/statuses')
-async def get_message_statuses(body: MessageStatusesRequest, address: str = Depends(require_auth)):
+async def get_message_statuses(body: MessageStatusesRequest, request: Request, address: str = Depends(require_auth)):
     if not body.ids:
         return {}
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         placeholders = ','.join('?' * len(body.ids))
         await cursor.execute(f'SELECT id, status FROM transactions WHERE id IN ({placeholders})',
                              body.ids)
@@ -387,7 +388,7 @@ async def get_message_statuses(body: MessageStatusesRequest, address: str = Depe
 @router.get('/get_public_key/{addr}')
 async def get_public_key(addr: str, address: str = Depends(require_auth)):
     from cache import get_cached_public_key, get_pubkey_cache_version, fetch_public_key_from_chain
-    pubkey, verified = await get_cached_public_key(addr, cache_version=get_pubkey_cache_version())
+    pubkey, verified = await get_cached_public_key(addr, cache_version=await get_pubkey_cache_version())
     if not pubkey:
         pubkey, verified = await fetch_public_key_from_chain(addr)
     if pubkey:
@@ -397,21 +398,24 @@ async def get_public_key(addr: str, address: str = Depends(require_auth)):
 
 @router.get('/search_messages')
 async def search_messages(
+    request: Request,
     q:       str = Query(default=''),
     address: str = Depends(require_auth),
 ):
     if len(q.strip()) < 2:
         raise HTTPException(400, 'Query too short')
-    results = await _blockchain.search_messages(address, q.strip())
+    blockchain = request.app.state.blockchain
+    results = await blockchain.search_messages(address, q.strip())
     return {'results': results}
 
 
 @router.get('/check_new_messages')
 async def check_new_messages_legacy(
+    request: Request,
     since:   float = Query(default=0.0),
     address: str   = Depends(require_auth),
 ):
-    messages = await _fetch_new_messages_from_db(address, since)
+    messages = await _fetch_new_messages_from_db(request, address, since)
     return {'messages': messages}
 
 

@@ -6,7 +6,7 @@ import os
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from config import UPLOAD_FOLDER, CONFIG
@@ -15,13 +15,6 @@ from models import DeleteMessageRequest, ClearConversationRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['files'])
-
-_blockchain = None
-
-
-def init_files(blockchain) -> None:
-    global _blockchain
-    _blockchain = blockchain
 
 
 IMAGE_MAGIC_BYTES = {
@@ -91,9 +84,10 @@ async def serve_upload(filename: str, address: str = Depends(require_auth)):
 
 
 @router.post('/delete_message')
-async def delete_message(body: DeleteMessageRequest, address: str = Depends(require_auth)):
+async def delete_message(body: DeleteMessageRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('SELECT sender FROM transactions WHERE id = ?', (body.message_id,))
         row = await cursor.fetchone()
         if not row:
@@ -106,12 +100,13 @@ async def delete_message(body: DeleteMessageRequest, address: str = Depends(requ
 
 
 @router.post('/clear_conversation')
-async def clear_conversation(body: ClearConversationRequest, address: str = Depends(require_auth)):
+async def clear_conversation(body: ClearConversationRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     chat_with = body.chat_with.strip()
     if not chat_with:
         raise HTTPException(400, 'Missing chat_with parameter')
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         if chat_with.startswith('group:'):
             await cursor.execute(
                 'DELETE FROM transactions WHERE sender = ? AND recipient = ?',

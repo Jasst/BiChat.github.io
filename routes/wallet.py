@@ -6,7 +6,7 @@ import secrets
 import time
 from threading import Lock
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from config import (
     COIN, COIN_NAME, TRANSFER_FEE, MIN_STAKE_AMOUNT, BLOCK_REWARD, CONFIG,
@@ -25,13 +25,6 @@ router = APIRouter(prefix='/wallet', tags=['wallet'])
 
 _CHALLENGE_TTL = MINING_CHALLENGE_TTL
 
-_blockchain = None
-
-
-def init_wallet_routes(blockchain) -> None:
-    global _blockchain
-    _blockchain = blockchain
-
 
 @router.get('/config')
 def wallet_config():
@@ -49,9 +42,10 @@ def wallet_config():
 
 
 @router.get('/balance')
-async def wallet_balance(address: str = Depends(require_auth)):
+async def wallet_balance(request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('SELECT balance FROM wallets WHERE address = ?', (address,))
         row = await cursor.fetchone()
         balance = row[0] if row else 0
@@ -68,9 +62,10 @@ async def wallet_balance(address: str = Depends(require_auth)):
 
 
 @router.get('/transactions')
-async def wallet_transactions(address: str = Depends(require_auth)):
+async def wallet_transactions(request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('''
             SELECT id, tx_type, sender, recipient, amount, timestamp
             FROM coin_transactions
@@ -87,12 +82,13 @@ async def wallet_transactions(address: str = Depends(require_auth)):
 
 
 @router.post('/send')
-async def wallet_send(body: TransferRequest, address: str = Depends(require_auth)):
+async def wallet_send(body: TransferRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     if body.recipient == address:
         raise HTTPException(400, 'Cannot send to yourself')
     total = body.amount + TRANSFER_FEE
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('BEGIN IMMEDIATE')
         await cursor.execute(
             'UPDATE wallets SET balance = balance - ? WHERE address = ? AND balance >= ?',
@@ -150,16 +146,17 @@ async def unstake(address: str = Depends(require_auth)):
 
 
 @router.get('/staking/info')
-async def staking_info(address: str = Depends(require_auth)):
+async def staking_info(request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute(
             'SELECT amount, start_time, start_block, unlock_block '
             'FROM stakes WHERE address=? AND active=1',
             (address,)
         )
         stakes = [dict(row) for row in await cursor.fetchall()]
-        current_block = (await _blockchain._last_block_raw(cursor)).get('index', 0)
+        current_block = (await blockchain._last_block_raw(cursor)).get('index', 0)
     expected_income = 0
     if ENABLE_STAKING and staking_manager:
         expected_income = await staking_manager.get_expected_income(address)
@@ -173,10 +170,11 @@ async def staking_info(address: str = Depends(require_auth)):
 
 
 @router.get('/last-proof')
-async def last_proof(address: str = Depends(require_auth)):
+async def last_proof(request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
-        last = await _blockchain._last_block_raw(cursor)
+    async with get_db_cursor(blockchain.db_path) as cursor:
+        last = await blockchain._last_block_raw(cursor)
     challenge = secrets.token_hex(16)
     with _mining_challenges_lock:
         _mining_challenges.setdefault(address, {})[challenge] = time.time() + _CHALLENGE_TTL
@@ -189,9 +187,10 @@ async def last_proof(address: str = Depends(require_auth)):
 
 
 @router.post('/mine', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=3))])
-async def mine(body: MineRequest, address: str = Depends(require_auth)):
+async def mine(body: MineRequest, request: Request, address: str = Depends(require_auth)):
     if not ENABLE_MINING:
         raise HTTPException(403, 'Mining disabled')
+    blockchain = request.app.state.blockchain
     with _mining_challenges_lock:
         challenges = _mining_challenges.get(address, {})
         if body.challenge not in challenges or time.time() > challenges[body.challenge]:
@@ -199,7 +198,7 @@ async def mine(body: MineRequest, address: str = Depends(require_auth)):
         del _mining_challenges[address][body.challenge]
         if not _mining_challenges[address]:
             del _mining_challenges[address]
-    success, error_msg, reward_amount, block_index = await _blockchain.try_mine_block(
+    success, error_msg, reward_amount, block_index = await blockchain.try_mine_block(
         body.last_proof, body.last_index, body.proof, body.challenge, address
     )
     if not success:
@@ -216,9 +215,10 @@ async def mine(body: MineRequest, address: str = Depends(require_auth)):
 
 
 @router.get('/global-stats')
-async def wallet_global_stats():
+async def wallet_global_stats(request: Request):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('SELECT SUM(balance) FROM wallets')
         total_supply_raw = (await cursor.fetchone())[0] or 0
         await cursor.execute('SELECT balance FROM wallets WHERE address = ?', (STAKING_FEE_POOL_ADDRESS,))

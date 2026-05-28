@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from cache import bump_groups_cache_version, get_groups_cache_version, get_user_groups_cached
 from dependencies import require_auth
@@ -16,22 +16,16 @@ from models import (CreateGroupRequest, DeleteGroupRequest, RenameGroupRequest,
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['groups'])
 
-_blockchain = None
-
-
-def init_groups(blockchain) -> None:
-    global _blockchain
-    _blockchain = blockchain
-
 
 @router.get('/get_groups')
-async def get_groups(address: str = Depends(require_auth)):
-    groups = await get_user_groups_cached(address, cache_version=get_groups_cache_version())
+async def get_groups(request: Request, address: str = Depends(require_auth)):
+    groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
     return {'groups': groups}
 
 
 @router.post('/create_group', status_code=201)
-async def create_group(body: CreateGroupRequest, address: str = Depends(require_auth)):
+async def create_group(body: CreateGroupRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     name = body.name.strip()
     members_set = {m.strip() for m in body.members if m.strip()}
     members_set.add(address)
@@ -41,12 +35,12 @@ async def create_group(body: CreateGroupRequest, address: str = Depends(require_
         raise HTTPException(400, f'Invalid member addresses: {invalid[:3]}')
     group_id = uuid.uuid4().hex
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute(
             'INSERT INTO groups (id, name, creator, members, created_at) VALUES (?, ?, ?, ?, ?)',
             (group_id, name, address, json.dumps(members_clean), time.time())
         )
-    bump_groups_cache_version()
+    await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     for member in members_clean:
         await invalidate_conversations_cache(member)
@@ -61,9 +55,10 @@ async def create_group(body: CreateGroupRequest, address: str = Depends(require_
 
 
 @router.post('/delete_group')
-async def delete_group(body: DeleteGroupRequest, address: str = Depends(require_auth)):
+async def delete_group(body: DeleteGroupRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('SELECT id, name, creator, members FROM groups WHERE id = ?', (body.group_id,))
         row = await cursor.fetchone()
         if not row:
@@ -73,7 +68,7 @@ async def delete_group(body: DeleteGroupRequest, address: str = Depends(require_
         group_name = row[1]
         members = json.loads(row[3]) if row[3] else []
         await cursor.execute('DELETE FROM groups WHERE id = ?', (body.group_id,))
-    bump_groups_cache_version()
+    await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     for member in members:
         await invalidate_conversations_cache(member)
@@ -82,9 +77,10 @@ async def delete_group(body: DeleteGroupRequest, address: str = Depends(require_
 
 
 @router.post('/rename_group')
-async def rename_group(body: RenameGroupRequest, address: str = Depends(require_auth)):
+async def rename_group(body: RenameGroupRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('SELECT creator, members FROM groups WHERE id = ?', (body.group_id,))
         row = await cursor.fetchone()
         if not row:
@@ -93,7 +89,7 @@ async def rename_group(body: RenameGroupRequest, address: str = Depends(require_
             raise HTTPException(403, 'Only the creator can rename this group')
         members = json.loads(row[1]) if row[1] else []
         await cursor.execute('UPDATE groups SET name = ? WHERE id = ?', (body.name, body.group_id))
-    bump_groups_cache_version()
+    await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     for member in members:
         await invalidate_conversations_cache(member)
@@ -102,9 +98,10 @@ async def rename_group(body: RenameGroupRequest, address: str = Depends(require_
 
 
 @router.post('/add_group_member')
-async def add_group_member(body: GroupMemberRequest, address: str = Depends(require_auth)):
+async def add_group_member(body: GroupMemberRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('SELECT creator, members FROM groups WHERE id = ?', (body.group_id,))
         row = await cursor.fetchone()
         if not row:
@@ -120,7 +117,7 @@ async def add_group_member(body: GroupMemberRequest, address: str = Depends(requ
         members.sort()
         await cursor.execute('UPDATE groups SET members = ? WHERE id = ?',
                              (json.dumps(members), body.group_id))
-    bump_groups_cache_version()
+    await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     await invalidate_conversations_cache(address)
     await invalidate_conversations_cache(body.address)
@@ -129,9 +126,10 @@ async def add_group_member(body: GroupMemberRequest, address: str = Depends(requ
 
 
 @router.post('/remove_group_member')
-async def remove_group_member(body: GroupMemberRequest, address: str = Depends(require_auth)):
+async def remove_group_member(body: GroupMemberRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute('SELECT creator, members FROM groups WHERE id = ?', (body.group_id,))
         row = await cursor.fetchone()
         if not row:
@@ -149,7 +147,7 @@ async def remove_group_member(body: GroupMemberRequest, address: str = Depends(r
         members.remove(body.address)
         await cursor.execute('UPDATE groups SET members = ? WHERE id = ?',
                              (json.dumps(members), body.group_id))
-    bump_groups_cache_version()
+    await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     await invalidate_conversations_cache(address)
     await invalidate_conversations_cache(body.address)

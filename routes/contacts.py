@@ -4,7 +4,7 @@ routes/contacts.py — CRUD-маршруты для контактов (асин
 import hmac
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from cache import get_cached_public_key, get_pubkey_cache_version
 from dependencies import require_auth
@@ -14,16 +14,9 @@ from services.contacts import add_contact, get_contacts, update_contact_name
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['contacts'])
 
-_blockchain = None
-
-
-def init_contacts(blockchain) -> None:
-    global _blockchain
-    _blockchain = blockchain
-
 
 @router.post('/add_contact', status_code=201)
-async def add_contact_route(body: AddContactRequest, address: str = Depends(require_auth)):
+async def add_contact_route(body: AddContactRequest, request: Request, address: str = Depends(require_auth)):
     if await add_contact(address, body.address, body.name):
         from services.messaging import invalidate_conversations_cache
         await invalidate_conversations_cache(address)
@@ -32,7 +25,7 @@ async def add_contact_route(body: AddContactRequest, address: str = Depends(requ
 
 
 @router.post('/add_contact_from_chat', status_code=201)
-async def add_contact_from_chat(body: AddContactFromChatRequest, address: str = Depends(require_auth)):
+async def add_contact_from_chat(body: AddContactFromChatRequest, request: Request, address: str = Depends(require_auth)):
     contact_name = (body.contact_name or '').strip() or body.contact_address[:10] + '...'
     if await add_contact(address, body.contact_address, contact_name):
         from services.messaging import invalidate_conversations_cache
@@ -49,7 +42,7 @@ async def get_contacts_route(address: str = Depends(require_auth)):
         if not contact.get('pubkey'):
             try:
                 pubkey, verified = await get_cached_public_key(
-                    contact['address'], cache_version=get_pubkey_cache_version())
+                    contact['address'], cache_version=await get_pubkey_cache_version())
                 contact['pubkey'] = pubkey
                 contact['pubkey_verified'] = verified
             except Exception:
@@ -59,16 +52,17 @@ async def get_contacts_route(address: str = Depends(require_auth)):
 
 
 @router.post('/delete_contact')
-async def delete_contact_route(body: DeleteContactRequest, address: str = Depends(require_auth)):
+async def delete_contact_route(body: DeleteContactRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute(
             'DELETE FROM contacts WHERE user_address = ? AND contact_address = ?',
             (address, body.address)
         )
         deleted = cursor.rowcount
     from cache import bump_contact_cache_version
-    bump_contact_cache_version()
+    await bump_contact_cache_version()
     from services.messaging import invalidate_conversations_cache
     await invalidate_conversations_cache(address)
     if deleted:
@@ -78,13 +72,14 @@ async def delete_contact_route(body: DeleteContactRequest, address: str = Depend
 
 
 @router.post('/edit_contact')
-async def edit_contact_route(body: EditContactRequest, address: str = Depends(require_auth)):
+async def edit_contact_route(body: EditContactRequest, request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     contact_address = body.address
     new_name = body.name
     if hmac.compare_digest(address, contact_address):
         raise HTTPException(400, 'Cannot edit yourself as a contact')
     from database import get_db_cursor
-    async with get_db_cursor(_blockchain.db_path) as cursor:
+    async with get_db_cursor(blockchain.db_path) as cursor:
         await cursor.execute(
             'SELECT contact_name FROM contacts '
             'WHERE user_address = ? AND contact_address = ?',

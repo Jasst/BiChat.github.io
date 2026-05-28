@@ -1,36 +1,27 @@
 """
 cache.py — Асинхронная версия с aiosqlite и TTL-кэшами.
 """
+import asyncio
 import json
 import logging
-import threading
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 from config import CONFIG
 
 logger = logging.getLogger(__name__)
 
-_db_path: Optional[str] = None
 
-
-def set_db_path(path: str) -> None:
-    global _db_path
-    _db_path = path
-
-
-from database import get_db_cursor
-
-
-class TTLCache:
+class AsyncTTLCache:
+    """Полностью асинхронный TTL-кэш с блокировкой asyncio."""
     def __init__(self, ttl_seconds: float = 300, maxsize: int = 256):
         self.ttl = ttl_seconds
         self.maxsize = maxsize
         self._cache = {}
-        self._lock = threading.RLock()
+        self._lock = asyncio.Lock()
 
-    async def get(self, key):
-        with self._lock:
+    async def get(self, key: Any) -> Optional[Any]:
+        async with self._lock:
             if key in self._cache:
                 value, expires = self._cache[key]
                 if time.time() < expires:
@@ -38,63 +29,77 @@ class TTLCache:
                 del self._cache[key]
         return None
 
-    async def set(self, key, value):
-        with self._lock:
+    async def set(self, key: Any, value: Any) -> None:
+        async with self._lock:
             if len(self._cache) >= self.maxsize:
                 oldest = min(self._cache.items(), key=lambda kv: kv[1][1])[0]
                 del self._cache[oldest]
             self._cache[key] = (value, time.time() + self.ttl)
 
-    async def invalidate(self, key=None):
-        with self._lock:
+    async def invalidate(self, key: Any = None) -> None:
+        async with self._lock:
             if key:
                 self._cache.pop(key, None)
             else:
                 self._cache.clear()
 
+    async def get_stats(self) -> dict:
+        async with self._lock:
+            return {
+                'size': len(self._cache),
+                'maxsize': self.maxsize,
+                'ttl': self.ttl,
+            }
 
-pubkey_cache = TTLCache(ttl_seconds=3600, maxsize=CONFIG['CACHE_SIZE_PUBKEYS'])
-contact_name_cache = TTLCache(ttl_seconds=600, maxsize=CONFIG['CACHE_SIZE_CONTACTS'])
-user_groups_cache = TTLCache(ttl_seconds=300, maxsize=CONFIG['CACHE_SIZE_GROUPS'])
+
+# Экземпляры кэшей (все используют AsyncTTLCache)
+pubkey_cache = AsyncTTLCache(ttl_seconds=3600, maxsize=CONFIG['CACHE_SIZE_PUBKEYS'])
+contact_name_cache = AsyncTTLCache(ttl_seconds=600, maxsize=CONFIG['CACHE_SIZE_CONTACTS'])
+user_groups_cache = AsyncTTLCache(ttl_seconds=300, maxsize=CONFIG['CACHE_SIZE_GROUPS'])
+balance_cache = AsyncTTLCache(ttl_seconds=30.0, maxsize=1000)
+contact_cache = AsyncTTLCache(ttl_seconds=60.0, maxsize=500)
+group_cache = AsyncTTLCache(ttl_seconds=30.0, maxsize=200)
+block_count_cache = AsyncTTLCache(ttl_seconds=10.0, maxsize=50)
+supply_cache = AsyncTTLCache(ttl_seconds=60.0, maxsize=10)
 
 _pubkey_cache_version = 0
-_pubkey_version_lock = threading.Lock()
+_pubkey_version_lock = asyncio.Lock()
 _contact_cache_version = 0
-_contact_version_lock = threading.Lock()
+_contact_version_lock = asyncio.Lock()
 _groups_cache_version = 0
-_groups_version_lock = threading.Lock()
+_groups_version_lock = asyncio.Lock()
 
 
-def bump_pubkey_cache_version() -> None:
+async def bump_pubkey_cache_version() -> None:
     global _pubkey_cache_version
-    with _pubkey_version_lock:
+    async with _pubkey_version_lock:
         _pubkey_cache_version += 1
 
 
-def get_pubkey_cache_version() -> int:
-    with _pubkey_version_lock:
+async def get_pubkey_cache_version() -> int:
+    async with _pubkey_version_lock:
         return _pubkey_cache_version
 
 
-def bump_contact_cache_version() -> None:
+async def bump_contact_cache_version() -> None:
     global _contact_cache_version
-    with _contact_version_lock:
+    async with _contact_version_lock:
         _contact_cache_version += 1
 
 
-def get_contact_cache_version() -> int:
-    with _contact_version_lock:
+async def get_contact_cache_version() -> int:
+    async with _contact_version_lock:
         return _contact_cache_version
 
 
-def bump_groups_cache_version() -> None:
+async def bump_groups_cache_version() -> None:
     global _groups_cache_version
-    with _groups_version_lock:
+    async with _groups_version_lock:
         _groups_cache_version += 1
 
 
-def get_groups_cache_version() -> int:
-    with _groups_version_lock:
+async def get_groups_cache_version() -> int:
+    async with _groups_version_lock:
         return _groups_cache_version
 
 
@@ -103,7 +108,8 @@ async def get_cached_public_key(address: str, cache_version: int = 0) -> Tuple[O
     cached = await pubkey_cache.get(key)
     if cached is not None:
         return cached
-    async with get_db_cursor(_db_path) as cursor:
+    from database import get_db_cursor
+    async with get_db_cursor() as cursor:
         await cursor.execute(
             'SELECT public_key_b64, verified FROM pubkey_cache WHERE address = ?',
             (address,)
@@ -123,14 +129,15 @@ async def cache_public_key(address: str, pubkey_b64: str,
             verified = verify_address_matches_pubkey(address, pubkey_b64)
             if not verified:
                 logger.warning(f"Unverified pubkey cached for {address[:16]}...")
-        async with get_db_cursor(_db_path) as cursor:
+        from database import get_db_cursor
+        async with get_db_cursor() as cursor:
             await cursor.execute(
                 'INSERT OR REPLACE INTO pubkey_cache '
                 '(address, public_key_b64, updated_at, source, verified) '
                 'VALUES (?, ?, ?, ?, ?)',
                 (address, pubkey_b64, time.time(), source, 1 if verified else 0)
             )
-        bump_pubkey_cache_version()
+        await bump_pubkey_cache_version()
         return True
     except Exception as e:
         logger.error(f"Cache pubkey error: {e}")
@@ -138,7 +145,8 @@ async def cache_public_key(address: str, pubkey_b64: str,
 
 
 async def fetch_public_key_from_chain(address: str) -> Tuple[Optional[str], bool]:
-    async with get_db_cursor(_db_path) as cursor:
+    from database import get_db_cursor
+    async with get_db_cursor() as cursor:
         await cursor.execute(
             'SELECT sender_pubkey, metadata FROM transactions '
             'WHERE sender = ? AND sender_pubkey IS NOT NULL '
@@ -151,7 +159,6 @@ async def fetch_public_key_from_chain(address: str) -> Tuple[Optional[str], bool
             from setup import verify_address_matches_pubkey
             verified = verify_address_matches_pubkey(address, pubkey)
             return pubkey, verified
-        # ✅ Исправлено: проверка на None и str
         if row and row[1] and isinstance(row[1], str):
             try:
                 meta = json.loads(row[1])
@@ -171,7 +178,8 @@ async def get_contact_name_cached(user_address: str, contact_address: str,
     cached = await contact_name_cache.get(key)
     if cached is not None:
         return cached
-    async with get_db_cursor(_db_path) as cursor:
+    from database import get_db_cursor
+    async with get_db_cursor() as cursor:
         await cursor.execute(
             'SELECT contact_name FROM contacts '
             'WHERE user_address = ? AND contact_address = ?',
@@ -183,12 +191,13 @@ async def get_contact_name_cached(user_address: str, contact_address: str,
         return result
 
 
-async def get_user_groups_cached(address: str, cache_version: int = 0) -> tuple:
+async def get_user_groups_cached(address: str, cache_version: int = 0):
     key = (address, cache_version)
     cached = await user_groups_cache.get(key)
     if cached is not None:
         return cached
-    async with get_db_cursor(_db_path) as cursor:
+    from database import get_db_cursor
+    async with get_db_cursor() as cursor:
         await cursor.execute('SELECT id, name, creator, members, created_at FROM groups')
         groups = []
         async for row in cursor:
@@ -210,4 +219,9 @@ async def clear_all_caches() -> None:
     await pubkey_cache.invalidate()
     await contact_name_cache.invalidate()
     await user_groups_cache.invalidate()
+    await balance_cache.invalidate()
+    await contact_cache.invalidate()
+    await group_cache.invalidate()
+    await block_count_cache.invalidate()
+    await supply_cache.invalidate()
     logger.debug("All TTL caches cleared")

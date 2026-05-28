@@ -6,25 +6,16 @@ import time
 from typing import Any, Dict, List, Optional
 
 from cache import bump_contact_cache_version
+from database import get_db_cursor
 
 logger = logging.getLogger(__name__)
-
-_db_path: Optional[str] = None
-
-
-def set_db_path(path: str) -> None:
-    global _db_path
-    _db_path = path
-
-
-from database import get_db_cursor
 
 
 async def add_contact(user_address: str, contact_address: str, contact_name: str) -> bool:
     if not contact_name or not contact_name.strip():
         contact_name = contact_address[:10] + "..."
     try:
-        async with get_db_cursor(_db_path) as cursor:
+        async with get_db_cursor() as cursor:
             await cursor.execute(
                 'INSERT OR REPLACE INTO contacts '
                 '(user_address, contact_address, contact_name, created_at) '
@@ -39,7 +30,7 @@ async def add_contact(user_address: str, contact_address: str, contact_name: str
 
 
 async def get_contacts(user_address: str) -> List[Dict[str, Any]]:
-    async with get_db_cursor(_db_path) as cursor:
+    async with get_db_cursor() as cursor:
         await cursor.execute(
             'SELECT contact_address, contact_name, contact_pubkey, created_at '
             'FROM contacts WHERE user_address = ? '
@@ -60,7 +51,7 @@ async def update_contact_name(user_address: str, contact_address: str, new_name:
     if not clean_name or len(clean_name) > 50:
         return False
     try:
-        async with get_db_cursor(_db_path) as cursor:
+        async with get_db_cursor() as cursor:
             await cursor.execute(
                 'UPDATE contacts SET contact_name = ? '
                 'WHERE user_address = ? AND contact_address = ?',

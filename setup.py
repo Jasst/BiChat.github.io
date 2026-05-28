@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from collections import defaultdict
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 from cryptography.hazmat.primitives.asymmetric import ec
 from config import CONFIG
@@ -61,9 +61,9 @@ def setup_logging() -> logging.Logger:
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 
-    is_prod   = os.getenv('FLASK_ENV') == 'production'
+    is_prod = os.getenv('FLASK_ENV') == 'production'
     log_level = logging.WARNING if is_prod else logging.INFO
-    handlers  = [file_handler] if is_prod else [file_handler, console_handler]
+    handlers = [file_handler] if is_prod else [file_handler, console_handler]
 
     logging.basicConfig(level=log_level, handlers=handlers, force=True)
     logging.getLogger('uvicorn').setLevel(logging.WARNING)
@@ -81,7 +81,7 @@ def setup_logging() -> logging.Logger:
 
 class RateLimiter:
     def __init__(self, max_requests: int = 60, window_seconds: int = 60):
-        self.max_requests   = max_requests
+        self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._clients: Dict[str, list] = defaultdict(list)
         self._lock = threading.Lock()
@@ -123,80 +123,18 @@ class RateLimiter:
                     if ts and time.time() - ts[-1] < self.window_seconds
                 ),
                 'window_seconds': self.window_seconds,
-                'max_requests':   self.max_requests,
+                'max_requests': self.max_requests,
             }
 
 
 general_limiter = RateLimiter(max_requests=CONFIG['RATE_LIMIT_PER_MINUTE'])
 message_limiter = RateLimiter(max_requests=CONFIG['RATE_LIMIT_MESSAGE_PER_MINUTE'])
-api_limiter     = RateLimiter(max_requests=CONFIG['RATE_LIMIT_API_PER_MINUTE'])
+api_limiter = RateLimiter(max_requests=CONFIG['RATE_LIMIT_API_PER_MINUTE'])
 
 
 def get_rate_limit_stats() -> dict:
     return {
-        'general':  general_limiter.get_stats(),
+        'general': general_limiter.get_stats(),
         'messages': message_limiter.get_stats(),
-        'api':      api_limiter.get_stats(),
+        'api': api_limiter.get_stats(),
     }
-
-
-# =============================================================================
-# Simple query cache (TTL-based)
-# =============================================================================
-
-class QueryCache:
-    def __init__(self, ttl_seconds: float = 5.0):
-        self.ttl_seconds = ttl_seconds
-        self._cache: Dict[str, tuple] = {}
-        self._lock = threading.RLock()
-        self._hits = 0
-        self._misses = 0
-
-    def get(self, key: str):
-        with self._lock:
-            if key in self._cache:
-                value, expiry = self._cache[key]
-                if time.time() < expiry:
-                    self._hits += 1
-                    return value
-                del self._cache[key]
-            self._misses += 1
-            return None
-
-    def get_or_set(self, key, value_factory):
-        with self._lock:
-            value = self.get(key)
-            if value is None:
-                value = value_factory()
-                self.set(key, value)
-            return value
-
-    def set(self, key: str, value) -> None:
-        with self._lock:
-            self._cache[key] = (value, time.time() + self.ttl_seconds)
-
-    def invalidate(self, key: str = None) -> None:
-        with self._lock:
-            if key:
-                self._cache.pop(key, None)
-            else:
-                self._cache.clear()
-
-    def get_stats(self) -> dict:
-        with self._lock:
-            total   = self._hits + self._misses
-            hit_rate = (self._hits / total * 100) if total > 0 else 0
-            return {
-                'size':        len(self._cache),
-                'hits':        self._hits,
-                'misses':      self._misses,
-                'hit_rate':    f"{hit_rate:.1f}%",
-                'ttl_seconds': self.ttl_seconds,
-            }
-
-
-balance_cache     = QueryCache(ttl_seconds=30.0)
-contact_cache     = QueryCache(ttl_seconds=60.0)
-group_cache       = QueryCache(ttl_seconds=30.0)
-block_count_cache = QueryCache(ttl_seconds=10.0)
-supply_cache      = QueryCache(ttl_seconds=60.0)
