@@ -4,21 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
-      <change afterPath="$PROJECT_DIR$/migrate_sqlite_to_postgres.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/routes/ws.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/static/js/websocket-client.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/messages.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/messages.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/notifier.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/notifier.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/chat.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/chat.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/base.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/base.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/chat.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/chat.html" afterDir="false" />
-    </list>
+    <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -132,7 +118,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "ASINCSQLFastApI6PosTQL",
+    "git-widget-placeholder": "ASINCSQLFastApI5",
     "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/routes",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
