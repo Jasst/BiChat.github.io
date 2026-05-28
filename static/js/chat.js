@@ -1,4 +1,4 @@
-// Глобальный объект Utils для escape-функций
+// chat.js — полностью переписан на WebSocket (без Long Polling)
 (function() {
     if (window.chatJsLoaded) return;
     window.chatJsLoaded = true;
@@ -18,7 +18,6 @@ if (typeof AppData === 'undefined') {
         userAddress: document.getElementById('app')?.dataset.userAddress || "{{ address }}"
     };
 }
-
 
 // =============================================================================
 // === Состояние чата ===
@@ -40,12 +39,125 @@ let isSending = false;
 let userKeys = null;
 const pubKeyCache = new Map();
 
+// -----------------------------------------------------------------------------
+// WebSocket клиент (встроенный)
+// -----------------------------------------------------------------------------
+let wsClient = null;
+let wsReconnectTimer = null;
+
+class WebSocketClient {
+    constructor(options = {}) {
+        this.url = options.url || null;
+        this.onMessage = options.onMessage || (() => {});
+        this.onError = options.onError || (() => {});
+        this.onConnect = options.onConnect || (() => {});
+        this.onDisconnect = options.onDisconnect || (() => {});
+        this.debug = options.debug || false;
+        this.ws = null;
+        this.isConnected = false;
+        this.reconnectDelay = options.reconnectDelay || 3000;
+        this.maxReconnectDelay = 30000;
+        this.reconnectTimer = null;
+        this.shouldReconnect = true;
+
+        this.address = null;
+        this.signature = null;
+        this.nonce = null;
+    }
+
+    setAuth(address, signature, nonce) {
+        this.address = address;
+        this.signature = signature;
+        this.nonce = nonce;
+    }
+
+    async connect() {
+        if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+            this.log('Already connected or connecting');
+            return;
+        }
+        if (!this.url) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            this.url = `${protocol}//${window.location.host}/ws`;
+        }
+        let finalUrl = this.url;
+        if (this.address && this.signature && this.nonce) {
+            finalUrl += `?address=${encodeURIComponent(this.address)}&signature=${encodeURIComponent(this.signature)}&nonce=${encodeURIComponent(this.nonce)}`;
+        }
+        this.log('Connecting to WebSocket:', finalUrl);
+        this.ws = new WebSocket(finalUrl);
+        this.ws.onopen = () => this._onOpen();
+        this.ws.onmessage = (event) => this._onMessage(event);
+        this.ws.onerror = (error) => this._onError(error);
+        this.ws.onclose = (event) => this._onClose(event);
+    }
+
+    disconnect() {
+        this.shouldReconnect = false;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        this.isConnected = false;
+    }
+
+    _onOpen() {
+        this.isConnected = true;
+        this.log('WebSocket connected');
+        this.onConnect();
+    }
+
+    _onMessage(event) {
+        try {
+            const data = JSON.parse(event.data);
+            this.log('Received:', data);
+            this.onMessage(data);
+        } catch (e) {
+            this.log('Invalid JSON:', event.data);
+        }
+    }
+
+    _onError(error) {
+        this.log('WebSocket error:', error);
+        this.onError(error);
+    }
+
+    _onClose(event) {
+        this.log('WebSocket closed, code:', event.code);
+        this.isConnected = false;
+        this.onDisconnect();
+        if (this.shouldReconnect && event.code !== 1008) {
+            this._scheduleReconnect();
+        }
+    }
+
+    _scheduleReconnect() {
+        if (this.reconnectTimer) return;
+        this.log(`Scheduling reconnect in ${this.reconnectDelay}ms`);
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.connect();
+            this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+        }, this.reconnectDelay);
+    }
+
+    log(...args) {
+        if (this.debug) console.log('[WebSocketClient]', ...args);
+    }
+}
+
+// =============================================================================
+// === Вспомогательные функции (криптография, сеть) ===
+// =============================================================================
 async function getPubKey(address) {
   if (pubKeyCache.has(address)) return pubKeyCache.get(address);
   const res = await fetch(`/get_public_key/${address}`);
   if (!res.ok) throw new Error(`Public key not found for ${address}`);
   const data = await res.json();
-
   const pubKeyBytes = DarkCrypto._fromBase64(data.public_key);
   const hashBuf = await crypto.subtle.digest('SHA-256', pubKeyBytes);
   const computedAddress = Array.from(new Uint8Array(hashBuf))
@@ -53,7 +165,6 @@ async function getPubKey(address) {
   if (computedAddress !== address) {
     throw new Error(`⚠️ Public key mismatch for ${address} — possible MITM!`);
   }
-
   pubKeyCache.set(address, data.public_key);
   return data.public_key;
 }
@@ -168,7 +279,6 @@ async function loadOlderMessages(chatId, beforeId) {
 function createMessageElement(msg) {
   const messageDiv = document.createElement('div');
   messageDiv.id = 'msg-' + msg.id;
-  // ✅ Добавляем класс message-own для своих сообщений
   const ownClass = msg.is_mine ? 'message-own' : '';
   messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'} ${ownClass} animate-fade`;
   messageDiv.dataset.messageId = msg.id;
@@ -209,7 +319,6 @@ function createMessageElement(msg) {
     const metaDiv = messageDiv.querySelector('.meta');
     if (metaDiv) metaDiv.appendChild(statusSpan);
   }
-
   return messageDiv;
 }
 
@@ -267,7 +376,6 @@ async function loadConversations() {
 // =============================================================================
 // === Обновление статусов пользователей ===
 // =============================================================================
-
 async function updateUsersStatus() {
     const conversationItems = document.querySelectorAll('.conversation-item');
     const addresses = [];
@@ -321,6 +429,108 @@ async function updateUsersStatus() {
 setInterval(updateUsersStatus, 30000);
 setTimeout(updateUsersStatus, 1000);
 
+// =============================================================================
+// === WebSocket обработка входящих сообщений ===
+// =============================================================================
+async function handleWebSocketMessage(data) {
+    if (data.error) {
+        console.error('WebSocket error message:', data.error);
+        return;
+    }
+    // Нормализуем chatId
+    if (!data.chatId && data.sender && data.recipient) {
+        data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
+    }
+    if (!data.chatId) return;
+    if (document.getElementById('msg-' + data.id)) return;
+
+    const decrypted = await processMessageDecryption(data);
+    const chatId = decrypted.chatId;
+
+    // Определяем, открыт ли сейчас этот чат
+    let isCurrent = false;
+    if (State.currentChatAddress === chatId) {
+        isCurrent = true;
+    } else if (decrypted.isGroup && State.currentChatAddress === chatId) {
+        isCurrent = true;
+    } else if (!decrypted.isGroup && (decrypted.sender === State.currentChatAddress || decrypted.recipient === State.currentChatAddress)) {
+        isCurrent = true;
+    }
+
+    if (isCurrent) {
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            const wasAtBottom = isUserAtBottom(container, 30);
+            const msgElement = createMessageElement(decrypted);
+            container.appendChild(msgElement);
+            if (wasAtBottom) {
+                setTimeout(() => {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                }, 50);
+            } else {
+                showNewMessagesBadge();
+            }
+            // Отправка подтверждения прочтения
+            if (!decrypted.is_mine) {
+                fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e => console.warn('Mark read failed', e));
+            }
+        }
+    } else {
+        // Обновляем превью диалога в боковой панели
+        updateConversationPreview(chatId, decrypted.preview || '💬 Новое сообщение');
+    }
+
+    // Уведомление (звук, баннер)
+    if (window.NotificationManager && document.visibilityState === 'visible') {
+        window.NotificationManager.handleIncomingMessage?.({
+            sender: decrypted.sender,
+            sender_name: decrypted.sender_name,
+            chatId: chatId,
+            isGroup: decrypted.isGroup,
+            preview: decrypted.preview,
+            timestamp: decrypted.timestamp * 1000,
+            messageId: decrypted.id
+        });
+    }
+}
+
+// =============================================================================
+// === Инициализация WebSocket ===
+// =============================================================================
+async function initWebSocket() {
+    if (wsClient) {
+        wsClient.disconnect();
+    }
+    try {
+        const keys = await ensureKeys();
+        const nonce = crypto.randomUUID();
+        const signatureArray = await DarkCrypto.signData(keys.signPrivateKey, nonce);
+        const signatureHex = Array.from(new Uint8Array(signatureArray)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        wsClient = new WebSocketClient({
+            debug: false,
+            onMessage: handleWebSocketMessage,
+            onConnect: () => {
+                console.log('✅ WebSocket connected');
+                // После подключения можно запросить офлайн-сообщения (они уже придут в onMessage)
+            },
+            onDisconnect: () => {
+                console.warn('⚠️ WebSocket disconnected');
+            },
+            onError: (err) => {
+                console.error('WebSocket error:', err);
+            }
+        });
+        wsClient.setAuth(State.userAddress, signatureHex, nonce);
+        wsClient.connect();
+    } catch (err) {
+        console.error('Failed to init WebSocket:', err);
+    }
+}
+
+// =============================================================================
+// === Выбор диалога ===
+// =============================================================================
 async function selectConversation(address, name, isGroup) {
   if (State.topObserver) {
       State.topObserver.disconnect();
@@ -375,13 +585,6 @@ async function selectConversation(address, name, isGroup) {
     State.currentGroupMembers = null;
   }
 
-  if (heartbeatInterval) {
-      fetch('/heartbeat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ current_chat: State.currentChatAddress || '' })
-      }).catch(e => {});
-  }
   if (window.NotificationManager?.setActiveChat) window.NotificationManager.setActiveChat(address);
   const container = document.getElementById('messagesContainer');
   if (container) { container.innerHTML = '<div class="loading">Loading…</div>'; container.classList.add('loading'); }
@@ -396,9 +599,6 @@ async function selectConversation(address, name, isGroup) {
   State.pendingImageData = null;
   stopStatusPolling();
   startStatusPolling();
-  if (longPollingClient) {
-    longPollingClient.forceCheck();
-  }
   loadMessagesForConversation(address, false);
   updateConversationPreview(address, '✓ Доставлено');
 
@@ -461,10 +661,7 @@ async function processMessageDecryption(msg) {
           if (parsed.self_ciphertext && parsed.self_iv) {
             const selfCiphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_ciphertext);
             const selfIv = DarkCrypto._fromBase64(parsed.self_iv);
-            const selfShared = await DarkCrypto.getSharedSecret(
-              keys.ecdhPrivateKey,
-              keys.compressedPubKey
-            );
+            const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
             content = await DarkCrypto.decryptAES(selfShared, selfCiphertext, selfIv);
             image = parsed.image || null;
           } else {
@@ -472,18 +669,13 @@ async function processMessageDecryption(msg) {
           }
         } else {
           const senderPubKeyBytes = DarkCrypto._fromBase64(parsed.sender_pubkey);
-          content = await DarkCrypto.decryptMessage(
-            keys.ecdhPrivateKey,
-            senderPubKeyBytes,
-            parsed.iv,
-            parsed.ciphertext
-          );
+          content = await DarkCrypto.decryptMessage(keys.ecdhPrivateKey, senderPubKeyBytes, parsed.iv, parsed.ciphertext);
           image = parsed.image || null;
         }
       } catch (e) {
         console.error('Decryption critical error', msg.id, e);
         return { ...msg, content: '🔒 Ошибка расшифровки', image: null };
-    }
+      }
     }
   } catch (e) { }
   return { ...msg, content, image };
@@ -531,7 +723,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 
     const rawMessages = Array.isArray(data.messages) ? data.messages : [];
     const messages = [];
-
     for (const msg of rawMessages) {
        try {
             const decrypted = await processMessageDecryption(msg);
@@ -558,7 +749,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
       fragment.appendChild(createMessageElement(msg));
       if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
-
       if (!msg.is_mine && isNewMessage) {
         window.NotificationManager?.handleIncomingMessage?.({
           sender: msg.sender,
@@ -572,10 +762,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 
     container.appendChild(fragment);
     State.lastMessageTimestamp = maxTimestamp;
-
-    if (longPollingClient && maxTimestamp > 0) {
-      longPollingClient.updateTimestamp(maxTimestamp);
-    }
 
     if (messages.length > 0) {
       markConversationAsRead(chatWithAddress, messages[messages.length - 1].id);
@@ -632,7 +818,7 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 }
 
 // =============================================================================
-// === sendMessage ===
+// === Отправка сообщения ===
 // =============================================================================
 async function sendMessage() {
   if (State.currentChatAddress === 'ai_bot') {
@@ -694,7 +880,6 @@ async function sendMessage() {
 
   try {
     const keys = await ensureKeys();
-
     let payload = {};
     if (isGroup && groupId) {
       try {
@@ -716,20 +901,17 @@ async function sendMessage() {
         const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
         const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content || '');
-
         encryptedMap[addr] = {
           ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext),
           iv: DarkCrypto._toBase64(iv),
           sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
           image: attachedImage || null
         };
-
         if (addr === State.userAddress) {
           encryptedMap[addr].self_ciphertext = encryptedMap[addr].ciphertext;
           encryptedMap[addr].self_iv = encryptedMap[addr].iv;
         }
       }
-
       payload = {
         message_type: 'group',
         group_id: groupId,
@@ -740,20 +922,9 @@ async function sendMessage() {
       if (!resPub.ok) throw new Error('Recipient public key not found');
       const pubData = await resPub.json();
       const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
-
-      const encrypted = await DarkCrypto.encryptMessage(
-        keys.ecdhPrivateKey,
-        keys.compressedPubKey,
-        recipientPubKeyBytes,
-        content || ''
-      );
-
-      const selfShared = await DarkCrypto.getSharedSecret(
-        keys.ecdhPrivateKey,
-        keys.compressedPubKey
-      );
+      const encrypted = await DarkCrypto.encryptMessage(keys.ecdhPrivateKey, keys.compressedPubKey, recipientPubKeyBytes, content || '');
+      const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
       const selfEnc = await DarkCrypto.encryptAES(selfShared, content || '');
-
       payload = {
         recipient: recipient,
         payload: {
@@ -783,30 +954,15 @@ async function sendMessage() {
         tempElem.dataset.messageId = realId;
         const deleteBtn = tempElem.querySelector('.delete-btn');
         if (deleteBtn) deleteBtn.dataset.id = realId;
-        // Обновляем статус на 'sent' (позже поллинг обновит)
         const statusSpan = tempElem.querySelector('.message-status');
         if (statusSpan) {
           statusSpan.textContent = '✓';
           statusSpan.style.color = '#888';
         }
-        if (longPollingClient) {
-          longPollingClient.markMessageProcessed(realId);
-        }
       }
-
-      if (!window.modalOpen) {
-         loadConversations();
-      }
-
-      if (!longPollingClient || !longPollingClient.isConnected) {
-        await loadMessagesForConversation(recipient, true);
-      }
-
-      if (longPollingClient) {
-        setTimeout(() => {
-          longPollingClient.forceCheck();
-        }, 100);
-      }
+      if (!window.modalOpen) loadConversations();
+      // Новое сообщение уже будет доставлено через WebSocket, но для надёжности обновим чат
+      await loadMessagesForConversation(recipient, true);
     } else {
       const tempElem = document.getElementById('msg-' + tempId);
       if (tempElem) tempElem.remove();
@@ -1107,15 +1263,14 @@ function updateConversationPreview(chatId, newPreview) {
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
   loadConversations();
-  setupLongPolling();
-  startHeartbeat();
+  initWebSocket();  // вместо setupLongPolling()
+  // heartbeat больше не нужен
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && longPollingClient && longPollingClient.isConnected) {
-      console.log('📱 Tab active, forcing check...');
-      longPollingClient.forceCheck();
+    if (!document.hidden && wsClient && !wsClient.isConnected) {
+      console.log('📱 Tab active, reconnecting WebSocket...');
+      wsClient.connect();
     }
   });
-
   if (window.NotificationManager?.init) window.NotificationManager.init();
 
   const msgContainer = document.getElementById('messagesContainer');
@@ -1160,189 +1315,28 @@ document.addEventListener('DOMContentLoaded', function() {
   if (aiBtn) {
     aiBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (window.innerWidth <= 768 && typeof closeSidebar === 'function') {
-            closeSidebar();
-        }
+        if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
         selectConversation('ai_bot', 'AI Assistant', false);
     });
-}
+  }
 });
 
 window.addEventListener('beforeunload', () => {
-    if (longPollingClient) {
-        longPollingClient.stop();
-        longPollingClient = null;
-    }
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
+    if (wsClient) {
+        wsClient.disconnect();
+        wsClient = null;
     }
     if (window.QRScanner && typeof QRScanner.close === 'function') {
-        try {
-            QRScanner.close();
-        } catch(e) {}
+        try { QRScanner.close(); } catch(e) {}
     }
     if (State.topObserver) {
         State.topObserver.disconnect();
         State.topObserver = null;
     }
     if (window.NotificationManager && typeof window.NotificationManager.destroy === 'function') {
-        try {
-            window.NotificationManager.destroy();
-        } catch(e) {}
-    }
-    if (longPollingClient && longPollingClient.abortController) {
-        try {
-            longPollingClient.abortController.abort();
-        } catch(e) {}
+        try { window.NotificationManager.destroy(); } catch(e) {}
     }
 });
-
-// =============================================================================
-// === Long Polling Client ===
-// =============================================================================
-
-let longPollingClient = null;
-let heartbeatInterval = null;
-
-async function setupLongPolling() {
-    if (longPollingClient) {
-        longPollingClient.stop();
-    }
-
-    longPollingClient = new LongPollingClient({
-        baseUrl: '',
-        timeout: 25000,
-        debug: false,
-        onMessages: async (messages) => {
-            const currentChatAtStart = State.currentChatAddress;
-            if (!messages.length) return;
-
-            const userAddr = State.userAddress;
-
-            for (const msg of messages) {
-                if (msg.sender && msg.sender !== userAddr) {
-                    fetch(`/message/${msg.id}/delivered`, { method: 'POST' })
-                        .catch(e => console.warn('Failed to mark delivered', e));
-                }
-            }
-
-            const maxTs = Math.max(...messages.map(m => m.timestamp));
-            if (maxTs > State.lastMessageTimestamp) {
-                State.lastMessageTimestamp = maxTs;
-                longPollingClient.updateTimestamp(maxTs);
-            }
-
-            const grouped = new Map();
-            for (const msg of messages) {
-                if (!grouped.has(msg.chatId)) grouped.set(msg.chatId, []);
-                grouped.get(msg.chatId).push(msg);
-            }
-
-            const currentChat = String(currentChatAtStart).trim();
-            const hasChat = Array.from(grouped.keys()).some(key => {
-               const keyStr = String(key).trim();
-               return keyStr === currentChat || keyStr === userAddr;
-            });
-            if (currentChat && hasChat) {
-                const foundKey = Array.from(grouped.keys()).find(key => {
-                    const keyStr = String(key).trim();
-                    return keyStr === currentChat || keyStr === userAddr;
-                });
-                const newMessages = grouped.get(foundKey);
-                const container = document.getElementById('messagesContainer');
-                if (container) {
-                    const wasAtBottom = isUserAtBottom(container, 30);
-                    for (const msg of newMessages) {
-                        try {
-                            if (document.getElementById('msg-' + msg.id)) continue;
-                            const decrypted = await processMessageDecryption(msg);
-                            const msgElement = createMessageElement(decrypted);
-                            container.appendChild(msgElement);
-                            if (!decrypted.is_mine) {
-                                fetch(`/message/${decrypted.id}/read`, { method: 'POST' });
-                            }
-                        } catch (err) {
-                            console.error('Ошибка обработки сообщения', msg.id, err);
-                        }
-                    }
-                    if (wasAtBottom) {
-                        setTimeout(() => {
-                            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-                        }, 50);
-                    } else {
-                        showNewMessagesBadge();
-                    }
-                }
-                grouped.delete(currentChatAtStart);
-            }
-
-            // ✅ Вместо полной перерисовки – точечное обновление превью
-            if (grouped.size > 0 && !window.modalOpen) {
-                for (const [chatId, msgs] of grouped.entries()) {
-                    const lastMsg = msgs[msgs.length - 1];
-                    updateConversationPreview(chatId, lastMsg.preview || '💬 Новое сообщение');
-                }
-            }
-
-            if (window.NotificationManager && document.visibilityState === 'visible') {
-                for (const [chatId, msgs] of grouped.entries()) {
-                    const lastMsg = msgs[msgs.length - 1];
-                    window.NotificationManager.handleIncomingMessage?.({
-                        sender: lastMsg.sender,
-                        sender_name: lastMsg.sender_name,
-                        chatId: chatId,
-                        isGroup: lastMsg.isGroup,
-                        preview: lastMsg.preview,
-                        timestamp: lastMsg.timestamp * 1000
-                    });
-                }
-            }
-        },
-        onError: (error) => {
-            console.warn('⚠️ Long polling connection issue:', error.message);
-            let reconnectDelay = 1000;
-            const maxDelay = 30000;
-            const attemptReconnect = () => {
-                if (longPollingClient) longPollingClient.start();
-                reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
-            };
-            setTimeout(attemptReconnect, reconnectDelay);
-        },
-        onConnect: () => {
-            console.log('✅ Long polling connected');
-        },
-        onDisconnect: () => {
-            console.warn('⚠️ Long polling disconnected');
-        }
-    });
-
-    longPollingClient.start();
-}
-
-function startHeartbeat() {
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    heartbeatInterval = setInterval(async () => {
-        try {
-            await fetch('/heartbeat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    current_chat: State.currentChatAddress || ''
-                })
-            });
-        } catch (e) {}
-    }, 30000);
-}
-
-function stopHeartbeat() {
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
-    }
-}
-
-window.getLongPollingStatus = () => longPollingClient?.getStatus();
 
 window.selectConversation = selectConversation;
 window.loadMessagesForConversation = loadMessagesForConversation;
@@ -1355,7 +1349,6 @@ window.handleImageSelection = handleImageSelection;
 window.addContactFromChat = addContactFromChat;
 window.clearConversation = clearConversation;
 window.processMessageDecryption = processMessageDecryption;
-window.setupLongPolling = setupLongPolling;
 window.closeNewChatModal = closeNewChatModal;
 window.openNewChatModal = openNewChatModal;
 })();

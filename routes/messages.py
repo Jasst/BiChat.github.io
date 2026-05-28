@@ -1,11 +1,11 @@
 """
-routes/messages.py — Отправка/получение сообщений + async Long Polling (асинхронная версия)
+routes/messages.py — Отправка сообщений (Long Polling удалён, используется WebSocket)
 """
 import asyncio
 import json
 import logging
 import time
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -16,112 +16,15 @@ from cache import (
 )
 from config import MESSAGE_FEE, COIN, COIN_NAME, STAKING_FEE_POOL_ADDRESS, ENABLE_STAKING, CONFIG
 from dependencies import require_auth, make_rate_limit_dep
-from models import (SendMessageRequest, MarkReadRequest,
-                    MessageStatusesRequest, DeleteMessageRequest)
+from models import SendMessageRequest, MarkReadRequest, MessageStatusesRequest, DeleteMessageRequest
 from services.messaging import get_conversations_list_cached, invalidate_conversations_cache
 from services.notifier import message_notifier
 from services.wallet import staking_manager, mine_block_async_async
 from setup import message_limiter
+from routes.ws import manager   # WebSocket менеджер
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['messages'])
-
-
-def _sanitize_message(msg: dict) -> dict:
-    return {
-        'id':          msg.get('id'),
-        'sender':      msg.get('sender'),
-        'sender_name': msg.get('sender_name'),
-        'chatId':      msg.get('chatId'),
-        'isGroup':     msg.get('isGroup', False),
-        'preview':     msg.get('preview', '💬 Новое сообщение'),
-        'timestamp':   msg.get('timestamp', time.time()),
-        'content':     msg.get('content'),
-        'image':       msg.get('image'),
-    }
-
-
-async def _fetch_new_messages_from_db(request: Request, user_addr: str, since_timestamp: float,
-                                      limit: int = 50) -> List[dict]:
-    blockchain = request.app.state.blockchain
-    from database import get_db_cursor
-    try:
-        async with get_db_cursor(blockchain.db_path) as cursor:
-            await cursor.execute('''
-                SELECT id, sender, recipient, content, image, timestamp, metadata
-                FROM transactions
-                WHERE (recipient = ? OR recipient LIKE ?)
-                  AND timestamp > ?
-                  AND sender != ?
-                ORDER BY timestamp ASC
-                LIMIT ?
-            ''', (user_addr, 'group:%', since_timestamp, user_addr, limit))
-            rows = await cursor.fetchall()
-        messages = []
-        for row in rows:
-            is_group = row[2].startswith('group:')
-            chat_id = row[2] if is_group else row[1]
-            messages.append({
-                'id':          row[0],
-                'sender':      row[1],
-                'sender_name': None,
-                'chatId':      chat_id,
-                'isGroup':     is_group,
-                'preview':     '💬 Новое сообщение',
-                'timestamp':   row[5],
-                'content':     row[3],
-                'image':       row[4],
-            })
-        return messages
-    except Exception as e:
-        logger.error(f"_fetch_new_messages_from_db error: {e}")
-        return []
-
-
-@router.get('/wait_for_messages')
-async def wait_for_messages(
-    request: Request,
-    since:   float = Query(default=0.0),
-    timeout: int   = Query(default=25),
-):
-    address = request.session.get('address')
-    if not address:
-        raise HTTPException(401, 'Unauthorized')
-    now = time.time()
-    since = max(min(since, now + 60), now - 3600)
-    timeout = min(max(timeout, 5), 25)
-    messages, waited, triggered = await message_notifier.get_messages(address, since, timeout)
-    if messages:
-        messages = [_sanitize_message(m) for m in messages[:50]]
-        return JSONResponse(
-            {'messages': messages, 'has_more': len(messages) >= 50,
-             'timestamp': time.time(), 'from_buffer': True, 'waited': waited},
-            headers=_no_cache_headers(),
-        )
-    db_messages = await _fetch_new_messages_from_db(request, address, since)
-    if db_messages:
-        for msg in db_messages:
-            await message_notifier.add_message(address, msg)
-        await invalidate_conversations_cache(address)
-        out = [_sanitize_message(m) for m in db_messages[:50]]
-        return JSONResponse(
-            {'messages': out, 'has_more': len(out) >= 50,
-             'timestamp': time.time(), 'from_db': True},
-            headers=_no_cache_headers(),
-        )
-    return JSONResponse(
-        {'messages': [], 'has_more': False,
-         'timestamp': time.time(), 'waited': timeout, 'notified': triggered},
-        headers=_no_cache_headers(),
-    )
-
-
-def _no_cache_headers() -> dict:
-    return {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma':        'no-cache',
-        'Expires':       '0',
-    }
 
 
 @router.post('/send_message', status_code=201,
@@ -180,8 +83,10 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'content': json.dumps({'encrypted_map': body.encrypted_map}),
                 'image': None,
             }
-            await message_notifier.add_group_messages(body.group_id, group['members'],
-                                                      message_obj, exclude_sender=sender)
+            # Отправка через WebSocket
+            for member in group['members']:
+                if member != sender:
+                    await manager.send_personal_message(member, message_obj)
         else:
             recipient = body.recipient
             if not recipient:
@@ -207,17 +112,14 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'content': json.dumps(body.payload),
                 'image': None,
             }
-            await message_notifier.add_message(recipient, message_obj)
+            await manager.send_personal_message(recipient, message_obj)
         await cursor.execute('COMMIT')
+        # Обновляем кэши диалогов
+        await invalidate_conversations_cache(sender)
         if msg_type == 'group' and body.group_id and group:
-            for member in group['members']:
-                if member != sender:
-                    await message_notifier.notify_user(member)
             for member in group['members']:
                 await invalidate_conversations_cache(member)
         else:
-            await message_notifier.notify_user(body.recipient)
-            await invalidate_conversations_cache(sender)
             await invalidate_conversations_cache(body.recipient)
         if CONFIG.get('ENABLE_MINING', False):
             last = await blockchain._last_block_raw(cursor)
@@ -409,22 +311,4 @@ async def search_messages(
     return {'results': results}
 
 
-@router.get('/check_new_messages')
-async def check_new_messages_legacy(
-    request: Request,
-    since:   float = Query(default=0.0),
-    address: str   = Depends(require_auth),
-):
-    messages = await _fetch_new_messages_from_db(request, address, since)
-    return {'messages': messages}
-
-
-@router.get('/notifier/stats')
-async def notifier_stats(address: str = Depends(require_auth)):
-    return await message_notifier.get_stats()
-
-
-@router.post('/force_check')
-async def force_check(address: str = Depends(require_auth)):
-    await message_notifier.force_check(address)
-    return {'status': 'ok'}
+# Эндпоинты Long Polling удалены: /wait_for_messages, /check_new_messages, /notifier/stats, /force_check

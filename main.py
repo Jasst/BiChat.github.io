@@ -1,5 +1,5 @@
 """
-main.py — FastAPI-приложение (асинхронная версия с aiosqlite)
+main.py — FastAPI-приложение (PostgreSQL + WebSocket)
 """
 import logging
 import os
@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import CONFIG, DATABASE_PATH, SECRET_KEY, STATIC_FOLDER, UPLOAD_FOLDER
-from database import Blockchain, init_sqlite_optimizations, warmup_database
+from config import CONFIG, SECRET_KEY, STATIC_FOLDER, UPLOAD_FOLDER
+from database import init_db, close_db, Blockchain
 from setup import setup_logging, get_rate_limit_stats
 
 setup_logging()
@@ -21,33 +21,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting BiChat server (async mode)...")
-    await init_sqlite_optimizations(DATABASE_PATH)
-    blockchain = Blockchain(DATABASE_PATH)
-    await blockchain.initialize_blockchain()
-    await warmup_database(DATABASE_PATH)
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-    # Инициализация кэшей (они уже импортированы из cache.py)
-    import cache as cache_module
-    # set_db_path больше не нужен, т.к. get_db_cursor() использует DATABASE_PATH из config
-
-    # Сервисы больше не требуют set_db_path
-
-    # Роутеры теперь получают blockchain через request.app.state, поэтому init_* не нужны
-
+    logger.info("Starting BiChat server (PostgreSQL + WebSocket)...")
+    await init_db()                     # инициализация PostgreSQL
+    blockchain = Blockchain()
     app.state.blockchain = blockchain
-    logger.info("BiChat server started (async) ✅")
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    logger.info("BiChat server started ✅")
     yield
-
-    logger.info("Shutting down...")
-    await blockchain.close()
+    await close_db()
     logger.info("Shutdown complete")
 
 
 app = FastAPI(
     title='BiChat Messenger API',
-    version='2.0.0-async',
+    version='3.0.0-pg-ws',
     lifespan=lifespan,
     docs_url='/api/docs',
     redoc_url='/api/redoc',
@@ -85,6 +72,7 @@ from routes.wallet import router as wallet_router
 from routes.files import router as files_router
 from routes.status import router as status_router
 from routes.ai_assistant import router as ai_router
+from routes.ws import router as ws_router
 
 app.include_router(auth_router)
 app.include_router(messages_router)
@@ -94,6 +82,7 @@ app.include_router(wallet_router)
 app.include_router(files_router)
 app.include_router(status_router)
 app.include_router(ai_router)
+app.include_router(ws_router)           # WebSocket маршрут
 
 
 @app.middleware('http')
@@ -111,6 +100,7 @@ async def health_check(request: Request):
     blockchain: Blockchain = request.app.state.blockchain
     db_health = await blockchain.health_check()
     from cache import balance_cache, contact_cache, group_cache
+    from routes.ws import manager
     return {
         'status': 'ok' if db_health.get('status') == 'healthy' else 'degraded',
         'database': db_health,
@@ -120,6 +110,7 @@ async def health_check(request: Request):
             'contacts': await contact_cache.get_stats(),
             'groups': await group_cache.get_stats(),
         },
+        'websocket': await manager.get_stats(),
         'connection_pool_size': None,
     }
 

@@ -42,19 +42,21 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / 'data'
 DATA_DIR.mkdir(exist_ok=True)
 
-DEFAULT_DB_PATH = str(DATA_DIR / 'blockchain.db')
-DATABASE_PATH   = os.getenv('DATABASE_PATH', DEFAULT_DB_PATH)
+# ---------- PostgreSQL ----------
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:pass@localhost/bichat')
+# Для обратной совместимости (можно удалить позже)
+DATABASE_PATH = None
+
 UPLOAD_FOLDER   = os.getenv('UPLOAD_FOLDER', str(BASE_DIR / 'uploads'))
 STATIC_FOLDER   = str(BASE_DIR / 'static')
 TEMPLATE_FOLDER = str(BASE_DIR / 'templates')
 
 if sys.platform == 'win32':
-    if DATABASE_PATH.startswith('/var/www/'):
-        DATABASE_PATH = DEFAULT_DB_PATH
+    if DATABASE_PATH and DATABASE_PATH.startswith('/var/www/'):
+        DATABASE_PATH = None
     if UPLOAD_FOLDER.startswith('/var/www/'):
         UPLOAD_FOLDER = str(BASE_DIR / 'uploads')
 
-os.makedirs(os.path.dirname(DATABASE_PATH) or '.', exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 COIN          = 1000000
@@ -68,8 +70,6 @@ AIRDROP_AMOUNT  = int(os.getenv('AIRDROP_AMOUNT', 1000))
 MIN_STAKE_AMOUNT  = int(os.getenv('MIN_STAKE_AMOUNT', 10 * COIN))
 STAKE_LOCK_BLOCKS = int(os.getenv('STAKE_LOCK_BLOCKS', 100))
 BLOCK_REWARD = int(os.getenv('BLOCK_REWARD', 0.1*COIN))
-
-
 
 ENABLE_MINING  = os.getenv('ENABLE_MINING', '1') == '1'
 ENABLE_STAKING = os.getenv('ENABLE_STAKING', '1') == '1'
