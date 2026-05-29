@@ -1,5 +1,6 @@
 """
 database.py — Асинхронная версия с asyncpg (PostgreSQL)
+Исправлено: все обращения к полю 'index' заменены на 'block_index' для совместимости с БД.
 """
 import asyncio
 import hashlib
@@ -252,7 +253,8 @@ class Blockchain:
                 'note': 'Miner reward'
             })
         last = await self._last_block_raw(conn)
-        block_index = last.get('index', 0) + 1
+        # ✅ FIXED: используем block_index вместо index
+        block_index = last.get('block_index', 0) + 1
         previous_hash = previous_hash or self._hash_block(last)
         await conn.execute("""
             INSERT INTO blockchain (block_index, timestamp, transactions, coin_transactions, proof, previous_hash)
@@ -277,6 +279,7 @@ class Blockchain:
     def _hash_block(self, block: dict) -> str:
         if not block:
             return '0' * 64
+        # ✅ FIXED: сортируем ключи для стабильного хэша (включая 'block_index')
         return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
 
     async def proof_of_work_async(self, last_proof: int) -> int:
@@ -340,12 +343,14 @@ class Blockchain:
                     current = await self._last_block_raw(conn)
                     if not current:
                         return False, "No blockchain", 0, 0
-                    if current.get('proof') != last_proof or current.get('index') != last_index:
+                    # ✅ FIXED: используем block_index
+                    if current.get('proof') != last_proof or current.get('block_index') != last_index:
                         return False, "Blockchain moved, try again", 0, 0
                     if not self.valid_proof_with_challenge(last_proof, proof, challenge):
                         return False, "Invalid proof", 0, 0
                     current_again = await self._last_block_raw(conn)
-                    if current_again.get('proof') != last_proof or current_again.get('index') != last_index:
+                    # ✅ FIXED: используем block_index
+                    if current_again.get('proof') != last_proof or current_again.get('block_index') != last_index:
                         return False, "Blockchain changed during validation", 0, 0
                     block_index = await self._new_block_raw(conn, proof, miner_address=miner_address)
                     return True, "Success", BLOCK_REWARD, block_index

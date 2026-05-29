@@ -6,52 +6,83 @@
   <meta name="description" content="Decentralized encrypted messenger">
   <meta name="theme-color" content="#0a0a0a">
   <meta name="color-scheme" content="dark">
+  <!-- Передаём адрес пользователя через мета-тег (заполняется в шаблоне) -->
+  <meta name="user-address" content="{{ address|default('', true) }}">
 
   <title>{% block title %}Dark Messenger{% endblock %}</title>
 
-  <!-- Favicon -->
   <link rel="icon" href="{{ url_for('static', path='favicon.ico') }}" type="image/x-icon">
   <link rel="apple-touch-icon" href="{{ url_for('static', path='icon-192.png') }}">
-
-  <!-- Styles -->
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 
   {% block head_extra %}{% endblock %}
 </head>
 <body>
-  <!-- Skip link for accessibility -->
   <a href="#main" class="sr-only">Skip to main content</a>
 
   <div class="container">
     {% block content %}{% endblock %}
   </div>
 
-  <!-- Global notification container -->
   <div id="notification-container" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Libraries -->
-
-<!-- Клиентская криптография -->
+  <!-- Глобальные скрипты (загружаются на всех страницах) -->
   <script src="{{ url_for('static', path='js/common.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/crypto-client.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/notification-manager.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/mnemonic-manager.js') }}" defer></script>
+  <!-- ✅ core.js теперь подключается глобально -->
+  <script src="{{ url_for('static', path='js/core.js') }}" defer></script>
+
   <script>
-// Проверка авторизации (защита маршрутов)
-(function() {
-  const publicPaths = ['/', '/login'];
-  if (!publicPaths.includes(window.location.pathname)) {
-    const mnemonic = sessionStorage.getItem('mnemonic');
-    if (!mnemonic || mnemonic.split(/\s+/).length < 24) {
-      sessionStorage.removeItem('mnemonic');
-      window.location.href = '/login';
-    } else {
-      // Устанавливаем глобальную переменную для использования на странице
-      window.appMnemonic = mnemonic;
-    }
-  }
-})();
-</script>
+    // Глобальная инициализация WebSocket и состояния после загрузки страницы
+    (function() {
+      if (window._globalInitDone) return;
+      window._globalInitDone = true;
+
+      // Ждём загрузки всех скриптов
+      document.addEventListener('DOMContentLoaded', async function() {
+        // Получаем адрес из мета-тега (если есть)
+        const metaAddress = document.querySelector('meta[name="user-address"]')?.content;
+        if (metaAddress && metaAddress !== 'None' && metaAddress !== '') {
+          if (window.State) {
+            window.State.userAddress = metaAddress;
+          } else {
+            window.userAddress = metaAddress;
+          }
+        } else {
+          // fallback: запрос к серверу
+          try {
+            const res = await fetch('/check_session');
+            const data = await res.json();
+            if (data.authenticated && data.address) {
+              if (window.State) window.State.userAddress = data.address;
+              else window.userAddress = data.address;
+            }
+          } catch(e) { console.debug('Session check failed', e); }
+        }
+
+        // Если есть адрес и мы на странице, где нет своего State.currentChatAddress
+        // (например, contacts, groups, wallet, profile) – инициализируем WebSocket глобально
+        if (window.State && window.State.userAddress && typeof window.initWebSocket === 'function') {
+          // Не инициализируем повторно, если уже есть wsClient
+          if (!window.wsClient || !window.wsClient.isConnected) {
+            window.initWebSocket();
+          }
+        }
+
+        // Запускаем heartbeat и polling статусов, если их нет
+        if (window.startHeartbeat && !window._heartbeatStarted) {
+          window.startHeartbeat();
+          window._heartbeatStarted = true;
+        }
+        if (window.startStatusPolling && !window._statusPollingStarted) {
+          window.startStatusPolling();
+          window._statusPollingStarted = true;
+        }
+      });
+    })();
+  </script>
 
   {% block scripts %}{% endblock %}
 </body>

@@ -84,7 +84,6 @@ async def wallet_send(body: TransferRequest, request: Request, address: str = De
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         await conn.execute('BEGIN')
-        # Проверка и списание баланса
         result = await conn.execute(
             'UPDATE wallets SET balance = balance - $1 WHERE address = $2 AND balance >= $1',
             total, address
@@ -92,7 +91,6 @@ async def wallet_send(body: TransferRequest, request: Request, address: str = De
         if result == "UPDATE 0":
             await conn.execute('ROLLBACK')
             raise HTTPException(400, f'Insufficient balance. Need {total / COIN} {COIN_NAME}')
-        # Зачисление получателю
         await conn.execute(
             'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
             'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
@@ -104,7 +102,6 @@ async def wallet_send(body: TransferRequest, request: Request, address: str = De
             'VALUES ($1, $2, $3, $4, $5)',
             'transfer', address, body.recipient, body.amount, ts
         )
-        # Комиссия в пул стейкинга
         await conn.execute(
             'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
             'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
@@ -165,19 +162,20 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
         'coin_divisor': COIN,
     }
 
-
 @router.get('/last-proof')
 async def last_proof(request: Request, address: str = Depends(require_auth)):
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         last = await blockchain._last_block_raw(conn)
+    # ✅ FIXED: используем block_index вместо index
+    last_index = last.get('block_index', 0)
     challenge = secrets.token_hex(16)
     with _mining_challenges_lock:
         _mining_challenges.setdefault(address, {})[challenge] = time.time() + _CHALLENGE_TTL
     return {
         'last_proof': last.get('proof', 0),
-        'last_index': last.get('index', 0),
+        'last_index': last_index,
         'difficulty': CONFIG['POW_DIFFICULTY'],
         'challenge': challenge,
     }
@@ -191,6 +189,7 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
     with _mining_challenges_lock:
         challenges = _mining_challenges.get(address, {})
         if body.challenge not in challenges or time.time() > challenges[body.challenge]:
+            logger.warning(f"Mining challenge expired for {address[:16]}...")
             raise HTTPException(400, 'Invalid or expired challenge')
         del _mining_challenges[address][body.challenge]
         if not _mining_challenges[address]:
@@ -220,7 +219,14 @@ async def wallet_global_stats(request: Request):
         staking_pool_balance = row[0] if row else 0
         total_blocks = (await conn.fetchval('SELECT COUNT(*) FROM blockchain')) or 0
         total_staked_raw = (await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active = 1')) or 0
-    remaining = max(0, MAX_SUPPLY - total_supply_raw) if MAX_SUPPLY else None
+
+    # ✅ Исправление: переводим MAX_SUPPLY из монет в сатоши
+    max_supply_sats = MAX_SUPPLY * COIN if MAX_SUPPLY else None
+    if max_supply_sats is not None:
+        remaining_sats = max(0, max_supply_sats - total_supply_raw)
+    else:
+        remaining_sats = None
+
     return {
         'total_supply': total_supply_raw,
         'staking_pool_balance': staking_pool_balance,
@@ -231,6 +237,6 @@ async def wallet_global_stats(request: Request):
         'coin_name': COIN_NAME,
         'coin_divisor': COIN,
         'max_supply': MAX_SUPPLY,
-        'remaining_supply': remaining,
+        'remaining_supply': remaining_sats,   # теперь в сатошах
         'message_fee': MESSAGE_FEE,
     }

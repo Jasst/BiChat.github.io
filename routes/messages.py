@@ -118,10 +118,19 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 await invalidate_conversations_cache(member)
         else:
             await invalidate_conversations_cache(body.recipient)
-        if CONFIG.get('ENABLE_MINING', False):
-            last = await blockchain._last_block_raw(conn)
-            if last:
-                asyncio.create_task(mine_block_async_async(last.get('proof', 0), sender))
+
+        # ========== АВТОМАТИЧЕСКИЙ МАЙНИНГ ОТКЛЮЧЁН ==========
+        # Ручной майнинг через /wallet/mine остаётся доступен,
+        # а комиссия за сообщения продолжает списываться как обычно.
+        # Следующий блок закомментирован, чтобы избежать конфликтов 409:
+        #
+        # if CONFIG.get('ENABLE_MINING', False):
+        #     last = await blockchain._last_block_raw(conn)
+        #     if last:
+        #         asyncio.create_task(mine_block_async_async(last.get('proof', 0), sender))
+        #
+        # ===================================================
+
         return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
 
 

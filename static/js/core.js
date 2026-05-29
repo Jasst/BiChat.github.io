@@ -20,12 +20,19 @@
     };
 
     // ========== Глобальное состояние ==========
+    // Получаем адрес из мета-тега, если он ещё не установлен
+    let initialAddress = '';
+    const metaAddress = document.querySelector('meta[name="user-address"]')?.content;
+    if (metaAddress && metaAddress !== 'None' && metaAddress !== '') {
+        initialAddress = metaAddress;
+    }
+
     window.State = {
         currentChatAddress: '',
         currentChatIsGroup: false,
         currentGroupMembers: null,
         currentChatPartnerAddress: '',
-        userAddress: (document.getElementById('app')?.dataset.userAddress) || AppData?.userAddress || '',
+        userAddress: initialAddress || (document.getElementById('app')?.dataset.userAddress) || '',
         lastMessageTimestamp: 0,
         allContacts: [],
         lastKnownMessageId: 0,
@@ -159,18 +166,31 @@
 
     async function initWebSocket() {
         if (window.wsClient) window.wsClient.disconnect();
+        // Если адрес ещё не определён – пробуем получить из мета-тега или через запрос
+        let address = State.userAddress;
+        if (!address) {
+            const meta = document.querySelector('meta[name="user-address"]')?.content;
+            if (meta && meta !== 'None') address = meta;
+        }
+        if (!address) {
+            console.warn('No user address, WebSocket not initialized');
+            return;
+        }
         try {
             const keys = await ensureKeys();
             const nonce = crypto.randomUUID();
             const signatureArray = await DarkCrypto.signData(keys.signPrivateKey, nonce);
             const signatureHex = Array.from(new Uint8Array(signatureArray)).map(b => b.toString(16).padStart(2, '0')).join('');
             window.wsClient = new WebSocketClient({
-                onMessage: window.handleWebSocketMessage,  // определим в core.js чуть ниже
-                onConnect: () => { console.log('✅ WebSocket connected'); if (window.loadConversations) window.loadConversations(); },
+                onMessage: window.handleWebSocketMessage,
+                onConnect: () => {
+                    console.log('✅ WebSocket connected');
+                    if (window.loadConversations) window.loadConversations();
+                },
                 onDisconnect: () => console.warn('⚠️ WebSocket disconnected'),
                 onError: (err) => console.error('WebSocket error:', err)
             });
-            window.wsClient.setAuth(State.userAddress, signatureHex, nonce);
+            window.wsClient.setAuth(address, signatureHex, nonce);
             window.wsClient.connect();
         } catch (err) { console.error('Failed to init WebSocket:', err); }
     }
@@ -245,16 +265,26 @@
             window.onNewMessageReceived(decrypted);
         }
 
-        if (window.NotificationManager && document.visibilityState === 'visible') {
-            window.NotificationManager.handleIncomingMessage?.({ sender: decrypted.sender, sender_name: decrypted.sender_name, chatId, isGroup: decrypted.isGroup, preview: decrypted.preview, timestamp: decrypted.timestamp * 1000, messageId: decrypted.id });
+        // ✅ Уведомление показываем независимо от того, в чате ли пользователь
+        if (window.NotificationManager) {
+            window.NotificationManager.handleIncomingMessage?.({
+                sender: decrypted.sender,
+                sender_name: decrypted.sender_name,
+                chatId: chatId,
+                isGroup: decrypted.isGroup,
+                preview: decrypted.preview || decrypted.content?.slice(0, 50),
+                timestamp: decrypted.timestamp * 1000,
+                messageId: decrypted.id
+            });
         }
     }
 
-    // ========== Heartbeat (обновление онлайн-статуса) ==========
+    // ========== Heartbeat ==========
     let heartbeatInterval = null;
     function startHeartbeat() {
         if (heartbeatInterval) clearInterval(heartbeatInterval);
         heartbeatInterval = setInterval(async () => {
+            if (!State.userAddress) return;
             try {
                 await fetch('/heartbeat', {
                     method: 'POST',
@@ -304,7 +334,7 @@
     }
     function stopStatusPolling() { if (statusPollingInterval) clearInterval(statusPollingInterval); }
 
-    // Экспорт глобальных функций/переменных для других модулей
+    // Экспорт глобальных функций/переменных
     window.getPubKey = getPubKey;
     window.compressImage = compressImage;
     window.ensureKeys = ensureKeys;
@@ -315,5 +345,5 @@
     window.stopStatusPolling = stopStatusPolling;
     window.processMessageDecryption = processMessageDecryption;
     window.handleWebSocketMessage = handleWebSocketMessage;
-    window.wsClient = null; // будет установлен при вызове initWebSocket
+    window.wsClient = null;
 })();

@@ -5,134 +5,135 @@
 
     // ========== Отправка сообщения ==========
     async function sendMessage() {
-    if (State.currentChatAddress === 'ai_bot') { console.log('AI chat active'); return; }
-    const contentEl = document.getElementById('messageContent');
-    const sendBtn = document.getElementById('sendButton');
-    const attachBtn = document.getElementById('attachImageButton');
+        if (State.currentChatAddress === 'ai_bot') { console.log('AI chat active'); return; }
+        const contentEl = document.getElementById('messageContent');
+        const sendBtn = document.getElementById('sendButton');
+        const attachBtn = document.getElementById('attachImageButton');
 
-    if (window.isSending) { window.NotificationManager?.showToast('Sending in progress...', 'warning'); return; }
-    const content = contentEl ? contentEl.value.trim() : '';
-    const recipient = State.currentChatAddress;
-    if (!recipient || (!content && !State.pendingImageData)) {
-        window.NotificationManager?.showToast('Enter a message or attach an image', 'warning');
-        return;
-    }
+        if (window.isSending) { window.NotificationManager?.showToast('Sending in progress...', 'warning'); return; }
+        const content = contentEl ? contentEl.value.trim() : '';
+        const recipient = State.currentChatAddress;
+        if (!recipient || (!content && !State.pendingImageData)) {
+            window.NotificationManager?.showToast('Enter a message or attach an image', 'warning');
+            return;
+        }
 
-    window.isSending = true;
-    if (sendBtn) sendBtn.disabled = true;
-    if (attachBtn) attachBtn.disabled = true;
-    if (contentEl) contentEl.disabled = true;
+        window.isSending = true;
+        if (sendBtn) sendBtn.disabled = true;
+        if (attachBtn) attachBtn.disabled = true;
+        if (contentEl) contentEl.disabled = true;
 
-    const isGroup = State.currentChatIsGroup;
-    const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
-    if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
-    const attachedImage = State.pendingImageData;
-    State.pendingImageData = null;
+        const isGroup = State.currentChatIsGroup;
+        const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
+        if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
+        const attachedImage = State.pendingImageData;
+        State.pendingImageData = null;
 
-    const tempId = 'temp-' + Date.now();
-    const tempMsg = {
-        id: tempId, sender: State.userAddress, recipient: recipient,
-        content: content, image: attachedImage, timestamp: Date.now() / 1000,
-        is_mine: true, sender_name: 'You', status: 'sent'
-    };
-    const container = document.getElementById('messagesContainer');
-    if (container) {
-        const emptyState = container.querySelector('.empty-state');
-        if (emptyState) emptyState.remove();
-        container.appendChild(window.createMessageElement(tempMsg));
-        window.smartScrollToBottom(container, true);
-    }
+        const tempId = 'temp-' + Date.now();
+        const tempMsg = {
+            id: tempId, sender: State.userAddress, recipient: recipient,
+            content: content, image: attachedImage, timestamp: Date.now() / 1000,
+            is_mine: true, sender_name: 'You', status: 'sent'
+        };
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            const emptyState = container.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+            container.appendChild(window.createMessageElement(tempMsg));
+            window.smartScrollToBottom(container, true);
+        }
 
-    try {
-        const keys = await window.ensureKeys();
-        let payload = {};
-        if (isGroup && groupId) {
-            try {
-                const gRes = await fetch('/get_groups');
-                const gData = await gRes.json();
-                const freshGroup = gData.groups?.find(g => g.id === groupId);
-                if (freshGroup && freshGroup.members?.length) State.currentGroupMembers = freshGroup.members;
-            } catch(e) { console.warn(e); }
-            const members = State.currentGroupMembers;
-            if (!members || members.length === 0) throw new Error('Group members not loaded');
-            const encryptedMap = {};
-            for (const addr of members) {
-                const pubKeyB64 = await window.getPubKey(addr);
-                const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
-                const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
-                const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content || '');
-                encryptedMap[addr] = {
-                    ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext),
-                    iv: DarkCrypto._toBase64(iv),
-                    sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
-                    image: attachedImage || null
-                };
-                if (addr === State.userAddress) {
-                    encryptedMap[addr].self_ciphertext = encryptedMap[addr].ciphertext;
-                    encryptedMap[addr].self_iv = encryptedMap[addr].iv;
+        try {
+            const keys = await window.ensureKeys();
+            let payload = {};
+            if (isGroup && groupId) {
+                try {
+                    const gRes = await fetch('/get_groups');
+                    const gData = await gRes.json();
+                    const freshGroup = gData.groups?.find(g => g.id === groupId);
+                    if (freshGroup && freshGroup.members?.length) State.currentGroupMembers = freshGroup.members;
+                } catch(e) { console.warn(e); }
+                const members = State.currentGroupMembers;
+                if (!members || members.length === 0) throw new Error('Group members not loaded');
+                const encryptedMap = {};
+                for (const addr of members) {
+                    const pubKeyB64 = await window.getPubKey(addr);
+                    const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
+                    const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
+                    const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content || '');
+                    encryptedMap[addr] = {
+                        ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext),
+                        iv: DarkCrypto._toBase64(iv),
+                        sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
+                        image: attachedImage || null
+                    };
+                    if (addr === State.userAddress) {
+                        encryptedMap[addr].self_ciphertext = encryptedMap[addr].ciphertext;
+                        encryptedMap[addr].self_iv = encryptedMap[addr].iv;
+                    }
                 }
+                payload = { message_type: 'group', group_id: groupId, encrypted_map: encryptedMap };
+            } else {
+                const resPub = await fetch(`/get_public_key/${recipient}`);
+                if (!resPub.ok) throw new Error('Recipient public key not found');
+                const pubData = await resPub.json();
+                const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
+                const encrypted = await DarkCrypto.encryptMessage(keys.ecdhPrivateKey, keys.compressedPubKey, recipientPubKeyBytes, content || '');
+                const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
+                const selfEnc = await DarkCrypto.encryptAES(selfShared, content || '');
+                payload = {
+                    recipient: recipient,
+                    payload: {
+                        ciphertext: encrypted.ciphertext,
+                        iv: encrypted.iv,
+                        sender_pubkey: encrypted.myPubKey,
+                        self_ciphertext: DarkCrypto._arrayBufferToBase64(selfEnc.ciphertext),
+                        self_iv: DarkCrypto._toBase64(selfEnc.iv),
+                        image: attachedImage || null
+                    },
+                    message_type: 'direct'
+                };
             }
-            payload = { message_type: 'group', group_id: groupId, encrypted_map: encryptedMap };
-        } else {
-            const resPub = await fetch(`/get_public_key/${recipient}`);
-            if (!resPub.ok) throw new Error('Recipient public key not found');
-            const pubData = await resPub.json();
-            const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
-            const encrypted = await DarkCrypto.encryptMessage(keys.ecdhPrivateKey, keys.compressedPubKey, recipientPubKeyBytes, content || '');
-            const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-            const selfEnc = await DarkCrypto.encryptAES(selfShared, content || '');
-            payload = {
-                recipient: recipient,
-                payload: {
-                    ciphertext: encrypted.ciphertext,
-                    iv: encrypted.iv,
-                    sender_pubkey: encrypted.myPubKey,
-                    self_ciphertext: DarkCrypto._arrayBufferToBase64(selfEnc.ciphertext),
-                    self_iv: DarkCrypto._toBase64(selfEnc.iv),
-                    image: attachedImage || null
-                },
-                message_type: 'direct'
-            };
-        }
-        const res = await fetch('/send_message', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (res.ok) {
-            const tempElem = document.getElementById('msg-' + tempId);
-            if (tempElem) {
-                tempElem.id = 'msg-' + data.tx_id;
-                tempElem.dataset.messageId = data.tx_id;
-                const deleteBtn = tempElem.querySelector('.delete-btn');
-                if (deleteBtn) deleteBtn.dataset.id = data.tx_id;
-                const statusSpan = tempElem.querySelector('.message-status');
-                if (statusSpan) { statusSpan.textContent = '✓'; statusSpan.style.color = '#888'; }
+            const res = await fetch('/send_message', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                const tempElem = document.getElementById('msg-' + tempId);
+                if (tempElem) {
+                    tempElem.id = 'msg-' + data.tx_id;
+                    tempElem.dataset.messageId = data.tx_id;
+                    const deleteBtn = tempElem.querySelector('.delete-btn');
+                    if (deleteBtn) deleteBtn.dataset.id = data.tx_id;
+                    const statusSpan = tempElem.querySelector('.message-status');
+                    if (statusSpan) { statusSpan.textContent = '✓'; statusSpan.style.color = '#888'; }
+                }
+                await window.loadConversations();
+                window.updateConversationPreview(recipient, '✓ Sent');
+                if (!isGroup) {
+                    await window.loadMessagesForConversation(recipient, true);
+                }
+            } else {
+                document.getElementById('msg-' + tempId)?.remove();
+                window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
             }
-            await window.loadConversations();
-            window.updateConversationPreview(recipient, '✓ Sent');
-            // ✅ Исправление: не загружаем сообщения повторно для групповых чатов
-            if (!isGroup) {
-                await window.loadMessagesForConversation(recipient, true);
-            }
-        } else {
+        } catch (error) {
+            console.error('Send error:', error);
             document.getElementById('msg-' + tempId)?.remove();
-            window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
+            window.NotificationManager?.showToast(error.message || 'Network error', 'error');
+        } finally {
+            window.isSending = false;
+            if (sendBtn) sendBtn.disabled = false;
+            if (attachBtn) attachBtn.disabled = false;
+            if (contentEl) { contentEl.disabled = false; contentEl.focus(); }
         }
-    } catch (error) {
-        console.error('Send error:', error);
-        document.getElementById('msg-' + tempId)?.remove();
-        window.NotificationManager?.showToast(error.message || 'Network error', 'error');
-    } finally {
-        window.isSending = false;
-        if (sendBtn) sendBtn.disabled = false;
-        if (attachBtn) attachBtn.disabled = false;
-        if (contentEl) { contentEl.disabled = false; contentEl.focus(); }
     }
-}
 
-    // ========== Удаление сообщения ==========
+    // ========== Удаление сообщения (исправлено: модальное окно) ==========
     async function deleteMessage(messageId, buttonEl) {
-        if (!confirm('Delete this message?')) return;
+        const confirmed = await window.showConfirmModal('Delete Message', 'Are you sure you want to delete this message?');
+        if (!confirmed) return;
+
         try {
             if (buttonEl) { buttonEl.disabled = true; buttonEl.textContent = '…'; }
             const res = await fetch('/delete_message', {
@@ -146,13 +147,18 @@
                 window.NotificationManager?.showToast(data.error || 'Delete failed', 'error');
                 if (buttonEl) { buttonEl.disabled = false; buttonEl.textContent = '🗑'; }
             }
-        } catch (error) { console.error('Delete error:', error); window.NotificationManager?.showToast('Network error', 'error'); }
+        } catch (error) {
+            console.error('Delete error:', error);
+            window.NotificationManager?.showToast('Network error', 'error');
+        }
     }
 
-    // ========== Очистка переписки ==========
+    // ========== Очистка переписки (исправлено: модальное окно) ==========
     async function clearConversation() {
         if (!State.currentChatAddress) return;
-        if (!confirm('Clear all messages in this conversation?')) return;
+        const confirmed = await window.showConfirmModal('Clear Conversation', 'Are you sure you want to clear all messages in this conversation?');
+        if (!confirmed) return;
+
         try {
             const res = await fetch('/clear_conversation', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_with: State.currentChatAddress })
@@ -161,8 +167,13 @@
             if (res.ok) {
                 document.getElementById('messagesContainer').innerHTML = '<p class="text-muted text-center">Conversation cleared</p>';
                 window.NotificationManager?.showToast('Conversation cleared', 'success');
-            } else { window.NotificationManager?.showToast(data.error || 'Clear failed', 'error'); }
-        } catch (error) { console.error('Clear error:', error); window.NotificationManager?.showToast('Network error', 'error'); }
+            } else {
+                window.NotificationManager?.showToast(data.error || 'Clear failed', 'error');
+            }
+        } catch (error) {
+            console.error('Clear error:', error);
+            window.NotificationManager?.showToast('Network error', 'error');
+        }
     }
 
     // ========== Добавление контакта ==========
@@ -180,8 +191,13 @@
             if (res.ok) {
                 window.NotificationManager?.showToast('Contact added', 'success');
                 document.getElementById('addToContactsBtn').disabled = true;
-            } else { window.NotificationManager?.showToast(data.error || 'Failed to add', 'error'); }
-        } catch (error) { console.error('Add contact error:', error); window.NotificationManager?.showToast('Network error', 'error'); }
+            } else {
+                window.NotificationManager?.showToast(data.error || 'Failed to add', 'error');
+            }
+        } catch (error) {
+            console.error('Add contact error:', error);
+            window.NotificationManager?.showToast('Network error', 'error');
+        }
     }
 
     // ========== Изображения ==========
@@ -194,11 +210,15 @@
                     try {
                         State.pendingImageData = await window.compressImage(e.target.result);
                         window.NotificationManager?.showToast('Image attached', 'success');
-                    } catch (err) { window.NotificationManager?.showToast('Image processing failed', 'error'); }
+                    } catch (err) {
+                        window.NotificationManager?.showToast('Image processing failed', 'error');
+                    }
                 }
             };
             reader.readAsDataURL(file);
-        } else { window.NotificationManager?.showToast('Please select an image', 'warning'); }
+        } else {
+            window.NotificationManager?.showToast('Please select an image', 'warning');
+        }
         event.target.value = '';
     }
 
@@ -250,7 +270,9 @@
                     });
                 }
             }
-        } catch (error) { console.error('Load contacts error:', error); }
+        } catch (error) {
+            console.error('Load contacts error:', error);
+        }
     }
     async function startNewChat() {
         const select = document.getElementById('newChatSelect');
@@ -268,7 +290,10 @@
             if (entered === State.userAddress) { window.NotificationManager?.showToast('Cannot chat with yourself', 'warning'); return; }
             address = entered;
             name = entered.slice(0,10)+'…';
-        } else { window.NotificationManager?.showToast('Select a contact or enter address', 'warning'); return; }
+        } else {
+            window.NotificationManager?.showToast('Select a contact or enter address', 'warning');
+            return;
+        }
         closeNewChatModal();
         window.selectConversation(address, name, false);
     }
@@ -345,7 +370,6 @@
     window.closeNewChatModal = closeNewChatModal;
     window.startNewChat = startNewChat;
 
-    // Запуск инициализации после загрузки DOM
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initChat);
     else initChat();
 })();

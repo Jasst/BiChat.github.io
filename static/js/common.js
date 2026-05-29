@@ -2,6 +2,7 @@
  * common.js — Shared utilities for Dark Messenger
  * QR Scanner, Utils, DOM helpers, Security, Forms, Modals
  * ✅ Защита от повторной загрузки + ФИКСЫ для авто-добавления после сканирования
+ * ✅ Добавлены глобальные модальные окна confirm/prompt
  */
 
 // === 🛡️ Защита от повторного объявления модулей ===
@@ -321,7 +322,7 @@ const QRScanner = {
   stream: null,
   animationFrame: null,
   active: false,
-  _canvas: null,    // ← добавить
+  _canvas: null,
   _ctx: null,
   config: {
     videoWidth: 1280,
@@ -389,8 +390,8 @@ const QRScanner = {
     this.active = false;
     if (this.animationFrame) { cancelAnimationFrame(this.animationFrame); this.animationFrame = null; }
     if (this.stream) { this._stopStream(this.stream); this.stream = null; }
-    this._canvas = null;   // ← добавить
-    this._ctx = null;      // ← добавить
+    this._canvas = null;
+    this._ctx = null;
     if (containerEl) { DOM.hide(containerEl); containerEl.classList.remove('scanning'); }
     if (videoEl) { videoEl.pause(); videoEl.srcObject = null; }
     if (resultEl) DOM.hide(resultEl);
@@ -483,8 +484,105 @@ const QRScanner = {
 };
 
 // =============================================================================
-// === 📱 Mobile Sidebar Helpers ===
+// === 🖥️ Global Modal Dialogs (Confirm / Prompt) ===
 // =============================================================================
+
+/**
+ * Показывает модальное окно подтверждения.
+ * @param {string} title - Заголовок
+ * @param {string} message - Текст сообщения
+ * @returns {Promise<boolean>} - true, если пользователь подтвердил
+ */
+window.showConfirmModal = function(title, message) {
+    return new Promise((resolve) => {
+        const modalId = 'global-confirm-modal-' + Date.now();
+        const modalHtml = `
+            <div id="${modalId}" class="modal-overlay hidden" role="dialog" aria-modal="true">
+                <div class="modal" style="max-width: 400px;">
+                    <header class="modal-header">
+                        <h3>${Utils.escapeHtml(title)}</h3>
+                        <button class="modal-close" data-close>&times;</button>
+                    </header>
+                    <div class="modal-body">
+                        <p>${Utils.escapeHtml(message)}</p>
+                    </div>
+                    <footer class="modal-footer">
+                        <button class="btn btn-ghost" data-action="cancel">Cancel</button>
+                        <button class="btn btn-primary" data-action="confirm">Confirm</button>
+                    </footer>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modalEl = document.getElementById(modalId);
+
+        const close = (result) => {
+            ModalManager.close(modalId);
+            modalEl.remove();
+            resolve(result);
+        };
+
+        ModalManager.open(modalId, { closeOnOverlay: false, preventEscClose: false });
+
+        modalEl.querySelector('[data-close]')?.addEventListener('click', () => close(false));
+        modalEl.querySelector('[data-action="cancel"]')?.addEventListener('click', () => close(false));
+        modalEl.querySelector('[data-action="confirm"]')?.addEventListener('click', () => close(true));
+    });
+};
+
+/**
+ * Показывает модальное окно с полем ввода.
+ * @param {string} title - Заголовок
+ * @param {string} placeholder - Плейсхолдер
+ * @param {string} defaultValue - Значение по умолчанию
+ * @returns {Promise<string|null>} - Введённое значение или null при отмене
+ */
+window.showPromptModal = function(title, placeholder, defaultValue = '') {
+    return new Promise((resolve) => {
+        const modalId = 'global-prompt-modal-' + Date.now();
+        const modalHtml = `
+            <div id="${modalId}" class="modal-overlay hidden" role="dialog" aria-modal="true">
+                <div class="modal" style="max-width: 400px;">
+                    <header class="modal-header">
+                        <h3>${Utils.escapeHtml(title)}</h3>
+                        <button class="modal-close" data-close>&times;</button>
+                    </header>
+                    <div class="modal-body">
+                        <input type="text" id="prompt-input-${modalId}" class="input"
+                               placeholder="${Utils.escapeHtml(placeholder)}"
+                               value="${Utils.escapeHtml(defaultValue)}"
+                               style="width: 100%;">
+                    </div>
+                    <footer class="modal-footer">
+                        <button class="btn btn-ghost" data-action="cancel">Cancel</button>
+                        <button class="btn btn-primary" data-action="ok">OK</button>
+                    </footer>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modalEl = document.getElementById(modalId);
+        const input = modalEl.querySelector(`#prompt-input-${modalId}`);
+
+        const close = (result) => {
+            ModalManager.close(modalId);
+            modalEl.remove();
+            resolve(result);
+        };
+
+        ModalManager.open(modalId, { closeOnOverlay: false, preventEscClose: false });
+        input?.focus();
+
+        const handleOk = () => close(input?.value?.trim() || null);
+        modalEl.querySelector('[data-close]')?.addEventListener('click', () => close(null));
+        modalEl.querySelector('[data-action="cancel"]')?.addEventListener('click', () => close(null));
+        modalEl.querySelector('[data-action="ok"]')?.addEventListener('click', handleOk);
+        input?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleOk();
+        });
+    });
+};
+
 // =============================================================================
 // === 📱 Mobile Sidebar Helpers ===
 // =============================================================================
@@ -533,7 +631,6 @@ window.openQRScannerInModal = () => QRScanner.open({
     if (el) {
       el.value = addr;
       console.log('✅ Address inserted into #newChatAddress');
-      // Подсказка пользователю
       const resultEl = DOM.getById('scanResultModal');
       if (resultEl) {
         resultEl.textContent = '✓ Address scanned! Click "Start Chat" to begin';
@@ -561,12 +658,10 @@ window.openQRScanner = () => QRScanner.open({
 
     if (addressEl) addressEl.value = addr;
 
-    // Автозаполнение имени, если поле пустое
     if (nameEl && !nameEl.value.trim()) {
       nameEl.value = 'Contact_' + addr.slice(0, 8);
     }
 
-    // Показываем статус
     const resultEl = DOM.getById('scanResult');
     if (resultEl) {
       resultEl.textContent = '✓ Scanned! Adding contact...';
@@ -574,11 +669,10 @@ window.openQRScanner = () => QRScanner.open({
       DOM.show(resultEl);
     }
 
-    // ✅ Авто-добавление контакта с небольшой задержкой
     setTimeout(async () => {
       if (addressEl?.value && nameEl?.value && typeof window.addContact === 'function') {
         try {
-          await window.addContact(); // Вызываем глобальную функцию
+          await window.addContact();
         } catch (e) {
           console.error('Auto-add contact failed:', e);
           window.NotificationManager?.showToast('Scan complete. Please click "Add" manually.', 'warning');
