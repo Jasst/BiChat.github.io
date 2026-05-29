@@ -14,7 +14,6 @@ from config import AIRDROP_AMOUNT, TEMPLATE_FOLDER
 from dependencies import require_auth
 from models import CreateWalletRequest, LoginRequest
 from setup import verify_address_matches_pubkey, load_public_key_from_b64
-
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
 logger = logging.getLogger(__name__)
@@ -89,14 +88,14 @@ async def create_wallet(body: CreateWalletRequest, request: Request):
     try:
         async with get_db_cursor() as cursor:
             await cursor.execute(
-                'INSERT INTO wallets (address, balance) VALUES (?, ?) '
+                'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
                 'ON CONFLICT(address) DO NOTHING',
-                (address, AIRDROP_AMOUNT)
+                address, AIRDROP_AMOUNT
             )
             await cursor.execute(
                 'INSERT INTO coin_transactions (tx_type, recipient, amount, timestamp) '
-                'VALUES (?,?,?,?)',
-                ('airdrop', address, AIRDROP_AMOUNT, time.time())
+                'VALUES ($1, $2, $3, $4)',
+                'airdrop', address, AIRDROP_AMOUNT, time.time()
             )
         request.session['address'] = address
         await cache_public_key(address, pubkey_b64, source='self', verified=True)

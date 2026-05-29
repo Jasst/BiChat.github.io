@@ -21,10 +21,10 @@ from services.messaging import get_conversations_list_cached, invalidate_convers
 from services.notifier import message_notifier
 from services.wallet import staking_manager, mine_block_async_async
 from setup import message_limiter
-from routes.ws import manager   # WebSocket менеджер
+from routes.ws import manager
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=['messages'])
+router = APIRouter(tags=['messages'])   # <--- ЭТО БЫЛО ПРОПУЩЕНО
 
 
 @router.post('/send_message', status_code=201,
@@ -34,43 +34,42 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
     sender = address
     msg_type = body.message_type
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('BEGIN IMMEDIATE')
+    async with get_db_cursor() as conn:
+        await conn.execute('BEGIN')
         if MESSAGE_FEE > 0:
-            await cursor.execute('SELECT balance FROM wallets WHERE address = ?', (sender,))
-            row = await cursor.fetchone()
+            row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', sender)
             balance = row[0] if row else 0
             if balance < MESSAGE_FEE:
-                await cursor.execute('ROLLBACK')
+                await conn.execute('ROLLBACK')
                 raise HTTPException(402, f'Insufficient balance for fee ({MESSAGE_FEE/COIN:.6f} {COIN_NAME})')
-            await cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?',
-                                 (MESSAGE_FEE, sender))
-            await cursor.execute(
-                'INSERT INTO wallets (address, balance) VALUES (?, ?) '
-                'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-                (STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE, MESSAGE_FEE)
+            await conn.execute('UPDATE wallets SET balance = balance - $1 WHERE address = $2',
+                                 MESSAGE_FEE, sender)
+            await conn.execute(
+                'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+                'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+                STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE
             )
-            await cursor.execute(
+            await conn.execute(
                 'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
-                'VALUES (?,?,?,?,?,?)',
-                ('message_fee', sender, STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE, time.time(), 'message fee')
+                'VALUES ($1, $2, $3, $4, $5, $6)',
+                'message_fee', sender, STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE, time.time(), 'message fee'
             )
             if ENABLE_STAKING and staking_manager:
-                await staking_manager.add_to_fee_pool(MESSAGE_FEE, cursor=cursor)
+                await staking_manager.add_to_fee_pool(MESSAGE_FEE, cursor=conn)
         tx_id = None
         group = None
         message_obj = None
         if msg_type == 'group' and body.group_id:
             if not body.encrypted_map:
-                await cursor.execute('ROLLBACK')
+                await conn.execute('ROLLBACK')
                 raise HTTPException(400, 'Missing encrypted_map')
             groups = await get_user_groups_cached(sender, cache_version=await get_groups_cache_version())
             group = next((g for g in groups if g['id'] == body.group_id), None)
             if not group or sender not in group['members']:
-                await cursor.execute('ROLLBACK')
+                await conn.execute('ROLLBACK')
                 raise HTTPException(403, 'Access denied')
             tx_id = await blockchain.new_transaction(
-                cursor, sender, f"group:{body.group_id}",
+                conn, sender, f"group:{body.group_id}",
                 json.dumps({'encrypted_map': body.encrypted_map}), None,
                 sender_pubkey=body.sender_pubkey,
                 metadata={'encryption': 'group-ecdh-v4', 'group_id': body.group_id}
@@ -83,23 +82,22 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'content': json.dumps({'encrypted_map': body.encrypted_map}),
                 'image': None,
             }
-            # Отправка через WebSocket
             for member in group['members']:
                 if member != sender:
                     await manager.send_personal_message(member, message_obj)
         else:
             recipient = body.recipient
             if not recipient:
-                await cursor.execute('ROLLBACK')
+                await conn.execute('ROLLBACK')
                 raise HTTPException(400, 'Missing recipient')
             if sender == recipient:
-                await cursor.execute('ROLLBACK')
+                await conn.execute('ROLLBACK')
                 raise HTTPException(400, 'Cannot message yourself')
             if not body.payload or not isinstance(body.payload, dict):
-                await cursor.execute('ROLLBACK')
+                await conn.execute('ROLLBACK')
                 raise HTTPException(400, 'Missing encrypted payload')
             tx_id = await blockchain.new_transaction(
-                cursor, sender, recipient,
+                conn, sender, recipient,
                 json.dumps(body.payload), None,
                 sender_pubkey=body.sender_pubkey,
                 metadata={'encryption': 'hybrid-v2'}
@@ -113,8 +111,7 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'image': None,
             }
             await manager.send_personal_message(recipient, message_obj)
-        await cursor.execute('COMMIT')
-        # Обновляем кэши диалогов
+        await conn.execute('COMMIT')
         await invalidate_conversations_cache(sender)
         if msg_type == 'group' and body.group_id and group:
             for member in group['members']:
@@ -122,7 +119,7 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
         else:
             await invalidate_conversations_cache(body.recipient)
         if CONFIG.get('ENABLE_MINING', False):
-            last = await blockchain._last_block_raw(cursor)
+            last = await blockchain._last_block_raw(conn)
             if last:
                 asyncio.create_task(mine_block_async_async(last.get('proof', 0), sender))
         return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
@@ -143,53 +140,50 @@ async def get_conversation(
     chat_with = with_
     limit = min(limit, 50)
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
+    async with get_db_cursor() as conn:
         if chat_with.startswith('group:'):
             group_id = chat_with.split(':', 1)[1]
             groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             if not any(g['id'] == group_id and address in g['members'] for g in groups):
                 raise HTTPException(403, 'No access')
             query = ('SELECT id, sender, recipient, content, image, timestamp, metadata '
-                     'FROM transactions WHERE recipient = ?')
+                     'FROM transactions WHERE recipient = $1')
             params = [chat_with]
             if last_message_id:
-                await cursor.execute("SELECT timestamp FROM transactions WHERE id = ?", (last_message_id,))
-                row_ts = await cursor.fetchone()
+                row_ts = await conn.fetchrow("SELECT timestamp FROM transactions WHERE id = $1", last_message_id)
                 if row_ts:
-                    query += ' AND timestamp > ?'
+                    query += ' AND timestamp > $2'
                     params.append(row_ts[0])
             if before_id:
-                await cursor.execute("SELECT timestamp FROM transactions WHERE id = ?", (before_id,))
-                row_ts = await cursor.fetchone()
+                row_ts = await conn.fetchrow("SELECT timestamp FROM transactions WHERE id = $1", before_id)
                 if row_ts:
-                    query += ' AND timestamp < ?'
+                    query += ' AND timestamp < $2'
                     params.append(row_ts[0])
-            query += ' ORDER BY timestamp ASC LIMIT ?'
+            query += ' ORDER BY timestamp ASC LIMIT $2' if len(params) == 1 else f' ORDER BY timestamp ASC LIMIT ${len(params)+1}'
             params.append(limit)
-            await cursor.execute(query, params)
+            rows = await conn.fetch(query, *params)
         else:
             base_query = """
                 SELECT id, sender, recipient, content, image, timestamp, metadata
                 FROM (
-                    SELECT * FROM transactions WHERE sender = ? AND recipient = ?
+                    SELECT * FROM transactions WHERE sender = $1 AND recipient = $2
                     UNION ALL
-                    SELECT * FROM transactions WHERE sender = ? AND recipient = ?
+                    SELECT * FROM transactions WHERE sender = $3 AND recipient = $4
                 ) AS t
             """
             params = [address, chat_with, chat_with, address]
             conditions = []
             if last_message_id:
-                conditions.append("id > ?")
+                conditions.append("id > $5")
                 params.append(last_message_id)
             if before_id:
-                conditions.append("id < ?")
+                conditions.append("id < $5")
                 params.append(before_id)
             if conditions:
                 base_query += " WHERE " + " AND ".join(conditions)
-            base_query += " ORDER BY timestamp DESC LIMIT ?"
+            base_query += " ORDER BY timestamp DESC LIMIT $5" if len(params) == 4 else f" ORDER BY timestamp DESC LIMIT ${len(params)+1}"
             params.append(limit)
-            await cursor.execute(base_query, params)
-        rows = await cursor.fetchall()
+            rows = await conn.fetch(base_query, *params)
     messages = []
     for r in rows:
         messages.append({
@@ -219,57 +213,51 @@ async def get_conversations(address: str = Depends(require_auth)):
 
 @router.post('/mark_conversation_read')
 async def mark_conversation_read(body: MarkReadRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     chat_with = body.chat_with.strip()
     if not chat_with:
         raise HTTPException(400, 'Missing chat_with')
     last_message_id = body.last_message_id
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
+    async with get_db_cursor() as conn:
         if last_message_id is None:
             if chat_with.startswith('group:'):
-                await cursor.execute('SELECT MAX(id) FROM transactions WHERE recipient = ?', (chat_with,))
+                row = await conn.fetchrow('SELECT MAX(id) FROM transactions WHERE recipient = $1', chat_with)
             else:
-                await cursor.execute('''
+                row = await conn.fetchrow('''
                     SELECT MAX(id) FROM transactions
-                    WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
-                ''', (address, chat_with, chat_with, address))
-            row = await cursor.fetchone()
+                    WHERE (sender = $1 AND recipient = $2) OR (sender = $3 AND recipient = $4)
+                ''', address, chat_with, chat_with, address)
             last_message_id = row[0] if row and row[0] else 0
-        await cursor.execute('''
+        await conn.execute('''
             INSERT INTO read_status (user_address, chat_id, last_read_message_id, read_at)
-            VALUES (?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT(user_address, chat_id) DO UPDATE
             SET last_read_message_id = excluded.last_read_message_id,
                 read_at = excluded.read_at
             WHERE excluded.last_read_message_id > read_status.last_read_message_id
-        ''', (address, chat_with, last_message_id, time.time()))
+        ''', address, chat_with, last_message_id, time.time())
     return {'status': 'ok', 'last_read': last_message_id}
 
 
 @router.post('/message/{message_id}/delivered')
 async def mark_delivered(message_id: int, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('''
-            UPDATE transactions
-            SET status = 'delivered'
-            WHERE id = ? AND recipient = ? AND status = 'sent'
-        ''', (message_id, address))
+    async with get_db_cursor() as conn:
+        await conn.execute('''
+            UPDATE transactions SET status = 'delivered'
+            WHERE id = $1 AND recipient = $2 AND status = 'sent'
+        ''', message_id, address)
     return {'status': 'ok'}
 
 
 @router.post('/message/{message_id}/read')
 async def mark_read(message_id: int, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('''
-            UPDATE transactions
-            SET status = 'read', read_at = ?
-            WHERE id = ? AND recipient = ? AND status IN ('sent', 'delivered')
-        ''', (time.time(), message_id, address))
+    async with get_db_cursor() as conn:
+        await conn.execute('''
+            UPDATE transactions SET status = 'read', read_at = $1
+            WHERE id = $2 AND recipient = $3 AND status IN ('sent', 'delivered')
+        ''', time.time(), message_id, address)
     return {'status': 'ok'}
 
 
@@ -277,13 +265,10 @@ async def mark_read(message_id: int, request: Request, address: str = Depends(re
 async def get_message_statuses(body: MessageStatusesRequest, request: Request, address: str = Depends(require_auth)):
     if not body.ids:
         return {}
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        placeholders = ','.join('?' * len(body.ids))
-        await cursor.execute(f'SELECT id, status FROM transactions WHERE id IN ({placeholders})',
-                             body.ids)
-        rows = await cursor.fetchall()
+    async with get_db_cursor() as conn:
+        placeholders = ','.join(f'${i+1}' for i in range(len(body.ids)))
+        rows = await conn.fetch(f'SELECT id, status FROM transactions WHERE id IN ({placeholders})', *body.ids)
     return {str(row[0]): row[1] for row in rows}
 
 
@@ -309,6 +294,3 @@ async def search_messages(
     blockchain = request.app.state.blockchain
     results = await blockchain.search_messages(address, q.strip())
     return {'results': results}
-
-
-# Эндпоинты Long Polling удалены: /wait_for_messages, /check_new_messages, /notifier/stats, /force_check

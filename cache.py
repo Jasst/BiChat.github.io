@@ -1,5 +1,5 @@
 """
-cache.py — Асинхронная версия с aiosqlite и TTL-кэшами.
+cache.py — Асинхронная версия с asyncpg и TTL-кэшами.
 """
 import asyncio
 import json
@@ -52,7 +52,7 @@ class AsyncTTLCache:
             }
 
 
-# Экземпляры кэшей (все используют AsyncTTLCache)
+# Экземпляры кэшей
 pubkey_cache = AsyncTTLCache(ttl_seconds=3600, maxsize=CONFIG['CACHE_SIZE_PUBKEYS'])
 contact_name_cache = AsyncTTLCache(ttl_seconds=600, maxsize=CONFIG['CACHE_SIZE_CONTACTS'])
 user_groups_cache = AsyncTTLCache(ttl_seconds=300, maxsize=CONFIG['CACHE_SIZE_GROUPS'])
@@ -109,12 +109,11 @@ async def get_cached_public_key(address: str, cache_version: int = 0) -> Tuple[O
     if cached is not None:
         return cached
     from database import get_db_cursor
-    async with get_db_cursor() as cursor:
-        await cursor.execute(
-            'SELECT public_key_b64, verified FROM pubkey_cache WHERE address = ?',
-            (address,)
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow(
+            'SELECT public_key_b64, verified FROM pubkey_cache WHERE address = $1',
+            address
         )
-        row = await cursor.fetchone()
         result = (row[0], bool(row[1])) if row else (None, False)
         await pubkey_cache.set(key, result)
         return result
@@ -130,12 +129,14 @@ async def cache_public_key(address: str, pubkey_b64: str,
             if not verified:
                 logger.warning(f"Unverified pubkey cached for {address[:16]}...")
         from database import get_db_cursor
-        async with get_db_cursor() as cursor:
-            await cursor.execute(
-                'INSERT OR REPLACE INTO pubkey_cache '
-                '(address, public_key_b64, updated_at, source, verified) '
-                'VALUES (?, ?, ?, ?, ?)',
-                (address, pubkey_b64, time.time(), source, 1 if verified else 0)
+        async with get_db_cursor() as conn:
+            await conn.execute(
+                'INSERT INTO pubkey_cache (address, public_key_b64, updated_at, source, verified) '
+                'VALUES ($1, $2, $3, $4, $5) '
+                'ON CONFLICT(address) DO UPDATE SET '
+                'public_key_b64 = EXCLUDED.public_key_b64, updated_at = EXCLUDED.updated_at, '
+                'source = EXCLUDED.source, verified = EXCLUDED.verified',
+                address, pubkey_b64, time.time(), source, 1 if verified else 0
             )
         await bump_pubkey_cache_version()
         return True
@@ -146,14 +147,13 @@ async def cache_public_key(address: str, pubkey_b64: str,
 
 async def fetch_public_key_from_chain(address: str) -> Tuple[Optional[str], bool]:
     from database import get_db_cursor
-    async with get_db_cursor() as cursor:
-        await cursor.execute(
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow(
             'SELECT sender_pubkey, metadata FROM transactions '
-            'WHERE sender = ? AND sender_pubkey IS NOT NULL '
+            'WHERE sender = $1 AND sender_pubkey IS NOT NULL '
             'ORDER BY timestamp DESC LIMIT 1',
-            (address,)
+            address
         )
-        row = await cursor.fetchone()
         if row and row[0]:
             pubkey = row[0]
             from setup import verify_address_matches_pubkey
@@ -179,13 +179,12 @@ async def get_contact_name_cached(user_address: str, contact_address: str,
     if cached is not None:
         return cached
     from database import get_db_cursor
-    async with get_db_cursor() as cursor:
-        await cursor.execute(
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow(
             'SELECT contact_name FROM contacts '
-            'WHERE user_address = ? AND contact_address = ?',
-            (user_address, contact_address)
+            'WHERE user_address = $1 AND contact_address = $2',
+            user_address, contact_address
         )
-        row = await cursor.fetchone()
         result = row[0] if row else None
         await contact_name_cache.set(key, result)
         return result
@@ -197,18 +196,18 @@ async def get_user_groups_cached(address: str, cache_version: int = 0):
     if cached is not None:
         return cached
     from database import get_db_cursor
-    async with get_db_cursor() as cursor:
-        await cursor.execute('SELECT id, name, creator, members, created_at FROM groups')
+    async with get_db_cursor() as conn:
+        rows = await conn.fetch('SELECT id, name, creator, members, created_at FROM groups')
         groups = []
-        async for row in cursor:
-            members = json.loads(row[3])
+        for row in rows:
+            members = json.loads(row['members'])
             if address in members:
                 groups.append({
-                    'id': row[0],
-                    'name': row[1],
-                    'creator': row[2],
+                    'id': row['id'],
+                    'name': row['name'],
+                    'creator': row['creator'],
                     'members': members,
-                    'created_at': row[4],
+                    'created_at': row['created_at'],
                 })
         result = tuple(groups)
         await user_groups_cache.set(key, result)

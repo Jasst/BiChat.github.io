@@ -25,7 +25,6 @@ async def get_groups(request: Request, address: str = Depends(require_auth)):
 
 @router.post('/create_group', status_code=201)
 async def create_group(body: CreateGroupRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     name = body.name.strip()
     members_set = {m.strip() for m in body.members if m.strip()}
     members_set.add(address)
@@ -35,10 +34,10 @@ async def create_group(body: CreateGroupRequest, request: Request, address: str 
         raise HTTPException(400, f'Invalid member addresses: {invalid[:3]}')
     group_id = uuid.uuid4().hex
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute(
-            'INSERT INTO groups (id, name, creator, members, created_at) VALUES (?, ?, ?, ?, ?)',
-            (group_id, name, address, json.dumps(members_clean), time.time())
+    async with get_db_cursor() as conn:
+        await conn.execute(
+            'INSERT INTO groups (id, name, creator, members, created_at) VALUES ($1, $2, $3, $4, $5)',
+            group_id, name, address, json.dumps(members_clean), time.time()
         )
     await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
@@ -56,18 +55,16 @@ async def create_group(body: CreateGroupRequest, request: Request, address: str 
 
 @router.post('/delete_group')
 async def delete_group(body: DeleteGroupRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('SELECT id, name, creator, members FROM groups WHERE id = ?', (body.group_id,))
-        row = await cursor.fetchone()
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow('SELECT id, name, creator, members FROM groups WHERE id = $1', body.group_id)
         if not row:
             raise HTTPException(404, 'Group not found')
         if row[2] != address:
             raise HTTPException(403, 'Only the group creator can delete this group')
         group_name = row[1]
         members = json.loads(row[3]) if row[3] else []
-        await cursor.execute('DELETE FROM groups WHERE id = ?', (body.group_id,))
+        await conn.execute('DELETE FROM groups WHERE id = $1', body.group_id)
     await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     for member in members:
@@ -78,17 +75,15 @@ async def delete_group(body: DeleteGroupRequest, request: Request, address: str 
 
 @router.post('/rename_group')
 async def rename_group(body: RenameGroupRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('SELECT creator, members FROM groups WHERE id = ?', (body.group_id,))
-        row = await cursor.fetchone()
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow('SELECT creator, members FROM groups WHERE id = $1', body.group_id)
         if not row:
             raise HTTPException(404, 'Group not found')
         if row[0] != address:
             raise HTTPException(403, 'Only the creator can rename this group')
         members = json.loads(row[1]) if row[1] else []
-        await cursor.execute('UPDATE groups SET name = ? WHERE id = ?', (body.name, body.group_id))
+        await conn.execute('UPDATE groups SET name = $1 WHERE id = $2', body.name, body.group_id)
     await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     for member in members:
@@ -99,11 +94,9 @@ async def rename_group(body: RenameGroupRequest, request: Request, address: str 
 
 @router.post('/add_group_member')
 async def add_group_member(body: GroupMemberRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('SELECT creator, members FROM groups WHERE id = ?', (body.group_id,))
-        row = await cursor.fetchone()
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow('SELECT creator, members FROM groups WHERE id = $1', body.group_id)
         if not row:
             raise HTTPException(404, 'Group not found')
         if row[0] != address:
@@ -115,8 +108,8 @@ async def add_group_member(body: GroupMemberRequest, request: Request, address: 
             raise HTTPException(400, 'Group member limit (50) reached')
         members.append(body.address)
         members.sort()
-        await cursor.execute('UPDATE groups SET members = ? WHERE id = ?',
-                             (json.dumps(members), body.group_id))
+        await conn.execute('UPDATE groups SET members = $1 WHERE id = $2',
+                           json.dumps(members), body.group_id)
     await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     await invalidate_conversations_cache(address)
@@ -127,11 +120,9 @@ async def add_group_member(body: GroupMemberRequest, request: Request, address: 
 
 @router.post('/remove_group_member')
 async def remove_group_member(body: GroupMemberRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('SELECT creator, members FROM groups WHERE id = ?', (body.group_id,))
-        row = await cursor.fetchone()
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow('SELECT creator, members FROM groups WHERE id = $1', body.group_id)
         if not row:
             raise HTTPException(404, 'Group not found')
         creator = row[0]
@@ -145,8 +136,8 @@ async def remove_group_member(body: GroupMemberRequest, request: Request, addres
         if len(members) <= 2:
             raise HTTPException(400, 'Group must have at least 2 members')
         members.remove(body.address)
-        await cursor.execute('UPDATE groups SET members = ? WHERE id = ?',
-                             (json.dumps(members), body.group_id))
+        await conn.execute('UPDATE groups SET members = $1 WHERE id = $2',
+                           json.dumps(members), body.group_id)
     await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     await invalidate_conversations_cache(address)

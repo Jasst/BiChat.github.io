@@ -1,5 +1,6 @@
 """
 routes/files.py — Загрузка файлов, удаление сообщений, очистка диалога (асинхронная версия)
+Исправлено: asyncpg-совместимость (fetchrow, execute-результат)
 """
 import logging
 import os
@@ -85,39 +86,42 @@ async def serve_upload(filename: str, address: str = Depends(require_auth)):
 
 @router.post('/delete_message')
 async def delete_message(body: DeleteMessageRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('SELECT sender FROM transactions WHERE id = ?', (body.message_id,))
-        row = await cursor.fetchone()
+    async with get_db_cursor() as conn:
+        # ✅ fetchrow вместо fetchone
+        row = await conn.fetchrow('SELECT sender FROM transactions WHERE id = $1', body.message_id)
         if not row:
             raise HTTPException(404, 'Message not found')
         if row[0] != address:
             raise HTTPException(403, 'Permission denied')
-        await cursor.execute('DELETE FROM transactions WHERE id = ?', (body.message_id,))
+        await conn.execute('DELETE FROM transactions WHERE id = $1', body.message_id)
     logger.info(f"Message #{body.message_id} deleted by {address[:16]}...")
     return {'message': 'Deleted'}
 
 
 @router.post('/clear_conversation')
 async def clear_conversation(body: ClearConversationRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     chat_with = body.chat_with.strip()
     if not chat_with:
         raise HTTPException(400, 'Missing chat_with parameter')
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
+    async with get_db_cursor() as conn:
         if chat_with.startswith('group:'):
-            await cursor.execute(
-                'DELETE FROM transactions WHERE sender = ? AND recipient = ?',
-                (address, chat_with)
+            result = await conn.execute(
+                'DELETE FROM transactions WHERE sender = $1 AND recipient = $2',
+                address, chat_with
             )
         else:
-            await cursor.execute(
+            result = await conn.execute(
                 'DELETE FROM transactions '
-                'WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)',
-                (address, chat_with, chat_with, address)
+                'WHERE (sender = $1 AND recipient = $2) OR (sender = $3 AND recipient = $4)',
+                address, chat_with, chat_with, address
             )
-        deleted = cursor.rowcount
+        # ✅ парсим количество удалённых строк из результата asyncpg
+        deleted = 0
+        if result:
+            parts = result.split()
+            if parts and parts[0] == 'DELETE' and len(parts) > 1:
+                deleted = int(parts[1])
     logger.info(f"Cleared {deleted} messages for {address[:16]}... in {chat_with[:20]}...")
     return {'message': f'Cleared {deleted} messages'}

@@ -15,14 +15,15 @@ async def add_contact(user_address: str, contact_address: str, contact_name: str
     if not contact_name or not contact_name.strip():
         contact_name = contact_address[:10] + "..."
     try:
-        async with get_db_cursor() as cursor:
-            await cursor.execute(
-                'INSERT OR REPLACE INTO contacts '
-                '(user_address, contact_address, contact_name, created_at) '
-                'VALUES (?, ?, ?, ?)',
-                (user_address, contact_address, contact_name.strip(), time.time())
+        async with get_db_cursor() as conn:
+            await conn.execute(
+                'INSERT INTO contacts (user_address, contact_address, contact_name, created_at) '
+                'VALUES ($1, $2, $3, $4) '
+                'ON CONFLICT(user_address, contact_address) DO UPDATE SET '
+                'contact_name = EXCLUDED.contact_name, created_at = EXCLUDED.created_at',
+                user_address, contact_address, contact_name.strip(), time.time()
             )
-        bump_contact_cache_version()
+        await bump_contact_cache_version()   # <-- добавлен await
         return True
     except Exception as e:
         logger.error(f"Add contact DB error: {e}")
@@ -30,14 +31,13 @@ async def add_contact(user_address: str, contact_address: str, contact_name: str
 
 
 async def get_contacts(user_address: str) -> List[Dict[str, Any]]:
-    async with get_db_cursor() as cursor:
-        await cursor.execute(
+    async with get_db_cursor() as conn:
+        rows = await conn.fetch(
             'SELECT contact_address, contact_name, contact_pubkey, created_at '
-            'FROM contacts WHERE user_address = ? '
-            'ORDER BY contact_name COLLATE NOCASE',
-            (user_address,)
+            'FROM contacts WHERE user_address = $1 '
+            'ORDER BY contact_name COLLATE "C"',
+            user_address
         )
-        rows = await cursor.fetchall()
         return [
             {'address': row[0], 'name': row[1], 'pubkey': row[2], 'created_at': row[3]}
             for row in rows
@@ -51,15 +51,15 @@ async def update_contact_name(user_address: str, contact_address: str, new_name:
     if not clean_name or len(clean_name) > 50:
         return False
     try:
-        async with get_db_cursor() as cursor:
-            await cursor.execute(
-                'UPDATE contacts SET contact_name = ? '
-                'WHERE user_address = ? AND contact_address = ?',
-                (clean_name, user_address, contact_address.lower())
+        async with get_db_cursor() as conn:
+            result = await conn.execute(
+                'UPDATE contacts SET contact_name = $1 '
+                'WHERE user_address = $2 AND contact_address = $3',
+                clean_name, user_address, contact_address.lower()
             )
-            updated = cursor.rowcount
+            updated = result != "UPDATE 0"
         if updated:
-            bump_contact_cache_version()
+            await bump_contact_cache_version()   # <-- добавлен await
             logger.info(f"Contact name updated: {contact_address[:16]}... → '{clean_name}'")
         return bool(updated)
     except Exception as e:

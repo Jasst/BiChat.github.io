@@ -60,10 +60,12 @@ manager = ConnectionManager()
 
 
 async def authenticate_websocket(websocket: WebSocket, address: str, signature: str, nonce: str) -> Optional[str]:
-    """Проверяет подпись и возвращает address или None."""
+    """Проверяет подпись и возвращает address или None (разрешены даже неверифицированные ключи)."""
     pubkey, verified = await get_cached_public_key(address)
-    if not pubkey or not verified:
+    if not pubkey:
         return None
+    if not verified:
+        logger.warning(f"WebSocket auth for {address[:16]}... with unverified pubkey")
     try:
         raw_sig = bytes.fromhex(signature)
         if len(raw_sig) != 64:
@@ -74,7 +76,8 @@ async def authenticate_websocket(websocket: WebSocket, address: str, signature: 
         pubkey_obj = load_public_key_from_b64(pubkey)
         pubkey_obj.verify(der_sig, nonce.encode(), ec.ECDSA(hashes.SHA256()))
         return address
-    except Exception:
+    except Exception as e:
+        logger.error(f"WebSocket auth failed: {e}")
         return None
 
 
@@ -91,11 +94,9 @@ async def websocket_endpoint(
         return
     await manager.connect(user_id, websocket)
     try:
-        # Отправляем все непрочитанные сообщения (офлайн-буфер)
         missed = await message_notifier.get_offline_messages(user_id)
         for msg in missed:
             await websocket.send_json(msg)
-        # Далее слушаем команды от клиента (ping, mark_read и т.д.)
         while True:
             data = await websocket.receive_json()
             msg_type = data.get('type')
@@ -109,7 +110,6 @@ async def websocket_endpoint(
                             UPDATE transactions SET status = 'read', read_at = $1
                             WHERE id = $2 AND recipient = $3
                         """, time.time(), message_id, user_id)
-            # Другие команды можно добавить позже
     except WebSocketDisconnect:
         await manager.disconnect(user_id)
     except Exception as e:

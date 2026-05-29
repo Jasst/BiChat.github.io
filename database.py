@@ -12,12 +12,15 @@ from typing import List, Dict, Any, Optional
 import asyncpg
 from asyncpg.pool import Pool
 
-from config import DATABASE_URL, CONFIG, BLOCK_REWARD, ENABLE_MINING, ARCHIVE_ENABLED, FTS_ENABLED
+from config import DATABASE_URL, CONFIG, BLOCK_REWARD, ENABLE_MINING
 
 logger = logging.getLogger(__name__)
 
 _pool: Optional[Pool] = None
 
+# ------------------------------------------------------------------
+# Инициализация и закрытие пула
+# ------------------------------------------------------------------
 async def init_db():
     global _pool
     _pool = await asyncpg.create_pool(
@@ -32,13 +35,12 @@ async def init_db():
         await _create_tables(conn)
         await _apply_migrations(conn)
         await _create_indexes(conn)
-        # Проверка генезис-блока
-        row = await conn.fetchval("SELECT COUNT(*) FROM blockchain")
-        if row == 0:
-            await _new_block_raw(conn, proof=100, previous_hash='1', miner_address=None)
+        # Создаём генезис-блок, если цепочка пуста
+        bc = Blockchain()
+        last = await bc._last_block_raw(conn)
+        if not last:
+            await bc._new_block_raw(conn, proof=100, previous_hash='1', miner_address=None)
             logger.info("Genesis block created")
-        # FTS5 не используется (PostgreSQL имеет свой полнотекстовый поиск)
-        # Архивация пока не переносится (можно через pg_cron)
     logger.info("PostgreSQL pool initialized")
 
 async def close_db():
@@ -172,7 +174,6 @@ async def _create_tables(conn: asyncpg.Connection):
 async def _apply_migrations(conn: asyncpg.Connection):
     current_version = await conn.fetchval("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1") or 0
     if current_version < 1:
-        # Добавление колонок в transactions (уже созданы, но для совместимости)
         await conn.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'sent'")
         await conn.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS read_at DOUBLE PRECISION")
         await conn.execute("UPDATE schema_version SET version = 1 WHERE version = 0")
@@ -211,7 +212,7 @@ async def _create_indexes(conn: asyncpg.Connection):
             logger.warning(f"Could not create index: {e}")
 
 # ------------------------------------------------------------------
-# Класс Blockchain (переписан под asyncpg)
+# Класс Blockchain (работа с блоками)
 # ------------------------------------------------------------------
 class Blockchain:
     _instance = None
@@ -303,7 +304,6 @@ class Blockchain:
         return row['id']
 
     async def search_messages(self, user_address: str, query: str, limit: int = 50) -> List[Dict]:
-        # Простой LIKE поиск (можно заменить на полнотекстовый PostgreSQL)
         async with get_db_cursor() as conn:
             rows = await conn.fetch("""
                 SELECT id, sender, recipient, content, image, timestamp
@@ -333,11 +333,36 @@ class Blockchain:
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
 
-    async def close(self):
-        # Закрытие пула обрабатывается в close_db()
-        pass
+    async def try_mine_block(self, last_proof: int, last_index: int, proof: int, challenge: str, miner_address: str):
+        async with get_db_cursor() as conn:
+            try:
+                async with conn.transaction():
+                    current = await self._last_block_raw(conn)
+                    if not current:
+                        return False, "No blockchain", 0, 0
+                    if current.get('proof') != last_proof or current.get('index') != last_index:
+                        return False, "Blockchain moved, try again", 0, 0
+                    if not self.valid_proof_with_challenge(last_proof, proof, challenge):
+                        return False, "Invalid proof", 0, 0
+                    current_again = await self._last_block_raw(conn)
+                    if current_again.get('proof') != last_proof or current_again.get('index') != last_index:
+                        return False, "Blockchain changed during validation", 0, 0
+                    block_index = await self._new_block_raw(conn, proof, miner_address=miner_address)
+                    return True, "Success", BLOCK_REWARD, block_index
+            except Exception as e:
+                logger.error(f"try_mine_block error: {e}")
+                return False, str(e), 0, 0
 
-# Вспомогательные функции для совместимости с main.py
+    def valid_proof_with_challenge(self, last_proof: int, proof: int, challenge: str) -> bool:
+        guess = f"{last_proof}{challenge}{proof}".encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        target = '0' * CONFIG['POW_DIFFICULTY']
+        return guess_hash.startswith(target)
+
+    async def close(self):
+        pass  # пул закрывается в close_db()
+
+# Для обратной совместимости с main.py (если вызываются)
 async def init_sqlite_optimizations(db_path: str):
     pass
 

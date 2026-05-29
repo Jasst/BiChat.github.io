@@ -1,5 +1,5 @@
 """
-services/wallet.py — Стейкинг и майнинг (асинхронная версия)
+services/wallet.py — Стейкинг и майнинг (асинхронная версия для PostgreSQL)
 """
 import asyncio
 import logging
@@ -15,7 +15,6 @@ from database import get_db_cursor
 
 logger = logging.getLogger(__name__)
 
-_db_path: Optional[str] = None
 _blockchain = None
 _pow_lock = threading.Lock()
 
@@ -23,9 +22,8 @@ staking_manager = None
 REWARD_PRECISION = 10**12
 
 
-def init_wallet_service(db_path: str, blockchain):
-    global _db_path, _blockchain, staking_manager
-    _db_path = db_path
+def init_wallet_service(blockchain):
+    global _blockchain, staking_manager
     _blockchain = blockchain
     if ENABLE_STAKING:
         staking_manager = StakingManager()
@@ -49,20 +47,20 @@ class StakingManager:
         return int(row[0])
 
     async def _set_acc_reward_per_stake(self, cursor, value: int):
-        await cursor.execute("UPDATE staking_state SET value=? WHERE key='acc_reward_per_stake'", (str(value),))
+        await cursor.execute("UPDATE staking_state SET value=$1 WHERE key='acc_reward_per_stake'", str(value))
 
     async def add_to_fee_pool(self, amount_sats: int, cursor=None):
         if not ENABLE_STAKING:
             return
         if cursor is None:
-            async with get_db_cursor(_db_path) as cur:
-                await cur.execute("BEGIN IMMEDIATE")
+            async with get_db_cursor() as cur:
+                await cur.execute("BEGIN")
                 await self.add_to_fee_pool(amount_sats, cursor=cur)
                 await cur.execute("COMMIT")
             return
-        await cursor.execute('INSERT INTO wallets (address, balance) VALUES (?, ?) '
-                             'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-                             (self.pool_address, amount_sats, amount_sats))
+        await cursor.execute('INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+                             'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+                             self.pool_address, amount_sats)
         await cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active=1")
         total_staked = (await cursor.fetchone())[0]
         if total_staked == 0:
@@ -76,46 +74,57 @@ class StakingManager:
             return -1
         if amount_sats < MIN_STAKE_AMOUNT:
             return -1
-        async with get_db_cursor(_db_path) as cursor:
-            await cursor.execute("BEGIN IMMEDIATE")
-            await cursor.execute('SELECT COUNT(*) FROM stakes WHERE address=? AND active=1', (address,))
+        async with get_db_cursor() as cursor:
+            await cursor.execute("BEGIN")
+            await cursor.execute('SELECT COUNT(*) FROM stakes WHERE address=$1 AND active=1', address)
             if (await cursor.fetchone())[0] >= 10:
                 logger.warning(f"Stake limit exceeded for {address}")
                 return -1
-            await cursor.execute(
-                'UPDATE wallets SET balance = balance - ? WHERE address = ? AND balance >= ?',
-                (amount_sats, address, amount_sats)
+            # ✅ корректная проверка результата UPDATE
+            result = await cursor.execute(
+                'UPDATE wallets SET balance = balance - $1 WHERE address = $2 AND balance >= $1',
+                amount_sats, address
             )
-            if cursor.rowcount == 0:
+            # В asyncpg результат операции — строка типа "UPDATE X"
+            # Если строка не начинается с "UPDATE" или количество изменённых строк = 0 — ошибка
+            affected = 0
+            if result and result.startswith('UPDATE'):
+                parts = result.split()
+                if len(parts) > 1:
+                    affected = int(parts[1])
+            if affected == 0:
+                await cursor.execute("ROLLBACK")
                 return -1
+            # остальной код без изменений...
             await cursor.execute(
-                'INSERT INTO wallets (address, balance) VALUES (?, ?) '
-                'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-                (self.pool_address, amount_sats, amount_sats)
+                'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+                'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+                self.pool_address, amount_sats
             )
             current_block = (await _blockchain._last_block_raw(cursor)).get('index', 0)
             unlock_block = current_block + STAKE_LOCK_BLOCKS
             current_acc = await self._get_acc_reward_per_stake(cursor)
             await cursor.execute(
                 'INSERT INTO stakes (address, amount, start_time, start_block, unlock_block, active, reward_debt) '
-                'VALUES (?,?,?,?,?,1,?)',
-                (address, amount_sats, time.time(), current_block, unlock_block, current_acc)
+                'VALUES ($1, $2, $3, $4, $5, 1, $6)',
+                address, amount_sats, time.time(), current_block, unlock_block, current_acc
             )
             await cursor.execute(
                 'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
-                'VALUES (?,?,?,?,?,?)',
-                ('stake', address, self.pool_address, amount_sats, time.time(), 'stake')
+                'VALUES ($1, $2, $3, $4, $5, $6)',
+                'stake', address, self.pool_address, amount_sats, time.time(), 'stake'
             )
+            await cursor.execute("COMMIT")
             return unlock_block
 
     async def unstake(self, address: str) -> bool:
         if not ENABLE_STAKING:
             return False
-        async with get_db_cursor(_db_path) as cursor:
-            await cursor.execute("BEGIN IMMEDIATE")
+        async with get_db_cursor() as cursor:
+            await cursor.execute("BEGIN")
             await cursor.execute(
-                'SELECT id, amount, unlock_block, reward_debt FROM stakes WHERE address=? AND active=1',
-                (address,)
+                'SELECT id, amount, unlock_block, reward_debt FROM stakes WHERE address=$1 AND active=1',
+                address
             )
             stakes = await cursor.fetchall()
             if not stakes:
@@ -128,40 +137,40 @@ class StakingManager:
                     current_acc = await self._get_acc_reward_per_stake(cursor)
                     reward = (s['amount'] * (current_acc - s['reward_debt'])) // REWARD_PRECISION
                     total_payout = s['amount'] + reward
-                    await cursor.execute('SELECT balance FROM wallets WHERE address = ?', (self.pool_address,))
+                    await cursor.execute('SELECT balance FROM wallets WHERE address = $1', self.pool_address)
                     pool_balance = (await cursor.fetchone())[0]
                     if pool_balance < total_payout:
                         logger.error(f"Pool underfunded: need {total_payout}, have {pool_balance}")
                         continue
-                    await cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?',
-                                         (s['amount'], self.pool_address))
+                    await cursor.execute('UPDATE wallets SET balance = balance - $1 WHERE address = $2',
+                                         s['amount'], self.pool_address)
                     if reward > 0:
-                        await cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?',
-                                             (reward, self.pool_address))
+                        await cursor.execute('UPDATE wallets SET balance = balance - $1 WHERE address = $2',
+                                             reward, self.pool_address)
                     await cursor.execute(
-                        'INSERT INTO wallets (address, balance) VALUES (?, ?) '
-                        'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-                        (address, total_payout, total_payout)
+                        'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+                        'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+                        address, total_payout
                     )
-                    await cursor.execute('UPDATE stakes SET active=0 WHERE id=?', (s['id'],))
+                    await cursor.execute('UPDATE stakes SET active=0 WHERE id=$1', s['id'])
                     await cursor.execute(
                         'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
-                        'VALUES (?,?,?,?,?,?)',
-                        ('unstake', self.pool_address, address, s['amount'], time.time(), 'unstake principal')
+                        'VALUES ($1, $2, $3, $4, $5, $6)',
+                        'unstake', self.pool_address, address, s['amount'], time.time(), 'unstake principal'
                     )
                     if reward > 0:
                         await cursor.execute(
                             'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
-                            'VALUES (?,?,?,?,?,?)',
-                            ('staking_reward', self.pool_address, address, reward, time.time(), 'staking income')
+                            'VALUES ($1, $2, $3, $4, $5, $6)',
+                            'staking_reward', self.pool_address, address, reward, time.time(), 'staking income'
                         )
             return any_unlocked
 
     async def get_expected_income(self, address: str) -> int:
         if not ENABLE_STAKING:
             return 0
-        async with get_db_cursor(_db_path) as cursor:
-            await cursor.execute('SELECT amount, reward_debt FROM stakes WHERE address=? AND active=1', (address,))
+        async with get_db_cursor() as cursor:
+            await cursor.execute('SELECT amount, reward_debt FROM stakes WHERE address=$1 AND active=1', address)
             stakes = await cursor.fetchall()
             if not stakes:
                 return 0
@@ -177,7 +186,7 @@ async def mine_block_async_async(last_proof: int, miner_address: str = None) -> 
         return
     try:
         proof = await _blockchain.proof_of_work_async(last_proof)
-        async with get_db_cursor(_db_path) as cursor:
+        async with get_db_cursor() as cursor:
             await _blockchain._new_block_raw(cursor, proof, miner_address=miner_address)
         logger.debug(f"Block mined by {miner_address or 'system'}, proof={proof}")
     except Exception as e:
@@ -192,7 +201,7 @@ def mine_block_async(last_proof: int, miner_address: str = None) -> None:
         return
     try:
         proof = _blockchain.proof_of_work(last_proof)
-        with get_db_cursor(_db_path) as cursor:
+        with get_db_cursor() as cursor:
             _blockchain._new_block_raw(cursor, proof, miner_address=miner_address)
         logger.debug(f"Block mined by {miner_address or 'system'}, proof={proof}")
     except Exception as e:

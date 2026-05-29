@@ -53,14 +53,13 @@ async def get_contacts_route(address: str = Depends(require_auth)):
 
 @router.post('/delete_contact')
 async def delete_contact_route(body: DeleteContactRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute(
-            'DELETE FROM contacts WHERE user_address = ? AND contact_address = ?',
-            (address, body.address)
+    async with get_db_cursor() as conn:
+        result = await conn.execute(
+            'DELETE FROM contacts WHERE user_address = $1 AND contact_address = $2',
+            address, body.address
         )
-        deleted = cursor.rowcount
+        deleted = result != "DELETE 0"
     from cache import bump_contact_cache_version
     await bump_contact_cache_version()
     from services.messaging import invalidate_conversations_cache
@@ -73,19 +72,17 @@ async def delete_contact_route(body: DeleteContactRequest, request: Request, add
 
 @router.post('/edit_contact')
 async def edit_contact_route(body: EditContactRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     contact_address = body.address
     new_name = body.name
     if hmac.compare_digest(address, contact_address):
         raise HTTPException(400, 'Cannot edit yourself as a contact')
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute(
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow(
             'SELECT contact_name FROM contacts '
-            'WHERE user_address = ? AND contact_address = ?',
-            (address, contact_address)
+            'WHERE user_address = $1 AND contact_address = $2',
+            address, contact_address
         )
-        row = await cursor.fetchone()
         if not row:
             raise HTTPException(404, 'Contact not found')
         old_name = row[0]

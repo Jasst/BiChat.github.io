@@ -1,4 +1,6 @@
 // chat.js — полностью переписан на WebSocket (без Long Polling)
+// Исправлено: обновление статуса в левой колонке для своих сообщений,
+// heartbeat, delivered, polling статусов.
 (function() {
     if (window.chatJsLoaded) return;
     window.chatJsLoaded = true;
@@ -11,7 +13,7 @@ Utils.escapeHtml = function(str) {
 };
 
 // =============================================================================
-// === Инициализация ===
+// === 1. ИНИЦИАЛИЗАЦИЯ И СОСТОЯНИЕ ===
 // =============================================================================
 if (typeof AppData === 'undefined') {
     window.AppData = {
@@ -19,9 +21,6 @@ if (typeof AppData === 'undefined') {
     };
 }
 
-// =============================================================================
-// === Состояние чата ===
-// =============================================================================
 const State = {
   currentChatAddress: '',
   currentChatIsGroup: false,
@@ -39,9 +38,9 @@ let isSending = false;
 let userKeys = null;
 const pubKeyCache = new Map();
 
-// -----------------------------------------------------------------------------
-// WebSocket клиент (встроенный)
-// -----------------------------------------------------------------------------
+// =============================================================================
+// === 2. WEBSOCKET КЛИЕНТ (ВСТРОЕННЫЙ) ===
+// =============================================================================
 let wsClient = null;
 let wsReconnectTimer = null;
 
@@ -151,7 +150,7 @@ class WebSocketClient {
 }
 
 // =============================================================================
-// === Вспомогательные функции (криптография, сеть) ===
+// === 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (КРИПТОГРАФИЯ, СЕТЬ) ===
 // =============================================================================
 async function getPubKey(address) {
   if (pubKeyCache.has(address)) return pubKeyCache.get(address);
@@ -203,7 +202,7 @@ async function ensureKeys() {
 }
 
 // =============================================================================
-// === Smart Scroll ===
+// === 4. SMART SCROLL И ПАГИНАЦИЯ ===
 // =============================================================================
 function isUserAtBottom(container, threshold = 50) {
   if (!container) return false;
@@ -237,9 +236,6 @@ function showNewMessagesBadge() {
   }
 }
 
-// =============================================================================
-// === Пагинация старых сообщений ===
-// =============================================================================
 function setupTopObserver() {
   if (State.topObserver) State.topObserver.disconnect();
   const firstMsg = document.querySelector('#messagesContainer .message:first-of-type');
@@ -323,7 +319,7 @@ function createMessageElement(msg) {
 }
 
 // =============================================================================
-// === Chat Functions ===
+// === 5. ЗАГРУЗКА СПИСКА ДИАЛОГОВ И СТАТУСОВ ПОЛЬЗОВАТЕЛЕЙ ===
 // =============================================================================
 async function loadConversations() {
   const container = document.getElementById('conversationsList');
@@ -373,9 +369,6 @@ async function loadConversations() {
   }
 }
 
-// =============================================================================
-// === Обновление статусов пользователей ===
-// =============================================================================
 async function updateUsersStatus() {
     const conversationItems = document.querySelectorAll('.conversation-item');
     const addresses = [];
@@ -430,14 +423,13 @@ setInterval(updateUsersStatus, 30000);
 setTimeout(updateUsersStatus, 1000);
 
 // =============================================================================
-// === WebSocket обработка входящих сообщений ===
+// === 6. ОБРАБОТКА ВХОДЯЩИХ СООБЩЕНИЙ (WebSocket) ===
 // =============================================================================
 async function handleWebSocketMessage(data) {
     if (data.error) {
         console.error('WebSocket error message:', data.error);
         return;
     }
-    // Нормализуем chatId
     if (!data.chatId && data.sender && data.recipient) {
         data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
     }
@@ -447,7 +439,11 @@ async function handleWebSocketMessage(data) {
     const decrypted = await processMessageDecryption(data);
     const chatId = decrypted.chatId;
 
-    // Определяем, открыт ли сейчас этот чат
+    // ✅ ОТПРАВЛЯЕМ СТАТУС DELIVERED ДЛЯ ЛЮБОГО ЧУЖОГО СООБЩЕНИЯ
+    if (!decrypted.is_mine) {
+        fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn('Mark delivered failed', e));
+    }
+
     let isCurrent = false;
     if (State.currentChatAddress === chatId) {
         isCurrent = true;
@@ -455,6 +451,16 @@ async function handleWebSocketMessage(data) {
         isCurrent = true;
     } else if (!decrypted.isGroup && (decrypted.sender === State.currentChatAddress || decrypted.recipient === State.currentChatAddress)) {
         isCurrent = true;
+    }
+
+    if (!isCurrent) {
+        const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+        if (!existingItem) {
+            console.log('Новый диалог, обновляем список:', chatId);
+            await loadConversations();
+        } else {
+            updateConversationPreview(chatId, decrypted.preview || '💬 Новое сообщение');
+        }
     }
 
     if (isCurrent) {
@@ -470,17 +476,12 @@ async function handleWebSocketMessage(data) {
             } else {
                 showNewMessagesBadge();
             }
-            // Отправка подтверждения прочтения
             if (!decrypted.is_mine) {
                 fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e => console.warn('Mark read failed', e));
             }
         }
-    } else {
-        // Обновляем превью диалога в боковой панели
-        updateConversationPreview(chatId, decrypted.preview || '💬 Новое сообщение');
     }
 
-    // Уведомление (звук, баннер)
     if (window.NotificationManager && document.visibilityState === 'visible') {
         window.NotificationManager.handleIncomingMessage?.({
             sender: decrypted.sender,
@@ -495,7 +496,7 @@ async function handleWebSocketMessage(data) {
 }
 
 // =============================================================================
-// === Инициализация WebSocket ===
+// === 7. ИНИЦИАЛИЗАЦИЯ WEBSOCKET ===
 // =============================================================================
 async function initWebSocket() {
     if (wsClient) {
@@ -512,7 +513,7 @@ async function initWebSocket() {
             onMessage: handleWebSocketMessage,
             onConnect: () => {
                 console.log('✅ WebSocket connected');
-                // После подключения можно запросить офлайн-сообщения (они уже придут в onMessage)
+                loadConversations();
             },
             onDisconnect: () => {
                 console.warn('⚠️ WebSocket disconnected');
@@ -529,7 +530,35 @@ async function initWebSocket() {
 }
 
 // =============================================================================
-// === Выбор диалога ===
+// === 8. HEARTBEAT (ОБНОВЛЕНИЕ ОНЛАЙН-СТАТУСА) ===
+// =============================================================================
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(async () => {
+        try {
+            const currentChat = State.currentChatAddress || '';
+            await fetch('/heartbeat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_chat: currentChat })
+            });
+        } catch (e) {
+            console.debug('Heartbeat failed', e);
+        }
+    }, 30000);
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+}
+
+// =============================================================================
+// === 9. ВЫБОР ДИАЛОГА И ЗАГРУЗКА СООБЩЕНИЙ ===
 // =============================================================================
 async function selectConversation(address, name, isGroup) {
   if (State.topObserver) {
@@ -542,6 +571,13 @@ async function selectConversation(address, name, isGroup) {
   State.currentChatAddress = address;
   State.currentChatIsGroup = !!isGroup;
   State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
+
+  // ✅ ОТПРАВЛЯЕМ HEARTBEAT ПРИ СМЕНЕ ЧАТА
+  fetch('/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_chat: address })
+  }).catch(e => console.debug);
 
   const aiContainer = document.getElementById('aiChatContainer');
   const mainContainer = document.getElementById('messagesContainer');
@@ -600,7 +636,6 @@ async function selectConversation(address, name, isGroup) {
   stopStatusPolling();
   startStatusPolling();
   loadMessagesForConversation(address, false);
-  updateConversationPreview(address, '✓ Доставлено');
 
   if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
 }
@@ -818,7 +853,7 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 }
 
 // =============================================================================
-// === Отправка сообщения ===
+// === 10. ОТПРАВКА СООБЩЕНИЯ ===
 // =============================================================================
 async function sendMessage() {
   if (State.currentChatAddress === 'ai_bot') {
@@ -960,8 +995,8 @@ async function sendMessage() {
           statusSpan.style.color = '#888';
         }
       }
-      if (!window.modalOpen) loadConversations();
-      // Новое сообщение уже будет доставлено через WebSocket, но для надёжности обновим чат
+      await loadConversations();
+      updateConversationPreview(recipient, '✓ Отправлено');
       await loadMessagesForConversation(recipient, true);
     } else {
       const tempElem = document.getElementById('msg-' + tempId);
@@ -983,7 +1018,7 @@ async function sendMessage() {
 }
 
 // =============================================================================
-// === Вспомогательные функции ===
+// === 11. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (КОНТАКТЫ, УДАЛЕНИЕ, ОЧИСТКА) ===
 // =============================================================================
 async function addContactFromChat() {
   if (!State.currentChatPartnerAddress || State.currentChatPartnerAddress === State.userAddress) {
@@ -1097,6 +1132,9 @@ function openImageModal(src) {
 
 function closeImageModal() { document.getElementById('imageModal')?.classList.add('hidden'); }
 
+// =============================================================================
+// === 12. ПОЛЛИНГ СТАТУСОВ СООБЩЕНИЙ И ОБНОВЛЕНИЕ PREVIEW ===
+// =============================================================================
 let statusPollingInterval = null;
 
 function startStatusPolling() {
@@ -1119,6 +1157,18 @@ function startStatusPolling() {
                 if (msgDiv && msgDiv.dataset.status !== st) {
                     msgDiv.dataset.status = st;
                     updateStatusIcon(msgDiv, st);
+
+                    // ✅ ОБНОВЛЯЕМ PREVIEW В ЛЕВОЙ КОЛОНКЕ, ЕСЛИ ЭТО ПОСЛЕДНЕЕ СООБЩЕНИЕ В ДИАЛОГЕ
+                    const container = document.getElementById('messagesContainer');
+                    const lastMsg = container?.querySelector('.message:last-child');
+                    if (lastMsg && lastMsg.dataset.id === id) {
+                        const chatId = State.currentChatAddress;
+                        let previewText = '';
+                        if (st === 'read') previewText = '✓✓ Прочитано';
+                        else if (st === 'delivered') previewText = '✓✓ Доставлено';
+                        else previewText = '✓ Отправлено';
+                        updateConversationPreview(chatId, previewText);
+                    }
                 }
             }
         } catch (e) {
@@ -1150,7 +1200,7 @@ function updateStatusIcon(msgDiv, status) {
 }
 
 // =============================================================================
-// === Modal Controls ===
+// === 13. МОДАЛЬНЫЕ ОКНА (НОВЫЙ ЧАТ) ===
 // =============================================================================
 function openNewChatModal() {
   window.modalOpen = true;
@@ -1259,12 +1309,14 @@ function updateConversationPreview(chatId, newPreview) {
 }
 
 // =============================================================================
-// === DOMContentLoaded ===
+// === 14. DOMContentLoaded (ЗАПУСК ВСЕГО) ===
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
   loadConversations();
-  initWebSocket();  // вместо setupLongPolling()
-  // heartbeat больше не нужен
+  initWebSocket();
+  startHeartbeat();           // ✅ ЗАПУСК HEARTBEAT
+  startStatusPolling();      // ✅ ЗАПУСК ПОЛЛИНГА СТАТУСОВ
+
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && wsClient && !wsClient.isConnected) {
       console.log('📱 Tab active, reconnecting WebSocket...');
@@ -1336,6 +1388,7 @@ window.addEventListener('beforeunload', () => {
     if (window.NotificationManager && typeof window.NotificationManager.destroy === 'function') {
         try { window.NotificationManager.destroy(); } catch(e) {}
     }
+    stopHeartbeat();
 });
 
 window.selectConversation = selectConversation;

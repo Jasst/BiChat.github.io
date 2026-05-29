@@ -43,14 +43,11 @@ def wallet_config():
 
 @router.get('/balance')
 async def wallet_balance(request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('SELECT balance FROM wallets WHERE address = ?', (address,))
-        row = await cursor.fetchone()
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', address)
         balance = row[0] if row else 0
-        await cursor.execute('SELECT SUM(amount) FROM stakes WHERE address=? AND active=1', (address,))
-        stake_row = await cursor.fetchone()
+        stake_row = await conn.fetchrow('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE address=$1 AND active=1', address)
         staked = stake_row[0] if stake_row and stake_row[0] else 0
     return {
         'address':   address,
@@ -63,16 +60,14 @@ async def wallet_balance(request: Request, address: str = Depends(require_auth))
 
 @router.get('/transactions')
 async def wallet_transactions(request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('''
+    async with get_db_cursor() as conn:
+        rows = await conn.fetch('''
             SELECT id, tx_type, sender, recipient, amount, timestamp
             FROM coin_transactions
-            WHERE sender = ? OR recipient = ?
+            WHERE sender = $1 OR recipient = $1
             ORDER BY timestamp DESC LIMIT 50
-        ''', (address, address))
-        rows = await cursor.fetchall()
+        ''', address)
         txs = [
             {'id': r[0], 'type': r[1], 'sender': r[2],
              'recipient': r[3], 'amount': r[4], 'timestamp': r[5]}
@@ -83,49 +78,51 @@ async def wallet_transactions(request: Request, address: str = Depends(require_a
 
 @router.post('/send')
 async def wallet_send(body: TransferRequest, request: Request, address: str = Depends(require_auth)):
-    blockchain = request.app.state.blockchain
     if body.recipient == address:
         raise HTTPException(400, 'Cannot send to yourself')
     total = body.amount + TRANSFER_FEE
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('BEGIN IMMEDIATE')
-        await cursor.execute(
-            'UPDATE wallets SET balance = balance - ? WHERE address = ? AND balance >= ?',
-            (total, address, total)
+    async with get_db_cursor() as conn:
+        await conn.execute('BEGIN')
+        # Проверка и списание баланса
+        result = await conn.execute(
+            'UPDATE wallets SET balance = balance - $1 WHERE address = $2 AND balance >= $1',
+            total, address
         )
-        if cursor.rowcount == 0:
-            await cursor.execute('ROLLBACK')
+        if result == "UPDATE 0":
+            await conn.execute('ROLLBACK')
             raise HTTPException(400, f'Insufficient balance. Need {total / COIN} {COIN_NAME}')
-        await cursor.execute(
-            'INSERT INTO wallets (address, balance) VALUES (?, ?) '
-            'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-            (body.recipient, body.amount, body.amount)
+        # Зачисление получателю
+        await conn.execute(
+            'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+            'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+            body.recipient, body.amount
         )
         ts = time.time()
-        await cursor.execute(
+        await conn.execute(
             'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp) '
-            'VALUES (?,?,?,?,?)',
-            ('transfer', address, body.recipient, body.amount, ts)
+            'VALUES ($1, $2, $3, $4, $5)',
+            'transfer', address, body.recipient, body.amount, ts
         )
-        await cursor.execute(
-            'INSERT INTO wallets (address, balance) VALUES (?, ?) '
-            'ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-            (STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, TRANSFER_FEE)
+        # Комиссия в пул стейкинга
+        await conn.execute(
+            'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+            'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+            STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE
         )
-        await cursor.execute(
+        await conn.execute(
             'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
-            'VALUES (?,?,?,?,?,?)',
-            ('fee', address, STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, ts, 'transfer fee to staking pool')
+            'VALUES ($1, $2, $3, $4, $5, $6)',
+            'fee', address, STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, ts, 'transfer fee to staking pool'
         )
         if ENABLE_STAKING and staking_manager:
-            await staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=cursor)
-        await cursor.execute('COMMIT')
+            await staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=conn)
+        await conn.execute('COMMIT')
     return {'message': 'Sent', 'amount': body.amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}
 
 
 @router.post('/stake')
-async def stake(body: StakeRequest, address: str = Depends(require_auth)):
+async def stake(body: StakeRequest, request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
         raise HTTPException(403, 'Staking is disabled')
     if body.amount < MIN_STAKE_AMOUNT:
@@ -137,7 +134,7 @@ async def stake(body: StakeRequest, address: str = Depends(require_auth)):
 
 
 @router.post('/unstake')
-async def unstake(address: str = Depends(require_auth)):
+async def unstake(request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
         raise HTTPException(403, 'Staking is disabled')
     if await staking_manager.unstake(address):
@@ -149,14 +146,14 @@ async def unstake(address: str = Depends(require_auth)):
 async def staking_info(request: Request, address: str = Depends(require_auth)):
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute(
+    async with get_db_cursor() as conn:
+        rows = await conn.fetch(
             'SELECT amount, start_time, start_block, unlock_block '
-            'FROM stakes WHERE address=? AND active=1',
-            (address,)
+            'FROM stakes WHERE address=$1 AND active=1',
+            address
         )
-        stakes = [dict(row) for row in await cursor.fetchall()]
-        current_block = (await blockchain._last_block_raw(cursor)).get('index', 0)
+        stakes = [dict(r) for r in rows]
+        current_block = (await blockchain._last_block_raw(conn)).get('index', 0)
     expected_income = 0
     if ENABLE_STAKING and staking_manager:
         expected_income = await staking_manager.get_expected_income(address)
@@ -173,8 +170,8 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
 async def last_proof(request: Request, address: str = Depends(require_auth)):
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        last = await blockchain._last_block_raw(cursor)
+    async with get_db_cursor() as conn:
+        last = await blockchain._last_block_raw(conn)
     challenge = secrets.token_hex(16)
     with _mining_challenges_lock:
         _mining_challenges.setdefault(address, {})[challenge] = time.time() + _CHALLENGE_TTL
@@ -216,18 +213,13 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
 
 @router.get('/global-stats')
 async def wallet_global_stats(request: Request):
-    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    async with get_db_cursor(blockchain.db_path) as cursor:
-        await cursor.execute('SELECT SUM(balance) FROM wallets')
-        total_supply_raw = (await cursor.fetchone())[0] or 0
-        await cursor.execute('SELECT balance FROM wallets WHERE address = ?', (STAKING_FEE_POOL_ADDRESS,))
-        row = await cursor.fetchone()
+    async with get_db_cursor() as conn:
+        total_supply_raw = (await conn.fetchval('SELECT COALESCE(SUM(balance), 0) FROM wallets')) or 0
+        row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', STAKING_FEE_POOL_ADDRESS)
         staking_pool_balance = row[0] if row else 0
-        await cursor.execute('SELECT COUNT(*) FROM blockchain')
-        total_blocks = (await cursor.fetchone())[0] or 0
-        await cursor.execute('SELECT SUM(amount) FROM stakes WHERE active = 1')
-        total_staked_raw = (await cursor.fetchone())[0] or 0
+        total_blocks = (await conn.fetchval('SELECT COUNT(*) FROM blockchain')) or 0
+        total_staked_raw = (await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active = 1')) or 0
     remaining = max(0, MAX_SUPPLY - total_supply_raw) if MAX_SUPPLY else None
     return {
         'total_supply': total_supply_raw,
