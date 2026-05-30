@@ -42,7 +42,7 @@
     </option>
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="mainUPDATEASICIO4" />
+        <entry key="$PROJECT_DIR$" value="ASINCSQLFastApIPOST6" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -82,12 +82,14 @@
     "Flask server.BiChat.github.io.executor": "Run",
     "Flask server.Flask (app.py).executor": "Run",
     "Node.js.Privet.js.executor": "Run",
+    "Python tests.Python tests in BENCHMARK.PY.executor": "Run",
     "Python.Bot 2.executor": "Run",
     "Python.Interface.executor": "Run",
     "Python.Jarvis.executor": "Run",
     "Python.Qbyte.executor": "Run",
     "Python.Socket.executor": "Run",
     "Python.__init__.executor": "Run",
+    "Python.ai_assistant.executor": "Run",
     "Python.app.executor": "Run",
 <<<<<<< Updated upstream
     "Python.app_async.executor": "Run",
@@ -102,6 +104,10 @@
     "Python.cripto_manager.executor": "Run",
     "Python.crypto_manager.executor": "Run",
     "Python.files.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.messages.executor": "Debug",
+    "Python.migrate_sqlite_to_postgres.executor": "Run",
+    "Python.pytest-benchmark.executor": "Run",
     "Python.python app.py.executor": "Run",
     "Python.pythonProject1.executor": "Run",
     "Python.routes.executor": "Run",
@@ -127,6 +133,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
+<<<<<<< HEAD
 <<<<<<< Updated upstream
     "git-widget-placeholder": "mainUPDATEASICIO5",
     "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io",
@@ -134,6 +141,10 @@
     "git-widget-placeholder": "main",
     "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
 >>>>>>> Stashed changes
+=======
+    "git-widget-placeholder": "ASINCSQLFastApIPOST7",
+    "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io/routes",
+>>>>>>> 3e65599eb13de1cc741c811210d377fe9db0c9f8
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -146,18 +157,18 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\routes" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\tests" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\data" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\services" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
-      <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io" />
-      <recent name="C:\Users\Нел\Documents\GitHub\BiChat.github.io\static" />
-      <recent name="C:\Users\Нел\Documents\GitHub\BiChat" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\Trash" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\tests" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static\js" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\static\js\static" />
+      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\data" />
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\services" />
-      <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\routes" />
     </key>
   </component>
 <<<<<<< Updated upstream
@@ -166,6 +177,7 @@
       <command value="pip install -r requirements.txt" />
     </option>
   </component>
+<<<<<<< HEAD
   <component name="RunManager">
     <configuration name="python app.py" type="PythonConfigurationType" factoryName="Python" temporary="true">
 =======
@@ -206,6 +218,8 @@
       </list>
     </recent_temporary>
   </component>
+=======
+>>>>>>> 3e65599eb13de1cc741c811210d377fe9db0c9f8
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -707,14 +721,24 @@
           <option name="timeStamp" value="62" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/database.py</url>
-          <line>324</line>
-          <option name="timeStamp" value="63" />
+          <url>file://$PROJECT_DIR$/tests/test_db_benchmark.py</url>
+          <line>141</line>
+          <option name="timeStamp" value="69" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/routes/ai_assistant.py</url>
+          <line>319</line>
+          <option name="timeStamp" value="71" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/services/wallet.py</url>
+          <line>28</line>
+          <option name="timeStamp" value="72" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/routes/wallet.py</url>
-          <line>229</line>
-          <option name="timeStamp" value="64" />
+          <line>207</line>
+          <option name="timeStamp" value="73" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

@@ -216,54 +216,136 @@
 </div>
 
 {% block scripts %}
-
 <script>
-// ═══════════════════════════════════════════════════════════
-// State
-// ═══════════════════════════════════════════════════════════
-const MY_ADDR = "{{ address|default('', true) }}";
-let allContacts   = [];
-let selectedMembers = {};
-let currentGroup  = null;
+(function() {
+  if (window._groupsScriptLoaded) return;
+  window._groupsScriptLoaded = true;
 
-// ═══════════════════════════════════════════════════════════
-// Load Groups
-// ═══════════════════════════════════════════════════════════
-async function loadGroups() {
-  const container = DOM.getById('groupsList');
-  if (!container) return;
-  container.innerHTML = '<div class="loading">Loading…</div>';
+  const MY_ADDR = "{{ address|default('', true) }}";
+  let allContacts = [];
+  let selectedMembers = {};
+  let currentGroup = null;
 
-  try {
-    const res  = await fetch('/get_groups');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Unknown error');
+  // ═══════════════════════════════════════════════════════════
+  // Кастомные модальные окна
+  // ═══════════════════════════════════════════════════════════
+  function showCustomModal(options) {
+    return new Promise((resolve) => {
+      const modalId = 'custom-modal-' + Date.now();
+      const modalHtml = `
+        <div id="${modalId}" class="modal-overlay hidden" role="dialog" aria-modal="true">
+          <div class="modal" style="max-width: 400px;">
+            <header class="modal-header">
+              <h3>${Utils.escapeHtml(options.title)}</h3>
+              <button class="modal-close" data-close>&times;</button>
+            </header>
+            <div class="modal-body">
+              ${options.bodyHtml || ''}
+            </div>
+            <footer class="modal-footer">
+              ${options.buttons.map(btn => `<button class="btn ${btn.className || ''}" data-action="${btn.action}">${Utils.escapeHtml(btn.label)}</button>`).join('')}
+            </footer>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      const modalEl = document.getElementById(modalId);
+      ModalManager.open(modalId, { closeOnOverlay: false, preventEscClose: false });
 
-    if (!data.groups?.length) {
-      container.innerHTML = `
-        <div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: var(--space-xl);">
-          <div class="icon" style="font-size: 48px; margin-bottom: var(--space-md);">👥</div>
-          <p style="margin-bottom: var(--space-md);">No groups yet</p>
-          <button class="btn btn-primary" onclick="openCreateModal()">Create one</button>
-        </div>`;
-      return;
-    }
+      const handleClose = () => {
+        ModalManager.close(modalId);
+        modalEl.remove();
+      };
 
-    container.innerHTML = '';
-    // ✅ Не устанавливаем display: grid вручную — это делает CSS
+      modalEl.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => {
+        resolve(null);
+        handleClose();
+      }));
 
-    data.groups.forEach(g => {
-      // ✅ Добавляем класс group-card для стилей
-      const card = DOM.createElement('div', {
-        className: 'list-item group-card',
-        dataset: { id: g.id }
+      options.buttons.forEach(btn => {
+        const btnEl = modalEl.querySelector(`[data-action="${btn.action}"]`);
+        if (btnEl) {
+          btnEl.addEventListener('click', () => {
+            let result = btn.value;
+            if (btn.getValue) result = btn.getValue(modalEl);
+            resolve(result);
+            handleClose();
+          });
+        }
       });
+    });
+  }
 
-      const isCreator = g.creator === MY_ADDR;
-      const initials  = g.name.slice(0, 2).toUpperCase();
-      const date      = g.created_at ? new Date(g.created_at * 1000).toLocaleDateString() : '—';
+  async function showConfirmModal(title, message) {
+    return await showCustomModal({
+      title: title,
+      bodyHtml: `<p>${Utils.escapeHtml(message)}</p>`,
+      buttons: [
+        { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: false },
+        { label: 'Confirm', className: 'btn-primary', action: 'confirm', value: true }
+      ]
+    });
+  }
 
-      card.innerHTML = `
+  async function showPromptModal(title, placeholder, defaultValue = '') {
+    return await showCustomModal({
+      title: title,
+      bodyHtml: `<input type="text" id="prompt-input" class="input" placeholder="${Utils.escapeHtml(placeholder)}" value="${Utils.escapeHtml(defaultValue)}" style="width: 100%;">`,
+      buttons: [
+        { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: null },
+        { label: 'Save', className: 'btn-primary', action: 'save', getValue: (modal) => modal.querySelector('#prompt-input').value }
+      ]
+    });
+  }
+
+  async function showDeleteGroupModal(name) {
+    return await showCustomModal({
+      title: 'Delete Group',
+      bodyHtml: `<p>Delete group "${Utils.escapeHtml(name)}"?<br><span style="color: var(--status-error);">⚠️ This cannot be undone.</span></p>
+                 <div class="form-group" style="margin-top: var(--space-md);">
+                   <label class="text-secondary" style="font-size: 12px;">Type "DELETE" to confirm:</label>
+                   <input type="text" id="delete-confirm-input" class="input" placeholder="DELETE" style="margin-top: var(--space-xs);">
+                 </div>`,
+      buttons: [
+        { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: null },
+        { label: 'Delete', className: 'btn-error', action: 'delete', getValue: (modal) => {
+            const input = modal.querySelector('#delete-confirm-input');
+            return input && input.value.trim().toUpperCase() === 'DELETE' ? true : false;
+          } }
+      ]
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Load Groups
+  // ═══════════════════════════════════════════════════════════
+  async function loadGroups() {
+    const container = DOM.getById('groupsList');
+    if (!container) return;
+    container.innerHTML = '<div class="loading">Loading…</div>';
+    try {
+      const res = await fetch('/get_groups');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unknown error');
+      if (!data.groups?.length) {
+        container.innerHTML = `
+          <div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: var(--space-xl);">
+            <div class="icon" style="font-size: 48px; margin-bottom: var(--space-md);">👥</div>
+            <p style="margin-bottom: var(--space-md);">No groups yet</p>
+            <button class="btn btn-primary" onclick="openCreateModal()">Create one</button>
+          </div>`;
+        return;
+      }
+      container.innerHTML = '';
+      data.groups.forEach(g => {
+        const card = DOM.createElement('div', {
+          className: 'list-item group-card',
+          dataset: { id: g.id }
+        });
+        const isCreator = g.creator === MY_ADDR;
+        const initials = g.name.slice(0, 2).toUpperCase();
+        const date = g.created_at ? new Date(g.created_at * 1000).toLocaleDateString() : '—';
+        card.innerHTML = `
   <div class="group-card-header">
     <div class="group-card-avatar">${Utils.escapeHtml(initials)}</div>
     <div class="group-card-title">
@@ -285,420 +367,399 @@ async function loadGroups() {
       onclick="deleteGroup('${Utils.escapeAttr(g.id)}', '${Utils.escapeAttr(g.name)}')"
       title="Delete">🗑</button>` : ''}
   </div>`;
-      container.appendChild(card);
-    });
-  } catch (err) {
-    console.error('Load groups error:', err);
-    container.innerHTML = '<p class="text-muted text-center" style="grid-column: 1/-1; padding: var(--space-md);">Failed to load groups</p>';
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// Create Modal
-// ═══════════════════════════════════════════════════════════
-async function openCreateModal() {
-  selectedMembers = {};
-  DOM.getById('groupName').value    = '';
-  DOM.getById('manualAddress').value = '';
-  DOM.hide(DOM.getById('createError'));
-  renderSelected();
-  ModalManager.open('createModal');
-
-  const list = DOM.getById('contactsList');
-  list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs);">Loading…</p>';
-  try {
-    const res  = await fetch('/get_contacts');
-    const data = await res.json();
-    allContacts = res.ok ? data.contacts : [];
-    renderContacts();
-  } catch (e) {
-    list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs);">Could not load</p>';
-  }
-}
-
-function renderContacts() {
-  const list = DOM.getById('contactsList');
-  if (!allContacts.length) {
-    list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs); font-size: 12px;">No contacts yet.</p>';
-    return;
-  }
-  list.innerHTML = '';
-  allContacts.forEach(c => {
-    const item = DOM.createElement('label', {
-      style: 'display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs); cursor: pointer; border-radius: var(--radius-sm);'
-    });
-    item.onmouseenter = () => item.style.background = 'var(--bg-hover)';
-    item.onmouseleave = () => item.style.background = '';
-    item.innerHTML = `
-      <input type="checkbox" value="${Utils.escapeAttr(c.address)}"
-             onchange="toggleMember('${Utils.escapeAttr(c.address)}', '${Utils.escapeAttr(c.name)}', this.checked)"
-             style="accent-color: var(--accent);">
-      <div style="flex: 1; min-width: 0;">
-        <div style="font-size: 13px;">${Utils.escapeHtml(c.name)}</div>
-        <div class="text-muted font-mono" style="font-size: 10px;">${Utils.escapeHtml(c.address.slice(0, 20))}…</div>
-      </div>`;
-    list.appendChild(item);
-  });
-}
-
-function toggleMember(addr, name, checked) {
-  if (checked) selectedMembers[addr] = name;
-  else delete selectedMembers[addr];
-  renderSelected();
-}
-
-function addManualAddress() {
-  const input      = DOM.getById('manualAddress');
-  const addr       = input.value.trim();
-  const validation = FormHelpers.validateAddress(addr);
-  if (!validation.valid) { showError(validation.error); return; }
-  if (addr === MY_ADDR)         { showError('You are included automatically'); return; }
-  if (selectedMembers[addr])    { showError('Already added'); return; }
-  selectedMembers[addr] = addr.slice(0, 10) + '…';
-  input.value = '';
-  DOM.hide(DOM.getById('createError'));
-  renderSelected();
-}
-
-function removeMember(addr) {
-  delete selectedMembers[addr];
-  const cb = document.querySelector(`#contactsList input[value="${Utils.escapeAttr(addr)}"]`);
-  if (cb) cb.checked = false;
-  renderSelected();
-}
-
-function renderSelected() {
-  const count   = Object.keys(selectedMembers).length;
-  const section = DOM.getById('selectedSection');
-  const list    = DOM.getById('selectedList');
-  DOM.getById('memberCount').textContent = count;
-  if (count === 0) { DOM.hide(section); return; }
-  DOM.show(section);
-  list.innerHTML = '';
-  Object.entries(selectedMembers).forEach(([addr, name]) => {
-    const tag = DOM.createElement('span', {
-      style: 'display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); color: var(--accent); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 12px;',
-      html: `${Utils.escapeHtml(name)}<button onclick="removeMember('${Utils.escapeAttr(addr)}')" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:1;">&times;</button>`
-    });
-    list.appendChild(tag);
-  });
-}
-
-function showError(msg) {
-  const el = DOM.getById('createError');
-  el.textContent = Utils.escapeHtml(msg);
-  DOM.show(el);
-}
-
-async function submitCreate() {
-  const name    = DOM.getById('groupName').value.trim();
-  const members = Object.keys(selectedMembers);
-  const nameV   = FormHelpers.validateName(name);
-  if (!nameV.valid)    { showError(nameV.error); return; }
-  if (!members.length) { showError('Add at least one member'); return; }
-
-  const btn = DOM.getById('createSubmitBtn');
-  btn.disabled = true; btn.textContent = 'Creating…';
-  try {
-    const res  = await fetch('/create_group', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, members })
-    });
-    const data = await res.json();
-    if (!res.ok) { showError(data.error || 'Failed to create'); return; }
-    ModalManager.close('createModal');
-    await loadGroups();
-    if (confirm(`Group "${name}" created!\nOpen chat now?`)) {
-      openGroupChatById('group:' + data.group_id, name);
+        container.appendChild(card);
+      });
+    } catch (err) {
+      console.error('Load groups error:', err);
+      container.innerHTML = '<p class="text-muted text-center" style="grid-column: 1/-1; padding: var(--space-md);">Failed to load groups</p>';
     }
-  } catch (err) {
-    showError('Network error');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Create';
   }
-}
 
-// ═══════════════════════════════════════════════════════════
-// Detail / Manage Modal
-// ═══════════════════════════════════════════════════════════
-function switchTab(tab) {
-  const isInfo = tab === 'info';
-  DOM.getById('panelInfo').classList.toggle('hidden', !isInfo);
-  DOM.getById('panelManage').classList.toggle('hidden', isInfo);
-
-  DOM.getById('tabInfo').style.borderBottomColor    = isInfo  ? 'var(--accent)' : 'transparent';
-  DOM.getById('tabInfo').style.color                = isInfo  ? 'var(--accent)' : 'var(--text-secondary)';
-  DOM.getById('tabManage').style.borderBottomColor  = !isInfo ? 'var(--accent)' : 'transparent';
-  DOM.getById('tabManage').style.color              = !isInfo ? 'var(--accent)' : 'var(--text-secondary)';
-
-  if (!isInfo && currentGroup) loadManagePanel(currentGroup);
-}
-
-async function openDetail(groupJson) {
-  const g = JSON.parse(groupJson);
-  currentGroup = g;
-
-  const isCreator = g.creator === MY_ADDR;
-
-  // Show / hide manage tab
-  const tabs = DOM.getById('detailTabs');
-  if (isCreator) DOM.show(tabs);
-  else           DOM.hide(tabs);
-
-  // Reset to Info tab
-  switchTab('info');
-
-  // Populate Info panel
-  DOM.getById('detailTitle').textContent   = g.name;
-  DOM.getById('detailId').textContent      = g.id;
-  DOM.getById('detailCreator').textContent = g.creator === MY_ADDR ? g.creator + ' (You)' : g.creator;
-  DOM.getById('detailDate').textContent    = g.created_at ? new Date(g.created_at * 1000).toLocaleString() : '—';
-  DOM.getById('detailCount').textContent   = g.members.length;
-
-  renderMemberList(g.members, DOM.getById('detailMembers'), false);
-  ModalManager.open('detailModal');
-}
-
-/** Render a member list row. removeBtn=true adds a ✕ for creator. */
-function renderMemberList(members, container, removeBtn) {
-  container.innerHTML = '';
-  members.forEach(addr => {
-    const isMe   = addr === MY_ADDR;
-    const label  = isMe ? 'You' : addr.slice(0, 16) + '…';
-    const row    = DOM.createElement('div', {
-      style: 'display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs); border-bottom: 1px solid var(--border-color);'
-    });
-    const isCreator = currentGroup && addr === currentGroup.creator;
-    row.innerHTML = `
-      <div style="width:28px;height:28px;border-radius:50%;background:var(--bg-tertiary);
-                  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;">
-        ${Utils.escapeHtml(label[0])}
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;">${Utils.escapeHtml(label)}</div>
-        <div class="text-muted font-mono" style="font-size:10px;word-break:break-all;">${Utils.escapeHtml(addr)}</div>
-      </div>
-      ${isMe       ? '<span style="font-size:10px;background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;flex-shrink:0;">ME</span>'      : ''}
-      ${isCreator  ? '<span style="font-size:10px;background:var(--bg-tertiary);color:var(--text-secondary);padding:2px 6px;border-radius:4px;flex-shrink:0;">owner</span>' : ''}
-      ${removeBtn && !isMe && !isCreator
-        ? `<button class="btn btn-icon" style="color:var(--status-error);flex-shrink:0;"
-             onclick="submitRemoveMember('${Utils.escapeAttr(addr)}')" title="Remove">✕</button>`
-        : ''}`;
-    container.appendChild(row);
-  });
-}
-
-// ── Manage panel ─────────────────────────────────────────
-async function loadManagePanel(g) {
-  // Pre-fill rename input
-  DOM.getById('renameInput').value = g.name;
-  DOM.getById('manageCount').textContent = g.members.length;
-  renderMemberList(g.members, DOM.getById('manageMembers'), true);
-  DOM.hide(DOM.getById('manageError'));
-  await loadAddContactsList(g.members);
-}
-
-async function loadAddContactsList(currentMembers) {
-  const list = DOM.getById('addContactsList');
-  try {
-    let contacts = allContacts;
-    if (!contacts.length) {
-      const res  = await fetch('/get_contacts');
+  // ═══════════════════════════════════════════════════════════
+  // Create Modal
+  // ═══════════════════════════════════════════════════════════
+  async function openCreateModal() {
+    selectedMembers = {};
+    DOM.getById('groupName').value = '';
+    DOM.getById('manualAddress').value = '';
+    DOM.hide(DOM.getById('createError'));
+    renderSelected();
+    ModalManager.open('createModal');
+    const list = DOM.getById('contactsList');
+    list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs);">Loading…</p>';
+    try {
+      const res = await fetch('/get_contacts');
       const data = await res.json();
-      contacts   = res.ok ? data.contacts : [];
-      allContacts = contacts;
+      allContacts = res.ok ? data.contacts : [];
+      renderContacts();
+    } catch (e) {
+      list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs);">Could not load</p>';
     }
-    const available = contacts.filter(c => !currentMembers.includes(c.address));
-    if (!available.length) {
-      list.innerHTML = '<p class="text-muted" style="font-size:12px;padding:var(--space-xs);">All contacts are already in the group.</p>';
+  }
+
+  function renderContacts() {
+    const list = DOM.getById('contactsList');
+    if (!allContacts.length) {
+      list.innerHTML = '<p class="text-muted" style="padding: var(--space-xs); font-size: 12px;">No contacts yet.</p>';
       return;
     }
     list.innerHTML = '';
-    available.forEach(c => {
-      const item = DOM.createElement('div', {
-        style: 'display:flex;align-items:center;justify-content:space-between;gap:var(--space-xs);padding:var(--space-xs);border-radius:var(--radius-sm);'
+    allContacts.forEach(c => {
+      const item = DOM.createElement('label', {
+        style: 'display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs); cursor: pointer; border-radius: var(--radius-sm);'
       });
       item.onmouseenter = () => item.style.background = 'var(--bg-hover)';
       item.onmouseleave = () => item.style.background = '';
       item.innerHTML = `
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;">${Utils.escapeHtml(c.name)}</div>
-          <div class="text-muted font-mono" style="font-size:10px;word-break:break-all;">${Utils.escapeHtml(c.address.slice(0, 20))}…</div>
-        </div>
-        <button class="btn" style="font-size:11px;padding:3px 10px;flex-shrink:0;"
-          onclick="submitAddMemberAddr('${Utils.escapeAttr(c.address)}')">+ Add</button>`;
+        <input type="checkbox" value="${Utils.escapeAttr(c.address)}"
+               onchange="toggleMember('${Utils.escapeAttr(c.address)}', '${Utils.escapeAttr(c.name)}', this.checked)"
+               style="accent-color: var(--accent);">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 13px;">${Utils.escapeHtml(c.name)}</div>
+          <div class="text-muted font-mono" style="font-size: 10px;">${Utils.escapeHtml(c.address.slice(0, 20))}…</div>
+        </div>`;
       list.appendChild(item);
     });
-  } catch {
-    list.innerHTML = '<p class="text-muted" style="font-size:12px;padding:var(--space-xs);">Could not load contacts.</p>';
   }
-}
 
-function showManageError(msg) {
-  const el = DOM.getById('manageError');
-  el.textContent = Utils.escapeHtml(msg);
-  DOM.show(el);
-}
+  function toggleMember(addr, name, checked) {
+    if (checked) selectedMembers[addr] = name;
+    else delete selectedMembers[addr];
+    renderSelected();
+  }
 
-// ── Rename ────────────────────────────────────────────────
-async function submitRename() {
-  if (!currentGroup) return;
-  const name = DOM.getById('renameInput').value.trim();
-  if (!name || name.length > 100) { showManageError('Name must be 1–100 characters'); return; }
+  function addManualAddress() {
+    const input = DOM.getById('manualAddress');
+    const addr = input.value.trim();
+    const validation = FormHelpers.validateAddress(addr);
+    if (!validation.valid) { showError(validation.error); return; }
+    if (addr === MY_ADDR) { showError('You are included automatically'); return; }
+    if (selectedMembers[addr]) { showError('Already added'); return; }
+    selectedMembers[addr] = addr.slice(0, 10) + '…';
+    input.value = '';
+    DOM.hide(DOM.getById('createError'));
+    renderSelected();
+  }
 
-  try {
-    const res  = await fetch('/rename_group', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_id: currentGroup.id, name })
+  function removeMember(addr) {
+    delete selectedMembers[addr];
+    const cb = document.querySelector(`#contactsList input[value="${Utils.escapeAttr(addr)}"]`);
+    if (cb) cb.checked = false;
+    renderSelected();
+  }
+
+  function renderSelected() {
+    const count = Object.keys(selectedMembers).length;
+    const section = DOM.getById('selectedSection');
+    const list = DOM.getById('selectedList');
+    DOM.getById('memberCount').textContent = count;
+    if (count === 0) { DOM.hide(section); return; }
+    DOM.show(section);
+    list.innerHTML = '';
+    Object.entries(selectedMembers).forEach(([addr, name]) => {
+      const tag = DOM.createElement('span', {
+        style: 'display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); color: var(--accent); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 12px;',
+        html: `${Utils.escapeHtml(name)}<button onclick="removeMember('${Utils.escapeAttr(addr)}')" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:1;">&times;</button>`
+      });
+      list.appendChild(tag);
     });
-    const data = await res.json();
-    if (!res.ok) { showManageError(data.error || 'Failed'); return; }
-
-    // Update local state & UI
-    currentGroup.name = name;
-    DOM.getById('detailTitle').textContent = name;
-    window.NotificationManager?.showToast('Group renamed', 'success');
-    DOM.hide(DOM.getById('manageError'));
-    await loadGroups();
-  } catch {
-    showManageError('Network error');
   }
-}
 
-// ── Add member ────────────────────────────────────────────
-async function submitAddMember() {
-  const addr = DOM.getById('addMemberInput').value.trim();
-  if (!addr || addr.length !== 64) { showManageError('Invalid address (64 hex chars required)'); return; }
-  await submitAddMemberAddr(addr);
-  DOM.getById('addMemberInput').value = '';
-}
-
-async function submitAddMemberAddr(addr) {
-  if (!currentGroup) return;
-
-  try {
-    const res  = await fetch('/add_group_member', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_id: currentGroup.id, address: addr })
-    });
-    const data = await res.json();
-    if (!res.ok) { showManageError(data.error || 'Failed'); return; }
-
-    // Update local state
-    currentGroup.members = data.members;
-    DOM.getById('manageCount').textContent  = currentGroup.members.length;
-    DOM.getById('detailCount').textContent  = currentGroup.members.length;
-    renderMemberList(currentGroup.members, DOM.getById('manageMembers'), true);
-    renderMemberList(currentGroup.members, DOM.getById('detailMembers'), false);
-    await loadAddContactsList(currentGroup.members);
-    DOM.hide(DOM.getById('manageError'));
-    window.NotificationManager?.showToast('Member added', 'success');
-    await loadGroups();
-  } catch {
-    showManageError('Network error');
+  function showError(msg) {
+    const el = DOM.getById('createError');
+    el.textContent = Utils.escapeHtml(msg);
+    DOM.show(el);
   }
-}
 
-// ── Remove member ─────────────────────────────────────────
-async function submitRemoveMember(addr) {
-  if (!currentGroup) return;
-  if (!confirm(`Remove ${addr.slice(0, 16)}… from the group?`)) return;
-
-  try {
-    const res  = await fetch('/remove_group_member', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_id: currentGroup.id, address: addr })
-    });
-    const data = await res.json();
-    if (!res.ok) { showManageError(data.error || 'Failed'); return; }
-
-    currentGroup.members = data.members;
-    DOM.getById('manageCount').textContent  = currentGroup.members.length;
-    DOM.getById('detailCount').textContent  = currentGroup.members.length;
-    renderMemberList(currentGroup.members, DOM.getById('manageMembers'), true);
-    renderMemberList(currentGroup.members, DOM.getById('detailMembers'), false);
-    await loadAddContactsList(currentGroup.members);
-    DOM.hide(DOM.getById('manageError'));
-    window.NotificationManager?.showToast('Member removed', 'success');
-    await loadGroups();
-  } catch {
-    showManageError('Network error');
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// Chat Navigation
-// ═══════════════════════════════════════════════════════════
-function openGroupChatById(addr, name) {
-  const params = new URLSearchParams({ start_with: addr, name });
-  location.href = '/chat?' + params;
-}
-function openGroupChat() {
-  if (!currentGroup) return;
-  openGroupChatById('group:' + currentGroup.id, currentGroup.name);
-}
-
-// ═══════════════════════════════════════════════════════════
-// Delete Group
-// ═══════════════════════════════════════════════════════════
-async function deleteGroup(id, name) {
-  if (!confirm(`Delete group "${name}"?\n\n⚠️ This cannot be undone.`)) return;
-  const confirmInput = prompt('Type "DELETE" to confirm:');
-  if (!confirmInput || confirmInput.trim().toUpperCase() !== 'DELETE') {
-    window.NotificationManager?.showToast('Cancelled', 'warning');
-    return;
-  }
-  try {
-    const res  = await fetch('/delete_group', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_id: id })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      window.NotificationManager?.showToast('Group deleted', 'success');
+  async function submitCreate() {
+    const name = DOM.getById('groupName').value.trim();
+    const members = Object.keys(selectedMembers);
+    const nameV = FormHelpers.validateName(name);
+    if (!nameV.valid) { showError(nameV.error); return; }
+    if (!members.length) { showError('Add at least one member'); return; }
+    const btn = DOM.getById('createSubmitBtn');
+    btn.disabled = true; btn.textContent = 'Creating…';
+    try {
+      const res = await fetch('/create_group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, members })
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.error || 'Failed to create'); return; }
+      ModalManager.close('createModal');
       await loadGroups();
-    } else if (res.status === 403) {
-      window.NotificationManager?.showToast('Permission denied', 'error');
-    } else {
-      window.NotificationManager?.showToast(data.error || 'Failed to delete', 'error');
+      const confirmed = await showConfirmModal('Group Created', `Group "${name}" created!\nOpen chat now?`);
+      if (confirmed) {
+        openGroupChatById('group:' + data.group_id, name);
+      }
+    } catch (err) {
+      showError('Network error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Create';
     }
-  } catch (err) {
-    console.error('Delete error:', err);
-    window.NotificationManager?.showToast('Network error', 'error');
   }
-}
 
-// ═══════════════════════════════════════════════════════════
-// Init
-// ═══════════════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', function () {
-  loadGroups();
+  // ═══════════════════════════════════════════════════════════
+  // Detail / Manage Modal
+  // ═══════════════════════════════════════════════════════════
+  function switchTab(tab) {
+    const isInfo = tab === 'info';
+    DOM.getById('panelInfo').classList.toggle('hidden', !isInfo);
+    DOM.getById('panelManage').classList.toggle('hidden', isInfo);
+    DOM.getById('tabInfo').style.borderBottomColor = isInfo ? 'var(--accent)' : 'transparent';
+    DOM.getById('tabInfo').style.color = isInfo ? 'var(--accent)' : 'var(--text-secondary)';
+    DOM.getById('tabManage').style.borderBottomColor = !isInfo ? 'var(--accent)' : 'transparent';
+    DOM.getById('tabManage').style.color = !isInfo ? 'var(--accent)' : 'var(--text-secondary)';
+    if (!isInfo && currentGroup) loadManagePanel(currentGroup);
+  }
 
-  const nameInput = DOM.getById('groupName');
-  const addrInput = DOM.getById('manualAddress');
-  const errorEl   = DOM.getById('createError');
+  async function openDetail(groupJson) {
+    const g = JSON.parse(groupJson);
+    currentGroup = g;
+    const isCreator = g.creator === MY_ADDR;
+    const tabs = DOM.getById('detailTabs');
+    if (isCreator) DOM.show(tabs);
+    else DOM.hide(tabs);
+    switchTab('info');
+    DOM.getById('detailTitle').textContent = g.name;
+    DOM.getById('detailId').textContent = g.id;
+    DOM.getById('detailCreator').textContent = g.creator === MY_ADDR ? g.creator + ' (You)' : g.creator;
+    DOM.getById('detailDate').textContent = g.created_at ? new Date(g.created_at * 1000).toLocaleString() : '—';
+    DOM.getById('detailCount').textContent = g.members.length;
+    renderMemberList(g.members, DOM.getById('detailMembers'), false);
+    ModalManager.open('detailModal');
+  }
 
-  if (nameInput) FormHelpers.attachValidation(nameInput, v => FormHelpers.validateName(v), errorEl);
-  if (addrInput) FormHelpers.attachValidation(addrInput, v => FormHelpers.validateAddress(v), errorEl);
+  function renderMemberList(members, container, removeBtn) {
+    container.innerHTML = '';
+    members.forEach(addr => {
+      const isMe = addr === MY_ADDR;
+      const label = isMe ? 'You' : addr.slice(0, 16) + '…';
+      const row = DOM.createElement('div', {
+        style: 'display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs); border-bottom: 1px solid var(--border-color);'
+      });
+      const isCreator = currentGroup && addr === currentGroup.creator;
+      row.innerHTML = `
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--bg-tertiary);
+                    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;">
+          ${Utils.escapeHtml(label[0])}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;">${Utils.escapeHtml(label)}</div>
+          <div class="text-muted font-mono" style="font-size:10px;word-break:break-all;">${Utils.escapeHtml(addr)}</div>
+        </div>
+        ${isMe ? '<span style="font-size:10px;background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;flex-shrink:0;">ME</span>' : ''}
+        ${isCreator ? '<span style="font-size:10px;background:var(--bg-tertiary);color:var(--text-secondary);padding:2px 6px;border-radius:4px;flex-shrink:0;">owner</span>' : ''}
+        ${removeBtn && !isMe && !isCreator
+          ? `<button class="btn btn-icon" style="color:var(--status-error);flex-shrink:0;"
+               onclick="submitRemoveMember('${Utils.escapeAttr(addr)}')" title="Remove">✕</button>`
+          : ''}`;
+      container.appendChild(row);
+    });
+  }
 
-  addrInput?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); addManualAddress(); }
+  async function loadManagePanel(g) {
+    DOM.getById('renameInput').value = g.name;
+    DOM.getById('manageCount').textContent = g.members.length;
+    renderMemberList(g.members, DOM.getById('manageMembers'), true);
+    DOM.hide(DOM.getById('manageError'));
+    await loadAddContactsList(g.members);
+  }
+
+  async function loadAddContactsList(currentMembers) {
+    const list = DOM.getById('addContactsList');
+    try {
+      let contacts = allContacts;
+      if (!contacts.length) {
+        const res = await fetch('/get_contacts');
+        const data = await res.json();
+        contacts = res.ok ? data.contacts : [];
+        allContacts = contacts;
+      }
+      const available = contacts.filter(c => !currentMembers.includes(c.address));
+      if (!available.length) {
+        list.innerHTML = '<p class="text-muted" style="font-size:12px;padding:var(--space-xs);">All contacts are already in the group.</p>';
+        return;
+      }
+      list.innerHTML = '';
+      available.forEach(c => {
+        const item = DOM.createElement('div', {
+          style: 'display:flex;align-items:center;justify-content:space-between;gap:var(--space-xs);padding:var(--space-xs);border-radius:var(--radius-sm);'
+        });
+        item.onmouseenter = () => item.style.background = 'var(--bg-hover)';
+        item.onmouseleave = () => item.style.background = '';
+        item.innerHTML = `
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;">${Utils.escapeHtml(c.name)}</div>
+            <div class="text-muted font-mono" style="font-size:10px;word-break:break-all;">${Utils.escapeHtml(c.address.slice(0, 20))}…</div>
+          </div>
+          <button class="btn" style="font-size:11px;padding:3px 10px;flex-shrink:0;"
+            onclick="submitAddMemberAddr('${Utils.escapeAttr(c.address)}')">+ Add</button>`;
+        list.appendChild(item);
+      });
+    } catch {
+      list.innerHTML = '<p class="text-muted" style="font-size:12px;padding:var(--space-xs);">Could not load contacts.</p>';
+    }
+  }
+
+  function showManageError(msg) {
+    const el = DOM.getById('manageError');
+    el.textContent = Utils.escapeHtml(msg);
+    DOM.show(el);
+  }
+
+  async function submitRename() {
+    if (!currentGroup) return;
+    const name = DOM.getById('renameInput').value.trim();
+    if (!name || name.length > 100) { showManageError('Name must be 1–100 characters'); return; }
+    try {
+      const res = await fetch('/rename_group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: currentGroup.id, name })
+      });
+      const data = await res.json();
+      if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+      currentGroup.name = name;
+      DOM.getById('detailTitle').textContent = name;
+      window.NotificationManager?.showToast('Group renamed', 'success');
+      DOM.hide(DOM.getById('manageError'));
+      await loadGroups();
+    } catch {
+      showManageError('Network error');
+    }
+  }
+
+  async function submitAddMember() {
+    const addr = DOM.getById('addMemberInput').value.trim();
+    if (!addr || addr.length !== 64) { showManageError('Invalid address (64 hex chars required)'); return; }
+    await submitAddMemberAddr(addr);
+    DOM.getById('addMemberInput').value = '';
+  }
+
+  async function submitAddMemberAddr(addr) {
+    if (!currentGroup) return;
+    try {
+      const res = await fetch('/add_group_member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: currentGroup.id, address: addr })
+      });
+      const data = await res.json();
+      if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+      currentGroup.members = data.members;
+      DOM.getById('manageCount').textContent = currentGroup.members.length;
+      DOM.getById('detailCount').textContent = currentGroup.members.length;
+      renderMemberList(currentGroup.members, DOM.getById('manageMembers'), true);
+      renderMemberList(currentGroup.members, DOM.getById('detailMembers'), false);
+      await loadAddContactsList(currentGroup.members);
+      DOM.hide(DOM.getById('manageError'));
+      window.NotificationManager?.showToast('Member added', 'success');
+      await loadGroups();
+    } catch {
+      showManageError('Network error');
+    }
+  }
+
+  async function submitRemoveMember(addr) {
+    if (!currentGroup) return;
+    const confirmed = await showConfirmModal('Remove Member', `Remove ${addr.slice(0, 16)}… from the group?`);
+    if (!confirmed) return;
+    try {
+      const res = await fetch('/remove_group_member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: currentGroup.id, address: addr })
+      });
+      const data = await res.json();
+      if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+      currentGroup.members = data.members;
+      DOM.getById('manageCount').textContent = currentGroup.members.length;
+      DOM.getById('detailCount').textContent = currentGroup.members.length;
+      renderMemberList(currentGroup.members, DOM.getById('manageMembers'), true);
+      renderMemberList(currentGroup.members, DOM.getById('detailMembers'), false);
+      await loadAddContactsList(currentGroup.members);
+      DOM.hide(DOM.getById('manageError'));
+      window.NotificationManager?.showToast('Member removed', 'success');
+      await loadGroups();
+    } catch {
+      showManageError('Network error');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Chat Navigation
+  // ═══════════════════════════════════════════════════════════
+  function openGroupChatById(addr, name) {
+    const params = new URLSearchParams({ start_with: addr, name });
+    location.href = '/chat?' + params;
+  }
+  function openGroupChat() {
+    if (!currentGroup) return;
+    openGroupChatById('group:' + currentGroup.id, currentGroup.name);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Delete Group
+  // ═══════════════════════════════════════════════════════════
+  async function deleteGroup(id, name) {
+    const confirmed = await showDeleteGroupModal(name);
+    if (!confirmed) return;
+    try {
+      const res = await fetch('/delete_group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: id })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        window.NotificationManager?.showToast('Group deleted', 'success');
+        await loadGroups();
+      } else if (res.status === 403) {
+        window.NotificationManager?.showToast('Permission denied', 'error');
+      } else {
+        window.NotificationManager?.showToast(data.error || 'Failed to delete', 'error');
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      window.NotificationManager?.showToast('Network error', 'error');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Init
+  // ═══════════════════════════════════════════════════════════
+  document.addEventListener('DOMContentLoaded', function () {
+    loadGroups();
+    const nameInput = DOM.getById('groupName');
+    const addrInput = DOM.getById('manualAddress');
+    const errorEl = DOM.getById('createError');
+    if (nameInput) FormHelpers.attachValidation(nameInput, v => FormHelpers.validateName(v), errorEl);
+    if (addrInput) FormHelpers.attachValidation(addrInput, v => FormHelpers.validateAddress(v), errorEl);
+    addrInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addManualAddress(); } });
+    DOM.getById('addMemberInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitAddMember(); } });
+    DOM.getById('renameInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitRename(); } });
   });
 
-  DOM.getById('addMemberInput')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); submitAddMember(); }
-  });
-
-  DOM.getById('renameInput')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
-  });
-});
+  // ═══════════════════════════════════════════════════════════
+  // Экспорт глобальных функций (для вызова из HTML)
+  // ═══════════════════════════════════════════════════════════
+  window.openCreateModal = openCreateModal;
+  window.openDetail = openDetail;
+  window.deleteGroup = deleteGroup;
+  window.openGroupChatById = openGroupChatById;
+  window.switchTab = switchTab;
+  window.submitRename = submitRename;
+  window.submitAddMember = submitAddMember;
+  window.submitAddMemberAddr = submitAddMemberAddr;
+  window.submitRemoveMember = submitRemoveMember;
+  window.toggleMember = toggleMember;
+  window.addManualAddress = addManualAddress;
+  window.removeMember = removeMember;
+  window.showConfirmModal = showConfirmModal;
+  window.showDeleteGroupModal = showDeleteGroupModal;
+})();
 </script>
-
 {% endblock %}
 {% endblock %}
