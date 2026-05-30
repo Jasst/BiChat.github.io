@@ -1,5 +1,6 @@
 """
 routes/wallet.py — Баланс, переводы, стейкинг, майнинг, глобальная статистика (асинхронная версия)
+Использует безопасный анстейкинг с детальным ответом.
 """
 import logging
 import secrets
@@ -10,11 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from config import (
     COIN, COIN_NAME, TRANSFER_FEE, MIN_STAKE_AMOUNT, BLOCK_REWARD, CONFIG,
-    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE, MAX_SUPPLY, MINING_CHALLENGE_TTL
+    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE,  STAKING_FEE_FROM_BLOCK_REWARD, MAX_SUPPLY, MINING_CHALLENGE_TTL
 )
 from dependencies import require_auth, make_rate_limit_dep
 from models import TransferRequest, StakeRequest, MineRequest
-from services.wallet import staking_manager
+import services.wallet  # импорт модуля целиком
 from setup import general_limiter
 from routes.ws import manager
 
@@ -113,8 +114,8 @@ async def wallet_send(body: TransferRequest, request: Request, address: str = De
             'VALUES ($1, $2, $3, $4, $5, $6)',
             'fee', address, STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, ts, 'transfer fee to staking pool'
         )
-        if ENABLE_STAKING and staking_manager:
-            await staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=conn)
+        if ENABLE_STAKING and services.wallet.staking_manager:
+            await services.wallet.staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=conn)
         await conn.execute('COMMIT')
     return {'message': 'Sent', 'amount': body.amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}
 
@@ -123,11 +124,11 @@ async def wallet_send(body: TransferRequest, request: Request, address: str = De
 async def stake(body: StakeRequest, request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
         raise HTTPException(403, 'Staking is disabled')
-    if staking_manager is None:   # <-- ДОБАВИТЬ ПРОВЕРКУ
+    if services.wallet.staking_manager is None:
         raise HTTPException(503, 'Staking service not initialized')
     if body.amount < MIN_STAKE_AMOUNT:
         raise HTTPException(400, f'Minimum stake is {MIN_STAKE_AMOUNT / COIN:.6f} {COIN_NAME}')
-    unlock_block = await staking_manager.stake(address, body.amount)
+    unlock_block = await services.wallet.staking_manager.stake(address, body.amount)
     if unlock_block == -1:
         raise HTTPException(400, 'Insufficient balance')
     return {'message': 'Staked', 'unlock_block': unlock_block}
@@ -137,18 +138,32 @@ async def stake(body: StakeRequest, request: Request, address: str = Depends(req
 async def unstake(request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
         raise HTTPException(403, 'Staking is disabled')
-    if staking_manager is None:   # <-- ДОБАВИТЬ ПРОВЕРКУ
+    if services.wallet.staking_manager is None:
         raise HTTPException(503, 'Staking service not initialized')
-    if await staking_manager.unstake(address):
-        return {'message': 'Unstaked'}
-    raise HTTPException(400, 'No active stake or still locked')
+
+    result = await services.wallet.staking_manager.unstake(address)
+
+    if not result.get('success'):
+        error_msg = result.get('error', 'No active stake or still locked')
+        raise HTTPException(400, error_msg)
+
+    coin_div = COIN
+    return {
+        'message': f"Unstaked {result['unstaked_count']} stake(s). Total payout: {result['total_payout'] / coin_div:.6f} {COIN_NAME}",
+        'unstaked_count': result['unstaked_count'],
+        'total_payout': result['total_payout'],
+        'still_locked_count': result['still_locked_count'],
+        'failed_due_to_pool': result['failed_due_to_pool'],
+        'errors': result['errors'],
+        'coin_name': COIN_NAME,
+    }
 
 
 @router.get('/staking/info')
 async def staking_info(request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
         raise HTTPException(403, 'Staking is disabled')
-    if staking_manager is None:   # <-- ДОБАВИТЬ ПРОВЕРКУ
+    if services.wallet.staking_manager is None:
         raise HTTPException(503, 'Staking service not initialized')
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
@@ -159,8 +174,9 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
             address
         )
         stakes = [dict(r) for r in rows]
-        current_block = (await blockchain._last_block_raw(conn)).get('index', 0)  # TODO: тоже исправить на block_index
-    expected_income = await staking_manager.get_expected_income(address)
+        last_block = await blockchain._last_block_raw(conn)
+        current_block = last_block.get('block_index', 0)
+    expected_income = await services.wallet.staking_manager.get_expected_income(address)
     return {
         'stakes': stakes,
         'expected_income': expected_income,
@@ -169,13 +185,13 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
         'coin_divisor': COIN,
     }
 
+
 @router.get('/last-proof')
 async def last_proof(request: Request, address: str = Depends(require_auth)):
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         last = await blockchain._last_block_raw(conn)
-    # ✅ FIXED: используем block_index вместо index
     last_index = last.get('block_index', 0)
     challenge = secrets.token_hex(16)
     with _mining_challenges_lock:
@@ -210,13 +226,19 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         raise HTTPException(status_code, error_msg)
     logger.info(f"Block {block_index} mined by {address}, reward: {reward_amount}")
 
-    # Оповещаем всех майнеров о новом блоке через WebSocket
+    # ========== ДОБАВЛЕНО: комиссия в пул стейкинга ==========
+    if ENABLE_STAKING and services.wallet.staking_manager:
+        staking_fee = int(BLOCK_REWARD * STAKING_FEE_FROM_BLOCK_REWARD)
+        if staking_fee > 0:
+            await services.wallet.staking_manager.add_to_fee_pool(staking_fee)
+            logger.info(f"Added {staking_fee} satoshi ({staking_fee / COIN:.6f} {COIN_NAME}) to staking pool from block reward")
+    # =========================================================
+
     await manager.broadcast({
         'type': 'new_block',
         'last_proof': body.proof,
         'last_index': block_index,
         'difficulty': CONFIG['POW_DIFFICULTY'],
-        # challenge не отправляем, клиент сам запросит /wallet/last-proof
     })
 
     return {
@@ -225,7 +247,6 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         'block_index': block_index,
         'coin_name': COIN_NAME,
     }
-
 
 @router.get('/global-stats')
 async def wallet_global_stats(request: Request):

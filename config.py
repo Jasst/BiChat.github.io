@@ -70,6 +70,8 @@ AIRDROP_AMOUNT  = int(os.getenv('AIRDROP_AMOUNT', 1000))
 MIN_STAKE_AMOUNT  = int(os.getenv('MIN_STAKE_AMOUNT', 10 * COIN))
 STAKE_LOCK_BLOCKS = int(os.getenv('STAKE_LOCK_BLOCKS', 100))
 BLOCK_REWARD = int(os.getenv('BLOCK_REWARD', 0.1*COIN))
+# config.py – добавить в конец
+STAKING_FEE_FROM_BLOCK_REWARD = float(os.getenv('STAKING_FEE_FROM_BLOCK_REWARD', 0.1))  # 10% от награды за блок
 
 ENABLE_MINING  = os.getenv('ENABLE_MINING', '1') == '1'
 ENABLE_STAKING = os.getenv('ENABLE_STAKING', '1') == '1'
