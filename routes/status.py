@@ -29,11 +29,13 @@ async def heartbeat(body: HeartbeatRequest, request: Request, address: str = Dep
                     status = 'online',
                     current_chat = excluded.current_chat
             ''', address, time.time(), body.current_chat)
+        # НОВОЕ: оповещаем всех через WebSocket, что этот адрес стал онлайн
+        from routes.ws import manager
+        await manager.broadcast_status_update(address, 'online')
         return {'status': 'ok'}
     except Exception as e:
         logger.error(f"Heartbeat error: {e}")
         raise HTTPException(500, 'Internal error')
-
 
 @router.get('/get_status/{address_param}')
 async def get_status(address_param: str):
@@ -73,7 +75,7 @@ async def get_many_statuses(body: ManyStatusesRequest, request: Request, address
         now = time.time()
         result = {}
         for row in rows:
-            is_online = (now - row[1]) < 60
+            is_online = (now - row[1]) < ONLINE_TIMEOUT
             result[row[0]] = {
                 'status': 'online' if is_online else 'offline',
                 'last_seen': row[1],

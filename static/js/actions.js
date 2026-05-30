@@ -301,10 +301,10 @@
     // ========== Инициализация при загрузке страницы ==========
     function initChat() {
         window.loadConversations();
-        window.initWebSocket();
+
         window.startHeartbeat();
         window.startStatusPolling();
-
+        window.startUserStatusPolling();
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && window.wsClient && !window.wsClient.isConnected) {
                 console.log('📱 Tab active, reconnecting WebSocket...');
@@ -356,6 +356,8 @@
         if (State.topObserver) { State.topObserver.disconnect(); State.topObserver = null; }
         if (window.NotificationManager && typeof NotificationManager.destroy === 'function') NotificationManager.destroy();
         window.stopHeartbeat();
+        window.stopUserStatusPolling();   // НОВОЕ
+        window.stopStatusPolling();
     });
 
     // Экспорт для глобального доступа (onclick)

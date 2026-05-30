@@ -20,7 +20,6 @@
     };
 
     // ========== Глобальное состояние ==========
-    // Получаем адрес из мета-тега, если он ещё не установлен
     let initialAddress = '';
     const metaAddress = document.querySelector('meta[name="user-address"]')?.content;
     if (metaAddress && metaAddress !== 'None' && metaAddress !== '') {
@@ -166,7 +165,6 @@
 
     async function initWebSocket() {
         if (window.wsClient) window.wsClient.disconnect();
-        // Если адрес ещё не определён – пробуем получить из мета-тега или через запрос
         let address = State.userAddress;
         if (!address) {
             const meta = document.querySelector('meta[name="user-address"]')?.content;
@@ -239,6 +237,15 @@
 
     async function handleWebSocketMessage(data) {
         if (data.error) { console.error('WS error:', data.error); return; }
+        // НОВОЕ: обработка статуса пользователя
+        if (data.type === 'status_update') {
+            if (data.address && data.status) {
+                if (window.updateConversationStatus) {
+                    window.updateConversationStatus(data.address, data.status);
+                }
+            }
+            return;
+        }
         if (!data.chatId && data.sender && data.recipient) data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
         if (!data.chatId) return;
         if (document.getElementById('msg-' + data.id)) return;
@@ -265,7 +272,6 @@
             window.onNewMessageReceived(decrypted);
         }
 
-        // ✅ Уведомление показываем независимо от того, в чате ли пользователь
         if (window.NotificationManager) {
             window.NotificationManager.handleIncomingMessage?.({
                 sender: decrypted.sender,
@@ -334,6 +340,44 @@
     }
     function stopStatusPolling() { if (statusPollingInterval) clearInterval(statusPollingInterval); }
 
+    // ========== НОВОЕ: Поллинг статусов пользователей (онлайн/оффлайн) ==========
+    let userStatusPollingInterval = null;
+    async function pollUserStatuses() {
+        const items = document.querySelectorAll('.conversation-item:not([data-is-group="1"])');
+        const addresses = Array.from(items)
+            .map(el => el.dataset.address)
+            .filter(addr => addr && addr !== State.userAddress);
+        if (addresses.length === 0) return;
+        if (!window.fetchUserStatuses) {
+            console.warn('fetchUserStatuses not available');
+            return;
+        }
+        const statuses = await window.fetchUserStatuses(addresses);
+        for (const el of items) {
+            const addr = el.dataset.address;
+            const status = statuses[addr]?.status || 'offline';
+            const statusSpan = el.querySelector('.status');
+            if (statusSpan) {
+                statusSpan.className = `status ${status}`;
+                statusSpan.title = status === 'online' ? 'Online' : 'Offline';
+            }
+        }
+    }
+
+    function startUserStatusPolling() {
+        if (userStatusPollingInterval) clearInterval(userStatusPollingInterval);
+        userStatusPollingInterval = setInterval(() => {
+            pollUserStatuses();
+        }, 30000); // каждые 30 секунд
+    }
+
+    function stopUserStatusPolling() {
+        if (userStatusPollingInterval) {
+            clearInterval(userStatusPollingInterval);
+            userStatusPollingInterval = null;
+        }
+    }
+
     // Экспорт глобальных функций/переменных
     window.getPubKey = getPubKey;
     window.compressImage = compressImage;
@@ -345,5 +389,7 @@
     window.stopStatusPolling = stopStatusPolling;
     window.processMessageDecryption = processMessageDecryption;
     window.handleWebSocketMessage = handleWebSocketMessage;
+    window.startUserStatusPolling = startUserStatusPolling;   // НОВОЕ
+    window.stopUserStatusPolling = stopUserStatusPolling;     // НОВОЕ
     window.wsClient = null;
 })();

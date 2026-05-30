@@ -34,6 +34,7 @@ class ConnectionManager:
     async def disconnect(self, user_id: str):
         async with self._lock:
             self.active_connections.pop(user_id, None)
+        await self.broadcast_status_update(user_id, 'offline')
         logger.info(f"User {user_id[:16]} disconnected")
 
     async def send_personal_message(self, user_id: str, message: dict) -> bool:
@@ -66,7 +67,13 @@ class ConnectionManager:
                 'active_connections': len(self.active_connections),
                 'users': list(self.active_connections.keys())[:10]
             }
-
+    async def broadcast_status_update(self, address: str, status: str):
+        """Отправить всем клиентам обновление статуса пользователя."""
+        await self.broadcast({
+            'type': 'status_update',
+            'address': address,
+            'status': status
+        })
 
 manager = ConnectionManager()
 

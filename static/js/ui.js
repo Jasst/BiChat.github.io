@@ -118,6 +118,23 @@
         else if (status === 'read') { icon.textContent = '✓✓'; icon.style.color = '#4caf50'; }
     }
 
+    // ========== НОВОЕ: получение статусов для массива адресов ==========
+    async function fetchUserStatuses(addresses) {
+        if (!addresses.length) return {};
+        try {
+            const res = await fetch('/get_many_statuses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ addresses })
+            });
+            const data = await res.json();
+            return data.statuses || {};
+        } catch (err) {
+            console.warn('Failed to fetch statuses:', err);
+            return {};
+        }
+    }
+
     // ========== Загрузка списка диалогов ==========
     async function loadConversations() {
         const container = document.getElementById('conversationsList');
@@ -130,23 +147,46 @@
                 return;
             }
             container.innerHTML = '';
-            data.conversations.forEach(conv => {
+            const convElements = [];
+
+            for (const conv of data.conversations) {
+                const isGroup = !!conv.is_group;
+                const address = conv.address || '';
                 const item = document.createElement('div');
                 item.className = 'conversation-item';
-                item.dataset.address = conv.address || '';
-                item.dataset.isGroup = conv.is_group ? '1' : '0';
-                const displayName = conv.name || conv.address || 'Unknown';
+                item.dataset.address = address;
+                item.dataset.isGroup = isGroup ? '1' : '0';
+                const displayName = conv.name || address || 'Unknown';
                 const shortName = displayName.length > 25 ? displayName.slice(0,22)+'…' : displayName;
                 const initials = displayName.slice(0,2).toUpperCase();
                 let previewText = Utils.escapeHtml(conv.last_preview || 'No messages');
-                item.innerHTML = `<div class="avatar ${conv.is_group ? 'group' : ''}">${Utils.escapeHtml(initials)}</div>
+                item.innerHTML = `<div class="avatar ${isGroup ? 'group' : ''}">${Utils.escapeHtml(initials)}</div>
                     <div class="info">
                         <div class="name truncate">${Utils.escapeHtml(shortName)}</div>
                         <div class="meta"><span class="status"></span><span class="truncate">${previewText}</span></div>
                     </div>`;
-                item.onclick = () => selectConversation(conv.address, conv.name || conv.address, !!conv.is_group);
+                item.onclick = () => selectConversation(address, conv.name || address, isGroup);
                 container.appendChild(item);
-            });
+                convElements.push({ el: item, address, isGroup });
+            }
+
+            // НОВОЕ: запрашиваем статусы для всех не-групповых диалогов (кроме себя)
+            const addressesToCheck = convElements
+                .filter(c => !c.isGroup && c.address !== State.userAddress)
+                .map(c => c.address);
+            if (addressesToCheck.length) {
+                const statuses = await fetchUserStatuses(addressesToCheck);
+                for (const { el, address } of convElements) {
+                    if (addressesToCheck.includes(address)) {
+                        const status = statuses[address]?.status || 'offline';
+                        const statusSpan = el.querySelector('.status');
+                        if (statusSpan) {
+                            statusSpan.className = `status ${status}`;
+                            statusSpan.title = status === 'online' ? 'Online' : 'Offline';
+                        }
+                    }
+                }
+            }
         } catch (error) { console.error('Load conversations error:', error); container.innerHTML = '<p class="text-muted text-center">Failed to load</p>'; }
     }
 
@@ -337,6 +377,18 @@
         }
     };
 
+    // НОВОЕ: обновить статус конкретного диалога по WebSocket
+    window.updateConversationStatus = function(address, status) {
+        const item = document.querySelector(`.conversation-item[data-address="${address}"]`);
+        if (item && !item.dataset.isGroup) {
+            const statusSpan = item.querySelector('.status');
+            if (statusSpan) {
+                statusSpan.className = `status ${status}`;
+                statusSpan.title = status === 'online' ? 'Online' : 'Offline';
+            }
+        }
+    };
+
     // Экспорт для других модулей и глобального доступа
     window.loadConversations = loadConversations;
     window.selectConversation = selectConversation;
@@ -349,4 +401,5 @@
     window.setupTopObserver = setupTopObserver;
     window._enableChatControls = _enableChatControls;
     window._disableChatControls = _disableChatControls;
+    window.fetchUserStatuses = fetchUserStatuses; // НОВОЕ
 })();
