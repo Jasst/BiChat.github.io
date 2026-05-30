@@ -89,6 +89,7 @@
     "Python.Socket.executor": "Run",
     "Python.__init__.executor": "Run",
     "Python.app.executor": "Run",
+<<<<<<< Updated upstream
     "Python.app_async.executor": "Run",
     "Python.auth.executor": "Run",
     "Python.blockchain.executor": "Run",
@@ -107,6 +108,16 @@
     "Python.run.executor": "Run",
     "Python.run_waitress.executor": "Run",
     "Python.run_win.executor": "Run",
+=======
+    "Python.blockchain.executor": "Run",
+    "Python.bot.executor": "Run",
+    "Python.bot_script.executor": "Run",
+    "Python.check_env.executor": "Run",
+    "Python.cripto_manager.executor": "Run",
+    "Python.crypto_manager.executor": "Run",
+    "Python.pythonProject1.executor": "Run",
+    "Python.routes.executor": "Run",
+>>>>>>> Stashed changes
     "Python.sec.executor": "Run",
     "Python.setup.executor": "Run",
     "Python.sync_peers.executor": "Run",
@@ -116,8 +127,13 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
+<<<<<<< Updated upstream
     "git-widget-placeholder": "mainUPDATEASICIO5",
     "last_opened_file_path": "C:/Users/PC/Documents/GitHub/BiChat.github.io",
+=======
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "C:/Users/Нел/Documents/GitHub/BiChat.github.io",
+>>>>>>> Stashed changes
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -144,6 +160,7 @@
       <recent name="C:\Users\PC\Documents\GitHub\BiChat.github.io\routes" />
     </key>
   </component>
+<<<<<<< Updated upstream
   <component name="RunAnythingCache">
     <option name="myCommands">
       <command value="pip install -r requirements.txt" />
@@ -151,6 +168,13 @@
   </component>
   <component name="RunManager">
     <configuration name="python app.py" type="PythonConfigurationType" factoryName="Python" temporary="true">
+=======
+  <component name="RunManager" selected="Python.app2work">
+    <configuration name="Privet.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/Privet.js" working-dir="$PROJECT_DIR$">
+      <method v="2" />
+    </configuration>
+    <configuration name="Interface" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+>>>>>>> Stashed changes
       <module name="BiChat.github.io" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
