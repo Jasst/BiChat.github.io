@@ -6,11 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="d07690c8-e3fc-4deb-9586-8caad48b6c31" name="Changes" comment="DB UNICORN">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/status.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/status.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/ws.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/ws.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/actions.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/actions.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/core.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/core.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/js/ui.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/js/ui.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

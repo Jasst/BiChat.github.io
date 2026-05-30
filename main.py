@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from config import CONFIG, SECRET_KEY, STATIC_FOLDER, UPLOAD_FOLDER
 from database import init_db, close_db, Blockchain
 from setup import setup_logging, get_rate_limit_stats
+from services.wallet import init_wallet_service   # <-- ДОБАВИТЬ ИМПОРТ
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -25,6 +26,9 @@ async def lifespan(app: FastAPI):
     await init_db()                     # инициализация PostgreSQL
     blockchain = Blockchain()
     app.state.blockchain = blockchain
+    # ============ ИНИЦИАЛИЗАЦИЯ СТЕЙКИНГА ============
+    init_wallet_service(blockchain)     # <-- ДОБАВИТЬ ЭТУ СТРОКУ
+    # =================================================
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     logger.info("BiChat server started ✅")
     yield

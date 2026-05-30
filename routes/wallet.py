@@ -16,7 +16,7 @@ from dependencies import require_auth, make_rate_limit_dep
 from models import TransferRequest, StakeRequest, MineRequest
 from services.wallet import staking_manager
 from setup import general_limiter
-from routes.ws import manager   # ✅ добавлен импорт
+from routes.ws import manager
 
 _mining_challenges = {}
 _mining_challenges_lock = Lock()
@@ -123,6 +123,8 @@ async def wallet_send(body: TransferRequest, request: Request, address: str = De
 async def stake(body: StakeRequest, request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
         raise HTTPException(403, 'Staking is disabled')
+    if staking_manager is None:   # <-- ДОБАВИТЬ ПРОВЕРКУ
+        raise HTTPException(503, 'Staking service not initialized')
     if body.amount < MIN_STAKE_AMOUNT:
         raise HTTPException(400, f'Minimum stake is {MIN_STAKE_AMOUNT / COIN:.6f} {COIN_NAME}')
     unlock_block = await staking_manager.stake(address, body.amount)
@@ -135,6 +137,8 @@ async def stake(body: StakeRequest, request: Request, address: str = Depends(req
 async def unstake(request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
         raise HTTPException(403, 'Staking is disabled')
+    if staking_manager is None:   # <-- ДОБАВИТЬ ПРОВЕРКУ
+        raise HTTPException(503, 'Staking service not initialized')
     if await staking_manager.unstake(address):
         return {'message': 'Unstaked'}
     raise HTTPException(400, 'No active stake or still locked')
@@ -142,6 +146,10 @@ async def unstake(request: Request, address: str = Depends(require_auth)):
 
 @router.get('/staking/info')
 async def staking_info(request: Request, address: str = Depends(require_auth)):
+    if not ENABLE_STAKING:
+        raise HTTPException(403, 'Staking is disabled')
+    if staking_manager is None:   # <-- ДОБАВИТЬ ПРОВЕРКУ
+        raise HTTPException(503, 'Staking service not initialized')
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
     async with get_db_cursor() as conn:
@@ -152,9 +160,7 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
         )
         stakes = [dict(r) for r in rows]
         current_block = (await blockchain._last_block_raw(conn)).get('index', 0)  # TODO: тоже исправить на block_index
-    expected_income = 0
-    if ENABLE_STAKING and staking_manager:
-        expected_income = await staking_manager.get_expected_income(address)
+    expected_income = await staking_manager.get_expected_income(address)
     return {
         'stakes': stakes,
         'expected_income': expected_income,
@@ -204,7 +210,7 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         raise HTTPException(status_code, error_msg)
     logger.info(f"Block {block_index} mined by {address}, reward: {reward_amount}")
 
-    # ✅ Оповещаем всех майнеров о новом блоке через WebSocket
+    # Оповещаем всех майнеров о новом блоке через WebSocket
     await manager.broadcast({
         'type': 'new_block',
         'last_proof': body.proof,
