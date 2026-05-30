@@ -56,11 +56,7 @@ class AsyncTTLCache:
 pubkey_cache = AsyncTTLCache(ttl_seconds=3600, maxsize=CONFIG['CACHE_SIZE_PUBKEYS'])
 contact_name_cache = AsyncTTLCache(ttl_seconds=600, maxsize=CONFIG['CACHE_SIZE_CONTACTS'])
 user_groups_cache = AsyncTTLCache(ttl_seconds=300, maxsize=CONFIG['CACHE_SIZE_GROUPS'])
-balance_cache = AsyncTTLCache(ttl_seconds=30.0, maxsize=1000)
-contact_cache = AsyncTTLCache(ttl_seconds=60.0, maxsize=500)
-group_cache = AsyncTTLCache(ttl_seconds=30.0, maxsize=200)
-block_count_cache = AsyncTTLCache(ttl_seconds=10.0, maxsize=50)
-supply_cache = AsyncTTLCache(ttl_seconds=60.0, maxsize=10)
+
 
 _pubkey_cache_version = 0
 _pubkey_version_lock = asyncio.Lock()
@@ -218,9 +214,4 @@ async def clear_all_caches() -> None:
     await pubkey_cache.invalidate()
     await contact_name_cache.invalidate()
     await user_groups_cache.invalidate()
-    await balance_cache.invalidate()
-    await contact_cache.invalidate()
-    await group_cache.invalidate()
-    await block_count_cache.invalidate()
-    await supply_cache.invalidate()
     logger.debug("All TTL caches cleared")

@@ -14,11 +14,11 @@ import random
 import re
 import atexit
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 from collections import deque
 from dataclasses import dataclass, field, asdict
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import aiohttp
@@ -802,7 +802,6 @@ class SelfImprovingAssistant:
                               image_base64: Optional[str] = None,
                               image_mime: Optional[str] = None,
                               reasoning: bool = False):
-        start = time.time()
         self.total_interactions += 1
 
         content_parts = []
