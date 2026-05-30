@@ -1,5 +1,4 @@
-// AiChat.js — полностью изолированный AI-чат
-// Версия: 4.2 — исправлена кнопка копирования и мобильная вёрстка
+// AiChat.js — полностью изолированный AI-чат с режимом Reasoning
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
@@ -11,11 +10,13 @@
     let currentStreamReader = null;
     let isSending = false;
     let currentImagePreviewUrl = null;
+    let reasoningEnabled = false;
 
     let aiMessagesContainer = null;
     let aiMessageInput = null;
     let aiSendBtn = null;
     let aiAttachBtn = null;
+    let aiReasoningBtn = null;
     let aiImageInput = null;
     let aiClearHistoryBtn = null;
     let closeAiChatBtn = null;
@@ -27,7 +28,7 @@
         apiEndpoint: '/ai/chat'
     };
 
-    // ========== НАСТРОЙКИ MARKDOWN ==========
+    // ========== Markdown с постобработкой для Reasoning ==========
     if (typeof marked !== 'undefined') {
         marked.setOptions({
             highlight: function(code, lang) {
@@ -44,21 +45,17 @@
         });
     }
 
-    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))
                   .replace(/['"]/g, m => ({ "'": '&#39;', '"': '&quot;' }[m]));
     }
 
-    // Подсветка кода и добавление кнопок копирования в контейнер
     function enhanceCodeBlocks(container) {
         if (!container) return;
-        // Подсветка синтаксиса
         container.querySelectorAll('pre code').forEach(block => {
             hljs.highlightElement(block);
         });
-        // Добавление кнопок копирования
         container.querySelectorAll('pre').forEach(pre => {
             if (pre.querySelector('.copy-code-btn')) return;
             const btn = document.createElement('button');
@@ -82,10 +79,20 @@
         });
     }
 
+    // 🔧 Улучшенный renderMarkdown с оборачиванием блока рассуждений
     function renderMarkdown(text) {
         if (!text) return '';
         try {
             let html = marked.parse(text);
+            // Ищем блок рассуждений: 💭 РАССУЖДЕНИЕ: ... ---
+            const reasoningRegex = /💭\s*РАССУЖДЕНИЕ:\s*([\s\S]*?)\s*---/gi;
+            if (reasoningRegex.test(html)) {
+                reasoningRegex.lastIndex = 0; // сброс
+                html = html.replace(reasoningRegex, (match, content) => {
+                    // Оборачиваем найденный блок в специальный div
+                    return `<div class="reasoning-block"><strong>💭 Reasoning:</strong><br>${marked.parse(content)}</div>`;
+                });
+            }
             return html;
         } catch(e) {
             console.warn('Markdown error', e);
@@ -93,7 +100,7 @@
         }
     }
 
-    // ========== УПРАВЛЕНИЕ ИСТОРИЕЙ ==========
+    // ========== Управление историей ==========
     function getStoredHistory() {
         try {
             return JSON.parse(localStorage.getItem('ai_chat_history') || '[]');
@@ -127,60 +134,18 @@
         }
     }
 
-    // ========== ОЧИСТКА ИСТОРИИ ==========
     function clearAiHistory() {
-        const modalId = 'confirmClearAiModal';
-        let modal = document.getElementById(modalId);
-        if (!modal && window.ModalManager) {
-            modal = document.createElement('div');
-            modal.id = modalId;
-            modal.className = 'modal-overlay hidden';
-            modal.setAttribute('role', 'dialog');
-            modal.setAttribute('aria-modal', 'true');
-            modal.innerHTML = `
-                <div class="modal" style="max-width: 400px;">
-                    <header class="modal-header">
-                        <h3>Очистить историю?</h3>
-                        <button class="modal-close" onclick="ModalManager.close('${modalId}')">&times;</button>
-                    </header>
-                    <div class="modal-body">
-                        <p>Вы уверены, что хотите очистить всю историю диалога с AI-ботом?</p>
-                    </div>
-                    <footer class="modal-footer">
-                        <button class="btn btn-ghost" onclick="ModalManager.close('${modalId}')">Отмена</button>
-                        <button class="btn btn-primary" id="confirmClearAiBtn">Очистить</button>
-                    </footer>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        if (window.ModalManager) {
-            const confirmBtn = modal.querySelector('#confirmClearAiBtn');
-            const oldHandler = confirmBtn.onclick;
-            confirmBtn.onclick = () => {
-                if (oldHandler) oldHandler();
-                localStorage.removeItem('ai_chat_history');
-                if (aiMessagesContainer) {
-                    aiMessagesContainer.innerHTML = '';
-                    displayAiMessage('История очищена. Начните новый диалог.', false, null, false);
-                }
-                ModalManager.close(modalId);
-                showToast('История очищена', 'success');
-            };
-            ModalManager.open(modalId);
-        } else {
-            if (confirm('Очистить всю историю диалога с AI-ботом?')) {
-                localStorage.removeItem('ai_chat_history');
-                if (aiMessagesContainer) {
-                    aiMessagesContainer.innerHTML = '';
-                    displayAiMessage('История очищена. Начните новый диалог.', false, null, false);
-                }
+        if (confirm('Очистить всю историю диалога с AI-ботом?')) {
+            localStorage.removeItem('ai_chat_history');
+            if (aiMessagesContainer) {
+                aiMessagesContainer.innerHTML = '';
+                displayAiMessage('История очищена. Начните новый диалог.', false, null, false);
             }
+            showToast('История очищена', 'success');
         }
     }
 
-    // ========== СЖАТИЕ ИЗОБРАЖЕНИЙ ==========
+    // ========== Сжатие изображений ==========
     async function compressImage(dataUrl, maxWidth = CONFIG.imageMaxWidth, quality = CONFIG.imageQuality) {
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -214,7 +179,7 @@
         }
     }
 
-    // ========== ОТОБРАЖЕНИЕ СООБЩЕНИЯ ==========
+    // ========== Отображение сообщения ==========
     function displayAiMessage(text, isUser, imagePreview = null, saveToStorage = true) {
         if (!aiMessagesContainer) return;
         const msgDiv = document.createElement('div');
@@ -257,7 +222,6 @@
         return msgDiv;
     }
 
-    // ========== ИНДИКАТОР ПЕЧАТИ ==========
     function showAiTypingIndicator(show) {
         if (!aiMessagesContainer) return;
         let indicator = aiMessagesContainer.querySelector('.typing-indicator-message');
@@ -278,7 +242,7 @@
         }
     }
 
-    // ========== ОТПРАВКА ЗАПРОСА И СТРИМИНГ ==========
+    // ========== Отправка запроса и стриминг ==========
     async function sendToAi(messageText, imageFile) {
         if (isSending) {
             showToast('Подождите, предыдущий запрос ещё обрабатывается', 'warning');
@@ -333,7 +297,8 @@
                     message: messageText,
                     image_base64: imageBase64,
                     image_mime: imageMime,
-                    stream: true
+                    stream: true,
+                    reasoning: reasoningEnabled
                 })
             });
 
@@ -420,7 +385,7 @@
         }
     }
 
-    // ========== НАСТРОЙКА UI ==========
+    // ========== Настройка UI ==========
     function setupAiUI() {
         if (!aiSendBtn) return;
         aiSendBtn.onclick = () => {
@@ -440,6 +405,7 @@
             }
             sendToAi(text, image);
         };
+
         if (aiMessageInput) {
             aiMessageInput.onkeydown = (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -448,6 +414,7 @@
                 }
             };
         }
+
         if (aiAttachBtn && aiImageInput) {
             aiAttachBtn.onclick = () => aiImageInput.click();
             aiImageInput.onchange = async (e) => {
@@ -481,6 +448,21 @@
                 aiImageInput.value = '';
             };
         }
+
+        if (aiReasoningBtn) {
+            const saved = localStorage.getItem('ai_reasoning_mode');
+            if (saved === 'true') reasoningEnabled = true;
+            aiReasoningBtn.style.opacity = reasoningEnabled ? '1' : '0.5';
+            aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+            aiReasoningBtn.onclick = () => {
+                reasoningEnabled = !reasoningEnabled;
+                aiReasoningBtn.style.opacity = reasoningEnabled ? '1' : '0.5';
+                aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+                localStorage.setItem('ai_reasoning_mode', reasoningEnabled);
+                showToast(`Режим рассуждений ${reasoningEnabled ? 'включён' : 'выключен'}`, 'info');
+            };
+        }
+
         if (aiClearHistoryBtn) aiClearHistoryBtn.onclick = clearAiHistory;
         if (closeAiChatBtn) {
             closeAiChatBtn.onclick = () => {
@@ -496,7 +478,6 @@
         }
     }
 
-    // ========== ИНИЦИАЛИЗАЦИЯ ==========
     function initAiChat() {
         if (aiChatActive) return;
         aiChatActive = true;
@@ -504,6 +485,7 @@
         aiMessageInput = document.getElementById('aiMessageInput');
         aiSendBtn = document.getElementById('aiSendBtn');
         aiAttachBtn = document.getElementById('aiAttachBtn');
+        aiReasoningBtn = document.getElementById('aiReasoningBtn');
         aiImageInput = document.getElementById('aiImageInput');
         aiClearHistoryBtn = document.getElementById('aiClearHistoryBtn');
         closeAiChatBtn = document.getElementById('closeAiChatBtn');

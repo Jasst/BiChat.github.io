@@ -1,6 +1,6 @@
 """
 routes/ai_assistant.py — Самообучающийся AI-ассистент с памятью, нейросетью и поддержкой изображений
-Версия: 3.1 (исправлены синтаксические ошибки, логика стриминга, таймауты и счётчики)
+Версия: 3.2 (добавлен режим reasoning)
 """
 import logging
 import json
@@ -23,7 +23,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import aiohttp
 
-# Замените на ваш реальный модуль авторизации, если он отличается
 try:
     from dependencies import require_auth
 except ImportError:
@@ -40,7 +39,6 @@ LM_STUDIO_API_KEY = "lm-studio"
 MEMORY_BASE_DIR = Path("ai_memory_v3")
 MEMORY_BASE_DIR.mkdir(exist_ok=True)
 
-# Параметры нейросети
 EMBEDDING_DIM = 128
 INITIAL_HIDDEN = 48
 MAX_HIDDEN = 512
@@ -48,40 +46,33 @@ OUTPUT_METRICS_DIM = 8
 METRIC_NAMES = ['confidence', 'complexity', 'relevance', 'coherence',
                 'engagement', 'completeness', 'creativity', 'empathy']
 
-# Параметры обучения
 LEARNING_RATE = 0.001
 MIN_LR = 0.0001
 MAX_LR = 0.01
 LR_ADAPT_RATE = 0.05
 
-# Параметры памяти
 WORKING_MEMORY_SIZE = 15
 MEMORY_CONSOLIDATION_THRESHOLD = 0.7
 FORGETTING_FACTOR = 0.1
 
-# LLM-оценка качества
 QUALITY_CHECK_PROB = 0.3
 MIN_QUALITY_SCORE = 0.4
 
-# Словарь
 INITIAL_VOCAB_SIZE = 2000
 MAX_VOCAB_SIZE = 50000
 VOCAB_EXPANSION_STEP = 1000
 WORD_QUALITY_THRESHOLD = 0.3
 
-# Сохранение
 BACKUP_RETENTION_DAYS = 30
 SAVE_EVERY_N_INTERACTIONS = 10
 
-# Таймауты для LM Studio (в секундах)
 LM_STUDIO_TIMEOUT = 160
 LM_STUDIO_STREAM_TIMEOUT = 500
 
-# Поддержка изображений
-MAX_IMAGE_SIZE_BASE64 = 5 * 1024 * 1024  # 5 MB
+MAX_IMAGE_SIZE_BASE64 = 5 * 1024 * 1024
 
 # ==================================================================
-# 🔤 Адаптивный словарь (обучаемые эмбеддинги)
+# 🔤 Адаптивный словарь
 # ==================================================================
 @dataclass
 class WordMeta:
@@ -133,7 +124,7 @@ class DynamicVocab:
         if self.next_idx >= self.cur_size:
             new_sz = min(self.cur_size + VOCAB_EXPANSION_STEP, self.max_size)
             if not self._expand(new_sz):
-                return 0  # fallback индекс 0 (OOV)
+                return 0
 
         idx = self.next_idx
         self.word2idx[word_norm] = idx
@@ -183,7 +174,7 @@ class DynamicVocab:
         }
 
 # ==================================================================
-# 🧬 Динамическая нейросеть (Adam, expand/prune)
+# 🧬 Динамическая нейросеть
 # ==================================================================
 class DynamicNeuralNet:
     def __init__(self, input_dim: int, hidden: int, output: int):
@@ -355,7 +346,7 @@ class DynamicNeuralNet:
         }
 
 # ==================================================================
-# 🧠 Память (эпизодическая + семантическая)
+# 🧠 Память
 # ==================================================================
 @dataclass
 class Episode:
@@ -597,9 +588,10 @@ class SelfImprovingAssistant:
 
     async def get_response(self, message: str,
                            image_base64: Optional[str] = None,
-                           image_mime: Optional[str] = None) -> Tuple[str, Dict]:
+                           image_mime: Optional[str] = None,
+                           reasoning: bool = False) -> Tuple[str, Dict]:
         start = time.time()
-        self.total_interactions += 1  # 🔧 ИСПРАВЛЕНО: счётчик теперь работает
+        self.total_interactions += 1
 
         cache_key = self._cache_key(message, image_base64)
         if image_base64:
@@ -645,9 +637,27 @@ class SelfImprovingAssistant:
             preds = np.zeros(OUTPUT_METRICS_DIM) + 0.5
         pred_metrics = {METRIC_NAMES[i]: float(preds[i]) for i in range(OUTPUT_METRICS_DIM)}
 
+        # ========== ИЗМЕНЁННЫЙ СИСТЕМНЫЙ ПРОМПТ ==========
         system_prompt = """Ты — самообучающийся AI-ассистент с долговременной памятью.
 Если передано изображение, внимательно его опиши и ответь на вопросы по нему.
-Отвечай естественно, полезно и по существу (от 5 предложений и больше если это не конкретный вопрос , если вопрос конкретный ответь в два три предложения )."""
+Отвечай естественно, полезно и по существу."""
+
+        if reasoning:
+            system_prompt += """
+            
+            🔍 РЕЖИМ РАССУЖДЕНИЙ (REASONING MODE):
+            Перед финальным ответом ты ДОЛЖЕН показать свою внутреннюю цепочку рассуждений.
+            Оформи рассуждения в формате:
+            
+            💭 РАССУЖДЕНИЕ:
+            1. ...
+            2. ...
+            3. ...
+            
+            Затем после строки "---" напиши окончательный ответ.
+            """
+        else:
+            system_prompt += "\nОтвечай кратко и по делу, без лишних пояснений."
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -790,7 +800,8 @@ class SelfImprovingAssistant:
 
     async def stream_response(self, message: str,
                               image_base64: Optional[str] = None,
-                              image_mime: Optional[str] = None):
+                              image_mime: Optional[str] = None,
+                              reasoning: bool = False):
         start = time.time()
         self.total_interactions += 1
 
@@ -818,7 +829,14 @@ class SelfImprovingAssistant:
         emb = self.vocab.encode(text_for_emb)
         preds = self.neural.forward(emb, store=False)
 
-        system_prompt = "Ты — самообучающийся AI-ассистент с памятью. Отвечай естественно."
+        system_prompt = "Ты — самообучающийся AI-ассистент с памятью."
+        if reasoning:
+            system_prompt += """
+            Включён режим рассуждений. Сначала покажи пошаговые рассуждения в блоке "💭 РАССУЖДЕНИЕ:", затем после разделителя "---" дай окончательный ответ.
+            """
+        else:
+            system_prompt += " Отвечай кратко и по делу."
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content_parts}
@@ -956,6 +974,7 @@ class AIRequest(BaseModel):
     image_base64: Optional[str] = Field(None, description="Base64-кодированное изображение")
     image_mime: Optional[str] = Field(None, description="MIME-тип изображения")
     stream: bool = Field(True, description="Использовать ли потоковый ответ")
+    reasoning: bool = Field(False, description="Включить режим пошагового рассуждения")
 
 @router.post("/chat")
 async def chat_with_ai(body: AIRequest, address: str = Depends(require_auth)):
@@ -965,7 +984,8 @@ async def chat_with_ai(body: AIRequest, address: str = Depends(require_auth)):
             assistant.stream_response(
                 message=body.message,
                 image_base64=body.image_base64,
-                image_mime=body.image_mime
+                image_mime=body.image_mime,
+                reasoning=body.reasoning
             ),
             media_type="text/event-stream",
             headers={
@@ -977,7 +997,8 @@ async def chat_with_ai(body: AIRequest, address: str = Depends(require_auth)):
         response, meta = await assistant.get_response(
             message=body.message,
             image_base64=body.image_base64,
-            image_mime=body.image_mime
+            image_mime=body.image_mime,
+            reasoning=body.reasoning
         )
         return {"reply": response, "meta": meta}
 
