@@ -1,7 +1,8 @@
+
 """
 routes/ai_assistant.py — Самообучающийся AI-ассистент с памятью, нейросетью,
-поддержкой изображений и веб-поиском через ddgs (duckduckgo-search)
-Версия: 6.0 (стабильный поиск через ddgs)
+поддержкой изображений и умным веб-поиском
+Версия: 4.1 (улучшенный поиск + специализированные источники)
 """
 import logging
 import json
@@ -24,7 +25,6 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import aiohttp
-from ddgs import DDGS
 
 try:
     from dependencies import require_auth
@@ -71,21 +71,17 @@ LM_STUDIO_TIMEOUT = 160
 LM_STUDIO_STREAM_TIMEOUT = 500
 MAX_IMAGE_SIZE_BASE64 = 5 * 1024 * 1024
 
-# Кэш результатов поиска (на 5 минут)
-SEARCH_CACHE_TTL = 300
-_search_cache: Dict[str, Tuple[str, float]] = {}
-
-# Количество страниц для загрузки из результатов поиска
-MAX_PAGES_TO_FETCH = 3
-PAGE_CONTENT_MAX_CHARS = 4000
-
 # ==================================================================
-# 🌐 Web Search Tool — использующий ddgs (duckduckgo-search)
+# 🌐 Web Search Tool — улучшенная версия
 # ==================================================================
 
 class WebSearchTool:
     """
-    Веб-поиск через стабильную библиотеку ddgs + загрузка нескольких страниц.
+    Многоуровневый веб-поиск:
+    1. Специализированные источники (курсы валют, погода, новости)
+    2. DuckDuckGo HTML search
+    3. DuckDuckGo Instant Answer API
+    4. Прямая загрузка URL
     """
 
     FETCH_TIMEOUT = 12
@@ -102,15 +98,23 @@ class WebSearchTool:
         "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8",
     }
 
+    # ----------------------------------------------------------------
+    # Определение типа запроса
+    # ----------------------------------------------------------------
     @classmethod
     def classify_query(cls, message: str) -> Tuple[str, str]:
-        """Классифицирует запрос и возвращает (тип, очищенный_запрос)."""
+        """
+        Классифицирует запрос и возвращает (тип, очищенный_запрос).
+        Типы: url, currency, weather, news, general, none
+        """
         msg = message.lower().strip()
 
+        # Прямой URL
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             return 'url', url_match.group(0)
 
+        # Курс валют
         currency_patterns = [
             r'\bкурс\b', r'\bдолл[ао]р', r'\bевро\b', r'\busd\b', r'\beur\b',
             r'\bрубл[ьея]\b', r'\bкурс.*валют', r'\bvalute\b', r'\bfx\b',
@@ -121,12 +125,15 @@ class WebSearchTool:
             if re.search(p, msg):
                 return 'currency', msg
 
+        # Погода
         if re.search(r'\bпогод[аеу]\b|\bweather\b|\bтемператур', msg):
             return 'weather', msg
 
+        # Новости
         if re.search(r'\bновост[иь]\b|\bnews\b|\bпоследн[иеяь]\b|\bсегодня\b|\btoday\b|\bсейчас\b', msg):
             return 'news', msg
 
+        # Общий поиск
         search_triggers = [
             r'\bпоищи\b', r'\bнайди\b', r'\bпоиск\b', r'\bsearch\b',
             r'\bчто такое\b', r'\bwhat is\b', r'\bwho is\b', r'\bкто такой\b',
@@ -140,14 +147,12 @@ class WebSearchTool:
 
         return 'none', msg
 
-    @classmethod
-    def should_auto_search(cls, message: str) -> bool:
-        query_type, _ = cls.classify_query(message)
-        return query_type != 'none'
-
-    # ---------- Специализированные источники (без изменений) ----------
+    # ----------------------------------------------------------------
+    # Специализированные источники
+    # ----------------------------------------------------------------
     @classmethod
     async def get_currency_rates(cls) -> Optional[Dict]:
+        """Курсы валют с ЦБ РФ (XML API, всегда актуально)."""
         try:
             async with aiohttp.ClientSession(headers=cls.HEADERS) as session:
                 async with session.get(
@@ -157,6 +162,7 @@ class WebSearchTool:
                     if resp.status == 200:
                         text = await resp.text(encoding='windows-1251', errors='replace')
                         rates = {}
+                        # Парсим XML без библиотек
                         for valute in re.finditer(
                             r'<CharCode>(\w+)</CharCode>.*?<Name>(.*?)</Name>.*?<Nominal>(\d+)</Nominal>.*?<Value>([\d,]+)</Value>',
                             text, re.DOTALL
@@ -170,6 +176,7 @@ class WebSearchTool:
                                 'nominal': nom,
                                 'per_unit': round(val / nom, 4)
                             }
+                        # Дата из XML
                         date_m = re.search(r'Date="([\d.]+)"', text)
                         date_str = date_m.group(1) if date_m else 'сегодня'
                         return {'rates': rates, 'date': date_str, 'source': 'ЦБ РФ'}
@@ -179,6 +186,7 @@ class WebSearchTool:
 
     @classmethod
     async def get_crypto_prices(cls) -> Optional[str]:
+        """Курсы криптовалют с CoinGecko (бесплатно, без ключа)."""
         try:
             url = "https://api.coingecko.com/api/v3/simple/price"
             params = {
@@ -217,12 +225,15 @@ class WebSearchTool:
 
     @classmethod
     def format_currency_result(cls, rates_data: Dict, query: str) -> str:
+        """Форматирует курсы валют для промпта."""
         if not rates_data:
             return ""
         rates = rates_data['rates']
         date = rates_data['date']
         source = rates_data['source']
         q = query.lower()
+
+        # Определяем какие валюты показать
         wanted = []
         if any(w in q for w in ['доллар', 'usd', '$']):
             wanted.append('USD')
@@ -234,8 +245,10 @@ class WebSearchTool:
             wanted.append('CNY')
         if any(w in q for w in ['franc', 'chf', 'франк']):
             wanted.append('CHF')
+        # Если ничего конкретного — показываем основные
         if not wanted:
             wanted = ['USD', 'EUR', 'CNY', 'GBP']
+
         lines = [f"=== ОФИЦИАЛЬНЫЕ КУРСЫ ЦБ РФ на {date} ==="]
         for code in wanted:
             if code in rates:
@@ -247,31 +260,104 @@ class WebSearchTool:
         lines.append(f"  Источник: {source} (официальный)")
         return '\n'.join(lines)
 
-    # ---------- Поиск через ddgs ----------
+    # ----------------------------------------------------------------
+    # DuckDuckGo HTML поиск
+    # ----------------------------------------------------------------
     @classmethod
-    async def _ddg_search(cls, query: str) -> List[Dict]:
-        """Асинхронная обёртка над синхронным DDGS.text()."""
+    async def _ddg_html_search(cls, query: str) -> List[Dict]:
+        """Поиск через HTML-версию DuckDuckGo."""
         results = []
         try:
-            # Запускаем синхронный поиск в отдельном потоке
-            def sync_search():
-                with DDGS() as ddgs:
-                    return list(ddgs.text(query, max_results=cls.MAX_RESULTS))
-            search_results = await asyncio.to_thread(sync_search)
-            for r in search_results:
-                results.append({
-                    'title': r.get('title', '')[:120],
-                    'url': r.get('href', ''),
-                    'snippet': r.get('body', '')[:500],
-                    'source': 'ddgs',
-                })
+            async with aiohttp.ClientSession(headers=cls.HEADERS) as session:
+                async with session.post(
+                    "https://html.duckduckgo.com/html/",
+                    data={"q": query},
+                    timeout=aiohttp.ClientTimeout(total=cls.FETCH_TIMEOUT)
+                ) as resp:
+                    if resp.status == 200:
+                        html = await resp.text(errors='replace')
+                        # Заголовки
+                        titles = re.findall(
+                            r'<a[^>]+class="result__a"[^>]*>(.*?)</a>', html, re.DOTALL)
+                        # Ссылки
+                        urls_raw = re.findall(
+                            r'<a[^>]+class="result__a"[^>]+href="([^"]+)"', html)
+                        # Сниппеты
+                        snippets = re.findall(
+                            r'class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
+
+                        for i in range(min(len(titles), cls.MAX_RESULTS)):
+                            raw_url = urls_raw[i] if i < len(urls_raw) else ''
+                            # Разворачиваем DDG-редирект
+                            real_url = raw_url
+                            if '/l/?' in raw_url or raw_url.startswith('/l/?'):
+                                m = re.search(r'uddg=([^&]+)', raw_url)
+                                if m:
+                                    real_url = urllib.parse.unquote(m.group(1))
+                            snippet = ''
+                            if i < len(snippets):
+                                snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
+                            title = re.sub(r'<[^>]+>', '', titles[i]).strip()
+                            if title and (real_url or snippet):
+                                results.append({
+                                    'title': title[:120],
+                                    'url': real_url,
+                                    'snippet': snippet[:500],
+                                    'source': 'duckduckgo',
+                                })
         except Exception as e:
-            logger.warning(f"DDGS search error: {e}")
+            logger.warning(f"DDG HTML error: {e}")
         return results
 
-    # ---------- Загрузка страниц ----------
+    # ----------------------------------------------------------------
+    # DuckDuckGo Instant Answer API
+    # ----------------------------------------------------------------
+    @classmethod
+    async def _ddg_instant(cls, query: str) -> List[Dict]:
+        """DuckDuckGo Instant Answer — хорош для фактических вопросов."""
+        results = []
+        try:
+            params = {"q": query, "format": "json", "no_html": "1",
+                      "skip_disambig": "1", "no_redirect": "1"}
+            url = "https://api.duckduckgo.com/?" + urllib.parse.urlencode(params)
+            async with aiohttp.ClientSession(headers=cls.HEADERS) as session:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=cls.FETCH_TIMEOUT)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        if data.get("AbstractText"):
+                            results.append({
+                                'title': data.get("Heading", "Wikipedia"),
+                                'url': data.get("AbstractURL", ""),
+                                'snippet': data["AbstractText"][:600],
+                                'source': 'ddg_instant',
+                            })
+                        if data.get("Answer"):
+                            results.append({
+                                'title': 'Прямой ответ',
+                                'url': '',
+                                'snippet': str(data["Answer"])[:400],
+                                'source': 'ddg_answer',
+                            })
+                        for topic in data.get("RelatedTopics", [])[:3]:
+                            if isinstance(topic, dict) and topic.get("Text"):
+                                results.append({
+                                    'title': topic.get("Text", "")[:80],
+                                    'url': topic.get("FirstURL", ""),
+                                    'snippet': topic.get("Text", "")[:400],
+                                    'source': 'ddg_related',
+                                })
+        except Exception as e:
+            logger.warning(f"DDG Instant error: {e}")
+        return results
+
+    # ----------------------------------------------------------------
+    # Загрузка URL
+    # ----------------------------------------------------------------
     @classmethod
     async def fetch_url(cls, url: str) -> str:
+        """Загружает страницу и возвращает очищенный текст."""
         if not url or not url.startswith(("http://", "https://")):
             return ""
         try:
@@ -306,43 +392,19 @@ class WebSearchTool:
         text = re.sub(r'\s+', ' ', text).strip()
         return text[:cls.MAX_PAGE_CHARS]
 
-    @classmethod
-    async def fetch_multiple_pages(cls, results: List[Dict], limit: int = MAX_PAGES_TO_FETCH) -> str:
-        if not results:
-            return ""
-        to_fetch = []
-        for r in results:
-            url = r.get('url')
-            if url and url.startswith(('http://', 'https://')):
-                to_fetch.append((r.get('title', 'Без названия'), url))
-                if len(to_fetch) >= limit:
-                    break
-        if not to_fetch:
-            return ""
-
-        async def fetch_one(title, url):
-            content = await cls.fetch_url(url)
-            if len(content) > PAGE_CONTENT_MAX_CHARS:
-                content = content[:PAGE_CONTENT_MAX_CHARS] + "\n[...обрезано]"
-            return f"### {title}\nURL: {url}\n\n{content}\n\n"
-
-        tasks = [fetch_one(title, url) for title, url in to_fetch]
-        pages_content = await asyncio.gather(*tasks, return_exceptions=True)
-
-        parts = ["\n=== ПОЛНОЕ СОДЕРЖИМОЕ ЗАГРУЖЕННЫХ СТРАНИЦ ===\n"]
-        for i, res in enumerate(pages_content):
-            if isinstance(res, Exception):
-                parts.append(f"[Страница {i+1} не загружена: {res}]\n")
-            else:
-                parts.append(res)
-        return ''.join(parts)
-
-    # ---------- Основной метод поиска ----------
+    # ----------------------------------------------------------------
+    # Главный метод поиска
+    # ----------------------------------------------------------------
     @classmethod
     async def search(cls, query: str, query_type: str = 'general') -> Tuple[List[Dict], Optional[str]]:
+        """
+        Выполняет поиск с учётом типа запроса.
+        Возвращает (список_результатов, специальные_данные_или_None)
+        """
         special_data = None
         results = []
 
+        # Специализированные источники
         if query_type == 'currency':
             q_lower = query.lower()
             is_crypto = any(w in q_lower for w in [
@@ -360,34 +422,64 @@ class WebSearchTool:
                     special_data = cls.format_currency_result(rates, query)
                     return [], special_data
 
-        # Основной поиск через ddgs
-        results = await cls._ddg_search(query)
+        # Параллельный поиск: DDG HTML + Instant
+        tasks = [
+            cls._ddg_html_search(query),
+            cls._ddg_instant(query),
+        ]
+        html_results, instant_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        if isinstance(html_results, list):
+            results.extend(html_results)
+        if isinstance(instant_results, list):
+            # Добавляем только уникальные
+            existing_urls = {r['url'] for r in results}
+            for r in instant_results:
+                if r['url'] not in existing_urls:
+                    results.append(r)
+                    existing_urls.add(r['url'])
+
         return results[:cls.MAX_RESULTS], special_data
 
+    # ----------------------------------------------------------------
+    # Форматирование для промпта
+    # ----------------------------------------------------------------
     @classmethod
     def format_for_prompt(cls, results: List[Dict], special_data: Optional[str],
-                          full_pages_content: str, original_query: str) -> str:
+                          query_type: str, original_query: str) -> str:
         parts = []
+
         if special_data:
             parts.append(special_data)
+
         if results:
-            parts.append(f"\n=== РЕЗУЛЬТАТЫ ПОИСКА (краткие сниппеты): «{original_query}» ===")
+            parts.append(f"\n=== РЕЗУЛЬТАТЫ ПОИСКА: «{original_query}» ===")
             for i, r in enumerate(results, 1):
                 parts.append(f"\n[{i}] {r.get('title', '(без заголовка)')}")
                 if r.get('url'):
                     parts.append(f"    Источник: {r['url']}")
                 if r.get('snippet'):
                     parts.append(f"    {r['snippet']}")
-        if full_pages_content:
-            parts.append(full_pages_content)
+
         if not parts:
+            # Важно: явно сигнализируем LLM что поиск не дал результатов
             return (
                 f"[ПОИСК НЕ ДАЛ РЕЗУЛЬТАТОВ для запроса: «{original_query}»]\n"
                 f"ВАЖНО: НЕ отвечай из памяти для запросов о текущих ценах/курсах/новостях. "
                 f"Сообщи пользователю, что не удалось получить актуальные данные."
             )
+
         parts.append("\n=== КОНЕЦ ДАННЫХ ===")
         return '\n'.join(parts)
+
+    # ----------------------------------------------------------------
+    # Определение нужен ли поиск
+    # ----------------------------------------------------------------
+    @classmethod
+    def should_search(cls, message: str) -> bool:
+        query_type, _ = cls.classify_query(message)
+        return query_type != 'none'
+
 
 # ==================================================================
 # 🔤 Адаптивный словарь
@@ -421,8 +513,7 @@ class DynamicVocab:
         self.t = 0
 
     def _expand(self, new_size: int) -> bool:
-        if new_size > self.max_size:
-            return False
+        if new_size > self.max_size: return False
         add = new_size - self.cur_size
         self.embeddings = np.vstack([self.embeddings, np.random.randn(add, self.dim) * 0.01])
         self.m = np.vstack([self.m, np.zeros((add, self.dim))])
@@ -440,8 +531,7 @@ class DynamicVocab:
             if not self._expand(min(self.cur_size + VOCAB_EXPANSION_STEP, self.max_size)):
                 return 0
         idx = self.next_idx
-        self.word2idx[wn] = idx
-        self.idx2word[idx] = wn
+        self.word2idx[wn] = idx; self.idx2word[idx] = wn
         self.meta[wn] = WordMeta(word=wn, usage_count=1)
         self.next_idx += 1
         return idx
@@ -451,28 +541,25 @@ class DynamicVocab:
 
     def encode(self, text: str) -> np.ndarray:
         words = re.findall(r'\b\w+\b', text.lower())
-        if not words:
-            return np.zeros(self.dim)
+        if not words: return np.zeros(self.dim)
         embs = [self.get_embedding(w) for w in words if len(w) > 2]
         return np.mean(embs, axis=0) if embs else np.zeros(self.dim)
 
     def update_embedding(self, word: str, grad: np.ndarray, lr: float):
         wn = word.lower()
-        if wn not in self.word2idx:
-            return
+        if wn not in self.word2idx: return
         idx = self.word2idx[wn]
         self.t += 1
         b1, b2, eps = 0.9, 0.999, 1e-8
-        self.m[idx] = b1 * self.m[idx] + (1 - b1) * grad
-        self.v[idx] = b2 * self.v[idx] + (1 - b2) * (grad ** 2)
-        mh = self.m[idx] / (1 - b1 ** self.t)
-        vh = self.v[idx] / (1 - b2 ** self.t)
-        self.embeddings[idx] -= lr * mh / (np.sqrt(vh) + eps)
+        self.m[idx] = b1*self.m[idx] + (1-b1)*grad
+        self.v[idx] = b2*self.v[idx] + (1-b2)*(grad**2)
+        mh = self.m[idx]/(1-b1**self.t); vh = self.v[idx]/(1-b2**self.t)
+        self.embeddings[idx] -= lr*mh/(np.sqrt(vh)+eps)
 
     def update_quality(self, word: str, quality: float):
         wn = word.lower()
         if wn in self.meta:
-            self.meta[wn].quality = self.meta[wn].quality * 0.85 + quality * 0.15
+            self.meta[wn].quality = self.meta[wn].quality*0.85 + quality*0.15
 
     def stats(self) -> Dict:
         avg_q = np.mean([m.quality for m in self.meta.values()]) if self.meta else 0.0
@@ -484,148 +571,97 @@ class DynamicVocab:
 # ==================================================================
 class DynamicNeuralNet:
     def __init__(self, input_dim: int, hidden: int, output: int):
-        self.input_dim = input_dim
-        self.hidden = hidden
-        self.output = output
+        self.input_dim = input_dim; self.hidden = hidden; self.output = output
         self.max_hidden = MAX_HIDDEN
         self._init_weights()
         self.loss_history = deque(maxlen=20)
         self.neuron_activations = np.zeros(hidden)
-        self.total_updates = 0
-        self.expansions = 0
-        self.prunings = 0
+        self.total_updates = 0; self.expansions = 0; self.prunings = 0
         self.cache = {}
 
     def _init_weights(self):
-        s1 = np.sqrt(2.0 / self.input_dim)
-        s2 = np.sqrt(2.0 / self.hidden)
-        self.W1 = np.random.randn(self.input_dim, self.hidden) * s1
-        self.b1 = np.zeros(self.hidden)
-        self.W2 = np.random.randn(self.hidden, self.output) * s2
-        self.b2 = np.zeros(self.output)
-        for n in ['W1', 'b1', 'W2', 'b2']:
-            p = getattr(self, n)
-            setattr(self, f'm{n}', np.zeros_like(p))
-            setattr(self, f'v{n}', np.zeros_like(p))
+        s1 = np.sqrt(2.0/self.input_dim); s2 = np.sqrt(2.0/self.hidden)
+        self.W1 = np.random.randn(self.input_dim, self.hidden)*s1; self.b1 = np.zeros(self.hidden)
+        self.W2 = np.random.randn(self.hidden, self.output)*s2; self.b2 = np.zeros(self.output)
+        for n in ['W1','b1','W2','b2']:
+            p = getattr(self,n); setattr(self,f'm{n}',np.zeros_like(p)); setattr(self,f'v{n}',np.zeros_like(p))
         self.t = 0
 
     @staticmethod
-    def relu(x):
-        return np.maximum(0, x)
-
+    def relu(x): return np.maximum(0,x)
     @staticmethod
-    def relu_d(x):
-        return (x > 0).astype(float)
-
+    def relu_d(x): return (x>0).astype(float)
     @staticmethod
-    def sigmoid(x):
-        return 1 / (1 + np.exp(-np.clip(x, -500, 500)))
+    def sigmoid(x): return 1/(1+np.exp(-np.clip(x,-500,500)))
 
     def forward(self, x: np.ndarray, store: bool = True) -> np.ndarray:
         if x.shape[0] != self.input_dim:
-            x = np.pad(x, (0, max(0, self.input_dim - x.shape[0])))[:self.input_dim]
-        z1 = x @ self.W1 + self.b1
-        a1 = self.relu(z1)
-        z2 = a1 @ self.W2 + self.b2
-        a2 = self.sigmoid(z2)
+            x = np.pad(x,(0,max(0,self.input_dim-x.shape[0])))[:self.input_dim]
+        z1=x@self.W1+self.b1; a1=self.relu(z1); z2=a1@self.W2+self.b2; a2=self.sigmoid(z2)
         if store:
-            self.cache = {'x': x, 'z1': z1, 'a1': a1, 'a2': a2}
-            self.neuron_activations += (a1 > 0).astype(float)
+            self.cache={'x':x,'z1':z1,'a1':a1,'a2':a2}
+            self.neuron_activations+=(a1>0).astype(float)
         return a2
 
     def backward(self, target: np.ndarray, lr: float) -> float:
-        c = self.cache
-        if not c:
-            return 0.0
-        x, z1, a1, a2 = c['x'], c['z1'], c['a1'], c['a2']
-        loss = float(np.mean((a2 - target) ** 2))
-        dz2 = 2 * (a2 - target) * a2 * (1 - a2)
-        dW2 = a1[:, None] @ dz2[None, :]
-        da1 = dz2 @ self.W2.T
-        dz1 = da1 * self.relu_d(z1)
-        dW1 = x[:, None] @ dz1[None, :]
-        for n, g in [('W1', dW1), ('b1', dz1), ('W2', dW2), ('b2', dz2)]:
-            self._adam(n, g, lr)
-        self.loss_history.append(loss)
-        self.total_updates += 1
-        if self.total_updates > 50 and self.total_updates % 20 == 0:
-            self._check_plateau()
-        if self.total_updates % 100 == 0:
-            self._prune()
+        c=self.cache
+        if not c: return 0.0
+        x,z1,a1,a2=c['x'],c['z1'],c['a1'],c['a2']
+        loss=float(np.mean((a2-target)**2))
+        dz2=2*(a2-target)*a2*(1-a2); dW2=a1[:,None]@dz2[None,:]
+        da1=dz2@self.W2.T; dz1=da1*self.relu_d(z1); dW1=x[:,None]@dz1[None,:]
+        for n,g in [('W1',dW1),('b1',dz1),('W2',dW2),('b2',dz2)]: self._adam(n,g,lr)
+        self.loss_history.append(loss); self.total_updates+=1
+        if self.total_updates>50 and self.total_updates%20==0: self._check_plateau()
+        if self.total_updates%100==0: self._prune()
         return loss
 
     def _adam(self, param, grad, lr):
-        b1, b2, eps = 0.9, 0.999, 1e-8
-        self.t += 1
-        m = getattr(self, f'm{param}')
-        v = getattr(self, f'v{param}')
-        m = b1 * m + (1 - b1) * grad
-        v = b2 * v + (1 - b2) * (grad ** 2)
-        mh = m / (1 - b1 ** self.t)
-        vh = v / (1 - b2 ** self.t)
-        p = getattr(self, param)
-        setattr(self, param, p - lr * mh / (np.sqrt(vh) + eps))
-        setattr(self, f'm{param}', m)
-        setattr(self, f'v{param}', v)
+        b1,b2,eps=0.9,0.999,1e-8; self.t+=1
+        m=getattr(self,f'm{param}'); v=getattr(self,f'v{param}')
+        m=b1*m+(1-b1)*grad; v=b2*v+(1-b2)*(grad**2)
+        mh=m/(1-b1**self.t); vh=v/(1-b2**self.t)
+        p=getattr(self,param); setattr(self,param,p-lr*mh/(np.sqrt(vh)+eps))
+        setattr(self,f'm{param}',m); setattr(self,f'v{param}',v)
 
     def _check_plateau(self):
-        if len(self.loss_history) < 20:
-            return
-        lh = list(self.loss_history)
-        if np.mean(lh[10:]) - np.mean(lh[:10]) < 1e-4 and self.hidden < self.max_hidden:
-            self._expand()
+        if len(self.loss_history)<20: return
+        lh=list(self.loss_history)
+        if np.mean(lh[10:])-np.mean(lh[:10])<1e-4 and self.hidden<self.max_hidden: self._expand()
 
     def _expand(self):
-        add = 16
-        new_h = min(self.hidden + add, self.max_hidden)
-        if new_h == self.hidden:
-            return
-        add = new_h - self.hidden
-        s1 = np.sqrt(2.0 / self.input_dim)
-        s2 = np.sqrt(2.0 / new_h)
-        self.W1 = np.hstack([self.W1, np.random.randn(self.input_dim, add) * s1])
-        self.b1 = np.concatenate([self.b1, np.zeros(add)])
-        self.W2 = np.vstack([self.W2, np.random.randn(add, self.output) * s2])
-        for m in ['mW1', 'vW1']:
-            setattr(self, m, np.hstack([getattr(self, m), np.zeros((self.input_dim, add))]))
-        for m in ['mb1', 'vb1']:
-            setattr(self, m, np.concatenate([getattr(self, m), np.zeros(add)]))
-        for m in ['mW2', 'vW2']:
-            setattr(self, m, np.vstack([getattr(self, m), np.zeros((add, self.output))]))
-        self.neuron_activations = np.concatenate([self.neuron_activations, np.zeros(add)])
-        self.hidden = new_h
-        self.expansions += 1
+        add=16; new_h=min(self.hidden+add,self.max_hidden)
+        if new_h==self.hidden: return
+        add=new_h-self.hidden; s1=np.sqrt(2.0/self.input_dim); s2=np.sqrt(2.0/new_h)
+        self.W1=np.hstack([self.W1,np.random.randn(self.input_dim,add)*s1])
+        self.b1=np.concatenate([self.b1,np.zeros(add)])
+        self.W2=np.vstack([self.W2,np.random.randn(add,self.output)*s2])
+        for m in ['mW1','vW1']: setattr(self,m,np.hstack([getattr(self,m),np.zeros((self.input_dim,add))]))
+        for m in ['mb1','vb1']: setattr(self,m,np.concatenate([getattr(self,m),np.zeros(add)]))
+        for m in ['mW2','vW2']: setattr(self,m,np.vstack([getattr(self,m),np.zeros((add,self.output))]))
+        self.neuron_activations=np.concatenate([self.neuron_activations,np.zeros(add)])
+        self.hidden=new_h; self.expansions+=1
         logger.info(f"🧬 Neural expanded → {self.hidden}")
 
     def _prune(self):
-        if self.total_updates < 100:
-            return
-        ratio = self.neuron_activations / (self.total_updates + 1e-8)
-        inactive = ratio < 0.01
-        if not inactive.any():
-            return
-        active = ~inactive
-        self.W1 = self.W1[:, active]
-        self.b1 = self.b1[active]
-        self.W2 = self.W2[active, :]
-        for n in ['mW1', 'vW1']:
-            setattr(self, n, getattr(self, n)[:, active])
-        for n in ['mb1', 'vb1']:
-            setattr(self, n, getattr(self, n)[active])
-        for n in ['mW2', 'vW2']:
-            setattr(self, n, getattr(self, n)[active, :])
-        self.neuron_activations = self.neuron_activations[active]
-        self.hidden = int(active.sum())
-        self.prunings += 1
+        if self.total_updates<100: return
+        ratio=self.neuron_activations/(self.total_updates+1e-8)
+        inactive=ratio<0.01
+        if not inactive.any(): return
+        active=~inactive
+        self.W1=self.W1[:,active]; self.b1=self.b1[active]; self.W2=self.W2[active,:]
+        for n in ['mW1','vW1']: setattr(self,n,getattr(self,n)[:,active])
+        for n in ['mb1','vb1']: setattr(self,n,getattr(self,n)[active])
+        for n in ['mW2','vW2']: setattr(self,n,getattr(self,n)[active,:])
+        self.neuron_activations=self.neuron_activations[active]
+        self.hidden=int(active.sum()); self.prunings+=1
 
-    def stats(self) -> Dict:
-        return {
-            'arch': f"{self.input_dim}→{self.hidden}→{self.output}",
-            'updates': self.total_updates,
-            'expansions': self.expansions,
-            'prunings': self.prunings,
-            'loss_avg': round(np.mean(self.loss_history) if self.loss_history else 0, 5)
-        }
+    def stats(self): return {
+        'arch':f"{self.input_dim}→{self.hidden}→{self.output}",
+        'updates':self.total_updates,'expansions':self.expansions,
+        'prunings':self.prunings,
+        'loss_avg':round(np.mean(self.loss_history) if self.loss_history else 0,5)
+    }
 
 
 # ==================================================================
@@ -633,139 +669,96 @@ class DynamicNeuralNet:
 # ==================================================================
 @dataclass
 class Episode:
-    content: str
-    timestamp: float
-    embedding: np.ndarray
-    importance: float = 0.5
-    emotional_valence: float = 0.0
-    arousal: float = 0.0
-    access_count: int = 0
+    content: str; timestamp: float; embedding: np.ndarray
+    importance: float = 0.5; emotional_valence: float = 0.0
+    arousal: float = 0.0; access_count: int = 0
     last_accessed: float = field(default_factory=time.time)
-
     def decay(self):
-        age_h = (time.time() - self.timestamp) / 3600
-        self.importance *= math.exp(-FORGETTING_FACTOR * age_h / 24)
-
+        age_h=(time.time()-self.timestamp)/3600
+        self.importance*=math.exp(-FORGETTING_FACTOR*age_h/24)
     def strengthen(self):
-        self.importance = min(1.0, self.importance + 0.05)
-        self.access_count += 1
-        self.last_accessed = time.time()
+        self.importance=min(1.0,self.importance+0.05)
+        self.access_count+=1; self.last_accessed=time.time()
 
 @dataclass
 class Concept:
-    name: str
-    definition: str
-    embedding: np.ndarray
-    confidence: float = 0.5
+    name: str; definition: str; embedding: np.ndarray; confidence: float = 0.5
 
 class VectorMemory:
     def __init__(self, dim: int):
-        self.dim = dim
-        self.items = []
-        self._mat = None
-        self._dirty = True
-
+        self.dim=dim; self.items=[]; self._mat=None; self._dirty=True
     def add(self, item):
-        self.items.append(item)
-        self._dirty = True
-
+        self.items.append(item); self._dirty=True
     def _rebuild(self):
-        self._mat = np.vstack([i.embedding for i in self.items]) if self.items else np.zeros((0, self.dim))
-        self._dirty = False
-
-    def search(self, q: np.ndarray, top_k: int = 5) -> List[Tuple]:
-        if self._dirty:
-            self._rebuild()
-        if not self.items:
-            return []
-        qn = q / (np.linalg.norm(q) + 1e-8)
-        norms = np.linalg.norm(self._mat, axis=1, keepdims=True)
-        norms[norms == 0] = 1e-8
-        sim = (self._mat / norms) @ qn
-        idx = np.argsort(sim)[::-1][:top_k]
-        return [(self.items[i], float(sim[i])) for i in idx if sim[i] > 0.25]
-
-    def consolidate(self, threshold: float = 0.7):
-        before = len(self.items)
-        self.items = [i for i in self.items if i.importance >= threshold]
-        if len(self.items) < before:
-            self._dirty = True
+        self._mat=np.vstack([i.embedding for i in self.items]) if self.items else np.zeros((0,self.dim))
+        self._dirty=False
+    def search(self, q: np.ndarray, top_k: int=5) -> List[Tuple]:
+        if self._dirty: self._rebuild()
+        if not self.items: return []
+        qn=q/(np.linalg.norm(q)+1e-8); norms=np.linalg.norm(self._mat,axis=1,keepdims=True)
+        norms[norms==0]=1e-8; sim=(self._mat/norms)@qn
+        idx=np.argsort(sim)[::-1][:top_k]
+        return [(self.items[i],float(sim[i])) for i in idx if sim[i]>0.25]
+    def consolidate(self, threshold: float=0.7):
+        before=len(self.items); self.items=[i for i in self.items if i.importance>=threshold]
+        if len(self.items)<before: self._dirty=True
 
 class CognitiveMemory:
     def __init__(self, embed_func):
-        self.embed = embed_func
-        self.episodic = VectorMemory(EMBEDDING_DIM)
-        self.semantic = VectorMemory(EMBEDDING_DIM)
-        self.working = deque(maxlen=WORKING_MEMORY_SIZE)
-        self.total_searches = 0
+        self.embed=embed_func
+        self.episodic=VectorMemory(EMBEDDING_DIM); self.semantic=VectorMemory(EMBEDDING_DIM)
+        self.working=deque(maxlen=WORKING_MEMORY_SIZE); self.total_searches=0
 
     def add_episode(self, content, importance=0.5, emotional_valence=0.0, arousal=0.0):
-        emb = self.embed(content)
-        self.episodic.add(Episode(content=content, timestamp=time.time(), embedding=emb,
-                                  importance=importance, emotional_valence=emotional_valence,
-                                  arousal=arousal))
+        emb=self.embed(content)
+        self.episodic.add(Episode(content=content,timestamp=time.time(),embedding=emb,
+            importance=importance,emotional_valence=emotional_valence,arousal=arousal))
         self.working.append(content)
 
     def recall(self, query, top_k=5):
-        self.total_searches += 1
-        return self.episodic.search(self.embed(query), top_k)
+        self.total_searches+=1; return self.episodic.search(self.embed(query),top_k)
 
     def get_context(self, query) -> str:
-        parts = []
+        parts=[]
         if self.working:
-            parts.append("=== Недавние сообщения ===")
-            parts.extend(list(self.working)[-3:])
-        eps = self.recall(query)
+            parts.append("=== Недавние сообщения ==="); parts.extend(list(self.working)[-3:])
+        eps=self.recall(query)
         if eps:
             parts.append("\n=== Похожие воспоминания ===")
-            for ep, score in eps[:3]:
-                parts.append(f"[{score:.2f}] {ep.content[:200]}")
+            for ep,score in eps[:3]: parts.append(f"[{score:.2f}] {ep.content[:200]}")
         return "\n".join(parts)
 
     def consolidate(self):
-        for ep in self.episodic.items:
-            ep.decay()
+        for ep in self.episodic.items: ep.decay()
         self.episodic.consolidate(MEMORY_CONSOLIDATION_THRESHOLD)
 
-    def stats(self) -> Dict:
-        return {
-            'episodes': len(self.episodic.items),
-            'concepts': len(self.semantic.items),
-            'working': len(self.working),
-            'searches': self.total_searches
-        }
+    def stats(self): return {
+        'episodes':len(self.episodic.items),'concepts':len(self.semantic.items),
+        'working':len(self.working),'searches':self.total_searches
+    }
 
     def save(self, path: Path):
         def ep_dict(e):
-            d = asdict(e)
-            d['embedding'] = e.embedding.tolist()
-            return d
-        state = {
-            'episodic': [ep_dict(e) for e in self.episodic.items],
-            'semantic': [{'name': c.name, 'definition': c.definition,
-                          'embedding': c.embedding.tolist(), 'confidence': c.confidence}
-                         for c in self.semantic.items],
-            'working': list(self.working)
-        }
-        with gzip.open(path, 'wb') as f:
-            pickle.dump(state, f)
+            d=asdict(e); d['embedding']=e.embedding.tolist(); return d
+        state={'episodic':[ep_dict(e) for e in self.episodic.items],
+               'semantic':[{'name':c.name,'definition':c.definition,
+                            'embedding':c.embedding.tolist(),'confidence':c.confidence}
+                           for c in self.semantic.items],
+               'working':list(self.working)}
+        with gzip.open(path,'wb') as f: pickle.dump(state,f)
 
     def load(self, path: Path):
-        if not path.exists():
-            return
-        with gzip.open(path, 'rb') as f:
-            state = pickle.load(f)
-        for d in state.get('episodic', []):
-            d['embedding'] = np.array(d['embedding'])
-            self.episodic.add(Episode(**d))
-        for d in state.get('semantic', []):
-            d['embedding'] = np.array(d['embedding'])
-            self.semantic.add(Concept(**d))
-        self.working.extend(state.get('working', []))
+        if not path.exists(): return
+        with gzip.open(path,'rb') as f: state=pickle.load(f)
+        for d in state.get('episodic',[]):
+            d['embedding']=np.array(d['embedding']); self.episodic.add(Episode(**d))
+        for d in state.get('semantic',[]):
+            d['embedding']=np.array(d['embedding']); self.semantic.add(Concept(**d))
+        self.working.extend(state.get('working',[]))
 
 
 # ==================================================================
-# 🤖 Основной ассистент (исправлен: загрузка нескольких страниц)
+# 🤖 Основной ассистент
 # ==================================================================
 class SelfImprovingAssistant:
     def __init__(self, user_id: str):
@@ -789,80 +782,57 @@ class SelfImprovingAssistant:
     def _load(self):
         if self.neural_path.exists():
             try:
-                with gzip.open(self.neural_path, 'rb') as f:
-                    s = pickle.load(f)
-                self.vocab.embeddings = s['emb']
-                self.vocab.word2idx = s['w2i']
-                self.vocab.idx2word = s['i2w']
-                self.vocab.meta = {w: WordMeta(**d) for w, d in s.get('meta', {}).items()}
-                self.vocab.next_idx = s['next_idx']
-                self.vocab.cur_size = s['cur_size']
-                self.neural.W1 = s['W1']
-                self.neural.b1 = s['b1']
-                self.neural.W2 = s['W2']
-                self.neural.b2 = s['b2']
-                self.neural.hidden = s['hidden']
-                self.neural.total_updates = s.get('updates', 0)
-                self.neural.expansions = s.get('expansions', 0)
-                self.neural.prunings = s.get('prunings', 0)
-                self.total_interactions = s.get('total', 0)
-                self.successful_learnings = s.get('learned', 0)
-                self.current_lr = s.get('lr', LEARNING_RATE)
+                with gzip.open(self.neural_path,'rb') as f: s=pickle.load(f)
+                self.vocab.embeddings=s['emb']; self.vocab.word2idx=s['w2i']
+                self.vocab.idx2word=s['i2w']
+                self.vocab.meta={w:WordMeta(**d) for w,d in s.get('meta',{}).items()}
+                self.vocab.next_idx=s['next_idx']; self.vocab.cur_size=s['cur_size']
+                self.neural.W1=s['W1']; self.neural.b1=s['b1']
+                self.neural.W2=s['W2']; self.neural.b2=s['b2']
+                self.neural.hidden=s['hidden']
+                self.neural.total_updates=s.get('updates',0)
+                self.neural.expansions=s.get('expansions',0)
+                self.neural.prunings=s.get('prunings',0)
+                self.total_interactions=s.get('total',0)
+                self.successful_learnings=s.get('learned',0)
+                self.current_lr=s.get('lr',LEARNING_RATE)
                 logger.info(f"✅ Loaded for {self.user_id}")
-            except Exception as e:
-                logger.error(f"Load failed: {e}")
+            except Exception as e: logger.error(f"Load failed: {e}")
         self.memory.load(self.memory_path)
         for path, cache_attr in [(self.cache_path, 'cache'), (self.image_cache_path, 'image_cache')]:
             if path.exists():
                 try:
-                    with gzip.open(path, 'rb') as f:
-                        data = pickle.load(f)
-                    now = time.time()
-                    setattr(self, cache_attr, {k: (v, ts) for k, (v, ts) in data.items() if now - ts < 3600})
-                except Exception:
-                    pass
+                    with gzip.open(path,'rb') as f: data=pickle.load(f)
+                    now=time.time()
+                    setattr(self, cache_attr, {k:(v,ts) for k,(v,ts) in data.items() if now-ts<3600})
+                except Exception: pass
 
     def _save(self):
-        state = {
-            'emb': self.vocab.embeddings,
-            'w2i': self.vocab.word2idx,
-            'i2w': self.vocab.idx2word,
-            'meta': {w: asdict(m) for w, m in self.vocab.meta.items()},
-            'next_idx': self.vocab.next_idx,
-            'cur_size': self.vocab.cur_size,
-            'W1': self.neural.W1,
-            'b1': self.neural.b1,
-            'W2': self.neural.W2,
-            'b2': self.neural.b2,
-            'hidden': self.neural.hidden,
-            'updates': self.neural.total_updates,
-            'expansions': self.neural.expansions,
-            'prunings': self.neural.prunings,
-            'total': self.total_interactions,
-            'learned': self.successful_learnings,
-            'lr': self.current_lr,
+        state={
+            'emb':self.vocab.embeddings,'w2i':self.vocab.word2idx,'i2w':self.vocab.idx2word,
+            'meta':{w:asdict(m) for w,m in self.vocab.meta.items()},
+            'next_idx':self.vocab.next_idx,'cur_size':self.vocab.cur_size,
+            'W1':self.neural.W1,'b1':self.neural.b1,'W2':self.neural.W2,'b2':self.neural.b2,
+            'hidden':self.neural.hidden,'updates':self.neural.total_updates,
+            'expansions':self.neural.expansions,'prunings':self.neural.prunings,
+            'total':self.total_interactions,'learned':self.successful_learnings,'lr':self.current_lr,
         }
-        with gzip.open(self.neural_path, 'wb') as f:
-            pickle.dump(state, f)
+        with gzip.open(self.neural_path,'wb') as f: pickle.dump(state,f)
         self.memory.save(self.memory_path)
-        for path, attr in [(self.cache_path, 'cache'), (self.image_cache_path, 'image_cache')]:
-            with gzip.open(path, 'wb') as f:
-                pickle.dump(getattr(self, attr), f)
+        for path, attr in [(self.cache_path,'cache'),(self.image_cache_path,'image_cache')]:
+            with gzip.open(path,'wb') as f: pickle.dump(getattr(self,attr),f)
 
     def _cache_key(self, message, image_base64=None):
         if image_base64:
-            img_hash = hashlib.md5(image_base64.encode()).hexdigest()[:16]
+            img_hash=hashlib.md5(image_base64.encode()).hexdigest()[:16]
             return hashlib.md5(f"{message}|{img_hash}".encode()).hexdigest()
         return hashlib.md5(message.encode()).hexdigest()
 
     def _adapt_lr(self):
-        if len(self.neural.loss_history) > 10:
-            lh = list(self.neural.loss_history)
-            trend = np.mean(lh[-5:]) - np.mean(lh[:5])
-            if trend < -0.01:
-                self.current_lr = min(MAX_LR, self.current_lr * (1 + LR_ADAPT_RATE))
-            elif trend > 0.01:
-                self.current_lr = max(MIN_LR, self.current_lr * (1 - LR_ADAPT_RATE))
+        if len(self.neural.loss_history)>10:
+            lh=list(self.neural.loss_history); trend=np.mean(lh[-5:])-np.mean(lh[:5])
+            if trend<-0.01: self.current_lr=min(MAX_LR,self.current_lr*(1+LR_ADAPT_RATE))
+            elif trend>0.01: self.current_lr=max(MIN_LR,self.current_lr*(1-LR_ADAPT_RATE))
 
     def _build_system_prompt(self, reasoning: bool, has_web: bool, query_type: str = 'none') -> str:
         prompt = (
@@ -896,55 +866,36 @@ class SelfImprovingAssistant:
             prompt += "\nОтвечай кратко и по делу."
         return prompt
 
+    # ----------------------------------------------------------------
+    # Выполнение поиска
+    # ----------------------------------------------------------------
     async def _do_web_search(self, message: str, force: bool = False,
                               url_to_fetch: Optional[str] = None) -> Tuple[Optional[str], str, List[Dict]]:
         """
-        Выполняет поиск и при необходимости загружает несколько страниц.
-        Возвращает (контекст_для_LLM, тип_запроса, список_результатов_для_источников)
+        Возвращает (web_context_string, query_type, raw_results).
         """
+        # Прямой URL
         if url_to_fetch:
             content = await WebSearchTool.fetch_url(url_to_fetch)
-            ctx = f"=== СОДЕРЖИМОЕ СТРАНИЦЫ ({url_to_fetch}) ===\n{content}"
-            return ctx, 'url', [{'title': url_to_fetch, 'url': url_to_fetch}]
+            return f"=== СОДЕРЖИМОЕ СТРАНИЦЫ ({url_to_fetch}) ===\n{content}", 'url', []
 
         url_in_msg = re.search(r'https?://[^\s]+', message)
         if url_in_msg:
             url = url_in_msg.group(0)
             content = await WebSearchTool.fetch_url(url)
-            ctx = f"=== СОДЕРЖИМОЕ СТРАНИЦЫ ({url}) ===\n{content}"
-            return ctx, 'url', [{'title': url, 'url': url}]
+            return f"=== СОДЕРЖИМОЕ СТРАНИЦЫ ({url}) ===\n{content}", 'url', []
 
         query_type, clean_query = WebSearchTool.classify_query(message)
-        if not force and query_type == 'none':
+        if query_type == 'none' and not force:
             return None, 'none', []
 
-        cache_key = f"{query_type}:{clean_query}"
-        now = time.time()
-        if cache_key in _search_cache:
-            cached_ctx, cached_ts = _search_cache[cache_key]
-            if now - cached_ts < SEARCH_CACHE_TTL:
-                logger.debug(f"Using cached search for {cache_key}")
-                return cached_ctx, query_type, []
-
-        # 1. Получаем результаты поиска (сниппеты)
         results, special_data = await WebSearchTool.search(clean_query, query_type)
-
-        # 2. Загружаем полное содержимое нескольких страниц
-        full_pages = ""
-        if results:
-            full_pages = await WebSearchTool.fetch_multiple_pages(results, limit=MAX_PAGES_TO_FETCH)
-
-        # 3. Формируем итоговый контекст
-        web_ctx = WebSearchTool.format_for_prompt(results, special_data, full_pages, message)
-
-        _search_cache[cache_key] = (web_ctx, now)
-        if len(_search_cache) > 100:
-            for k in list(_search_cache.keys()):
-                if now - _search_cache[k][1] > SEARCH_CACHE_TTL:
-                    del _search_cache[k]
-
+        web_ctx = WebSearchTool.format_for_prompt(results, special_data, query_type, message)
         return web_ctx, query_type, results
 
+    # ----------------------------------------------------------------
+    # get_response
+    # ----------------------------------------------------------------
     async def get_response(self, message: str,
                            image_base64: Optional[str] = None,
                            image_mime: Optional[str] = None,
@@ -954,27 +905,24 @@ class SelfImprovingAssistant:
         start = time.time()
         self.total_interactions += 1
 
-        # web_search теперь — единый флаг интернета (вкл/выкл)
-        should_search = web_search
         web_ctx, query_type, raw_results = await self._do_web_search(
-            message, force=should_search, url_to_fetch=url_to_fetch)
+            message, force=web_search, url_to_fetch=url_to_fetch)
         has_web = web_ctx is not None
 
-        if not has_web and not should_search:
+        # Кэш только для запросов без поиска
+        if not has_web:
             ck = self._cache_key(message, image_base64)
             store = self.image_cache if image_base64 else self.cache
             if ck in store:
                 cached, _ = store[ck]
-                return cached, {'cached': True, 'response_time': time.time() - start}
+                return cached, {'cached': True, 'response_time': time.time()-start}
 
         content_parts = []
         if message.strip():
             txt = message.strip()
-            if web_ctx:
-                txt += f"\n\n{web_ctx}"
+            if web_ctx: txt += f"\n\n{web_ctx}"
             ctx = self.memory.get_context(message)
-            if ctx:
-                txt += f"\n\n{ctx}"
+            if ctx: txt += f"\n\n{ctx}"
             content_parts.append({"type": "text", "text": txt})
 
         if image_base64 and image_mime and len(image_base64) <= MAX_IMAGE_SIZE_BASE64:
@@ -984,91 +932,80 @@ class SelfImprovingAssistant:
             return "Нет данных для ответа.", {"error": "no content"}
 
         emb = self.vocab.encode(f"{message}\n{self.memory.get_context(message)}")
-        try:
-            preds = self.neural.forward(emb, store=False)
-        except:
-            preds = np.zeros(OUTPUT_METRICS_DIM) + 0.5
+        try: preds = self.neural.forward(emb, store=False)
+        except: preds = np.zeros(OUTPUT_METRICS_DIM) + 0.5
 
         messages_llm = [
             {"role": "system", "content": self._build_system_prompt(reasoning, has_web, query_type)},
             {"role": "user", "content": content_parts}
         ]
         response = await self._call_llm(messages_llm)
-        if not response:
-            response = "⚠️ Не удалось получить ответ от модели."
+        if not response: response = "⚠️ Не удалось получить ответ от модели."
 
-        quality = min(1.0, len(response) / 300)
-        if any(w in response.lower() for w in ['ошибка', 'извините', 'не удалось']):
-            quality *= 0.7
+        quality = min(1.0, len(response)/300)
+        if any(w in response.lower() for w in ['ошибка','извините','не удалось']): quality *= 0.7
 
         actual = np.array([
-            np.clip(quality + np.random.normal(0, 0.05), 0, 1),
-            min(1.0, len(message.split()) / 20), quality,
-            min(1.0, quality + 0.1), quality,
-            min(1.0, len(response.split()) / 30),
-            0.5 + np.random.normal(0, 0.08), 0.5 + np.random.normal(0, 0.08),
-        ]).clip(0, 1)
+            np.clip(quality+np.random.normal(0,0.05),0,1),
+            min(1.0,len(message.split())/20), quality,
+            min(1.0,quality+0.1), quality,
+            min(1.0,len(response.split())/30),
+            0.5+np.random.normal(0,0.08), 0.5+np.random.normal(0,0.08),
+        ]).clip(0,1)
 
         loss = 0.0
         if quality >= MIN_QUALITY_SCORE:
             try:
                 self.neural.forward(emb, store=True)
                 loss = self.neural.backward(actual, self.current_lr)
-                self.successful_learnings += 1
-                self._adapt_lr()
+                self.successful_learnings += 1; self._adapt_lr()
                 for word in re.findall(r'\b\w+\b', message.lower()):
-                    if len(word) > 3:
-                        grad = (preds - actual).mean() * self.vocab.get_embedding(word) * 0.01
-                        self.vocab.update_embedding(word, grad, self.current_lr)
-                        self.vocab.update_quality(word, quality)
-            except Exception as e:
-                logger.error(f"Learning failed: {e}")
+                    if len(word)>3:
+                        grad=(preds-actual).mean()*self.vocab.get_embedding(word)*0.01
+                        self.vocab.update_embedding(word,grad,self.current_lr)
+                        self.vocab.update_quality(word,quality)
+            except Exception as e: logger.error(f"Learning failed: {e}")
 
-        if quality > 0.4:
+        if quality>0.4:
             self.memory.add_episode(f"Q: {message}\nA: {response}", importance=quality,
-                                    emotional_valence=(quality - 0.5) * 2,
-                                    arousal=min(1.0, len(message.split()) / 15))
-            if quality > 0.7 and not has_web:
+                emotional_valence=(quality-0.5)*2, arousal=min(1.0,len(message.split())/15))
+            if quality>0.7 and not has_web:
                 ck = self._cache_key(message, image_base64)
                 store = self.image_cache if image_base64 else self.cache
                 store[ck] = (response, time.time())
-                if len(store) > 100:
-                    oldest = min(store.items(), key=lambda x: x[1][1])[0]
-                    del store[oldest]
+                if len(store)>100:
+                    oldest=min(store.items(),key=lambda x:x[1][1])[0]; del store[oldest]
 
         if self.total_interactions % SAVE_EVERY_N_INTERACTIONS == 0:
-            self.memory.consolidate()
-            self._save()
+            self.memory.consolidate(); self._save()
 
         return response, {
-            'quality': round(quality, 3), 'loss': loss,
-            'response_time': time.time() - start,
+            'quality': round(quality,3), 'loss': loss,
+            'response_time': time.time()-start,
             'memory_episodes': len(self.memory.episodic.items),
             'web_search_used': has_web, 'query_type': query_type,
         }
 
     async def _call_llm(self, messages: List[Dict]) -> str:
-        payload = {"messages": messages, "temperature": 0.75, "max_tokens": 2500, "stream": False}
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {LM_STUDIO_API_KEY}"}
+        payload={"messages":messages,"temperature":0.75,"max_tokens":2500,"stream":False}
+        headers={"Content-Type":"application/json","Authorization":f"Bearer {LM_STUDIO_API_KEY}"}
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(LM_STUDIO_URL, json=payload, headers=headers,
-                                        timeout=aiohttp.ClientTimeout(total=LM_STUDIO_TIMEOUT)) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        try:
-                            return data['choices'][0]['message']['content'].strip()
-                        except:
-                            return data.get('choices', [{}])[0].get('text', '') or data.get('response', '').strip()
+                async with session.post(LM_STUDIO_URL,json=payload,headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=LM_STUDIO_TIMEOUT)) as resp:
+                    if resp.status==200:
+                        data=await resp.json()
+                        try: return data['choices'][0]['message']['content'].strip()
+                        except: return data.get('choices',[{}])[0].get('text','') or data.get('response','').strip()
                     else:
                         logger.error(f"LM Studio HTTP {resp.status}: {(await resp.text())[:200]}")
                         return ""
-        except asyncio.TimeoutError:
-            return "⏱️ Превышено время ожидания."
-        except:
-            logger.exception("LM Studio call failed")
-            return ""
+        except asyncio.TimeoutError: return "⏱️ Превышено время ожидания."
+        except: logger.exception("LM Studio call failed"); return ""
 
+    # ----------------------------------------------------------------
+    # stream_response
+    # ----------------------------------------------------------------
     async def stream_response(self, message: str,
                               image_base64: Optional[str] = None,
                               image_mime: Optional[str] = None,
@@ -1077,10 +1014,9 @@ class SelfImprovingAssistant:
                               url_to_fetch: Optional[str] = None):
         self.total_interactions += 1
 
-        should_search = web_search   # теперь интернет включается этой кнопкой
-
+        # Сигнал о начале поиска
         query_type_hint, _ = WebSearchTool.classify_query(message)
-        if should_search:
+        if web_search or url_to_fetch or query_type_hint != 'none':
             status_msg = {
                 'url': f'🔗 Загружаю страницу…',
                 'currency': '💱 Запрашиваю курсы валют…',
@@ -1091,28 +1027,18 @@ class SelfImprovingAssistant:
             yield f"data: {json.dumps({'status': 'searching', 'text': status_msg})}\n\n"
 
         web_ctx, query_type, raw_results = await self._do_web_search(
-            message, force=should_search, url_to_fetch=url_to_fetch)
+            message, force=web_search, url_to_fetch=url_to_fetch)
         has_web = web_ctx is not None
 
         if has_web:
             yield f"data: {json.dumps({'status': 'search_done', 'query_type': query_type})}\n\n"
-            if raw_results and len(raw_results) > 0:
-                # Сообщаем фронту источники для отображения
-                sources_for_front = [{'title': r.get('title', ''), 'url': r.get('url', '')}
-                                     for r in raw_results if r.get('url')]
-                if sources_for_front:
-                    yield f"data: {json.dumps({'sources': sources_for_front})}\n\n"
-            # Если есть загруженные страницы, отправляем статус
-            yield f"data: {json.dumps({'status': 'fetching_pages', 'count': MAX_PAGES_TO_FETCH})}\n\n"
 
         content_parts = []
         if message.strip():
             txt = message.strip()
-            if web_ctx:
-                txt += f"\n\n{web_ctx}"
+            if web_ctx: txt += f"\n\n{web_ctx}"
             ctx = self.memory.get_context(message)
-            if ctx:
-                txt += f"\n\n{ctx}"
+            if ctx: txt += f"\n\n{ctx}"
             content_parts.append({"type": "text", "text": txt})
 
         if image_base64 and image_mime and len(image_base64) <= MAX_IMAGE_SIZE_BASE64:
@@ -1126,30 +1052,34 @@ class SelfImprovingAssistant:
             {"role": "system", "content": self._build_system_prompt(reasoning, has_web, query_type)},
             {"role": "user", "content": content_parts}
         ]
-        payload = {"messages": messages_llm, "temperature": 0.75, "max_tokens": 2500, "stream": True}
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {LM_STUDIO_API_KEY}"}
+        payload={"messages":messages_llm,"temperature":0.75,"max_tokens":2500,"stream":True}
+        headers={"Content-Type":"application/json","Authorization":f"Bearer {LM_STUDIO_API_KEY}"}
+
+        # Передаём источники клиенту (до стрима)
+        if raw_results:
+            sources = [{'title': r.get('title',''), 'url': r.get('url','')}
+                       for r in raw_results if r.get('url')]
+            if sources:
+                yield f"data: {json.dumps({'sources': sources})}\n\n"
 
         full_response = ""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(LM_STUDIO_URL, json=payload, headers=headers,
-                                        timeout=aiohttp.ClientTimeout(total=LM_STUDIO_STREAM_TIMEOUT)) as resp:
+                async with session.post(LM_STUDIO_URL,json=payload,headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=LM_STUDIO_STREAM_TIMEOUT)) as resp:
                     if resp.status != 200:
                         yield f"data: {json.dumps({'error': 'AI service unavailable'})}\n\n"
                         return
                     buffer = ""
                     async for chunk in resp.content.iter_any():
-                        if not chunk:
-                            continue
+                        if not chunk: continue
                         buffer += chunk.decode('utf-8', errors='ignore')
                         while "\n" in buffer:
                             line, buffer = buffer.split("\n", 1)
                             line = line.strip()
-                            if not line.startswith("data: "):
-                                continue
+                            if not line.startswith("data: "): continue
                             data_str = line[6:]
-                            if data_str == "[DONE]":
-                                break
+                            if data_str == "[DONE]": break
                             try:
                                 data = json.loads(data_str)
                                 token = None
@@ -1159,40 +1089,36 @@ class SelfImprovingAssistant:
                                 if token:
                                     full_response += token
                                     yield f"data: {json.dumps({'token': token})}\n\n"
-                            except json.JSONDecodeError:
-                                continue
+                            except json.JSONDecodeError: continue
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
             yield f"data: {json.dumps({'token': '❌ Ошибка связи с AI-сервером.'})}\n\n"
             yield "data: [DONE]\n\n"
             return
 
+        # Обучение после стрима
         if full_response:
-            quality = min(1.0, len(full_response) / 300)
-            if any(w in full_response.lower() for w in ['ошибка', 'извините', 'не удалось']):
+            quality = min(1.0, len(full_response)/300)
+            if any(w in full_response.lower() for w in ['ошибка','извините','не удалось']):
                 quality *= 0.7
             actual = np.array([
-                np.clip(quality + np.random.normal(0, 0.05), 0, 1),
-                min(1.0, len(message.split()) / 20), quality,
-                min(1.0, quality + 0.1), quality,
-                min(1.0, len(full_response.split()) / 30),
-                0.5 + np.random.normal(0, 0.08), 0.5 + np.random.normal(0, 0.08),
-            ]).clip(0, 1)
+                np.clip(quality+np.random.normal(0,0.05),0,1),
+                min(1.0,len(message.split())/20), quality,
+                min(1.0,quality+0.1), quality,
+                min(1.0,len(full_response.split())/30),
+                0.5+np.random.normal(0,0.08), 0.5+np.random.normal(0,0.08),
+            ]).clip(0,1)
             if quality >= MIN_QUALITY_SCORE:
                 try:
                     self.neural.forward(emb, store=True)
                     self.neural.backward(actual, self.current_lr)
-                    self.successful_learnings += 1
-                    self._adapt_lr()
-                except Exception as e:
-                    logger.error(f"Post-stream learning: {e}")
+                    self.successful_learnings += 1; self._adapt_lr()
+                except Exception as e: logger.error(f"Post-stream learning: {e}")
             if quality > 0.4:
                 self.memory.add_episode(f"Q: {message}\nA: {full_response}", importance=quality,
-                                        emotional_valence=(quality - 0.5) * 2,
-                                        arousal=min(1.0, len(message.split()) / 15))
+                    emotional_valence=(quality-0.5)*2, arousal=min(1.0,len(message.split())/15))
             if self.total_interactions % SAVE_EVERY_N_INTERACTIONS == 0:
-                self.memory.consolidate()
-                self._save()
+                self.memory.consolidate(); self._save()
 
         yield "data: [DONE]\n\n"
 
@@ -1216,7 +1142,7 @@ class AIRequest(BaseModel):
     image_mime: Optional[str] = Field(None)
     stream: bool = Field(True)
     reasoning: bool = Field(False)
-    web_search: bool = Field(False, description="Включить интернет-поиск и загрузку страниц")
+    web_search: bool = Field(False, description="Принудительный веб-поиск")
     url_to_fetch: Optional[str] = Field(None, description="Конкретный URL для загрузки")
 
 @router.post("/chat")
@@ -1230,7 +1156,7 @@ async def chat_with_ai(body: AIRequest, address: str = Depends(require_auth)):
                 web_search=body.web_search, url_to_fetch=body.url_to_fetch,
             ),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache,no-store,must-revalidate", "X-Accel-Buffering": "no"}
+            headers={"Cache-Control":"no-cache,no-store,must-revalidate","X-Accel-Buffering":"no"}
         )
     response, meta = await assistant.get_response(
         message=body.message, image_base64=body.image_base64,
@@ -1241,6 +1167,7 @@ async def chat_with_ai(body: AIRequest, address: str = Depends(require_auth)):
 
 @router.post("/search")
 async def direct_search(body: dict, address: str = Depends(require_auth)):
+    """Прямой поиск без LLM."""
     query = body.get("query", "").strip()
     url = body.get("url", "").strip()
     if url:
@@ -1250,25 +1177,12 @@ async def direct_search(body: dict, address: str = Depends(require_auth)):
         return {"error": "query or url required"}
     query_type, _ = WebSearchTool.classify_query(query)
     results, special = await WebSearchTool.search(query, query_type)
-    pages = await WebSearchTool.fetch_multiple_pages(results, limit=MAX_PAGES_TO_FETCH) if results else ""
     return {"type": "search", "query": query, "query_type": query_type,
-            "results": results, "special_data": special, "full_pages": pages}
-
-@router.post("/classify")
-async def classify_query_endpoint(body: dict, address: str = Depends(require_auth)):
-    message = body.get("message", "").strip()
-    if not message:
-        return {"should_search": False, "query_type": "none"}
-    query_type, _ = WebSearchTool.classify_query(message)
-    should = WebSearchTool.should_auto_search(message)
-    return {"should_search": should, "query_type": query_type}
+            "results": results, "special_data": special}
 
 def _shutdown_all():
     for uid, a in _assistants.items():
-        try:
-            a._save()
-            logger.info(f"Saved {uid}")
-        except Exception as e:
-            logger.error(f"Save failed {uid}: {e}")
+        try: a._save(); logger.info(f"Saved {uid}")
+        except Exception as e: logger.error(f"Save failed {uid}: {e}")
 
 atexit.register(_shutdown_all)

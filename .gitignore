@@ -7,3 +7,5 @@
 *.log
 *.db-shm
 *.db-wal
+/ai_memory_v3
+*.pid
