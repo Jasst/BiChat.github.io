@@ -366,10 +366,3 @@ class Blockchain:
 
     async def close(self):
         pass  # пул закрывается в close_db()
-
-# Для обратной совместимости с main.py (если вызываются)
-async def init_sqlite_optimizations(db_path: str):
-    pass
-
-async def warmup_database(db_path: str):
-    pass

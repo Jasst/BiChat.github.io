@@ -44,20 +44,12 @@ DATA_DIR.mkdir(exist_ok=True)
 
 # ---------- PostgreSQL ----------
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:pass@localhost/bichat')
-# Для обратной совместимости (можно удалить позже)
-DATABASE_PATH = None
+
 
 UPLOAD_FOLDER   = os.getenv('UPLOAD_FOLDER', str(BASE_DIR / 'uploads'))
 STATIC_FOLDER   = str(BASE_DIR / 'static')
 TEMPLATE_FOLDER = str(BASE_DIR / 'templates')
 
-if sys.platform == 'win32':
-    if DATABASE_PATH and DATABASE_PATH.startswith('/var/www/'):
-        DATABASE_PATH = None
-    if UPLOAD_FOLDER.startswith('/var/www/'):
-        UPLOAD_FOLDER = str(BASE_DIR / 'uploads')
-
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 COIN          = 1000000
 COIN_NAME     = "BlockCoin"
