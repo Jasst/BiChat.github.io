@@ -16,6 +16,7 @@ from dependencies import require_auth, make_rate_limit_dep
 from models import TransferRequest, StakeRequest, MineRequest
 from services.wallet import staking_manager
 from setup import general_limiter
+from routes.ws import manager   # ✅ добавлен импорт
 
 _mining_challenges = {}
 _mining_challenges_lock = Lock()
@@ -150,7 +151,7 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
             address
         )
         stakes = [dict(r) for r in rows]
-        current_block = (await blockchain._last_block_raw(conn)).get('index', 0)
+        current_block = (await blockchain._last_block_raw(conn)).get('index', 0)  # TODO: тоже исправить на block_index
     expected_income = 0
     if ENABLE_STAKING and staking_manager:
         expected_income = await staking_manager.get_expected_income(address)
@@ -202,6 +203,16 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         status_code = 409 if error_msg == 'Blockchain moved, try again' else 400
         raise HTTPException(status_code, error_msg)
     logger.info(f"Block {block_index} mined by {address}, reward: {reward_amount}")
+
+    # ✅ Оповещаем всех майнеров о новом блоке через WebSocket
+    await manager.broadcast({
+        'type': 'new_block',
+        'last_proof': body.proof,
+        'last_index': block_index,
+        'difficulty': CONFIG['POW_DIFFICULTY'],
+        # challenge не отправляем, клиент сам запросит /wallet/last-proof
+    })
+
     return {
         'message': 'Block mined',
         'reward': reward_amount,
@@ -220,7 +231,6 @@ async def wallet_global_stats(request: Request):
         total_blocks = (await conn.fetchval('SELECT COUNT(*) FROM blockchain')) or 0
         total_staked_raw = (await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active = 1')) or 0
 
-    # ✅ Исправление: переводим MAX_SUPPLY из монет в сатоши
     max_supply_sats = MAX_SUPPLY * COIN if MAX_SUPPLY else None
     if max_supply_sats is not None:
         remaining_sats = max(0, max_supply_sats - total_supply_raw)
@@ -237,6 +247,6 @@ async def wallet_global_stats(request: Request):
         'coin_name': COIN_NAME,
         'coin_divisor': COIN,
         'max_supply': MAX_SUPPLY,
-        'remaining_supply': remaining_sats,   # теперь в сатошах
+        'remaining_supply': remaining_sats,
         'message_fee': MESSAGE_FEE,
     }

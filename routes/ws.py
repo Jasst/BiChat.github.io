@@ -48,6 +48,18 @@ class ConnectionManager:
                 await self.disconnect(user_id)
         return False
 
+    # ✅ НОВЫЙ МЕТОД: рассылка всем подключённым клиентам
+    async def broadcast(self, message: dict, exclude: str = None):
+        """Отправить сообщение всем подключённым клиентам, кроме exclude (опционально)."""
+        async with self._lock:
+            for user_id, ws in self.active_connections.items():
+                if user_id == exclude:
+                    continue
+                try:
+                    await ws.send_json(message)
+                except Exception as e:
+                    logger.error(f"Broadcast to {user_id} failed: {e}")
+
     async def get_stats(self):
         async with self._lock:
             return {
