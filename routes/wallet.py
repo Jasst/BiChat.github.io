@@ -1,308 +1,270 @@
 """
-routes/wallet.py — Баланс, переводы, стейкинг, майнинг + глобальная статистика
+routes/wallet.py — Баланс, переводы, стейкинг, майнинг, глобальная статистика (асинхронная версия)
+Использует безопасный анстейкинг с детальным ответом.
 """
-import time
 import logging
 import secrets
-from collections import defaultdict
-from setup import rate_limit
-from flask import Blueprint, jsonify, request, session
+import time
+from threading import Lock
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from config import (
     COIN, COIN_NAME, TRANSFER_FEE, MIN_STAKE_AMOUNT, BLOCK_REWARD, CONFIG,
-    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE
+    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE,  STAKING_FEE_FROM_BLOCK_REWARD, MAX_SUPPLY, MINING_CHALLENGE_TTL
 )
-from services.wallet import staking_manager
+from dependencies import require_auth, make_rate_limit_dep
+from models import TransferRequest, StakeRequest, MineRequest
+import services.wallet  # импорт модуля целиком
+from setup import general_limiter
+from routes.ws import manager
+
+_mining_challenges = {}
+_mining_challenges_lock = Lock()
 
 logger = logging.getLogger(__name__)
-wallet_bp = Blueprint('wallet', __name__)
-# Хранилище активных челленджей: address -> {challenge: expiry}
-_mining_challenges = defaultdict(dict)
-_CHALLENGE_TTL = 60  # секунд
+router = APIRouter(prefix='/wallet', tags=['wallet'])
 
-_blockchain = None
-
-def init_wallet_routes(blockchain) -> None:
-    global _blockchain
-    _blockchain = blockchain
+_CHALLENGE_TTL = MINING_CHALLENGE_TTL
 
 
-@wallet_bp.route('/wallet/config')
+@router.get('/config')
 def wallet_config():
-    """Возвращает клиенту текущие настройки (майнинг, стейкинг, комиссии)."""
-    return jsonify({
-        'enable_mining': ENABLE_MINING,
-        'enable_staking': ENABLE_STAKING,
-        'message_fee': MESSAGE_FEE,
-        'transfer_fee': TRANSFER_FEE,
-        'block_reward': BLOCK_REWARD if ENABLE_MINING else 0,
-        'coin_name': COIN_NAME,
-        'coin_divisor': COIN,
-        # ↓↓↓ ДОБАВИТЬ ЭТИ ДВЕ СТРОЧКИ ↓↓↓
+    return {
+        'enable_mining':    ENABLE_MINING,
+        'enable_staking':   ENABLE_STAKING,
+        'message_fee':      MESSAGE_FEE,
+        'transfer_fee':     TRANSFER_FEE,
+        'block_reward':     BLOCK_REWARD if ENABLE_MINING else 0,
+        'coin_name':        COIN_NAME,
+        'coin_divisor':     COIN,
         'pow_max_iterations': CONFIG['POW_MAX_ITERATIONS'],
-        'pow_difficulty': CONFIG['POW_DIFFICULTY'],
-    })
+        'pow_difficulty':   CONFIG['POW_DIFFICULTY'],
+    }
 
 
-@wallet_bp.route('/wallet/balance')
-def wallet_balance():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    addr = session['address']
+@router.get('/balance')
+async def wallet_balance(request: Request, address: str = Depends(require_auth)):
     from database import get_db_cursor
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        cursor.execute('SELECT balance FROM wallets WHERE address = ?', (addr,))
-        row = cursor.fetchone()
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', address)
         balance = row[0] if row else 0
-        cursor.execute('SELECT SUM(amount) FROM stakes WHERE address=? AND active=1', (addr,))
-        stake_row = cursor.fetchone()
+        stake_row = await conn.fetchrow('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE address=$1 AND active=1', address)
         staked = stake_row[0] if stake_row and stake_row[0] else 0
-    return jsonify({
-        'address': addr,
-        'balance': balance,
-        'staked': staked,
-        'coin': COIN,
-        'coin_name': COIN_NAME
-    })
+    return {
+        'address':   address,
+        'balance':   balance,
+        'staked':    staked,
+        'coin':      COIN,
+        'coin_name': COIN_NAME,
+    }
 
 
-@wallet_bp.route('/wallet/transactions')
-def wallet_transactions():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    addr = session['address']
+@router.get('/transactions')
+async def wallet_transactions(request: Request, address: str = Depends(require_auth)):
     from database import get_db_cursor
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        cursor.execute('''
+    async with get_db_cursor() as conn:
+        rows = await conn.fetch('''
             SELECT id, tx_type, sender, recipient, amount, timestamp
             FROM coin_transactions
-            WHERE sender = ? OR recipient = ?
+            WHERE sender = $1 OR recipient = $1
             ORDER BY timestamp DESC LIMIT 50
-        ''', (addr, addr))
-        txs = [{'id': r[0], 'type': r[1], 'sender': r[2],
-                'recipient': r[3], 'amount': r[4], 'timestamp': r[5]}
-               for r in cursor.fetchall()]
-    return jsonify({'transactions': txs})
+        ''', address)
+        txs = [
+            {'id': r[0], 'type': r[1], 'sender': r[2],
+             'recipient': r[3], 'amount': r[4], 'timestamp': r[5]}
+            for r in rows
+        ]
+    return {'transactions': txs}
 
 
-@wallet_bp.route('/wallet/send', methods=['POST'])
-def wallet_send():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    user = session['address']
-    data = request.get_json()
-    recipient = data.get('recipient', '').strip().lower()
-    try:
-        amount = int(data.get('amount', 0))
-    except (ValueError, TypeError):
-        return jsonify({'error': 'Invalid amount'}), 400
-
-    if amount <= 0:
-        return jsonify({'error': 'Amount must be positive'}), 400
-    if len(recipient) != 64 or not all(c in '0123456789abcdef' for c in recipient):
-        return jsonify({'error': 'Invalid recipient address'}), 400
-    if recipient == user:
-        return jsonify({'error': 'Cannot send to yourself'}), 400
-
-    total = amount + TRANSFER_FEE
+@router.post('/send')
+async def wallet_send(body: TransferRequest, request: Request, address: str = Depends(require_auth)):
+    if body.recipient == address:
+        raise HTTPException(400, 'Cannot send to yourself')
+    total = body.amount + TRANSFER_FEE
     from database import get_db_cursor
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        cursor.execute("BEGIN IMMEDIATE")
-        cursor.execute('SELECT balance FROM wallets WHERE address = ?', (user,))
-        row = cursor.fetchone()
-        balance = row[0] if row else 0
-        if balance < total:
-            cursor.execute("ROLLBACK")
-            return jsonify({'error': f'Insufficient balance. Need {total / COIN} {COIN_NAME}'}), 400
-
-        # Списываем сумму + комиссию
-        cursor.execute('UPDATE wallets SET balance = balance - ? WHERE address = ?', (total, user))
-
-        # Зачисляем сумму получателю
-        cursor.execute(
-            'INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-            (recipient, amount, amount)
+    async with get_db_cursor() as conn:
+        await conn.execute('BEGIN')
+        result = await conn.execute(
+            'UPDATE wallets SET balance = balance - $1 WHERE address = $2 AND balance >= $1',
+            total, address
         )
-
+        if result == "UPDATE 0":
+            await conn.execute('ROLLBACK')
+            raise HTTPException(400, f'Insufficient balance. Need {total / COIN} {COIN_NAME}')
+        await conn.execute(
+            'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+            'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+            body.recipient, body.amount
+        )
         ts = time.time()
-
-        # Записываем транзакцию перевода
-        cursor.execute(
-            'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp) VALUES (?,?,?,?,?)',
-            ('transfer', user, recipient, amount, ts)
+        await conn.execute(
+            'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp) '
+            'VALUES ($1, $2, $3, $4, $5)',
+            'transfer', address, body.recipient, body.amount, ts
         )
-
-        # Комиссия полностью в стейкинг-пул
-        cursor.execute(
-            'INSERT INTO wallets (address, balance) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET balance = balance + ?',
-            (STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, TRANSFER_FEE)
+        await conn.execute(
+            'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
+            'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
+            STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE
         )
-        cursor.execute(
-            'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) VALUES (?,?,?,?,?,?)',
-            ('fee', user, STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, ts, 'transfer fee to staking pool')
+        await conn.execute(
+            'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
+            'VALUES ($1, $2, $3, $4, $5, $6)',
+            'fee', address, STAKING_FEE_POOL_ADDRESS, TRANSFER_FEE, ts, 'transfer fee to staking pool'
         )
+        if ENABLE_STAKING and services.wallet.staking_manager:
+            await services.wallet.staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=conn)
+        await conn.execute('COMMIT')
+    return {'message': 'Sent', 'amount': body.amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}
 
-        # Обновляем аккумулятор стейкинга
-        if ENABLE_STAKING and staking_manager:
-            staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=cursor)
 
-        cursor.execute("COMMIT")
-
-    return jsonify({'message': 'Sent', 'amount': amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}), 200
-
-@wallet_bp.route('/wallet/stake', methods=['POST'])
-def stake():
+@router.post('/stake')
+async def stake(body: StakeRequest, request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
-        return jsonify({'error': 'Staking is disabled'}), 403
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    data = request.get_json()
-    try:
-        amount = int(data.get('amount', 0))
-    except (ValueError, TypeError):
-        return jsonify({'error': 'Invalid amount'}), 400
-    if amount < MIN_STAKE_AMOUNT:
-        return jsonify({'error': f'Minimum stake is {MIN_STAKE_AMOUNT / COIN:.6f} {COIN_NAME}'}), 400
-    unlock_block = staking_manager.stake(session['address'], amount)
+        raise HTTPException(403, 'Staking is disabled')
+    if services.wallet.staking_manager is None:
+        raise HTTPException(503, 'Staking service not initialized')
+    if body.amount < MIN_STAKE_AMOUNT:
+        raise HTTPException(400, f'Minimum stake is {MIN_STAKE_AMOUNT / COIN:.6f} {COIN_NAME}')
+    unlock_block = await services.wallet.staking_manager.stake(address, body.amount)
     if unlock_block == -1:
-        return jsonify({'error': 'Insufficient balance'}), 400
-    return jsonify({'message': 'Staked', 'unlock_block': unlock_block}), 200
+        raise HTTPException(400, 'Insufficient balance')
+    return {'message': 'Staked', 'unlock_block': unlock_block}
 
 
-@wallet_bp.route('/wallet/unstake', methods=['POST'])
-def unstake():
+@router.post('/unstake')
+async def unstake(request: Request, address: str = Depends(require_auth)):
     if not ENABLE_STAKING:
-        return jsonify({'error': 'Staking is disabled'}), 403
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    if staking_manager.unstake(session['address']):
-        return jsonify({'message': 'Unstaked'}), 200
-    return jsonify({'error': 'No active stake or still locked'}), 400
+        raise HTTPException(403, 'Staking is disabled')
+    if services.wallet.staking_manager is None:
+        raise HTTPException(503, 'Staking service not initialized')
+
+    result = await services.wallet.staking_manager.unstake(address)
+
+    if not result.get('success'):
+        error_msg = result.get('error', 'No active stake or still locked')
+        raise HTTPException(400, error_msg)
+
+    coin_div = COIN
+    return {
+        'message': f"Unstaked {result['unstaked_count']} stake(s). Total payout: {result['total_payout'] / coin_div:.6f} {COIN_NAME}",
+        'unstaked_count': result['unstaked_count'],
+        'total_payout': result['total_payout'],
+        'still_locked_count': result['still_locked_count'],
+        'failed_due_to_pool': result['failed_due_to_pool'],
+        'errors': result['errors'],
+        'coin_name': COIN_NAME,
+    }
 
 
-@wallet_bp.route('/wallet/staking/info')
-def staking_info():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    addr = session['address']
+@router.get('/staking/info')
+async def staking_info(request: Request, address: str = Depends(require_auth)):
+    if not ENABLE_STAKING:
+        raise HTTPException(403, 'Staking is disabled')
+    if services.wallet.staking_manager is None:
+        raise HTTPException(503, 'Staking service not initialized')
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        cursor.execute('SELECT amount, start_time, start_block, unlock_block FROM stakes WHERE address=? AND active=1',
-                       (addr,))
-        stakes = [dict(row) for row in cursor.fetchall()]
-        # Получаем current_block здесь, пока курсор ещё открыт
-        current_block = _blockchain._last_block_raw(cursor).get('index', 0)
-
-    expected_income = 0
-    if ENABLE_STAKING and staking_manager:
-        expected_income = staking_manager.get_expected_income(addr)
-
-    return jsonify({
+    async with get_db_cursor() as conn:
+        rows = await conn.fetch(
+            'SELECT amount, start_time, start_block, unlock_block '
+            'FROM stakes WHERE address=$1 AND active=1',
+            address
+        )
+        stakes = [dict(r) for r in rows]
+        last_block = await blockchain._last_block_raw(conn)
+        current_block = last_block.get('block_index', 0)
+    expected_income = await services.wallet.staking_manager.get_expected_income(address)
+    return {
         'stakes': stakes,
         'expected_income': expected_income,
         'current_block': current_block,
         'coin_name': COIN_NAME,
-        'coin_divisor': COIN
-    })
+        'coin_divisor': COIN,
+    }
 
 
-
-@wallet_bp.route('/wallet/last-proof')
-def last_proof():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    address = session['address']
+@router.get('/last-proof')
+async def last_proof(request: Request, address: str = Depends(require_auth)):
+    blockchain = request.app.state.blockchain
     from database import get_db_cursor
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        last = _blockchain._last_block_raw(cursor)
+    async with get_db_cursor() as conn:
+        last = await blockchain._last_block_raw(conn)
+    last_index = last.get('block_index', 0)
     challenge = secrets.token_hex(16)
-    _mining_challenges[address][challenge] = time.time() + _CHALLENGE_TTL
-    return jsonify({
+    with _mining_challenges_lock:
+        _mining_challenges.setdefault(address, {})[challenge] = time.time() + _CHALLENGE_TTL
+    return {
         'last_proof': last.get('proof', 0),
-        'last_index': last.get('index', 0),   # ← добавить номер блока
+        'last_index': last_index,
         'difficulty': CONFIG['POW_DIFFICULTY'],
-        'challenge': challenge
+        'challenge': challenge,
+    }
+
+
+@router.post('/mine', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=3))])
+async def mine(body: MineRequest, request: Request, address: str = Depends(require_auth)):
+    if not ENABLE_MINING:
+        raise HTTPException(403, 'Mining disabled')
+    blockchain = request.app.state.blockchain
+    with _mining_challenges_lock:
+        challenges = _mining_challenges.get(address, {})
+        if body.challenge not in challenges or time.time() > challenges[body.challenge]:
+            logger.warning(f"Mining challenge expired for {address[:16]}...")
+            raise HTTPException(400, 'Invalid or expired challenge')
+        del _mining_challenges[address][body.challenge]
+        if not _mining_challenges[address]:
+            del _mining_challenges[address]
+    success, error_msg, reward_amount, block_index = await blockchain.try_mine_block(
+        body.last_proof, body.last_index, body.proof, body.challenge, address
+    )
+    if not success:
+        logger.warning(f"Mining failed for {address}: {error_msg}")
+        status_code = 409 if error_msg == 'Blockchain moved, try again' else 400
+        raise HTTPException(status_code, error_msg)
+    logger.info(f"Block {block_index} mined by {address}, reward: {reward_amount}")
+
+    # ========== ДОБАВЛЕНО: комиссия в пул стейкинга ==========
+    if ENABLE_STAKING and services.wallet.staking_manager:
+        staking_fee = int(BLOCK_REWARD * STAKING_FEE_FROM_BLOCK_REWARD)
+        if staking_fee > 0:
+            await services.wallet.staking_manager.add_to_fee_pool(staking_fee)
+            logger.info(f"Added {staking_fee} satoshi ({staking_fee / COIN:.6f} {COIN_NAME}) to staking pool from block reward")
+    # =========================================================
+
+    await manager.broadcast({
+        'type': 'new_block',
+        'last_proof': body.proof,
+        'last_index': block_index,
+        'difficulty': CONFIG['POW_DIFFICULTY'],
     })
 
-
-@wallet_bp.route('/wallet/mine', methods=['POST'])
-@rate_limit(limit=3)
-def mine():
-    if not ENABLE_MINING:
-        return jsonify({'error': 'Mining disabled'}), 403
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    data = request.get_json()
-    proof = data.get('proof')
-    challenge = data.get('challenge')
-    last_proof = data.get('last_proof')
-    last_index = data.get('last_index')
-    address = session['address']
-
-    # Валидация входных данных
-    if not all([proof, challenge, last_proof is not None, last_index is not None]):
-        return jsonify({'error': 'proof, challenge, last_proof and last_index required'}), 400
-
-    # Проверяем challenge (временный, вне транзакции БД)
-    challenges = _mining_challenges.get(address, {})
-    if challenge not in challenges or time.time() > challenges[challenge]:
-        return jsonify({'error': 'Invalid or expired challenge'}), 400
-
-    # Удаляем использованный challenge
-    del _mining_challenges[address][challenge]
-
-    # Атомарная попытка создать блок
-    success, error_msg, reward_amount, block_index = _blockchain.try_mine_block(
-        last_proof, last_index, proof, challenge, address
-    )
-
-    if not success:
-        # Логируем ошибку для диагностики
-        logger.warning(f"Mining failed for {address}: {error_msg}")
-        return jsonify({'error': error_msg}), 400 if error_msg != "Blockchain moved, try again" else 409
-
-    # Успешный майнинг
-    logger.info(f"✅ Block {block_index} mined by {address}, reward: {reward_amount}")
-
-    return jsonify({
+    return {
         'message': 'Block mined',
         'reward': reward_amount,
         'block_index': block_index,
-        'coin_name': COIN_NAME
-    }), 200
+        'coin_name': COIN_NAME,
+    }
 
-@wallet_bp.route('/wallet/global-stats')
-def wallet_global_stats():
-    """Возвращает глобальную статистику сети."""
+@router.get('/global-stats')
+async def wallet_global_stats(request: Request):
     from database import get_db_cursor
-    from config import BLOCK_REWARD, COIN, CONFIG, MAX_SUPPLY
-
-    with get_db_cursor(_blockchain.db_path) as cursor:
-        # Общая эмиссия
-        cursor.execute('SELECT SUM(balance) FROM wallets')
-        total_supply_raw = cursor.fetchone()[0] or 0
-
-        # Баланс стейкинг-пула
-        cursor.execute('SELECT balance FROM wallets WHERE address = ?', (STAKING_FEE_POOL_ADDRESS,))
-        row = cursor.fetchone()
+    async with get_db_cursor() as conn:
+        total_supply_raw = (await conn.fetchval('SELECT COALESCE(SUM(balance), 0) FROM wallets')) or 0
+        row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', STAKING_FEE_POOL_ADDRESS)
         staking_pool_balance = row[0] if row else 0
+        total_blocks = (await conn.fetchval('SELECT COUNT(*) FROM blockchain')) or 0
+        total_staked_raw = (await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active = 1')) or 0
 
-        # Количество блоков
-        cursor.execute('SELECT COUNT(*) FROM blockchain')
-        total_blocks = cursor.fetchone()[0] or 0
-
-        # Сумма активных стейков
-        cursor.execute('SELECT SUM(amount) FROM stakes WHERE active = 1')
-        total_staked_raw = cursor.fetchone()[0] or 0
-
-    # Оставшиеся монеты
-    if MAX_SUPPLY is not None:
-        remaining = max(0, MAX_SUPPLY - total_supply_raw)
+    max_supply_sats = MAX_SUPPLY * COIN if MAX_SUPPLY else None
+    if max_supply_sats is not None:
+        remaining_sats = max(0, max_supply_sats - total_supply_raw)
     else:
-        remaining = None
+        remaining_sats = None
 
-    return jsonify({
+    return {
         'total_supply': total_supply_raw,
         'staking_pool_balance': staking_pool_balance,
         'block_reward': BLOCK_REWARD if ENABLE_MINING else 0,
@@ -312,20 +274,6 @@ def wallet_global_stats():
         'coin_name': COIN_NAME,
         'coin_divisor': COIN,
         'max_supply': MAX_SUPPLY,
-        'remaining_supply': remaining,
+        'remaining_supply': remaining_sats,
         'message_fee': MESSAGE_FEE,
-    })
-
-
-@wallet_bp.route('/wallet/stats')
-def wallet_stats():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    stats = _blockchain.get_conversation_stats(session['address'])
-    db_stats = _blockchain.get_database_stats()
-
-    return jsonify({
-        'user_stats': stats,
-        'database_stats': db_stats
-    }), 200
+    }

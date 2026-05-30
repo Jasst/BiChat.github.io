@@ -1,98 +1,136 @@
-"""
-services/messaging.py — Список диалогов (без расшифровки)
-"""
-import json
+# services/messaging.py
 import logging
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List
 
-from cache import (
-    get_contact_name_cached, get_contact_cache_version,
-    get_user_groups_cached, get_groups_cache_version,
-)
+from cache import get_contact_name_cached, get_contact_cache_version
+from database import get_db_cursor
 
 logger = logging.getLogger(__name__)
 
-_db_path: Optional[str] = None
-
-
-def set_db_path(path: str) -> None:
-    global _db_path
-    _db_path = path
-
-
-def _db():
-    from database import get_db_cursor
-    return get_db_cursor(_db_path)
-
-
-def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
+# ------------------------------------------------------------------
+# Основная функция получения списка диалогов (с поддержкой статусов)
+# ------------------------------------------------------------------
+async def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
     """
-    Возвращает список диалогов пользователя (оптимизировано: 2 запроса вместо N+1).
+    Возвращает список диалогов (личных и групповых) с последним сообщением.
+    Для своих последних сообщений показывает статус (отправлено/доставлено/прочитано).
     """
     conversations = []
     try:
-        with _db() as cursor:
-            # 1. Получаем последнее сообщение для каждого партнёра
-            cursor.execute('''
+        async with get_db_cursor() as conn:
+            # 1. Личные диалоги – исключаем групповые чаты
+            rows = await conn.fetch("""
                 SELECT
                     partner,
                     MAX(id) AS last_msg_id,
                     MAX(timestamp) AS last_ts,
-                    (SELECT sender FROM transactions t2
-                     WHERE (t2.sender = ? AND t2.recipient = partner)
-                        OR (t2.sender = partner AND t2.recipient = ?)
-                     ORDER BY t2.timestamp DESC LIMIT 1) AS last_sender
+                    (
+                        SELECT sender
+                        FROM transactions t2
+                        WHERE (t2.sender = $1 AND t2.recipient = partner)
+                           OR (t2.sender = partner AND t2.recipient = $1)
+                        ORDER BY t2.timestamp DESC
+                        LIMIT 1
+                    ) AS last_sender,
+                    (
+                        SELECT status
+                        FROM transactions t2
+                        WHERE (t2.sender = $1 AND t2.recipient = partner)
+                           OR (t2.sender = partner AND t2.recipient = $1)
+                        ORDER BY t2.timestamp DESC
+                        LIMIT 1
+                    ) AS last_status
                 FROM (
                     SELECT
-                        CASE WHEN sender = ? THEN recipient ELSE sender END AS partner,
-                        id, timestamp, sender
+                        CASE WHEN sender = $1 THEN recipient ELSE sender END AS partner,
+                        id,
+                        timestamp,
+                        sender
                     FROM transactions
-                    WHERE sender = ? OR recipient = ?
+                    WHERE (sender = $1 OR recipient = $1)
+                      -- ✅ Исключаем групповые чаты из личных диалогов
+                      AND recipient NOT LIKE 'group:%'
+                      AND sender NOT LIKE 'group:%'
                 ) AS t
-                WHERE partner IS NOT NULL AND partner != ?
+                WHERE partner IS NOT NULL AND partner != $1
                 GROUP BY partner
-            ''', (user_address, user_address, user_address, user_address, user_address, user_address))
+                ORDER BY last_ts DESC
+            """, user_address)
 
-            rows = cursor.fetchall()
-            if not rows:
+            # 2. Групповые диалоги (только те, в которых пользователь состоит)
+            #    Получаем группы, в которых есть хотя бы одно сообщение от пользователя
+            group_rows = await conn.fetch("""
+                SELECT
+                    recipient AS partner,
+                    MAX(id) AS last_msg_id,
+                    MAX(timestamp) AS last_ts,
+                    (
+                        SELECT sender
+                        FROM transactions t2
+                        WHERE t2.recipient = recipient
+                        ORDER BY t2.timestamp DESC
+                        LIMIT 1
+                    ) AS last_sender
+                FROM transactions
+                WHERE recipient LIKE 'group:%' AND sender = $1
+                GROUP BY recipient
+                ORDER BY last_ts DESC
+            """, user_address)
+
+            # Объединяем личные и групповые диалоги
+            all_rows = rows + group_rows
+            if not all_rows:
                 return []
 
-            # 2. Получаем статусы чтения для всех чатов одним запросом
-            chat_ids = [row['partner'] for row in rows]
-            placeholders = ','.join('?' * len(chat_ids))
-            cursor.execute(f'''
+            # Получаем статус прочтения каждого диалога
+            chat_ids = [row['partner'] for row in all_rows]
+            placeholders = ','.join(f'${i+2}' for i in range(len(chat_ids)))
+            read_rows = await conn.fetch(f"""
                 SELECT chat_id, last_read_message_id
                 FROM read_status
-                WHERE user_address = ? AND chat_id IN ({placeholders})
-            ''', (user_address, *chat_ids))
-            read_map = {row['chat_id']: row['last_read_message_id'] for row in cursor.fetchall()}
+                WHERE user_address = $1 AND chat_id IN ({placeholders})
+            """, user_address, *chat_ids)
+            read_map = {row['chat_id']: row['last_read_message_id'] for row in read_rows}
 
-            # 3. Формируем результат
-            for row in rows:
+            # Группы – из кэша
+            from cache import get_user_groups_cached, get_groups_cache_version
+            groups = await get_user_groups_cached(user_address, cache_version=await get_groups_cache_version())
+            groups_by_id = {g['id']: g for g in groups}
+
+            for row in all_rows:
                 partner = row['partner']
                 last_msg_id = row['last_msg_id']
                 last_ts = row['last_ts']
                 last_sender = row['last_sender']
                 last_read_id = read_map.get(partner, 0)
 
-                # preview
-                if last_read_id >= last_msg_id:
-                    preview = "✓ Прочитано"
-                else:
-                    preview = "💬 Новое сообщение" if last_sender != user_address else "Вы: сообщение"
-
-                # имя и тип
-                if partner.startswith('group:'):
+                is_group = partner.startswith('group:')
+                if is_group:
                     group_id = partner.split(':', 1)[1]
-                    groups = get_user_groups_cached(user_address, cache_version=get_groups_cache_version())
-                    group = next((g for g in groups if g['id'] == group_id), None)
+                    group = groups_by_id.get(group_id)
                     name = group['name'] if group else f'Группа {group_id[:8]}...'
-                    is_group = True
                 else:
-                    name = (get_contact_name_cached(user_address, partner,
-                                                    cache_version=get_contact_cache_version())
+                    name = (await get_contact_name_cached(user_address, partner,
+                            cache_version=await get_contact_cache_version())
                             or partner[:10] + "...")
-                    is_group = False
+
+                # ---------- Формируем preview ----------
+                if last_sender == user_address:
+                    # Своё последнее сообщение – показываем статус
+                    status = row.get('last_status', 'sent')
+                    if status == 'read':
+                        preview = "✓✓ Прочитано"
+                    elif status == 'delivered':
+                        preview = "✓✓ Доставлено"
+                    else:
+                        preview = "✓ Отправлено"
+                else:
+                    # Чужое сообщение
+                    if last_read_id >= last_msg_id:
+                        preview = "✓ Прочитано"
+                    else:
+                        preview = "💬 Новое сообщение"
 
                 conversations.append({
                     'address': partner,
@@ -103,47 +141,27 @@ def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 })
 
     except Exception as e:
-        logger.error(f"Get conversations error: {e}")
-        # выводим traceback для отладки
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Get conversations error: {e}", exc_info=True)
 
     return sorted(conversations, key=lambda x: x.get('last_ts', 0), reverse=True)
 
 
-# services/messaging.py (добавить в конец файла)
+# ------------------------------------------------------------------
+# Кэширующая обёртка (TTL 2 секунды)
+# ------------------------------------------------------------------
+_conversations_cache: dict = {}
+_CONV_CACHE_TTL = 2
 
-# =============================================================================
-# КЭШ ДЛЯ СПИСКА ДИАЛОГОВ
-# =============================================================================
-
-from functools import lru_cache
-import time
-from typing import List, Dict, Any
-
-_conversations_cache = {}
-_CONV_CACHE_TTL = 2  # секунды
-
-
-def get_conversations_list_cached(user_address: str) -> List[Dict[str, Any]]:
-    """
-    Кэшированная версия get_conversations_list.
-    TTL = 2 секунды, чтобы не кэшировать слишком долго.
-    """
+async def get_conversations_list_cached(user_address: str) -> List[Dict[str, Any]]:
     now = time.time()
     cached = _conversations_cache.get(user_address)
     if cached and now - cached[1] < _CONV_CACHE_TTL:
         return cached[0]
-
-    result = get_conversations_list(user_address)
+    result = await get_conversations_list(user_address)
     _conversations_cache[user_address] = (result, now)
     return result
 
-
-def invalidate_conversations_cache(user_address: str = None):
-    """
-    Сброс кэша диалогов (вызывать при отправке/получении сообщения)
-    """
+async def invalidate_conversations_cache(user_address: str = None) -> None:
     if user_address:
         _conversations_cache.pop(user_address, None)
     else:

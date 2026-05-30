@@ -41,7 +41,8 @@
   <div class="modal animate-slide" style="max-width: 520px;">
     <header class="modal-header">
       <h3 id="mnemonicTitle" style="margin: 0; color: var(--accent);">✅ Wallet Created</h3>
-      <button class="modal-close" onclick="document.getElementById('mnemonicModal').classList.add('hidden')" aria-label="Close">&times;</button>
+      <!-- ✅ ИСПРАВЛЕНО: вызов MnemonicManager.hide вместо прямого скрытия -->
+      <button class="modal-close" onclick="MnemonicManager.hide('mnemonicModal')" aria-label="Close">&times;</button>
     </header>
 
     <div class="modal-body">
@@ -84,8 +85,6 @@
 </div>
 
 {% block scripts %}
-<!-- Менеджер мнемоник -->
-
 <script>
 // === Глобальное хранилище мнемоники (будет доступно после создания/входа) ===
 window.appMnemonic = null;
@@ -99,7 +98,6 @@ let isCreatingWallet = false;
  * отправляем их на сервер, показываем мнемонику пользователю.
  */
 async function createWallet() {
-  // Защита от повторного вызова
   if (isCreatingWallet) {
     console.warn('Wallet creation already in progress');
     return;
@@ -114,16 +112,12 @@ async function createWallet() {
   btn.classList.add('animate-pulse');
 
   try {
-    // 1. Генерируем мнемонику (24 слова)
     const mnemonic = await DarkCrypto.generateMnemonic();
-    // 2. Вычисляем ключи и адрес
     const keys = await DarkCrypto.deriveKeyPair(mnemonic);
     const address = keys.address;
     const compressedPubKey = keys.compressedPubKey;
-    // 3. Кодируем публичный ключ в Base64 для отправки
     const pubkeyB64 = DarkCrypto._toBase64(compressedPubKey);
 
-    // 4. Отправляем на сервер
     const response = await fetch('/create_wallet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -136,9 +130,7 @@ async function createWallet() {
 
     if (response.ok) {
       sessionStorage.setItem('mnemonic', mnemonic);
-      // Сохраняем мнемонику в памяти сессии
       window.appMnemonic = mnemonic;
-      // Показываем мнемонику в модальном окне
       MnemonicManager.showInModal(mnemonic, 'mnemonicModal', 'mnemonicDisplay');
       console.log('✅ Wallet created for:', address.slice(0, 16) + '…');
     } else {
@@ -150,7 +142,6 @@ async function createWallet() {
       error.message || 'Wallet creation failed. Please try again.',
       'error'
     );
-    // Восстанавливаем кнопку только при ошибке
     btn.disabled = false;
     btn.textContent = '✨ Create New Wallet';
     btn.classList.remove('animate-pulse');
@@ -159,36 +150,22 @@ async function createWallet() {
   }
 }
 
-/**
- * Пользователь подтвердил сохранение мнемоники – переходим в чат.
- */
 function proceedToChat() {
-  // Закрываем модальное окно и очищаем временные данные (менеджер сделает)
   MnemonicManager.hide('mnemonicModal');
-  // Перенаправляемся в чат (сессия на сервере уже активна)
   window.location.href = '/chat';
 }
 
-// === Инициализация после загрузки DOM ===
 document.addEventListener('DOMContentLoaded', function() {
-  // Включаем уведомления, если доступны
   if (window.NotificationManager?.init) {
     window.NotificationManager.init();
   }
-
-  // ВАЖНО: НЕ добавляем слушатель на createWalletBtn,
-  // так как он уже привязан через onclick в HTML
-
-  // Кнопка "Продолжить" в модальном окне
   const confirmBtn = document.querySelector('#mnemonicModal .btn-primary');
   if (confirmBtn) {
-    // Удаляем старый слушатель, если есть, чтобы избежать дублирования
     confirmBtn.removeEventListener('click', proceedToChat);
     confirmBtn.addEventListener('click', proceedToChat);
   }
 });
 
-// Экспорт в глобальную область (для обратной совместимости)
 window.createWallet = createWallet;
 window.proceedToChat = proceedToChat;
 </script>

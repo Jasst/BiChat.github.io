@@ -1,8 +1,5 @@
 """
 config.py — Централизованная конфигурация приложения
-====================================================
-Все настраиваемые параметры собраны в одном месте.
-Изменять значения можно прямо здесь или через переменные окружения в .env.
 """
 import os
 import sys
@@ -10,7 +7,6 @@ import secrets
 import logging
 from pathlib import Path
 
-# Попытка загрузить переменные из .env (необязательно)
 try:
     from dotenv import load_dotenv
     import pathlib
@@ -18,154 +14,84 @@ try:
 except ImportError:
     pass
 
-# =============================================================================
-# ОСНОВНЫЕ НАСТРОЙКИ СЕРВЕРА И БЕЗОПАСНОСТИ
-# =============================================================================
 CONFIG = {
-    # ----- Майнинг (Proof-of-Work) -----
     'POW_DIFFICULTY':       int(os.getenv('POW_DIFFICULTY', 6)),
-        # Количество начальных нулей в хеше, необходимое для блока.
-        # 2 = 00, 3 = 000 и т.д. Чем выше, тем дольше майнинг.
     'POW_MAX_ITERATIONS':   int(os.getenv('POW_MAX_ITERATIONS', 100_000_000)),
-        # Максимальное число попыток для нахождения proof. При превышении — исключение.
-
-    # ----- Кэширование -----
-    'CACHE_SIZE_KEYS':      128,      # Максимальное число кэшируемых публичных ключей
-    'CACHE_SIZE_GROUPS':    32,       # Максимальное число кэшируемых групп
-    'CACHE_SIZE_CONTACTS':  64,       # Максимальное число кэшируемых контактов
-    'CACHE_SIZE_PUBKEYS':   256,      # Максимальное число кэшируемых записей публичных ключей
-
-    # ----- База данных -----
-    'DB_TIMEOUT':           30.0,     # Тайм-аут SQLite-соединения (секунды)
+    'CACHE_SIZE_KEYS':      128,
+    'CACHE_SIZE_GROUPS':    32,
+    'CACHE_SIZE_CONTACTS':  64,
+    'CACHE_SIZE_PUBKEYS':   256,
+    'DB_TIMEOUT':           30.0,
     'DB_POOL_SIZE':         int(os.getenv('DB_POOL_SIZE', 10)),
-        # Количество соединений в пуле. Для 100-200 пользователей рекомендуется 5-10.
-
-    # ----- Сессия -----
     'SESSION_LIFETIME':     int(os.getenv('PERMANENT_SESSION_LIFETIME', 31_536_000)),
-        # Время жизни сессии в секундах (по умолчанию ~1 год).
-
-    # ----- Логирование -----
-    'LOG_MAX_BYTES':        10 * 1024 * 1024,   # Максимальный размер одного лог-файла (10 МБ)
-    'LOG_BACKUP_COUNT':     5,                  # Количество ротируемых файлов логов
+    'LOG_MAX_BYTES':        10 * 1024 * 1024,
+    'LOG_BACKUP_COUNT':     5,
     'LOG_LEVEL':            os.getenv('LOG_LEVEL', 'INFO').upper(),
-
-    # ----- Загрузка файлов -----
-    'MAX_UPLOAD_SIZE':      16 * 1024 * 1024,   # Максимальный размер загружаемого файла (16 МБ)
-
-    # ----- Лимиты запросов (Rate Limiting) -----
-    'RATE_LIMIT_PER_MINUTE': int(os.getenv('RATE_LIMIT_PER_MINUTE', 60)),
-        # Максимальное количество запросов в минуту с одного IP.
+    'MAX_UPLOAD_SIZE':      16 * 1024 * 1024,
+    'RATE_LIMIT_PER_MINUTE':         int(os.getenv('RATE_LIMIT_PER_MINUTE', 60)),
     'RATE_LIMIT_MESSAGE_PER_MINUTE': int(os.getenv('RATE_LIMIT_MESSAGE_PER_MINUTE', 30)),
-        # Максимальное количество сообщений в минуту с одного пользователя.
-    'RATE_LIMIT_API_PER_MINUTE': int(os.getenv('RATE_LIMIT_API_PER_MINUTE', 120)),
-        # Максимальное количество API-запросов в минуту с одного IP.
-
-    # ----- Long polling -----
-    'LONG_POLLING_TIMEOUT': int(os.getenv('LONG_POLLING_TIMEOUT', 25)),
+    'RATE_LIMIT_API_PER_MINUTE':     int(os.getenv('RATE_LIMIT_API_PER_MINUTE', 120)),
+    'LONG_POLLING_TIMEOUT':  int(os.getenv('LONG_POLLING_TIMEOUT', 25)),
     'LONG_POLLING_MAX_WAIT': int(os.getenv('LONG_POLLING_MAX_WAIT', 30)),
 }
 
-# =============================================================================
-# ПУТИ К ФАЙЛАМ И ПАПКАМ
-# =============================================================================
 DB_POOL_SIZE = CONFIG['DB_POOL_SIZE']
-DB_TIMEOUT = CONFIG['DB_TIMEOUT']
+DB_TIMEOUT   = CONFIG['DB_TIMEOUT']
 
-# Корневая директория проекта (там, где лежит этот config.py)
 BASE_DIR = Path(__file__).resolve().parent
-
-# Папка для данных (БД и прочие файлы)
 DATA_DIR = BASE_DIR / 'data'
-DATA_DIR.mkdir(exist_ok=True)   # создаём, если нет
+DATA_DIR.mkdir(exist_ok=True)
 
-# База данных по умолчанию — внутри data/
-DEFAULT_DB_PATH = str(DATA_DIR / 'blockchain.db')
+# ---------- PostgreSQL ----------
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:pass@localhost/bichat')
+# Для обратной совместимости (можно удалить позже)
+DATABASE_PATH = None
 
-# Переопределяем через переменную окружения, если задано
-DATABASE_PATH = os.getenv('DATABASE_PATH', DEFAULT_DB_PATH)
+UPLOAD_FOLDER   = os.getenv('UPLOAD_FOLDER', str(BASE_DIR / 'uploads'))
+STATIC_FOLDER   = str(BASE_DIR / 'static')
+TEMPLATE_FOLDER = str(BASE_DIR / 'templates')
 
-# Папка для загруженных пользователями файлов
-UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', str(BASE_DIR / 'uploads'))
-
-# Папки статики и шаблонов (относительные, Flask ищет их в корне проекта)
-STATIC_FOLDER  = 'static'
-TEMPLATE_FOLDER = 'templates'
-
-# Корректировка для Windows (если заданы linux-пути, но теперь пути относительные)
 if sys.platform == 'win32':
-    if DATABASE_PATH.startswith('/var/www/'):
-        DATABASE_PATH = DEFAULT_DB_PATH
+    if DATABASE_PATH and DATABASE_PATH.startswith('/var/www/'):
+        DATABASE_PATH = None
     if UPLOAD_FOLDER.startswith('/var/www/'):
         UPLOAD_FOLDER = str(BASE_DIR / 'uploads')
 
-# Создание необходимых папок
-os.makedirs(os.path.dirname(DATABASE_PATH) or '.', exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# =============================================================================
-# НАСТРОЙКИ КОШЕЛЬКА И МОНЕТ (BlockCoin)
-# =============================================================================
-COIN          = 1_000_000       # 1 монета = 1 000 000 сатоши (для внутренних расчётов)
-COIN_NAME     = "BlockCoin"     # Человеко‑читаемое название монеты
-TRANSFER_FEE  = 50_000          # Комиссия за перевод в сатоши (0.05 BlockCoin)
-MIN_BALANCE   = 0               # Минимальный допустимый баланс (0 — без ограничений)
+COIN          = 1000000
+COIN_NAME     = "BlockCoin"
+TRANSFER_FEE  = int(os.getenv('TRANSFER_FEE', 50000))
+MESSAGE_FEE = int(os.getenv('MESSAGE_FEE', 100))
+MIN_BALANCE   = 0
 
-# =============================================================================
-# АИРДРОП (раздача монет новым пользователям)
-# =============================================================================
-AIRDROP_AMOUNT = 10_00          # Количество сатоши, выдаваемое при регистрации (0.001 BlockCoin)
+AIRDROP_AMOUNT  = int(os.getenv('AIRDROP_AMOUNT', 1000))
 
-# =============================================================================
-# СТЕЙКИНГ (пассивный доход от комиссий)
-# =============================================================================
-MIN_STAKE_AMOUNT  = 10 * COIN   # Минимальная сумма стейка в сатоши (10 BlockCoin)
-STAKE_LOCK_BLOCKS = int(os.getenv('STAKE_LOCK_BLOCKS', 100))      # На сколько блоков замораживаются средства (чем выше, тем дольше)
+MIN_STAKE_AMOUNT  = int(os.getenv('MIN_STAKE_AMOUNT', 10 * COIN))
+STAKE_LOCK_BLOCKS = int(os.getenv('STAKE_LOCK_BLOCKS', 100))
+BLOCK_REWARD = int(os.getenv('BLOCK_REWARD', 0.1*COIN))
+# config.py – добавить в конец
+STAKING_FEE_FROM_BLOCK_REWARD = float(os.getenv('STAKING_FEE_FROM_BLOCK_REWARD', 0.1))  # 10% от награды за блок
 
-# =============================================================================
-# МАЙНИНГ И ЭМИССИЯ
-# =============================================================================
-BLOCK_REWARD      = 0.1 * COIN  # Награда за блок в сатоши (100 000 = 0.1 BlockCoin)
+ENABLE_MINING  = os.getenv('ENABLE_MINING', '1') == '1'
+ENABLE_STAKING = os.getenv('ENABLE_STAKING', '1') == '1'
 
-# =============================================================================
-# ВКЛЮЧЕНИЕ / ОТКЛЮЧЕНИЕ КОМПОНЕНТОВ
-# =============================================================================
-ENABLE_MINING = os.getenv('ENABLE_MINING', '1') == '1'     # 1 = майнинг включён, 0 = выключен
-ENABLE_STAKING = os.getenv('ENABLE_STAKING', '1') == '1'   # 1 = стейкинг включён, 0 = выключен
-
-# =============================================================================
-# ПЛАТА ЗА СООБЩЕНИЕ (анти-спам)
-# =============================================================================
-MESSAGE_FEE = 100               # 0.0001 BlockCoin, списывается с отправителя за каждое сообщение
-
-# =============================================================================
-# ПУЛ СТЕЙКИНГА (куда идут комиссии)
-# =============================================================================
 STAKING_FEE_POOL_ADDRESS = 'staking_fee_pool'
 
-# =============================================================================
-# СЕКРЕТНЫЙ КЛЮЧ ПРИЛОЖЕНИЯ (для подписи сессий и безопасности)
-# =============================================================================
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY or len(SECRET_KEY) < 32:
     SECRET_KEY = secrets.token_hex(32)
-    logging.warning("❌ SECRET_KEY NOT FOUND in env! Sessions will reset on restart!")
-else:
-    if os.getenv('FLASK_ENV') != 'production':
-        logging.warning("✅ SECRET_KEY loaded from .env")
+    logging.warning("SECRET_KEY NOT FOUND in env! Sessions will reset on restart!")
 
-# =============================================================================
-# ОГРАНИЧЕНИЕ РАЗМЕРА ЗАГРУЗКИ
-# =============================================================================
 MAX_CONTENT_LENGTH = CONFIG['MAX_UPLOAD_SIZE']
-    # Для Flask — максимальный размер тела запроса.
+MAX_SUPPLY = 21_000_000
 
-# Максимальная эмиссия (None = без ограничений)
-MAX_SUPPLY = 21_000_000 * COIN  # 21 000 000 BlockCoin
-
-# Настройки архивации
 ARCHIVE_OLD_MESSAGES_DAYS = int(os.getenv('ARCHIVE_OLD_MESSAGES_DAYS', 90))
 ARCHIVE_ENABLED = os.getenv('ARCHIVE_ENABLED', '1') == '1'
-
-# Полнотекстовый поиск
 FTS_ENABLED = os.getenv('FTS_ENABLED', '1') == '1'
 
+MAX_MESSAGE_PAYLOAD_SIZE = int(os.getenv('MAX_MESSAGE_PAYLOAD_SIZE', 65536))
+
+ONLINE_TIMEOUT_SECONDS = int(os.getenv('ONLINE_TIMEOUT_SECONDS', 60))
+ARCHIVE_BATCH_SIZE = int(os.getenv('ARCHIVE_BATCH_SIZE', 1000))
+MINING_CHALLENGE_TTL = int(os.getenv('MINING_CHALLENGE_TTL', 60))

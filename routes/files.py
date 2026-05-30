@@ -1,164 +1,127 @@
 """
-routes/files.py — Загрузка файлов, удаление сообщений, очистка диалога, GunDB
+routes/files.py — Загрузка файлов, удаление сообщений, очистка диалога (асинхронная версия)
+Исправлено: asyncpg-совместимость (fetchrow, execute-результат)
 """
-import base64
 import logging
 import os
 import uuid
-
-from flask import Blueprint, jsonify, request, send_from_directory, session
-from marshmallow import ValidationError
-from werkzeug.utils import secure_filename
-
-from config import UPLOAD_FOLDER, CONFIG
-from setup import DeleteMessageSchema
 from typing import Optional
 
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 
-logger   = logging.getLogger(__name__)
-files_bp = Blueprint('files', __name__)
+from config import UPLOAD_FOLDER, CONFIG
+from dependencies import require_auth
+from models import DeleteMessageRequest, ClearConversationRequest
 
-_blockchain = None
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=['files'])
 
-
-def init_files(blockchain) -> None:
-    global _blockchain
-    _blockchain = blockchain
-
-
-# =============================================================================
-# Валидация MIME по магическим байтам
-# =============================================================================
 
 IMAGE_MAGIC_BYTES = {
-    b'\xFF\xD8\xFF':        'image/jpeg',
-    b'\x89PNG\r\n\x1a\n':  'image/png',
-    b'GIF87a':              'image/gif',
-    b'GIF89a':              'image/gif',
-    b'RIFF....WEBP':        'image/webp',
+    b'\xFF\xD8\xFF':       'image/jpeg',
+    b'\x89PNG\r\n\x1a\n': 'image/png',
+    b'GIF87a':             'image/gif',
+    b'GIF89a':             'image/gif',
 }
 
 
-def validate_image_file(file_content: bytes) -> Optional[str]:
+def validate_image_file(content: bytes) -> Optional[str]:
     for magic, mime_type in IMAGE_MAGIC_BYTES.items():
-        if file_content.startswith(magic):
+        if content.startswith(magic):
             return mime_type
     return None
 
 
-# =============================================================================
-# Маршруты
-# =============================================================================
-
-@files_bp.route('/upload_file', methods=['POST'])
-def upload_file():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+@router.post('/upload_file')
+async def upload_file(
+    file: UploadFile = File(...),
+    address: str = Depends(require_auth),
+):
+    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    ALLOWED_MIMES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
     filepath = None
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
-        file = request.files['file']
+        content = await file.read()
+        if len(content) > CONFIG['MAX_UPLOAD_SIZE']:
+            raise HTTPException(413, 'File too large')
         if not file.filename:
-            return jsonify({'error': 'Empty filename'}), 400
-
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)
-        if file_size > CONFIG['MAX_UPLOAD_SIZE']:
-            return jsonify({'error': 'File too large'}), 413
-
-        filename    = secure_filename(file.filename)
-        unique_name = f"{uuid.uuid4().hex}_{filename}"
-        filepath    = os.path.join(UPLOAD_FOLDER, unique_name)
-        file.save(filepath)
-
-        with open(filepath, 'rb') as f:
-            header = f.read(12)
-        detected_mime = validate_image_file(header)
-        declared_mime = file.content_type
-
-        if declared_mime and declared_mime.startswith('image/'):
-            if detected_mime and detected_mime != declared_mime:
-                logger.warning(f"MIME mismatch: declared={declared_mime}, "
-                               f"detected={detected_mime}")
-            if detected_mime:
-                with open(filepath, 'rb') as f:
-                    b64 = base64.b64encode(f.read()).decode()
-                os.remove(filepath)
-                return jsonify({'file_url': f"{detected_mime};base64,{b64}"}), 200
-
-        return jsonify({'file_url': f"/uploads/{unique_name}"}), 200
-
+            raise HTTPException(400, 'Empty filename')
+        detected_mime = validate_image_file(content[:12])
+        if not detected_mime:
+            raise HTTPException(400, 'Only image files are allowed')
+        if file.content_type and file.content_type not in ALLOWED_MIMES:
+            raise HTTPException(400, 'Invalid image MIME type')
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(400, 'Unsupported file extension')
+        safe_name = uuid.uuid4().hex
+        filepath = os.path.join(UPLOAD_FOLDER, safe_name)
+        with open(filepath, 'wb') as f:
+            f.write(content)
+        return {'file_url': f"/uploads/{safe_name}"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Upload error: {e}")
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
-        return jsonify({'error': 'Upload failed'}), 500
+        raise HTTPException(500, 'Upload failed')
 
 
-@files_bp.route('/uploads/<filename>')
-def serve_upload(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+@router.get('/uploads/{filename}')
+async def serve_upload(filename: str, address: str = Depends(require_auth)):
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(404, 'File not found')
+    with open(filepath, 'rb') as f:
+        content = f.read(12)
+    mime = validate_image_file(content)
+    if not mime:
+        raise HTTPException(403, 'Forbidden')
+    return FileResponse(filepath, media_type=mime, headers={
+        'Content-Disposition': 'inline' if mime.startswith('image/') else 'attachment'
+    })
 
 
-@files_bp.route('/delete_message', methods=['POST'])
-def delete_message():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    try:
-        data      = DeleteMessageSchema().load(request.get_json())
-        user_addr = session['address']
-        from database import get_db_cursor
-        with get_db_cursor(_blockchain.db_path) as cursor:
-            cursor.execute('SELECT sender FROM transactions WHERE id = ?',
-                           (data['message_id'],))
-            row = cursor.fetchone()
-            if not row:
-                return jsonify({'error': 'Message not found'}), 404
-            if row[0] != user_addr:
-                return jsonify({'error': 'Permission denied'}), 403
-            cursor.execute('DELETE FROM transactions WHERE id = ?', (data['message_id'],))
-        logger.info(f"Message #{data['message_id']} deleted by {user_addr[:16]}...")
-        return jsonify({'message': 'Deleted'}), 200
-    except ValidationError as err:
-        return jsonify({'error': err.messages}), 400
-    except Exception as e:
-        logger.error(f"Delete message error: {e}")
-        return jsonify({'error': 'Failed'}), 500
+@router.post('/delete_message')
+async def delete_message(body: DeleteMessageRequest, request: Request, address: str = Depends(require_auth)):
+    from database import get_db_cursor
+    async with get_db_cursor() as conn:
+        # ✅ fetchrow вместо fetchone
+        row = await conn.fetchrow('SELECT sender FROM transactions WHERE id = $1', body.message_id)
+        if not row:
+            raise HTTPException(404, 'Message not found')
+        if row[0] != address:
+            raise HTTPException(403, 'Permission denied')
+        await conn.execute('DELETE FROM transactions WHERE id = $1', body.message_id)
+    logger.info(f"Message #{body.message_id} deleted by {address[:16]}...")
+    return {'message': 'Deleted'}
 
 
-@files_bp.route('/clear_conversation', methods=['POST'])
-def clear_conversation():
-    if 'address' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    try:
-        data      = request.get_json() or {}
-        chat_with = data.get('chat_with', '').strip()
-        if not chat_with:
-            return jsonify({'error': 'Missing chat_with parameter'}), 400
-        user_addr = session['address']
-        from database import get_db_cursor
-        with get_db_cursor(_blockchain.db_path) as cursor:
-            if chat_with.startswith('group:'):
-                cursor.execute(
-                    'DELETE FROM transactions WHERE sender = ? AND recipient = ?',
-                    (user_addr, chat_with)
-                )
-            else:
-                cursor.execute(
-                    'DELETE FROM transactions '
-                    'WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)',
-                    (user_addr, chat_with, chat_with, user_addr)
-                )
-            deleted = cursor.rowcount
-        logger.info(f"Cleared {deleted} messages for {user_addr[:16]}... "
-                    f"in {chat_with[:20]}...")
-        return jsonify({'message': f'Cleared {deleted} messages'}), 200
-    except Exception as e:
-        logger.error(f"Clear conversation error: {e}")
-        return jsonify({'error': 'Failed to clear'}), 500
-
-
-
-
+@router.post('/clear_conversation')
+async def clear_conversation(body: ClearConversationRequest, request: Request, address: str = Depends(require_auth)):
+    chat_with = body.chat_with.strip()
+    if not chat_with:
+        raise HTTPException(400, 'Missing chat_with parameter')
+    from database import get_db_cursor
+    async with get_db_cursor() as conn:
+        if chat_with.startswith('group:'):
+            result = await conn.execute(
+                'DELETE FROM transactions WHERE sender = $1 AND recipient = $2',
+                address, chat_with
+            )
+        else:
+            result = await conn.execute(
+                'DELETE FROM transactions '
+                'WHERE (sender = $1 AND recipient = $2) OR (sender = $3 AND recipient = $4)',
+                address, chat_with, chat_with, address
+            )
+        # ✅ парсим количество удалённых строк из результата asyncpg
+        deleted = 0
+        if result:
+            parts = result.split()
+            if parts and parts[0] == 'DELETE' and len(parts) > 1:
+                deleted = int(parts[1])
+    logger.info(f"Cleared {deleted} messages for {address[:16]}... in {chat_with[:20]}...")
+    return {'message': f'Cleared {deleted} messages'}

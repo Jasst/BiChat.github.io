@@ -1,6 +1,19 @@
+// chat.js — полностью переписан на WebSocket (без Long Polling)
+// Исправлено: обновление статуса в левой колонке для своих сообщений,
+// heartbeat, delivered, polling статусов.
+(function() {
+    if (window.chatJsLoaded) return;
+    window.chatJsLoaded = true;
+
+window.Utils = window.Utils || {};
+Utils.escapeHtml = function(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))
+              .replace(/['"]/g, m => ({ "'": '&#39;', '"': '&quot;' }[m]));
+};
 
 // =============================================================================
-// === Инициализация ===
+// === 1. ИНИЦИАЛИЗАЦИЯ И СОСТОЯНИЕ ===
 // =============================================================================
 if (typeof AppData === 'undefined') {
     window.AppData = {
@@ -8,10 +21,6 @@ if (typeof AppData === 'undefined') {
     };
 }
 
-
-// =============================================================================
-// === Состояние чата ===
-// =============================================================================
 const State = {
   currentChatAddress: '',
   currentChatIsGroup: false,
@@ -24,17 +33,130 @@ const State = {
   pendingImageData: null,
   topObserver: null
 };
-
+window.State = State;
 let isSending = false;
 let userKeys = null;
 const pubKeyCache = new Map();
 
+// =============================================================================
+// === 2. WEBSOCKET КЛИЕНТ (ВСТРОЕННЫЙ) ===
+// =============================================================================
+let wsClient = null;
+let wsReconnectTimer = null;
+
+class WebSocketClient {
+    constructor(options = {}) {
+        this.url = options.url || null;
+        this.onMessage = options.onMessage || (() => {});
+        this.onError = options.onError || (() => {});
+        this.onConnect = options.onConnect || (() => {});
+        this.onDisconnect = options.onDisconnect || (() => {});
+        this.debug = options.debug || false;
+        this.ws = null;
+        this.isConnected = false;
+        this.reconnectDelay = options.reconnectDelay || 3000;
+        this.maxReconnectDelay = 30000;
+        this.reconnectTimer = null;
+        this.shouldReconnect = true;
+
+        this.address = null;
+        this.signature = null;
+        this.nonce = null;
+    }
+
+    setAuth(address, signature, nonce) {
+        this.address = address;
+        this.signature = signature;
+        this.nonce = nonce;
+    }
+
+    async connect() {
+        if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+            this.log('Already connected or connecting');
+            return;
+        }
+        if (!this.url) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            this.url = `${protocol}//${window.location.host}/ws`;
+        }
+        let finalUrl = this.url;
+        if (this.address && this.signature && this.nonce) {
+            finalUrl += `?address=${encodeURIComponent(this.address)}&signature=${encodeURIComponent(this.signature)}&nonce=${encodeURIComponent(this.nonce)}`;
+        }
+        this.log('Connecting to WebSocket:', finalUrl);
+        this.ws = new WebSocket(finalUrl);
+        this.ws.onopen = () => this._onOpen();
+        this.ws.onmessage = (event) => this._onMessage(event);
+        this.ws.onerror = (error) => this._onError(error);
+        this.ws.onclose = (event) => this._onClose(event);
+    }
+
+    disconnect() {
+        this.shouldReconnect = false;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        this.isConnected = false;
+    }
+
+    _onOpen() {
+        this.isConnected = true;
+        this.log('WebSocket connected');
+        this.onConnect();
+    }
+
+    _onMessage(event) {
+        try {
+            const data = JSON.parse(event.data);
+            this.log('Received:', data);
+            this.onMessage(data);
+        } catch (e) {
+            this.log('Invalid JSON:', event.data);
+        }
+    }
+
+    _onError(error) {
+        this.log('WebSocket error:', error);
+        this.onError(error);
+    }
+
+    _onClose(event) {
+        this.log('WebSocket closed, code:', event.code);
+        this.isConnected = false;
+        this.onDisconnect();
+        if (this.shouldReconnect && event.code !== 1008) {
+            this._scheduleReconnect();
+        }
+    }
+
+    _scheduleReconnect() {
+        if (this.reconnectTimer) return;
+        this.log(`Scheduling reconnect in ${this.reconnectDelay}ms`);
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.connect();
+            this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+        }, this.reconnectDelay);
+    }
+
+    log(...args) {
+        if (this.debug) console.log('[WebSocketClient]', ...args);
+    }
+}
+
+// =============================================================================
+// === 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (КРИПТОГРАФИЯ, СЕТЬ) ===
+// =============================================================================
 async function getPubKey(address) {
   if (pubKeyCache.has(address)) return pubKeyCache.get(address);
   const res = await fetch(`/get_public_key/${address}`);
   if (!res.ok) throw new Error(`Public key not found for ${address}`);
   const data = await res.json();
-
   const pubKeyBytes = DarkCrypto._fromBase64(data.public_key);
   const hashBuf = await crypto.subtle.digest('SHA-256', pubKeyBytes);
   const computedAddress = Array.from(new Uint8Array(hashBuf))
@@ -42,7 +164,6 @@ async function getPubKey(address) {
   if (computedAddress !== address) {
     throw new Error(`⚠️ Public key mismatch for ${address} — possible MITM!`);
   }
-
   pubKeyCache.set(address, data.public_key);
   return data.public_key;
 }
@@ -81,7 +202,7 @@ async function ensureKeys() {
 }
 
 // =============================================================================
-// === Smart Scroll ===
+// === 4. SMART SCROLL И ПАГИНАЦИЯ ===
 // =============================================================================
 function isUserAtBottom(container, threshold = 50) {
   if (!container) return false;
@@ -115,9 +236,6 @@ function showNewMessagesBadge() {
   }
 }
 
-// =============================================================================
-// === Пагинация старых сообщений ===
-// =============================================================================
 function setupTopObserver() {
   if (State.topObserver) State.topObserver.disconnect();
   const firstMsg = document.querySelector('#messagesContainer .message:first-of-type');
@@ -157,16 +275,12 @@ async function loadOlderMessages(chatId, beforeId) {
 function createMessageElement(msg) {
   const messageDiv = document.createElement('div');
   messageDiv.id = 'msg-' + msg.id;
-  messageDiv.className = 'message ' + (msg.is_mine ? 'sent' : 'received') + ' animate-fade';
+  const ownClass = msg.is_mine ? 'message-own' : '';
+  messageDiv.className = `message ${msg.is_mine ? 'sent' : 'received'} ${ownClass} animate-fade`;
   messageDiv.dataset.messageId = msg.id;
   messageDiv.dataset.id = msg.id;
-
-  // ✅ Улучшенная установка начального статуса
-  let initialStatus = msg.status;
-  if (!initialStatus) {
-    initialStatus = msg.is_mine ? 'sent' : 'delivered';
-  }
-  messageDiv.dataset.status = initialStatus;
+  if (msg.is_mine) messageDiv.dataset.status = msg.status || 'sent';
+  else messageDiv.dataset.status = msg.status || 'delivered';
 
   const initials = (msg.sender || 'U').slice(0, 1).toUpperCase();
   const senderName = msg.is_mine || !State.currentChatIsGroup
@@ -183,15 +297,13 @@ function createMessageElement(msg) {
 
   messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
 
-  // Добавляем статус для своих сообщений
   if (msg.is_mine) {
     const statusSpan = document.createElement('span');
     statusSpan.className = 'message-status';
-    // ✅ Правильное отображение иконки в зависимости от статуса
-    if (initialStatus === 'read') {
+    if (msg.status === 'read') {
       statusSpan.textContent = '✓✓';
       statusSpan.style.color = '#4caf50';
-    } else if (initialStatus === 'delivered') {
+    } else if (msg.status === 'delivered') {
       statusSpan.textContent = '✓✓';
       statusSpan.style.color = '#888';
     } else {
@@ -203,12 +315,11 @@ function createMessageElement(msg) {
     const metaDiv = messageDiv.querySelector('.meta');
     if (metaDiv) metaDiv.appendChild(statusSpan);
   }
-
   return messageDiv;
 }
 
 // =============================================================================
-// === Chat Functions ===
+// === 5. ЗАГРУЗКА СПИСКА ДИАЛОГОВ И СТАТУСОВ ПОЛЬЗОВАТЕЛЕЙ ===
 // =============================================================================
 async function loadConversations() {
   const container = document.getElementById('conversationsList');
@@ -258,53 +369,32 @@ async function loadConversations() {
   }
 }
 
-// =============================================================================
-// === Обновление статусов пользователей ===
-// =============================================================================
-
-// =============================================================================
-// === Обновление статусов пользователей ===
-// =============================================================================
-
 async function updateUsersStatus() {
-    // Собираем все адреса из диалогов (только личные, не группы)
     const conversationItems = document.querySelectorAll('.conversation-item');
     const addresses = [];
-
     conversationItems.forEach(item => {
         const address = item.dataset.address;
         if (address && !address.startsWith('group:')) {
             addresses.push(address);
         }
     });
-
     if (addresses.length === 0) return;
-
     try {
         const res = await fetch('/get_many_statuses', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ addresses })
         });
-
         if (!res.ok) return;
-
         const data = await res.json();
-
-        // Обновляем каждый диалог
         for (const [address, statusData] of Object.entries(data.statuses)) {
             const item = document.querySelector(`.conversation-item[data-address="${address}"]`);
             if (!item) continue;
-
             const statusSpan = item.querySelector('.status');
             if (!statusSpan) continue;
-
             const status = statusData.status;
             const lastSeen = statusData.last_seen;
-
-            // Удаляем старые классы
             statusSpan.classList.remove('online', 'away', 'offline');
-
             if (status === 'online') {
                 statusSpan.classList.add('online');
                 statusSpan.title = 'Online';
@@ -329,20 +419,190 @@ async function updateUsersStatus() {
         console.error('Failed to update statuses:', e);
     }
 }
-
-// Запускаем обновление статусов каждые 30 секунд
 setInterval(updateUsersStatus, 30000);
-
-// Также обновляем при загрузке диалогов
 setTimeout(updateUsersStatus, 1000);
 
+// =============================================================================
+// === 6. ОБРАБОТКА ВХОДЯЩИХ СООБЩЕНИЙ (WebSocket) ===
+// =============================================================================
+async function handleWebSocketMessage(data) {
+    if (data.error) {
+        console.error('WebSocket error message:', data.error);
+        return;
+    }
+    if (!data.chatId && data.sender && data.recipient) {
+        data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
+    }
+    if (!data.chatId) return;
+    if (document.getElementById('msg-' + data.id)) return;
+
+    const decrypted = await processMessageDecryption(data);
+    const chatId = decrypted.chatId;
+
+    // ✅ ОТПРАВЛЯЕМ СТАТУС DELIVERED ДЛЯ ЛЮБОГО ЧУЖОГО СООБЩЕНИЯ
+    if (!decrypted.is_mine) {
+        fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn('Mark delivered failed', e));
+    }
+
+    let isCurrent = false;
+    if (State.currentChatAddress === chatId) {
+        isCurrent = true;
+    } else if (decrypted.isGroup && State.currentChatAddress === chatId) {
+        isCurrent = true;
+    } else if (!decrypted.isGroup && (decrypted.sender === State.currentChatAddress || decrypted.recipient === State.currentChatAddress)) {
+        isCurrent = true;
+    }
+
+    if (!isCurrent) {
+        const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+        if (!existingItem) {
+            console.log('Новый диалог, обновляем список:', chatId);
+            await loadConversations();
+        } else {
+            updateConversationPreview(chatId, decrypted.preview || '💬 Новое сообщение');
+        }
+    }
+
+    if (isCurrent) {
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            const wasAtBottom = isUserAtBottom(container, 30);
+            const msgElement = createMessageElement(decrypted);
+            container.appendChild(msgElement);
+            if (wasAtBottom) {
+                setTimeout(() => {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                }, 50);
+            } else {
+                showNewMessagesBadge();
+            }
+            if (!decrypted.is_mine) {
+                fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e => console.warn('Mark read failed', e));
+            }
+        }
+    }
+
+    if (window.NotificationManager && document.visibilityState === 'visible') {
+        window.NotificationManager.handleIncomingMessage?.({
+            sender: decrypted.sender,
+            sender_name: decrypted.sender_name,
+            chatId: chatId,
+            isGroup: decrypted.isGroup,
+            preview: decrypted.preview,
+            timestamp: decrypted.timestamp * 1000,
+            messageId: decrypted.id
+        });
+    }
+}
+
+// =============================================================================
+// === 7. ИНИЦИАЛИЗАЦИЯ WEBSOCKET ===
+// =============================================================================
+async function initWebSocket() {
+    if (wsClient) {
+        wsClient.disconnect();
+    }
+    try {
+        const keys = await ensureKeys();
+        const nonce = crypto.randomUUID();
+        const signatureArray = await DarkCrypto.signData(keys.signPrivateKey, nonce);
+        const signatureHex = Array.from(new Uint8Array(signatureArray)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        wsClient = new WebSocketClient({
+            debug: false,
+            onMessage: handleWebSocketMessage,
+            onConnect: () => {
+                console.log('✅ WebSocket connected');
+                loadConversations();
+            },
+            onDisconnect: () => {
+                console.warn('⚠️ WebSocket disconnected');
+            },
+            onError: (err) => {
+                console.error('WebSocket error:', err);
+            }
+        });
+        wsClient.setAuth(State.userAddress, signatureHex, nonce);
+        wsClient.connect();
+    } catch (err) {
+        console.error('Failed to init WebSocket:', err);
+    }
+}
+
+// =============================================================================
+// === 8. HEARTBEAT (ОБНОВЛЕНИЕ ОНЛАЙН-СТАТУСА) ===
+// =============================================================================
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(async () => {
+        try {
+            const currentChat = State.currentChatAddress || '';
+            await fetch('/heartbeat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_chat: currentChat })
+            });
+        } catch (e) {
+            console.debug('Heartbeat failed', e);
+        }
+    }, 30000);
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+}
+
+// =============================================================================
+// === 9. ВЫБОР ДИАЛОГА И ЗАГРУЗКА СООБЩЕНИЙ ===
+// =============================================================================
 async function selectConversation(address, name, isGroup) {
+  if (State.topObserver) {
+      State.topObserver.disconnect();
+      State.topObserver = null;
+  }
   if (isSending) isSending = false;
   if (State.currentChatUnsub && typeof State.currentChatUnsub === 'function') State.currentChatUnsub();
   State.currentChatUnsub = null;
   State.currentChatAddress = address;
   State.currentChatIsGroup = !!isGroup;
   State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
+
+  // ✅ ОТПРАВЛЯЕМ HEARTBEAT ПРИ СМЕНЕ ЧАТА
+  fetch('/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_chat: address })
+  }).catch(e => console.debug);
+
+  const aiContainer = document.getElementById('aiChatContainer');
+  const mainContainer = document.getElementById('messagesContainer');
+  const mainInputArea = document.querySelector('.main-content .input-area');
+  const mainChatHeader = document.querySelector('.main-content .chat-header');
+
+  if (address === 'ai_bot') {
+    if (mainContainer) mainContainer.style.display = 'none';
+    if (mainInputArea) mainInputArea.style.display = 'none';
+    if (mainChatHeader) mainChatHeader.style.display = 'none';
+    if (aiContainer) aiContainer.classList.remove('hidden');
+    if (typeof window.initAiChat === 'function') window.initAiChat();
+    const nameEl = document.getElementById('currentChatName');
+    if (nameEl) nameEl.textContent = '🤖 AI Assistant';
+    const subtitleEl = document.getElementById('chatSubtitle');
+    if (subtitleEl) subtitleEl.textContent = 'Streaming response';
+    _enableChatControls();
+    document.querySelectorAll('.conversation-item').forEach(item => item.classList.remove('active'));
+    return;
+  } else {
+    if (aiContainer) aiContainer.classList.add('hidden');
+    if (mainContainer) mainContainer.style.display = '';
+    if (mainInputArea) mainInputArea.style.display = '';
+    if (mainChatHeader) mainChatHeader.style.display = '';
+  }
 
   if (isGroup) {
     try {
@@ -361,15 +621,6 @@ async function selectConversation(address, name, isGroup) {
     State.currentGroupMembers = null;
   }
 
-   // В конце функции selectConversation, после обновления State
-   if (heartbeatInterval) {
-       // Отправляем heartbeat сразу при смене чата
-       fetch('/heartbeat', {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ current_chat: State.currentChatAddress || '' })
-        }).catch(e => {});
-   }
   if (window.NotificationManager?.setActiveChat) window.NotificationManager.setActiveChat(address);
   const container = document.getElementById('messagesContainer');
   if (container) { container.innerHTML = '<div class="loading">Loading…</div>'; container.classList.add('loading'); }
@@ -383,15 +634,10 @@ async function selectConversation(address, name, isGroup) {
   State.lastMessageTimestamp = 0;
   State.pendingImageData = null;
   stopStatusPolling();
-  startStatusPolling();   // ✅ Запускаем опрос статусов для своих сообщений
-  if (longPollingClient) {
-    longPollingClient.forceCheck();
-  }
+  startStatusPolling();
   loadMessagesForConversation(address, false);
-  updateConversationPreview(address, '✓ Доставлено');
 
   if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
-
 }
 
 function _disableChatControls() {
@@ -402,7 +648,7 @@ function _disableChatControls() {
 }
 
 function _enableChatControls() {
-  ['messageContent', 'attachImageButton', 'sendButton', 'clearConversationBtn'].forEach(id => {
+  ['messageContent', 'attachImageButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = false;
   });
@@ -424,12 +670,10 @@ async function processMessageDecryption(msg) {
   let image = msg.image;
   try {
     const parsed = JSON.parse(content);
-
     if (parsed.encrypted_map) {
       const myAddr = State.userAddress;
       const myEnc = parsed.encrypted_map[myAddr];
       if (!myEnc) return { ...msg, content: '🔒 No access' };
-
       const keys = await ensureKeys();
       const senderPubKeyBytes = DarkCrypto._fromBase64(myEnc.sender_pubkey);
       try {
@@ -445,7 +689,6 @@ async function processMessageDecryption(msg) {
       }
       return { ...msg, content, image };
     }
-
     if (parsed.ciphertext && parsed.iv && parsed.sender_pubkey) {
       const keys = await ensureKeys();
       try {
@@ -453,10 +696,7 @@ async function processMessageDecryption(msg) {
           if (parsed.self_ciphertext && parsed.self_iv) {
             const selfCiphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_ciphertext);
             const selfIv = DarkCrypto._fromBase64(parsed.self_iv);
-            const selfShared = await DarkCrypto.getSharedSecret(
-              keys.ecdhPrivateKey,
-              keys.compressedPubKey
-            );
+            const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
             content = await DarkCrypto.decryptAES(selfShared, selfCiphertext, selfIv);
             image = parsed.image || null;
           } else {
@@ -464,18 +704,13 @@ async function processMessageDecryption(msg) {
           }
         } else {
           const senderPubKeyBytes = DarkCrypto._fromBase64(parsed.sender_pubkey);
-          content = await DarkCrypto.decryptMessage(
-            keys.ecdhPrivateKey,
-            senderPubKeyBytes,
-            parsed.iv,
-            parsed.ciphertext
-          );
+          content = await DarkCrypto.decryptMessage(keys.ecdhPrivateKey, senderPubKeyBytes, parsed.iv, parsed.ciphertext);
           image = parsed.image || null;
         }
       } catch (e) {
         console.error('Decryption critical error', msg.id, e);
         return { ...msg, content: '🔒 Ошибка расшифровки', image: null };
-    }
+      }
     }
   } catch (e) { }
   return { ...msg, content, image };
@@ -523,11 +758,14 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 
     const rawMessages = Array.isArray(data.messages) ? data.messages : [];
     const messages = [];
-
     for (const msg of rawMessages) {
-
-      const decrypted = await processMessageDecryption(msg);
-      messages.push(decrypted);
+       try {
+            const decrypted = await processMessageDecryption(msg);
+            messages.push(decrypted);
+       } catch (e) {
+        console.error('Failed to decrypt message', msg.id, e);
+        messages.push({ ...msg, content: '🔒 Ошибка расшифровки', image: null });
+       }
     }
 
     if (!messages.length) {
@@ -546,7 +784,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
       fragment.appendChild(createMessageElement(msg));
       if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
-
       if (!msg.is_mine && isNewMessage) {
         window.NotificationManager?.handleIncomingMessage?.({
           sender: msg.sender,
@@ -561,19 +798,21 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
     container.appendChild(fragment);
     State.lastMessageTimestamp = maxTimestamp;
 
-    if (longPollingClient && maxTimestamp > 0) {
-      longPollingClient.updateTimestamp(maxTimestamp);
-    }
-
     if (messages.length > 0) {
       markConversationAsRead(chatWithAddress, messages[messages.length - 1].id);
     }
 
     if (!isNewMessage) {
-      container.scrollTop = container.scrollHeight;
-      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 100);
-      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 350);
-      setTimeout(() => { if (container) container.scrollTop = container.scrollHeight; }, 650);
+        function smoothScrollToBottom() {
+            const prevHeight = container.scrollHeight;
+            container.scrollTop = prevHeight;
+            requestAnimationFrame(() => {
+                if (container.scrollHeight !== prevHeight) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            });
+        }
+        smoothScrollToBottom();
     } else {
       const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
       if (wasNearBottom) {
@@ -584,7 +823,6 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
       }
     }
 
-    // ✅ Отмечаем прочтение только для новых сообщений (isNewMessage = true)
     if (isNewMessage) {
       setTimeout(() => {
         const otherMessages = document.querySelectorAll('.message-other');
@@ -615,9 +853,14 @@ async function loadMessagesForConversation(chatWithAddress, isNewMessage = false
 }
 
 // =============================================================================
-// === sendMessage ===
+// === 10. ОТПРАВКА СООБЩЕНИЯ ===
 // =============================================================================
 async function sendMessage() {
+  if (State.currentChatAddress === 'ai_bot') {
+    console.log('⛔ sendMessage ignored because AI chat is active');
+    return;
+  }
+  console.log('[CHAT] sendMessage called, State.pendingImageData=', State.pendingImageData);
   const contentEl = document.getElementById('messageContent');
   const sendBtn = document.getElementById('sendButton');
   const attachBtn = document.getElementById('attachImageButton');
@@ -659,7 +902,7 @@ async function sendMessage() {
     timestamp: Date.now() / 1000,
     is_mine: true,
     sender_name: 'You',
-    status: 'sent'  // ✅ ДОБАВИТЬ ЭТУ СТРОКУ
+    status: 'sent'
   };
 
   const container = document.getElementById('messagesContainer');
@@ -672,7 +915,6 @@ async function sendMessage() {
 
   try {
     const keys = await ensureKeys();
-
     let payload = {};
     if (isGroup && groupId) {
       try {
@@ -694,20 +936,17 @@ async function sendMessage() {
         const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
         const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content || '');
-
         encryptedMap[addr] = {
           ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext),
           iv: DarkCrypto._toBase64(iv),
           sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
           image: attachedImage || null
         };
-
         if (addr === State.userAddress) {
           encryptedMap[addr].self_ciphertext = encryptedMap[addr].ciphertext;
           encryptedMap[addr].self_iv = encryptedMap[addr].iv;
         }
       }
-
       payload = {
         message_type: 'group',
         group_id: groupId,
@@ -718,20 +957,9 @@ async function sendMessage() {
       if (!resPub.ok) throw new Error('Recipient public key not found');
       const pubData = await resPub.json();
       const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
-
-      const encrypted = await DarkCrypto.encryptMessage(
-        keys.ecdhPrivateKey,
-        keys.compressedPubKey,
-        recipientPubKeyBytes,
-        content || ''
-      );
-
-      const selfShared = await DarkCrypto.getSharedSecret(
-        keys.ecdhPrivateKey,
-        keys.compressedPubKey
-      );
+      const encrypted = await DarkCrypto.encryptMessage(keys.ecdhPrivateKey, keys.compressedPubKey, recipientPubKeyBytes, content || '');
+      const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
       const selfEnc = await DarkCrypto.encryptAES(selfShared, content || '');
-
       payload = {
         recipient: recipient,
         payload: {
@@ -761,30 +989,15 @@ async function sendMessage() {
         tempElem.dataset.messageId = realId;
         const deleteBtn = tempElem.querySelector('.delete-btn');
         if (deleteBtn) deleteBtn.dataset.id = realId;
-        const metaDiv = tempElem.querySelector('.meta span');
-        if (metaDiv) metaDiv.innerHTML += ' ✓';
-
-        // ✅ Отмечаем сообщение как обработанное (чтобы Long Polling не присылал его снова)
-        if (longPollingClient) {
-          longPollingClient.markMessageProcessed(realId);
+        const statusSpan = tempElem.querySelector('.message-status');
+        if (statusSpan) {
+          statusSpan.textContent = '✓';
+          statusSpan.style.color = '#888';
         }
       }
-
-      // ✅ Обновляем список диалогов
-      loadConversations();
-
-      // ✅ Не загружаем сообщения принудительно — Long Polling сделает это сам
-      // НО: если Long Polling не активен, нужно обновить чат
-      if (!longPollingClient || !longPollingClient.isConnected) {
-        await loadMessagesForConversation(recipient, true);
-      }
-
-      // ✅ Принудительно проверяем новые сообщения (с небольшой задержкой)
-      if (longPollingClient) {
-        setTimeout(() => {
-          longPollingClient.forceCheck();
-        }, 100);
-      }
+      await loadConversations();
+      updateConversationPreview(recipient, '✓ Отправлено');
+      await loadMessagesForConversation(recipient, true);
     } else {
       const tempElem = document.getElementById('msg-' + tempId);
       if (tempElem) tempElem.remove();
@@ -805,7 +1018,7 @@ async function sendMessage() {
 }
 
 // =============================================================================
-// === Вспомогательные функции ===
+// === 11. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (КОНТАКТЫ, УДАЛЕНИЕ, ОЧИСТКА) ===
 // =============================================================================
 async function addContactFromChat() {
   if (!State.currentChatPartnerAddress || State.currentChatPartnerAddress === State.userAddress) {
@@ -919,6 +1132,9 @@ function openImageModal(src) {
 
 function closeImageModal() { document.getElementById('imageModal')?.classList.add('hidden'); }
 
+// =============================================================================
+// === 12. ПОЛЛИНГ СТАТУСОВ СООБЩЕНИЙ И ОБНОВЛЕНИЕ PREVIEW ===
+// =============================================================================
 let statusPollingInterval = null;
 
 function startStatusPolling() {
@@ -929,7 +1145,6 @@ function startStatusPolling() {
             .map(el => el.dataset.id)
             .filter(id => id && !id.startsWith('temp'));
         if (ids.length === 0) return;
-
         try {
             const res = await fetch('/message/statuses', {
                 method: 'POST',
@@ -942,12 +1157,24 @@ function startStatusPolling() {
                 if (msgDiv && msgDiv.dataset.status !== st) {
                     msgDiv.dataset.status = st;
                     updateStatusIcon(msgDiv, st);
+
+                    // ✅ ОБНОВЛЯЕМ PREVIEW В ЛЕВОЙ КОЛОНКЕ, ЕСЛИ ЭТО ПОСЛЕДНЕЕ СООБЩЕНИЕ В ДИАЛОГЕ
+                    const container = document.getElementById('messagesContainer');
+                    const lastMsg = container?.querySelector('.message:last-child');
+                    if (lastMsg && lastMsg.dataset.id === id) {
+                        const chatId = State.currentChatAddress;
+                        let previewText = '';
+                        if (st === 'read') previewText = '✓✓ Прочитано';
+                        else if (st === 'delivered') previewText = '✓✓ Доставлено';
+                        else previewText = '✓ Отправлено';
+                        updateConversationPreview(chatId, previewText);
+                    }
                 }
             }
         } catch (e) {
             console.warn('Status polling error', e);
         }
-    }, 30000);  // каждые 10 секунд
+    }, 30000);
 }
 
 function stopStatusPolling() {
@@ -956,10 +1183,27 @@ function stopStatusPolling() {
         statusPollingInterval = null;
     }
 }
+
+function updateStatusIcon(msgDiv, status) {
+    const icon = msgDiv.querySelector('.message-status');
+    if (!icon) return;
+    if (status === 'sent') {
+        icon.textContent = '✓';
+        icon.style.color = '#888';
+    } else if (status === 'delivered') {
+        icon.textContent = '✓✓';
+        icon.style.color = '#888';
+    } else if (status === 'read') {
+        icon.textContent = '✓✓';
+        icon.style.color = '#4caf50';
+    }
+}
+
 // =============================================================================
-// === Modal Controls ===
+// === 13. МОДАЛЬНЫЕ ОКНА (НОВЫЙ ЧАТ) ===
 // =============================================================================
 function openNewChatModal() {
+  window.modalOpen = true;
   document.getElementById('newChatModal')?.classList.remove('hidden');
   document.getElementById('newChatSelect').value = '';
   document.getElementById('newChatAddress').value = '';
@@ -968,6 +1212,7 @@ function openNewChatModal() {
 }
 
 function closeNewChatModal() {
+  window.modalOpen = false;
   document.getElementById('newChatModal')?.classList.add('hidden');
   if (window.QRScanner) QRScanner.close();
 }
@@ -1063,41 +1308,21 @@ function updateConversationPreview(chatId, newPreview) {
   }
 }
 
-function updateStatusIcon(msgDiv, status) {
-    const icon = msgDiv.querySelector('.message-status');
-    if (!icon) return;
-    if (status === 'sent') {
-        icon.textContent = '✓';
-        icon.style.color = '#888';
-    } else if (status === 'delivered') {
-        icon.textContent = '✓✓';
-        icon.style.color = '#888';
-    } else if (status === 'read') {
-        icon.textContent = '✓✓';
-        icon.style.color = '#4caf50';
-    }
-    // ✅ Всё правильно, break не нужен при if-else
-}
 // =============================================================================
-// === DOMContentLoaded ===
+// === 14. DOMContentLoaded (ЗАПУСК ВСЕГО) ===
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
-  // ✅ Загружаем диалоги при старте
   loadConversations();
+  initWebSocket();
+  startHeartbeat();           // ✅ ЗАПУСК HEARTBEAT
+  startStatusPolling();      // ✅ ЗАПУСК ПОЛЛИНГА СТАТУСОВ
 
-  // ✅ Запускаем Long Polling
-  setupLongPolling();
-  // ✅ Запускаем Heartbeat (статус "онлайн")
-  startHeartbeat();
-  // ✅ Обработчик возврата на вкладку
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && longPollingClient && longPollingClient.isConnected) {
-      console.log('📱 Tab active, forcing check...');
-      longPollingClient.forceCheck();
+    if (!document.hidden && wsClient && !wsClient.isConnected) {
+      console.log('📱 Tab active, reconnecting WebSocket...');
+      wsClient.connect();
     }
   });
-
-
   if (window.NotificationManager?.init) window.NotificationManager.init();
 
   const msgContainer = document.getElementById('messagesContainer');
@@ -1137,233 +1362,35 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('imageModal')?.addEventListener('click', e => { if (e.target.id === 'imageModal') closeImageModal(); });
   window.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) { e.target.classList.add('hidden'); if (window.QRScanner) QRScanner.close(); } });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); if (window.QRScanner) QRScanner.close(); } });
+
+  const aiBtn = document.getElementById('aiChatBtn');
+  if (aiBtn) {
+    aiBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
+        selectConversation('ai_bot', 'AI Assistant', false);
+    });
+  }
 });
 
-// =============================================================================
-// === Cleanup ===
-// =============================================================================
-// =============================================================================
-// === Cleanup / Before Unload ===
-// =============================================================================
-
 window.addEventListener('beforeunload', () => {
-
-
-    // ✅ Остановка Long Polling клиента
-    if (longPollingClient) {
-        longPollingClient.stop();
-        longPollingClient = null;
+    if (wsClient) {
+        wsClient.disconnect();
+        wsClient = null;
     }
-
-    // ✅ Остановка heartbeat (если используется)
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
-    }
-
-
-    // ✅ Закрытие QR сканера (если открыт)
     if (window.QRScanner && typeof QRScanner.close === 'function') {
-        try {
-            QRScanner.close();
-        } catch(e) {
-            console.debug('QRScanner close error:', e);
-        }
+        try { QRScanner.close(); } catch(e) {}
     }
-
-    // ✅ Остановка наблюдения за старыми сообщениями (IntersectionObserver)
     if (State.topObserver) {
         State.topObserver.disconnect();
         State.topObserver = null;
     }
-
-
-    // ✅ Очистка менеджера уведомлений
     if (window.NotificationManager && typeof window.NotificationManager.destroy === 'function') {
-        try {
-            window.NotificationManager.destroy();
-        } catch(e) {
-            console.debug('NotificationManager destroy error:', e);
-        }
+        try { window.NotificationManager.destroy(); } catch(e) {}
     }
-
-    // ✅ Остановка heartbeat (если используется)
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
-    }
-
-    // ✅ Отмена текущего fetch запроса (на всякий случай)
-    if (longPollingClient && longPollingClient.abortController) {
-        try {
-            longPollingClient.abortController.abort();
-        } catch(e) {
-            // игнорируем
-        }
-    }
-    // Небольшая задержка для завершения отправки данных (опционально)
-    // navigator.sendBeacon('/logout', JSON.stringify({}));
+    stopHeartbeat();
 });
 
-// =============================================================================
-// === Long Polling Client ===
-// =============================================================================
-
-let longPollingClient = null;
-let heartbeatInterval = null;
-
-async function setupLongPolling() {
-    if (longPollingClient) {
-        longPollingClient.stop();
-    }
-
-    longPollingClient = new LongPollingClient({
-        baseUrl: '',
-        timeout: 25000,
-        debug: false,
-        onMessages: async (messages) => {
-           // console.log('📬 New messages via Long Polling:', messages.length);
-           // console.log('🔍 Полные объекты сообщений:', JSON.parse(JSON.stringify(messages)));
-           // console.log('🔍 Текущий чат (State.currentChatAddress):', State.currentChatAddress);
-            if (!messages.length) return;
-
-            const userAddr = State.userAddress;
-
-            // Отмечаем доставку для чужих сообщений
-            for (const msg of messages) {
-                if (msg.sender && msg.sender !== userAddr) {
-                    fetch(`/message/${msg.id}/delivered`, { method: 'POST' })
-                        .catch(e => console.warn('Failed to mark delivered', e));
-                }
-            }
-
-            // Обновляем lastTimestamp
-            const maxTs = Math.max(...messages.map(m => m.timestamp));
-            if (maxTs > State.lastMessageTimestamp) {
-                State.lastMessageTimestamp = maxTs;
-                longPollingClient.updateTimestamp(maxTs);
-            }
-
-            // Группируем по chatId
-            const grouped = new Map();
-            for (const msg of messages) {
-                if (!grouped.has(msg.chatId)) grouped.set(msg.chatId, []);
-                grouped.get(msg.chatId).push(msg);
-            }
-
-            //console.log('Сравнение адресов: текущий чат =', State.currentChatAddress);
-           // console.log('Ключи grouped:', Array.from(grouped.keys()));
-
-            const currentChat = String(State.currentChatAddress).trim();
-
-            // Проверяем, есть ли сообщения для текущего чата (по chatId = адрес собеседника)
-            const hasChat = Array.from(grouped.keys()).some(key => {
-               const keyStr = String(key).trim();
-               return keyStr === currentChat || keyStr === userAddr;
-            });
-            if (currentChat && hasChat) {
-               // console.log('🔍 ВОШЛИ в блок обработки текущего чата');
-                                // Ищем ключ, который соответствует либо текущему чату, либо адресу пользователя
-                const foundKey = Array.from(grouped.keys()).find(key => {
-                const keyStr = String(key).trim();
-                return keyStr === currentChat || keyStr === userAddr;
-                });
-               // console.log('🔍 Найденный ключ:', foundKey);
-                const newMessages = grouped.get(foundKey);
-               // console.log('🔍 Количество сообщений для чата:', newMessages.length);
-                const container = document.getElementById('messagesContainer');
-              //  console.log('🔍 Контейнер найден:', container !== null);
-                if (container) {
-                    const wasAtBottom = isUserAtBottom(container, 30);
-                    for (const msg of newMessages) {
-                        try {
-                            if (document.getElementById('msg-' + msg.id)) continue;
-                            const decrypted = await processMessageDecryption(msg);
-                            const msgElement = createMessageElement(decrypted);
-                            container.appendChild(msgElement);
-                            if (!decrypted.is_mine) {
-                                fetch(`/message/${decrypted.id}/read`, { method: 'POST' });
-                            }
-                        } catch (err) {
-                            console.error('Ошибка обработки сообщения', msg.id, err);
-                        }
-                    }
-                    if (wasAtBottom) {
-                        setTimeout(() => {
-                            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-                        }, 50);
-                    } else {
-                        showNewMessagesBadge();
-                    }
-                }
-                grouped.delete(State.currentChatAddress);
-            }
-
-            // Для остальных чатов обновляем список диалогов
-            if (grouped.size > 0) {
-                await loadConversations();
-            }
-
-            // Уведомления (если нужно)
-            if (window.NotificationManager && document.visibilityState === 'visible') {
-                for (const [chatId, msgs] of grouped.entries()) {
-                    const lastMsg = msgs[msgs.length - 1];
-                    window.NotificationManager.handleIncomingMessage?.({
-                        sender: lastMsg.sender,
-                        sender_name: lastMsg.sender_name,
-                        chatId: chatId,
-                        isGroup: lastMsg.isGroup,
-                        preview: lastMsg.preview,
-                        timestamp: lastMsg.timestamp * 1000
-                    });
-                }
-            }
-        },
-        onError: (error) => {
-            console.warn('⚠️ Long polling connection issue:', error.message);
-        },
-        onConnect: () => {
-            console.log('✅ Long polling connected');
-        },
-        onDisconnect: () => {
-            console.warn('⚠️ Long polling disconnected');
-        }
-    });
-
-    longPollingClient.start();
-}
-
-// =============================================================================
-// === Heartbeat (статус "онлайн") ===
-// =============================================================================
-
-function startHeartbeat() {
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    heartbeatInterval = setInterval(async () => {
-        try {
-            await fetch('/heartbeat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    current_chat: State.currentChatAddress || ''
-                })
-            });
-        } catch (e) {
-            // тихо падаем
-        }
-    }, 30000);
-}
-
-function stopHeartbeat() {
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
-    }
-}
-
-window.getLongPollingStatus = () => longPollingClient?.getStatus();
-
-// Экспорт функций
 window.selectConversation = selectConversation;
 window.loadMessagesForConversation = loadMessagesForConversation;
 window.startNewChat = startNewChat;
@@ -1375,3 +1402,6 @@ window.handleImageSelection = handleImageSelection;
 window.addContactFromChat = addContactFromChat;
 window.clearConversation = clearConversation;
 window.processMessageDecryption = processMessageDecryption;
+window.closeNewChatModal = closeNewChatModal;
+window.openNewChatModal = openNewChatModal;
+})();
