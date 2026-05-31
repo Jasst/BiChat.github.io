@@ -10,18 +10,21 @@
 
     <form id="loginForm" class="auth-form">
       <input type="hidden" id="nonce" value="{{ nonce }}">
-      <textarea
-        id="mnemonic"
-        placeholder="Enter your mnemonic phrase"
-        rows="5"
-        autocomplete="off"
-        autocorrect="off"
-        spellcheck="false"
-        autofocus
-        required
-        class="input input-monospace"
-        style="font-size: 13px; line-height: 1.6;"
-      ></textarea>
+      <textarea id="mnemonic" placeholder="Enter your mnemonic phrase" rows="5" autocomplete="off" autocorrect="off" spellcheck="false" autofocus required class="input input-monospace" style="font-size: 13px; line-height: 1.6;"></textarea>
+
+      <div class="form-group" style="margin-top: 16px;">
+        <label><input type="checkbox" id="rememberCheckbox" checked> Remember me (encrypt and store wallet locally)</label>
+      </div>
+      <div id="passwordGroup" style="display: block;">
+        <div class="form-group">
+          <label>Encryption password (required if remembering)</label>
+          <input type="password" id="password" class="input" placeholder="Enter password">
+        </div>
+        <div class="form-group">
+          <label>Confirm password</label>
+          <input type="password" id="confirmPassword" class="input" placeholder="Repeat password">
+        </div>
+      </div>
 
       <div id="errorMsg" class="hidden error"></div>
       <button type="submit" class="btn btn-primary" id="loginBtn" style="width: 100%;">Login</button>
@@ -34,8 +37,8 @@
 </div>
 
 {% block scripts %}
+<script src="{{ url_for('static', path='js/storage-encryption.js') }}"></script>
 <script>
-// Защита от повторного выполнения скрипта
 if (window._loginScriptLoaded) {
   console.warn('Login script already executed');
 } else {
@@ -48,6 +51,20 @@ if (window._loginScriptLoaded) {
     const nonceEl = document.getElementById('nonce');
     const nonce = nonceEl ? nonceEl.value : '';
 
+    const rememberCheckbox = document.getElementById('rememberCheckbox');
+    const passwordGroup = document.getElementById('passwordGroup');
+    const passwordInput = document.getElementById('password');
+    const confirmInput = document.getElementById('confirmPassword');
+
+    // Показываем/скрываем поля пароля в зависимости от чекбокса
+    rememberCheckbox.addEventListener('change', (e) => {
+      passwordGroup.style.display = e.target.checked ? 'block' : 'none';
+      if (!e.target.checked) {
+        passwordInput.value = '';
+        confirmInput.value = '';
+      }
+    });
+
     if (!nonce) {
       error.textContent = 'No challenge (nonce) received. Refresh the page.';
       error.classList.remove('hidden');
@@ -58,15 +75,36 @@ if (window._loginScriptLoaded) {
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (isSubmitting) {
-        console.warn('Already submitting, ignoring duplicate submit');
-        return;
-      }
+      if (isSubmitting) return;
       isSubmitting = true;
       btn.disabled = true;
-      const originalText = btn.textContent;
       btn.textContent = 'Signing in…';
       error.classList.add('hidden');
+
+      const remember = rememberCheckbox.checked;
+      let password = passwordInput.value;
+      const confirm = confirmInput.value;
+
+      if (remember) {
+        if (!password || password.length < 4) {
+          error.textContent = 'Password must be at least 4 characters';
+          error.classList.remove('hidden');
+          isSubmitting = false;
+          btn.disabled = false;
+          btn.textContent = 'Login';
+          return;
+        }
+        if (password !== confirm) {
+          error.textContent = 'Passwords do not match';
+          error.classList.remove('hidden');
+          isSubmitting = false;
+          btn.disabled = false;
+          btn.textContent = 'Login';
+          return;
+        }
+      } else {
+        password = ''; // не используем пароль, если не сохраняем
+      }
 
       try {
         const mnemonic = document.getElementById('mnemonic').value.trim();
@@ -81,18 +119,8 @@ if (window._loginScriptLoaded) {
         const { signPrivateKey, compressedPubKey, address } = keys;
 
         const rawSignature = await DarkCrypto.signData(signPrivateKey, nonce);
-        const signatureHex = Array.from(new Uint8Array(rawSignature))
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-
+        const signatureHex = Array.from(new Uint8Array(rawSignature)).map(b => b.toString(16).padStart(2, '0')).join('');
         const pubkeyB64 = DarkCrypto._toBase64(compressedPubKey);
-
-        console.log('=== LOGIN DEBUG ===');
-        console.log('nonce:', nonce);
-        console.log('address:', address);
-        console.log('pubkey (base64):', pubkeyB64);
-        console.log('raw signature (hex):', signatureHex);
-        console.log('===================');
 
         const res = await fetch('/login', {
           method: 'POST',
@@ -104,6 +132,13 @@ if (window._loginScriptLoaded) {
 
         if (res.ok) {
           sessionStorage.setItem('mnemonic', mnemonic);
+          if (remember && password) {
+            const encrypted = await window.StorageEncryption.encryptMnemonic(mnemonic, password);
+            localStorage.setItem('encrypted_mnemonic', encrypted);
+          } else {
+            // Если пользователь не хочет сохранять, удаляем старые данные, если были
+            localStorage.removeItem('encrypted_mnemonic');
+          }
           window.location.href = '/chat';
         } else {
           let msg = 'Login failed';
@@ -112,14 +147,11 @@ if (window._loginScriptLoaded) {
             const values = Object.values(data.error).flat();
             msg = values[0] || 'Invalid credentials';
           }
-          if (msg.includes('No challenge') || msg.includes('Refresh')) {
-            msg += ' The page may have been submitted twice. Please refresh.';
-          }
           error.textContent = 'Error: ' + msg;
           error.classList.remove('hidden');
           isSubmitting = false;
           btn.disabled = false;
-          btn.textContent = originalText;
+          btn.textContent = 'Login';
         }
       } catch (err) {
         console.error(err);
@@ -127,30 +159,22 @@ if (window._loginScriptLoaded) {
         error.classList.remove('hidden');
         isSubmitting = false;
         btn.disabled = false;
-        btn.textContent = originalText;
+        btn.textContent = 'Login';
       }
     });
 
-    // ✅ Исправленная ссылка "Back to Home" (умный переход с проверкой сессии)
     document.getElementById('backToHomeLink')?.addEventListener('click', async (e) => {
       e.preventDefault();
-
-      // Очищаем локальное состояние
       sessionStorage.removeItem('mnemonic');
-
       try {
         const res = await fetch('/check_session');
         const data = await res.json();
-
         if (data.authenticated) {
-          // Если есть активная серверная сессия - делаем полный выход
           window.location.href = '/logout';
         } else {
-          // Если сессии нет - просто идём на главную
           window.location.href = '/';
         }
       } catch (err) {
-        // При ошибке - на главную
         window.location.href = '/';
       }
     });

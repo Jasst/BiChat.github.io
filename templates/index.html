@@ -5,79 +5,84 @@
 {% block content %}
 <div class="auth-container">
   <div class="auth-card animate-fade">
-    <!-- Logo / Brand -->
     <div class="auth-brand" style="margin-bottom: var(--space-lg); text-align: center;">
-      <div style="
-        width: 64px; height: 64px; margin: 0 auto var(--space-md);
-        background: var(--accent); border-radius: var(--radius-lg);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 28px; color: var(--text-inverse);
-        box-shadow: 0 4px 20px rgba(255,255,255,0.15);
-      ">🔐</div>
+      <div style="width: 64px; height: 64px; margin: 0 auto var(--space-md); background: var(--accent); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--text-inverse); box-shadow: 0 4px 20px rgba(255,255,255,0.15);">🔐</div>
       <h1 style="font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.5px;">Dark Messenger</h1>
       <p class="subtitle" style="color: var(--text-secondary); font-size: 14px; margin-top: var(--space-xs); line-height: 1.5;">Decentralized • End-to-end encrypted • Your keys, your messages</p>
     </div>
 
-    <!-- Action Buttons -->
     <div class="auth-form">
       <button class="btn btn-primary" onclick="location.href='/login'" style="width: 100%;">🔑 Login with Mnemonic</button>
-      <button class="btn" id="createWalletBtn" onclick="createWallet()" style="width: 100%;">✨ Create New Wallet</button>
+      <button class="btn" id="createWalletBtn" onclick="showCreateWalletModal()" style="width: 100%;">✨ Create New Wallet</button>
     </div>
 
-    <!-- Footer Info -->
     <div class="auth-footer" style="margin-top: var(--space-xl); text-align: center; color: var(--text-muted); font-size: 12px;">
       <p>🔐 No central server • No data collection</p>
-      <p style="margin-top: var(--space-xs);">
-        <a href="#" onclick="return false;" style="color: var(--text-secondary); text-decoration: none; transition: color var(--transition-fast);" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">
-          Learn more about security →
-        </a>
-      </p>
+      <p style="margin-top: var(--space-xs);"><a href="#" onclick="return false;" style="color: var(--text-secondary); text-decoration: none;">Learn more about security →</a></p>
     </div>
   </div>
 </div>
 
-<!-- 🔐 Mnemonic Display Modal -->
+<!-- 🔐 Модальное окно для пароля при создании кошелька -->
+<div id="createWalletModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width: 400px;">
+    <header class="modal-header">
+      <h3>🔐 Save wallet locally?</h3>
+      <button class="modal-close" onclick="ModalManager.close('createWalletModal')">&times;</button>
+    </header>
+    <div class="modal-body">
+      <p style="margin-bottom: var(--space-md);">Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.</p>
+      <div class="form-group">
+        <label><input type="checkbox" id="saveLocallyCheckbox" checked> Save locally (with password)</label>
+        <p class="text-muted" style="font-size: 12px; margin-top: 4px;">If saved, you won't need to re-enter mnemonic on next visit.</p>
+      </div>
+      <div id="passwordGroup" style="display: block;">
+        <div class="form-group">
+          <label>Encryption password</label>
+          <input type="password" id="createPassword" class="input" placeholder="Enter password">
+        </div>
+        <div class="form-group">
+          <label>Confirm password</label>
+          <input type="password" id="createConfirmPassword" class="input" placeholder="Repeat password">
+        </div>
+      </div>
+      <div id="createWalletError" class="error hidden" style="margin-top: var(--space-sm);"></div>
+    </div>
+    <footer class="modal-footer">
+      <button class="btn btn-ghost" onclick="ModalManager.close('createWalletModal')">Cancel</button>
+      <button class="btn btn-primary" id="proceedCreateBtn">Create Wallet</button>
+    </footer>
+  </div>
+</div>
+
+<!-- Модальное окно отображения мнемоники -->
 <div id="mnemonicModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="mnemonicTitle">
   <div class="modal animate-slide" style="max-width: 520px;">
     <header class="modal-header">
       <h3 id="mnemonicTitle" style="margin: 0; color: var(--accent);">✅ Wallet Created</h3>
-      <!-- ✅ ИСПРАВЛЕНО: вызов MnemonicManager.hide вместо прямого скрытия -->
       <button class="modal-close" onclick="MnemonicManager.hide('mnemonicModal')" aria-label="Close">&times;</button>
     </header>
-
     <div class="modal-body">
       <p style="color: var(--status-warning); font-weight: 500; margin: 0 0 var(--space-md); padding: var(--space-sm); background: rgba(170, 170, 170, 0.1); border-radius: var(--radius-sm);">
         ⚠️ Save this phrase securely. It cannot be recovered if lost!
       </p>
-
-      <div id="mnemonicDisplay" class="input-monospace" style="
-        background: var(--bg-tertiary); padding: var(--space-md);
-        border-radius: var(--radius-md); border: 1px solid var(--border-color);
-        word-break: break-all; user-select: all;
-        min-height: 80px; display: flex; align-items: center;
-        text-align: center; justify-content: center;
-        font-size: 13px; line-height: 1.6;
-      "></div>
-
+      <div id="mnemonicDisplay" class="input-monospace" style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); border: 1px solid var(--border-color); word-break: break-all; user-select: all; min-height: 80px; display: flex; align-items: center; text-align: center; justify-content: center; font-size: 13px; line-height: 1.6;"></div>
       <div style="display: flex; gap: var(--space-sm); margin: var(--space-md) 0;">
         <button class="btn" onclick="MnemonicManager.copy(() => NotificationManager?.showToast('✓ Copied!', 'success'))" style="flex: 1;">📋 Copy</button>
         <button class="btn" onclick="MnemonicManager.download()" style="flex: 1;">📥 Download</button>
       </div>
-
       <div style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary);">
         <strong style="color: var(--text-primary);">🔒 Security tips:</strong>
         <ul style="margin: var(--space-xs) 0 0 var(--space-md); padding: 0;">
-          <li style="margin: var(--space-xs) 0;">Write it down on paper</li>
-          <li style="margin: var(--space-xs) 0;">Store in a secure location</li>
-          <li style="margin: var(--space-xs) 0;">Never share or enter on suspicious sites</li>
+          <li>Write it down on paper</li>
+          <li>Store in a secure location</li>
+          <li>Never share or enter on suspicious sites</li>
         </ul>
       </div>
-
       <p style="color: var(--text-muted); font-size: 11px; text-align: center; margin-top: var(--space-md);">
-         <span id="clearCountdown" style="font-weight: 600; color: var(--accent);">30</span>
+        <span id="clearCountdown" style="font-weight: 600; color: var(--accent);">30</span>
       </p>
     </div>
-
     <footer class="modal-footer">
       <button class="btn btn-primary" onclick="proceedToChat()" style="width: 100%;">✓ I've Saved It — Continue</button>
     </footer>
@@ -86,30 +91,45 @@
 
 {% block scripts %}
 <script>
-// === Глобальное хранилище мнемоники (будет доступно после создания/входа) ===
-window.appMnemonic = null;
+let generatedMnemonic = null;
+let isCreating = false;
 
-// Флаг для защиты от повторных вызовов
-let isCreatingWallet = false;
+function showCreateWalletModal() {
+  document.getElementById('createPassword').value = '';
+  document.getElementById('createConfirmPassword').value = '';
+  document.getElementById('createWalletError').classList.add('hidden');
+  ModalManager.open('createWalletModal');
+}
 
-/**
- * Создание нового кошелька.
- * Генерируем мнемонику на клиенте, получаем адрес и публичный ключ,
- * отправляем их на сервер, показываем мнемонику пользователю.
- */
-async function createWallet() {
-  if (isCreatingWallet) {
-    console.warn('Wallet creation already in progress');
-    return;
+function validateCreateWallet() {
+  const saveLocally = document.getElementById('saveLocallyCheckbox').checked;
+  const pwd = document.getElementById('createPassword').value;
+  const confirm = document.getElementById('createConfirmPassword').value;
+  const errorDiv = document.getElementById('createWalletError');
+  if (saveLocally) {
+    if (!pwd || pwd.length < 4) {
+      errorDiv.textContent = 'Password must be at least 4 characters';
+      errorDiv.classList.remove('hidden');
+      return false;
+    }
+    if (pwd !== confirm) {
+      errorDiv.textContent = 'Passwords do not match';
+      errorDiv.classList.remove('hidden');
+      return false;
+    }
   }
+  errorDiv.classList.add('hidden');
+  return true;
+}
 
-  const btn = document.getElementById('createWalletBtn');
-  if (!btn) return;
+async function createWallet() {
+  if (isCreating) return;
+  if (!validateCreateWallet()) return;
 
-  isCreatingWallet = true;
+  isCreating = true;
+  const btn = document.getElementById('proceedCreateBtn');
   btn.disabled = true;
-  btn.textContent = 'Creating…';
-  btn.classList.add('animate-pulse');
+  btn.textContent = 'Creating...';
 
   try {
     const mnemonic = await DarkCrypto.generateMnemonic();
@@ -121,32 +141,33 @@ async function createWallet() {
     const response = await fetch('/create_wallet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        address: address,
-        public_key: pubkeyB64
-      })
+      body: JSON.stringify({ address, public_key: pubkeyB64 })
     });
     const data = await response.json();
 
     if (response.ok) {
+      generatedMnemonic = mnemonic;
       sessionStorage.setItem('mnemonic', mnemonic);
-      window.appMnemonic = mnemonic;
+
+      const saveLocally = document.getElementById('saveLocallyCheckbox').checked;
+      if (saveLocally) {
+        const password = document.getElementById('createPassword').value;
+        const encrypted = await window.StorageEncryption.encryptMnemonic(mnemonic, password);
+        localStorage.setItem('encrypted_mnemonic', encrypted);
+      }
+
+      ModalManager.close('createWalletModal');
       MnemonicManager.showInModal(mnemonic, 'mnemonicModal', 'mnemonicDisplay');
-      console.log('✅ Wallet created for:', address.slice(0, 16) + '…');
     } else {
       throw new Error(data.error || 'Registration failed');
     }
   } catch (error) {
     console.error('Create wallet error:', error);
-    window.NotificationManager?.showToast(
-      error.message || 'Wallet creation failed. Please try again.',
-      'error'
-    );
-    btn.disabled = false;
-    btn.textContent = '✨ Create New Wallet';
-    btn.classList.remove('animate-pulse');
+    window.NotificationManager?.showToast(error.message || 'Wallet creation failed', 'error');
   } finally {
-    isCreatingWallet = false;
+    isCreating = false;
+    btn.disabled = false;
+    btn.textContent = 'Create Wallet';
   }
 }
 
@@ -155,18 +176,17 @@ function proceedToChat() {
   window.location.href = '/chat';
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  if (window.NotificationManager?.init) {
-    window.NotificationManager.init();
-  }
-  const confirmBtn = document.querySelector('#mnemonicModal .btn-primary');
-  if (confirmBtn) {
-    confirmBtn.removeEventListener('click', proceedToChat);
-    confirmBtn.addEventListener('click', proceedToChat);
+document.getElementById('saveLocallyCheckbox').addEventListener('change', (e) => {
+  const group = document.getElementById('passwordGroup');
+  group.style.display = e.target.checked ? 'block' : 'none';
+  if (!e.target.checked) {
+    document.getElementById('createPassword').value = '';
+    document.getElementById('createConfirmPassword').value = '';
   }
 });
+document.getElementById('proceedCreateBtn').addEventListener('click', createWallet);
 
-window.createWallet = createWallet;
+window.showCreateWalletModal = showCreateWalletModal;
 window.proceedToChat = proceedToChat;
 </script>
 {% endblock %}
