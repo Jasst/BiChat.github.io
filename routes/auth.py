@@ -5,13 +5,12 @@ import logging
 import secrets
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from cache import cache_public_key, clear_all_caches
 from config import AIRDROP_AMOUNT, TEMPLATE_FOLDER
-from dependencies import require_auth
 from models import CreateWalletRequest, LoginRequest
 from setup import verify_address_matches_pubkey, load_public_key_from_b64
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature

@@ -384,9 +384,13 @@
     document.getElementById('logoutModal')?.classList.add('hidden');
   };
   window.executeLogout = function() {
-    window.closeLogoutModal();
-    sessionStorage.removeItem('mnemonic');
-    window.location.href = '/logout';
+      window.closeLogoutModal();
+      if (window.logout) {
+          window.logout();
+      } else {
+          sessionStorage.removeItem('mnemonic');
+          window.location.href = '/logout';
+      }
   };
   function validateLogoutInput() {
     const input = document.getElementById('logoutConfirmInput');

@@ -6,7 +6,6 @@
   <meta name="description" content="Decentralized encrypted messenger">
   <meta name="theme-color" content="#0a0a0a">
   <meta name="color-scheme" content="dark">
-  <!-- Передаём адрес пользователя через мета-тег (заполняется в шаблоне) -->
   <meta name="user-address" content="{{ address|default('', true) }}">
 
   <title>{% block title %}Dark Messenger{% endblock %}</title>
@@ -26,32 +25,34 @@
 
   <div id="notification-container" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Глобальные скрипты (загружаются на всех страницах) -->
+  <!-- Глобальные скрипты -->
   <script src="{{ url_for('static', path='js/common.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/crypto-client.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/notification-manager.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/mnemonic-manager.js') }}" defer></script>
-  <!-- ✅ core.js теперь подключается глобально -->
+  <!-- ✅ Новый модуль шифрования -->
+  <script src="{{ url_for('static', path='js/storage-encryption.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/core.js') }}" defer></script>
 
   <script>
-    // Глобальная инициализация WebSocket и состояния после загрузки страницы
+    // Глобальная функция выхода (очищает и хранилища, и сессию)
+    window.logout = async function() {
+      localStorage.removeItem('encrypted_mnemonic');
+      sessionStorage.removeItem('mnemonic');
+      if (window.wsClient) window.wsClient.disconnect();
+      window.location.href = '/login';
+    };
+
     (function() {
       if (window._globalInitDone) return;
       window._globalInitDone = true;
 
-      // Ждём загрузки всех скриптов
       document.addEventListener('DOMContentLoaded', async function() {
-        // Получаем адрес из мета-тега (если есть)
         const metaAddress = document.querySelector('meta[name="user-address"]')?.content;
         if (metaAddress && metaAddress !== 'None' && metaAddress !== '') {
-          if (window.State) {
-            window.State.userAddress = metaAddress;
-          } else {
-            window.userAddress = metaAddress;
-          }
+          if (window.State) window.State.userAddress = metaAddress;
+          else window.userAddress = metaAddress;
         } else {
-          // fallback: запрос к серверу
           try {
             const res = await fetch('/check_session');
             const data = await res.json();
@@ -62,16 +63,12 @@
           } catch(e) { console.debug('Session check failed', e); }
         }
 
-        // Если есть адрес и мы на странице, где нет своего State.currentChatAddress
-        // (например, contacts, groups, wallet, profile) – инициализируем WebSocket глобально
         if (window.State && window.State.userAddress && typeof window.initWebSocket === 'function') {
-          // Не инициализируем повторно, если уже есть wsClient
           if (!window.wsClient || !window.wsClient.isConnected) {
             window.initWebSocket();
           }
         }
 
-        // Запускаем heartbeat и polling статусов, если их нет
         if (window.startHeartbeat && !window._heartbeatStarted) {
           window.startHeartbeat();
           window._heartbeatStarted = true;

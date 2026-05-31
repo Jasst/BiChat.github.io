@@ -101,35 +101,51 @@
       </div>
     </form>
 
-    <!-- AI Chat Container (с кнопкой reasoning) -->
-    <div id="aiChatContainer" class="hidden" style="display: flex; flex-direction: column; height: 100%; background: var(--bg-primary);">
+    <!-- ═══════════════════════════════════════════════════════════
+         AI CHAT CONTAINER — исправлен: одна кнопка интернета, без подсказок
+    ═══════════════════════════════════════════════════════════════ -->
+    <div id="aiChatContainer" class="hidden" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
       <header class="chat-header">
         <div class="title">
           <span>🤖 AI Assistant</span>
-          <span class="subtitle">Streaming response</span>
+          <span class="subtitle" id="aiStatusSubtitle">Интернет выключен · Streaming</span>
         </div>
         <div class="actions">
           <button id="closeAiChatBtn" class="btn btn-icon" title="Close AI chat">✕</button>
         </div>
       </header>
+
       <div id="aiMessagesContainer" class="messages"></div>
+
       <form class="input-area" onsubmit="return false;">
         <div class="input-wrapper">
-          <textarea id="aiMessageInput" placeholder="Ask AI... (Enter to send, Shift+Enter for new line)" rows="1"></textarea>
+          <textarea id="aiMessageInput" placeholder="Ask AI… (вставьте ссылку для чтения)" rows="1"></textarea>
           <div class="input-actions">
             <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
+
+            <!-- 📎 Прикрепить изображение -->
             <button type="button" id="aiAttachBtn" class="btn btn-icon" title="Attach image">📎</button>
-            <button type="button" id="aiReasoningBtn" class="btn btn-icon" title="Reasoning mode (show chain of thought)" style="opacity: 0.5;">🧠</button>
+
+            <!-- 🌐 Единая кнопка интернета (вкл/выкл) — включает поиск и загрузку страниц -->
+            <button type="button" id="aiInternetBtn" class="btn btn-icon" title="Интернет (поиск + чтение страниц)" style="opacity:0.5;">🌐</button>
+
+            <!-- 🧠 Режим рассуждений -->
+            <button type="button" id="aiReasoningBtn" class="btn btn-icon" title="Reasoning mode" style="opacity:0.5;">🧠</button>
+
+            <!-- ➤ Отправить -->
             <button type="submit" id="aiSendBtn" class="btn btn-primary">➤</button>
-            <button type="button" id="aiClearHistoryBtn" class="btn btn-icon" title="Clear AI history">🗑</button>
+
+            <!-- 🗑 Очистить историю -->
+            <button type="button" id="aiClearHistoryBtn" class="btn btn-icon" title="Clear history">🗑</button>
           </div>
         </div>
+        <!-- Быстрые подсказки (Новости, Что такое и т.д.) полностью удалены -->
       </form>
     </div>
   </main>
 </div>
 
-<!-- Модальное окно нового чата -->
+<!-- Модальное окно нового чата (без изменений) -->
 <div id="newChatModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="newChatTitle">
   <div class="modal">
     <header class="modal-header">
@@ -141,22 +157,20 @@
         <button class="btn btn-ghost" onclick="openQRScannerInModal()" id="scanQRBtn">📷 Scan QR Code</button>
         <div id="qrScannerContainerModal" class="hidden" style="margin-top: var(--space-md);">
           <div style="position: relative; display: inline-block;">
-            <video id="qrVideoModal" style="width: 200px; height: 200px; border-radius: var(--radius-md); background: #000;"></video>
-            <div style="position: absolute; inset: 0; border: 2px solid var(--accent); border-radius: var(--radius-md); pointer-events: none;"></div>
+            <video id="qrVideoModal" style="width:200px;height:200px;border-radius:var(--radius-md);background:#000;"></video>
+            <div style="position:absolute;inset:0;border:2px solid var(--accent);border-radius:var(--radius-md);pointer-events:none;"></div>
           </div>
-          <p class="text-muted" style="margin-top: var(--space-sm); font-size: 12px;">Point camera at QR code</p>
-          <button class="btn btn-ghost" onclick="forceCloseQRScannerInModal()" style="margin-top: var(--space-sm);">Cancel</button>
+          <p class="text-muted" style="margin-top:var(--space-sm);font-size:12px;">Point camera at QR code</p>
+          <button class="btn btn-ghost" onclick="forceCloseQRScannerInModal()" style="margin-top:var(--space-sm);">Cancel</button>
         </div>
-        <div id="scanResultModal" class="hidden" style="margin-top: var(--space-sm); color: var(--status-success); font-weight: 500;"></div>
+        <div id="scanResultModal" class="hidden" style="margin-top:var(--space-sm);color:var(--status-success);font-weight:500;"></div>
       </div>
       <div class="form-group">
-        <label for="newChatSelect" class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Select from contacts</label>
-        <select id="newChatSelect" class="input">
-          <option value="">-- Choose a contact --</option>
-        </select>
+        <label for="newChatSelect" class="text-secondary" style="font-size:12px;display:block;margin-bottom:var(--space-xs);">Select from contacts</label>
+        <select id="newChatSelect" class="input"><option value="">-- Choose a contact --</option></select>
       </div>
       <div class="form-group">
-        <label for="newChatAddress" class="text-secondary" style="font-size: 12px; display: block; margin-bottom: var(--space-xs);">Or enter address</label>
+        <label for="newChatAddress" class="text-secondary" style="font-size:12px;display:block;margin-bottom:var(--space-xs);">Or enter address</label>
         <input type="text" id="newChatAddress" class="input input-monospace" placeholder="64-character hex address" maxlength="64">
       </div>
     </div>
@@ -169,10 +183,10 @@
 
 <!-- Модальное окно изображения -->
 <div id="imageModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
-  <div class="modal" style="max-width: 90vw; max-height: 90vh; background: transparent; border: none; box-shadow: none;">
-    <button class="modal-close" onclick="closeImageModal()" style="position: absolute; top: var(--space-md); right: var(--space-md); color: var(--text-primary); z-index: 1;" aria-label="Close">&times;</button>
-    <img id="modalImage" src="" alt="Full size" style="max-width: 100%; max-height: 90vh; border-radius: var(--radius-md);">
-    <div class="text-center" style="margin-top: var(--space-md);">
+  <div class="modal" style="max-width:90vw;max-height:90vh;background:transparent;border:none;box-shadow:none;">
+    <button class="modal-close" onclick="closeImageModal()" style="position:absolute;top:var(--space-md);right:var(--space-md);color:var(--text-primary);z-index:1;" aria-label="Close">&times;</button>
+    <img id="modalImage" src="" alt="Full size" style="max-width:100%;max-height:90vh;border-radius:var(--radius-md);">
+    <div class="text-center" style="margin-top:var(--space-md);">
       <button class="btn btn-primary" id="downloadImageBtn">Download</button>
     </div>
   </div>

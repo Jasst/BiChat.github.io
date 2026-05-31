@@ -1,6 +1,5 @@
 """
 database.py — Асинхронная версия с asyncpg (PostgreSQL)
-Исправлено: все обращения к полю 'index' заменены на 'block_index' для совместимости с БД.
 """
 import asyncio
 import hashlib
@@ -8,7 +7,7 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 
 import asyncpg
 from asyncpg.pool import Pool
@@ -18,6 +17,7 @@ from config import DATABASE_URL, CONFIG, BLOCK_REWARD, ENABLE_MINING
 logger = logging.getLogger(__name__)
 
 _pool: Optional[Pool] = None
+
 
 # ------------------------------------------------------------------
 # Инициализация и закрытие пула
@@ -44,11 +44,13 @@ async def init_db():
             logger.info("Genesis block created")
     logger.info("PostgreSQL pool initialized")
 
+
 async def close_db():
     global _pool
     if _pool:
         await _pool.close()
         logger.info("Database pool closed")
+
 
 @asynccontextmanager
 async def get_db_cursor():
@@ -56,6 +58,7 @@ async def get_db_cursor():
     async with _pool.acquire() as conn:
         async with conn.transaction():
             yield conn
+
 
 # ------------------------------------------------------------------
 # Вспомогательные функции создания таблиц и миграций
@@ -146,31 +149,13 @@ async def _create_tables(conn: asyncpg.Connection):
             status       TEXT DEFAULT 'offline',
             current_chat TEXT
         );
-        CREATE TABLE IF NOT EXISTS transactions_archive (
-            id          BIGINT PRIMARY KEY,
-            sender      TEXT NOT NULL,
-            recipient   TEXT NOT NULL,
-            content     TEXT,
-            image       TEXT,
-            timestamp   DOUBLE PRECISION NOT NULL,
-            sender_pubkey TEXT,
-            metadata    TEXT,
-            status      TEXT,
-            read_at     DOUBLE PRECISION,
-            archived_at DOUBLE PRECISION NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS archive_log (
-            id            BIGSERIAL PRIMARY KEY,
-            archived_date TEXT NOT NULL,
-            messages_count INTEGER,
-            created_at    DOUBLE PRECISION NOT NULL
-        );
         CREATE TABLE IF NOT EXISTS schema_version (
             version    INTEGER PRIMARY KEY,
             applied_at DOUBLE PRECISION
         );
     """)
     await conn.execute("INSERT INTO schema_version (version, applied_at) VALUES (0, extract(epoch from now())) ON CONFLICT DO NOTHING")
+
 
 async def _apply_migrations(conn: asyncpg.Connection):
     current_version = await conn.fetchval("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1") or 0
@@ -193,6 +178,7 @@ async def _apply_migrations(conn: asyncpg.Connection):
         await conn.execute("UPDATE schema_version SET version = 4")
     logger.info(f"Database schema at version {current_version}")
 
+
 async def _create_indexes(conn: asyncpg.Connection):
     indexes = [
         "CREATE INDEX IF NOT EXISTS idx_tx_sender ON transactions(sender)",
@@ -212,24 +198,13 @@ async def _create_indexes(conn: asyncpg.Connection):
         except Exception as e:
             logger.warning(f"Could not create index: {e}")
 
+
 # ------------------------------------------------------------------
 # Класс Blockchain (работа с блоками)
 # ------------------------------------------------------------------
 class Blockchain:
-    _instance = None
-    _init_lock = asyncio.Lock()
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
     def __init__(self):
-        if self._initialized:
-            return
-        self._initialized = True
-        logger.info("Blockchain singleton created (PostgreSQL)")
+        logger.info("Blockchain instance created (PostgreSQL)")
 
     async def _last_block_raw(self, conn: asyncpg.Connection) -> dict:
         row = await conn.fetchrow("SELECT * FROM blockchain ORDER BY block_index DESC LIMIT 1")
@@ -253,7 +228,6 @@ class Blockchain:
                 'note': 'Miner reward'
             })
         last = await self._last_block_raw(conn)
-        # ✅ FIXED: используем block_index вместо index
         block_index = last.get('block_index', 0) + 1
         previous_hash = previous_hash or self._hash_block(last)
         await conn.execute("""
@@ -279,7 +253,6 @@ class Blockchain:
     def _hash_block(self, block: dict) -> str:
         if not block:
             return '0' * 64
-        # ✅ FIXED: сортируем ключи для стабильного хэша (включая 'block_index')
         return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
 
     async def proof_of_work_async(self, last_proof: int) -> int:
@@ -318,12 +291,10 @@ class Blockchain:
             """, user_address, f'%{query}%', limit)
             return [dict(r) for r in rows]
 
-    async def health_check(self, quick: bool = True) -> dict:
+    async def health_check(self) -> dict:
         try:
             async with get_db_cursor() as conn:
                 status = {'status': 'healthy'}
-                if not quick:
-                    await conn.execute("SELECT 1")
                 row = await conn.fetchrow("SELECT pg_database_size(current_database()) as size")
                 status['db_size_mb'] = round(row['size'] / (1024 * 1024), 2)
                 tables = ['transactions', 'wallets', 'blockchain', 'contacts', 'groups', 'stakes']
@@ -336,6 +307,24 @@ class Blockchain:
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
 
+    async def get_performance_stats(self) -> dict:
+        """Возвращает статистику производительности (для эндпоинта /health/performance)."""
+        try:
+            async with get_db_cursor() as conn:
+                # Количество транзакций за последние 24 часа
+                day_ago = time.time() - 86400
+                tx_last_day = await conn.fetchval(
+                    "SELECT COUNT(*) FROM transactions WHERE timestamp > $1", day_ago
+                )
+                # Среднее время обработки запроса (пример)
+                return {
+                    'transactions_last_24h': tx_last_day,
+                    'active_connections': _pool.get_size() if _pool else 0,
+                    'pool_usage': _pool.get_usage() if _pool else 0,
+                }
+        except Exception as e:
+            return {'error': str(e)}
+
     async def try_mine_block(self, last_proof: int, last_index: int, proof: int, challenge: str, miner_address: str):
         async with get_db_cursor() as conn:
             try:
@@ -343,13 +332,11 @@ class Blockchain:
                     current = await self._last_block_raw(conn)
                     if not current:
                         return False, "No blockchain", 0, 0
-                    # ✅ FIXED: используем block_index
                     if current.get('proof') != last_proof or current.get('block_index') != last_index:
                         return False, "Blockchain moved, try again", 0, 0
                     if not self.valid_proof_with_challenge(last_proof, proof, challenge):
                         return False, "Invalid proof", 0, 0
                     current_again = await self._last_block_raw(conn)
-                    # ✅ FIXED: используем block_index
                     if current_again.get('proof') != last_proof or current_again.get('block_index') != last_index:
                         return False, "Blockchain changed during validation", 0, 0
                     block_index = await self._new_block_raw(conn, proof, miner_address=miner_address)
@@ -363,13 +350,3 @@ class Blockchain:
         guess_hash = hashlib.sha256(guess).hexdigest()
         target = '0' * CONFIG['POW_DIFFICULTY']
         return guess_hash.startswith(target)
-
-    async def close(self):
-        pass  # пул закрывается в close_db()
-
-# Для обратной совместимости с main.py (если вызываются)
-async def init_sqlite_optimizations(db_path: str):
-    pass
-
-async def warmup_database(db_path: str):
-    pass

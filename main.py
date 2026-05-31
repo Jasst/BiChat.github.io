@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from config import CONFIG, SECRET_KEY, STATIC_FOLDER, UPLOAD_FOLDER
 from database import init_db, close_db, Blockchain
 from setup import setup_logging, get_rate_limit_stats
-from services.wallet import init_wallet_service   # <-- ДОБАВИТЬ ИМПОРТ
+from services.wallet import init_wallet_service
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -23,12 +23,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting BiChat server (PostgreSQL + WebSocket)...")
-    await init_db()                     # инициализация PostgreSQL
+    await init_db()
     blockchain = Blockchain()
     app.state.blockchain = blockchain
-    # ============ ИНИЦИАЛИЗАЦИЯ СТЕЙКИНГА ============
-    init_wallet_service(blockchain)     # <-- ДОБАВИТЬ ЭТУ СТРОКУ
-    # =================================================
+    init_wallet_service(blockchain)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     logger.info("BiChat server started ✅")
     yield
@@ -86,7 +84,7 @@ app.include_router(wallet_router)
 app.include_router(files_router)
 app.include_router(status_router)
 app.include_router(ai_router)
-app.include_router(ws_router)           # WebSocket маршрут
+app.include_router(ws_router)
 
 
 @app.middleware('http')
@@ -103,19 +101,12 @@ async def add_cache_headers(request: Request, call_next):
 async def health_check(request: Request):
     blockchain: Blockchain = request.app.state.blockchain
     db_health = await blockchain.health_check()
-    from cache import balance_cache, contact_cache, group_cache
     from routes.ws import manager
     return {
         'status': 'ok' if db_health.get('status') == 'healthy' else 'degraded',
         'database': db_health,
         'rate_limits': get_rate_limit_stats(),
-        'caches': {
-            'balance': await balance_cache.get_stats(),
-            'contacts': await contact_cache.get_stats(),
-            'groups': await group_cache.get_stats(),
-        },
         'websocket': await manager.get_stats(),
-        'connection_pool_size': None,
     }
 
 

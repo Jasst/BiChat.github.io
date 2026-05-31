@@ -1,30 +1,27 @@
 """
 routes/messages.py — Отправка сообщений (Long Polling удалён, используется WebSocket)
 """
-import asyncio
 import json
 import logging
 import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
 
 from cache import (
     get_contact_cache_version, get_contact_name_cached,
     get_groups_cache_version, get_user_groups_cached,
 )
-from config import MESSAGE_FEE, COIN, COIN_NAME, STAKING_FEE_POOL_ADDRESS, ENABLE_STAKING, CONFIG
+from config import MESSAGE_FEE, COIN, COIN_NAME, STAKING_FEE_POOL_ADDRESS, ENABLE_STAKING
 from dependencies import require_auth, make_rate_limit_dep
-from models import SendMessageRequest, MarkReadRequest, MessageStatusesRequest, DeleteMessageRequest
+from models import SendMessageRequest, MarkReadRequest, MessageStatusesRequest
 from services.messaging import get_conversations_list_cached, invalidate_conversations_cache
-from services.notifier import message_notifier
-from services.wallet import staking_manager, mine_block_async_async
+from services.wallet import staking_manager
 from setup import message_limiter
 from routes.ws import manager
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=['messages'])   # <--- ЭТО БЫЛО ПРОПУЩЕНО
+router = APIRouter(tags=['messages'])
 
 
 @router.post('/send_message', status_code=201,
@@ -119,18 +116,6 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
         else:
             await invalidate_conversations_cache(body.recipient)
 
-        # ========== АВТОМАТИЧЕСКИЙ МАЙНИНГ ОТКЛЮЧЁН ==========
-        # Ручной майнинг через /wallet/mine остаётся доступен,
-        # а комиссия за сообщения продолжает списываться как обычно.
-        # Следующий блок закомментирован, чтобы избежать конфликтов 409:
-        #
-        # if CONFIG.get('ENABLE_MINING', False):
-        #     last = await blockchain._last_block_raw(conn)
-        #     if last:
-        #         asyncio.create_task(mine_block_async_async(last.get('proof', 0), sender))
-        #
-        # ===================================================
-
         return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
 
 
@@ -143,7 +128,6 @@ async def get_conversation(
     limit:   int = Query(default=30),
     before_id: Optional[int] = Query(default=None),
 ):
-    blockchain = request.app.state.blockchain
     if not with_:
         raise HTTPException(400, 'Missing "with" parameter')
     chat_with = with_

@@ -2,7 +2,6 @@
 routes/ws.py — WebSocket менеджер для реального времени
 """
 import asyncio
-import json
 import logging
 import time
 from typing import Dict, Optional
@@ -10,7 +9,7 @@ from fastapi import WebSocket, WebSocketDisconnect, APIRouter, Query
 
 from database import get_db_cursor
 from services.notifier import message_notifier
-from setup import verify_address_matches_pubkey, load_public_key_from_b64
+from setup import load_public_key_from_b64
 from cache import get_cached_public_key
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes

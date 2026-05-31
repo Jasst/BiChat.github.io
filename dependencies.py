@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 
-from setup import general_limiter, message_limiter, api_limiter, RateLimiter
+from setup import general_limiter, message_limiter, RateLimiter
 
 logger = logging.getLogger(__name__)
 

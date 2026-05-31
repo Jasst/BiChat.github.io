@@ -2,7 +2,7 @@
 models.py — Pydantic-модели запросов/ответов (замена marshmallow)
 """
 from typing import List, Optional
-from pydantic import BaseModel, field_validator, model_validator, ValidationError
+from pydantic import BaseModel, field_validator
 from config import MAX_MESSAGE_PAYLOAD_SIZE
 import json
 
@@ -212,7 +212,6 @@ class SendMessageRequest(BaseModel):
             raise ValueError('message_type must be direct or group')
         return v
 
-    # В классе SendMessageRequest замените оба валидатора:
     @field_validator('payload')
     @classmethod
     def validate_payload_size(cls, v):

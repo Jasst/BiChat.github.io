@@ -6,7 +6,6 @@ import asyncio
 import sqlite3
 import asyncpg
 import os
-import time
 
 SQLITE_DB_PATH = "data/blockchain.db"
 POSTGRES_DSN = "postgresql://postgres:zXCV123zXCV@localhost:5432/bichat_db"

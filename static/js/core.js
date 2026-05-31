@@ -1,4 +1,4 @@
-// core.js — ядро мессенджера (состояние, WebSocket, криптоутилиты, сердцебиение)
+// core.js — ядро мессенджера с поддержкой зашифрованного localStorage
 (function() {
     if (window._coreLoaded) return;
     window._coreLoaded = true;
@@ -36,11 +36,107 @@
         allContacts: [],
         lastKnownMessageId: 0,
         pendingImageData: null,
-        topObserver: null
+        topObserver: null,
+        _restoringMnemonic: false
     };
     window.isSending = false;
     window.userKeys = null;
     window.pubKeyCache = new Map();
+
+    // ========== Управление зашифрованной мнемоникой ==========
+    async function restoreMnemonic() {
+        if (sessionStorage.getItem('mnemonic')) return true;
+
+        // Защита от редиректа на публичных страницах
+        const publicPaths = ['/login', '/', '/index', '/create_wallet'];
+        const currentPath = window.location.pathname;
+        if (publicPaths.some(p => currentPath === p || currentPath.startsWith(p + '?'))) {
+            console.debug('Public page, skipping mnemonic restore');
+            return false;
+        }
+
+        if (State._restoringMnemonic) {
+            return new Promise(resolve => {
+                const interval = setInterval(() => {
+                    if (!State._restoringMnemonic) {
+                        clearInterval(interval);
+                        resolve(!!sessionStorage.getItem('mnemonic'));
+                    }
+                }, 100);
+            });
+        }
+        State._restoringMnemonic = true;
+
+        const encrypted = localStorage.getItem('encrypted_mnemonic');
+        if (!encrypted) {
+            window.location.href = '/login';
+            State._restoringMnemonic = false;
+            return false;
+        }
+
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.style.zIndex = '10000';
+            modal.innerHTML = `
+                <div class="modal" style="max-width:400px;">
+                    <div class="modal-header">
+                        <h3>Unlock wallet</h3>
+                    </div>
+                    <div class="modal-body">
+                        <p>Your encrypted wallet was found. Enter password to unlock.</p>
+                        <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;">
+                        <div id="unlockError" class="text-error" style="color:var(--danger);margin-top:8px;display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" id="cancelUnlock">Log out</button>
+                        <button class="btn btn-primary" id="confirmUnlock">Unlock</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            const passwordInput = modal.querySelector('#unlockPassword');
+            const errorDiv = modal.querySelector('#unlockError');
+            const confirmBtn = modal.querySelector('#confirmUnlock');
+            const cancelBtn = modal.querySelector('#cancelUnlock');
+
+            const attemptUnlock = async () => {
+                const pwd = passwordInput.value;
+                if (!pwd) {
+                    errorDiv.textContent = 'Please enter password';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = '...';
+                const mnemonic = await window.StorageEncryption.decryptMnemonic(encrypted, pwd);
+                if (mnemonic) {
+                    sessionStorage.setItem('mnemonic', mnemonic);
+                    modal.remove();
+                    State._restoringMnemonic = false;
+                    resolve(true);
+                } else {
+                    errorDiv.textContent = 'Wrong password';
+                    errorDiv.style.display = 'block';
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Unlock';
+                }
+            };
+
+            const clearAndLogout = () => {
+                localStorage.removeItem('encrypted_mnemonic');
+                sessionStorage.removeItem('mnemonic');
+                window.location.href = '/login';
+                State._restoringMnemonic = false;
+                resolve(false);
+            };
+
+            confirmBtn.onclick = attemptUnlock;
+            cancelBtn.onclick = clearAndLogout;
+            passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') attemptUnlock(); });
+        });
+    }
 
     // ========== Криптографические помощники ==========
     async function getPubKey(address) {
@@ -86,8 +182,12 @@
 
     async function ensureKeys() {
         if (window.userKeys) return window.userKeys;
+        if (!sessionStorage.getItem('mnemonic')) {
+            const restored = await restoreMnemonic();
+            if (!restored) throw new Error('No mnemonic available');
+        }
         const mnemonic = sessionStorage.getItem('mnemonic');
-        if (!mnemonic) throw new Error('No mnemonic in session');
+        if (!mnemonic) throw new Error('Mnemonic not found');
         window.userKeys = await DarkCrypto.deriveKeyPair(mnemonic);
         return window.userKeys;
     }
@@ -164,6 +264,11 @@
     }
 
     async function initWebSocket() {
+        // Сначала восстанавливаем мнемонику, если её ещё нет
+        if (!sessionStorage.getItem('mnemonic')) {
+            const restored = await restoreMnemonic();
+            if (!restored) return;
+        }
         if (window.wsClient) window.wsClient.disconnect();
         let address = State.userAddress;
         if (!address) {
@@ -237,7 +342,6 @@
 
     async function handleWebSocketMessage(data) {
         if (data.error) { console.error('WS error:', data.error); return; }
-        // НОВОЕ: обработка статуса пользователя
         if (data.type === 'status_update') {
             if (data.address && data.status) {
                 if (window.updateConversationStatus) {
@@ -340,7 +444,7 @@
     }
     function stopStatusPolling() { if (statusPollingInterval) clearInterval(statusPollingInterval); }
 
-    // ========== НОВОЕ: Поллинг статусов пользователей (онлайн/оффлайн) ==========
+    // ========== Поллинг статусов пользователей ==========
     let userStatusPollingInterval = null;
     async function pollUserStatuses() {
         const items = document.querySelectorAll('.conversation-item:not([data-is-group="1"])');
@@ -348,10 +452,7 @@
             .map(el => el.dataset.address)
             .filter(addr => addr && addr !== State.userAddress);
         if (addresses.length === 0) return;
-        if (!window.fetchUserStatuses) {
-            console.warn('fetchUserStatuses not available');
-            return;
-        }
+        if (!window.fetchUserStatuses) return;
         const statuses = await window.fetchUserStatuses(addresses);
         for (const el of items) {
             const addr = el.dataset.address;
@@ -368,9 +469,8 @@
         if (userStatusPollingInterval) clearInterval(userStatusPollingInterval);
         userStatusPollingInterval = setInterval(() => {
             pollUserStatuses();
-        }, 30000); // каждые 30 секунд
+        }, 30000);
     }
-
     function stopUserStatusPolling() {
         if (userStatusPollingInterval) {
             clearInterval(userStatusPollingInterval);
@@ -389,7 +489,7 @@
     window.stopStatusPolling = stopStatusPolling;
     window.processMessageDecryption = processMessageDecryption;
     window.handleWebSocketMessage = handleWebSocketMessage;
-    window.startUserStatusPolling = startUserStatusPolling;   // НОВОЕ
-    window.stopUserStatusPolling = stopUserStatusPolling;     // НОВОЕ
+    window.startUserStatusPolling = startUserStatusPolling;
+    window.stopUserStatusPolling = stopUserStatusPolling;
     window.wsClient = null;
 })();
