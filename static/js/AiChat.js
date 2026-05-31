@@ -1,4 +1,6 @@
 // AiChat.js — AI-чат с автоматической загрузкой нескольких страниц из поиска
+// Версия: поле очищается после отправки, блокируется на время запроса
+// + Добавлена возможность скачать сгенерированное изображение
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
@@ -11,17 +13,17 @@
     let isSending = false;
     let currentImagePreviewUrl = null;
     let reasoningEnabled = false;
-    let internetEnabled = false;          // ОДНА кнопка: интернет (вкл/выкл)
-
+    let internetEnabled = false;
     let aiMessagesContainer = null;
     let aiMessageInput = null;
     let aiSendBtn = null;
     let aiAttachBtn = null;
     let aiReasoningBtn = null;
-    let aiInternetBtn = null;              // новая единая кнопка
+    let aiInternetBtn = null;
     let aiImageInput = null;
     let aiClearHistoryBtn = null;
     let closeAiChatBtn = null;
+    let aiImageGenBtn = null;
 
     const CONFIG = {
         historyMaxLength: 200,
@@ -73,6 +75,75 @@
             pre.style.paddingTop = '32px';
             pre.appendChild(btn);
         });
+    }
+
+    // ========== Функция добавления кнопок скачивания для изображений ==========
+    function addImageDownloadButtons(container) {
+        if (!container) return;
+        // Находим все изображения внутри контейнера (только в сообщениях ассистента)
+        const images = container.querySelectorAll('img');
+        images.forEach(img => {
+            // Проверяем, не добавлена ли уже кнопка для этого изображения
+            if (img.parentNode.querySelector('.download-image-btn')) return;
+
+            const imageUrl = img.src;
+            // Поддерживаем любые изображения, но особенно base64 (сгенерированные)
+            if (!imageUrl) return;
+
+            // Создаём контейнер для обёртки, чтобы кнопка была под картинкой
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:relative; display:inline-block; margin:0 4px 8px 0;';
+
+            // Копируем атрибуты img
+            const parent = img.parentNode;
+            const imgClone = img.cloneNode(true);
+
+            // Создаём кнопку скачивания
+            const downloadBtn = document.createElement('button');
+            downloadBtn.textContent = '💾 Скачать';
+            downloadBtn.className = 'download-image-btn';
+            downloadBtn.style.cssText = 'display:block; margin-top:4px; background:var(--accent-soft); border:none; border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; color:var(--accent); width:100%; text-align:center;';
+            downloadBtn.title = 'Сохранить изображение';
+
+            downloadBtn.onclick = (e) => {
+                e.stopPropagation();
+                downloadImage(imageUrl, 'generated_image.png');
+            };
+
+            // Заменяем img на обёртку с кнопкой
+            wrapper.appendChild(imgClone);
+            wrapper.appendChild(downloadBtn);
+            parent.replaceChild(wrapper, img);
+        });
+    }
+
+    // Вспомогательная функция для скачивания изображения
+    async function downloadImage(imageUrl, filename = 'image.png') {
+        try {
+            let blob;
+            if (imageUrl.startsWith('data:image/')) {
+                // Преобразуем dataURL в Blob
+                const response = await fetch(imageUrl);
+                blob = await response.blob();
+            } else {
+                // Обычный URL — запрашиваем как blob
+                const response = await fetch(imageUrl);
+                if (!response.ok) throw new Error('Network error');
+                blob = await response.blob();
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Изображение сохранено', 'success');
+        } catch (err) {
+            console.error('Ошибка скачивания:', err);
+            showToast('Не удалось сохранить изображение', 'error');
+        }
     }
 
     function renderMarkdown(text) {
@@ -131,7 +202,8 @@
             '- 🌐 Кнопка "Интернет" включает поиск и чтение целых страниц (до 3 результатов)\n' +
             '- 🧠 Режим рассуждений показывает ход мыслей\n' +
             '- 🔗 Вставь ссылку — я прочитаю содержимое\n' +
-            '- 📎 Прикрепи изображение для анализа',
+            '- 📎 Прикрепи изображение для анализа\n' +
+            '- 🎨 Генерация изображений — кнопка рядом с полем ввода',
             false, null, false
         );
     }
@@ -188,7 +260,10 @@
                     <div class="meta"><span>${time}</span></div>
                 </div>`;
             const markdownBody = msgDiv.querySelector('.markdown-body');
-            if (markdownBody) enhanceCodeBlocks(markdownBody);
+            if (markdownBody) {
+                enhanceCodeBlocks(markdownBody);
+                addImageDownloadButtons(markdownBody); // Добавляем кнопки скачивания для изображений
+            }
         }
         aiMessagesContainer.appendChild(msgDiv);
         aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
@@ -271,7 +346,6 @@
             displayAiMessage(messageText, true, null, true);
         }
 
-        // Используем интернет, если кнопка включена (и нет ручного URL – он обрабатывается отдельно)
         const useWebSearch = internetEnabled && !urlToFetch;
         const isSearching = useWebSearch || !!urlToFetch;
         showAiTypingIndicator(true, isSearching ? (urlToFetch ? `🔗 Загружаю ${urlToFetch.slice(0, 50)}…` : '🔍 Ищу в интернете и загружаю страницы…') : '');
@@ -369,7 +443,6 @@
                             streamFinished = true;
                             break;
                         } else if (data.sources) {
-                            // Сохраняем источники для отображения после ответа
                             searchResults = data.sources;
                         }
                     } catch(e) {}
@@ -383,12 +456,12 @@
                 const finalHtml = renderMarkdown(currentStreamingText);
                 markdownBody.innerHTML = finalHtml;
                 enhanceCodeBlocks(markdownBody);
+                addImageDownloadButtons(markdownBody); // Добавляем кнопки скачивания после финального рендера
                 saveAiMessage('assistant', currentStreamingText);
 
                 if (searchResults && searchResults.length) {
                     displaySearchSources(searchResults);
                 } else if (useWebSearch && !searchResults) {
-                    // попытка получить источники отдельно (опционально)
                     _tryFetchSearchSources(messageText);
                 }
             }
@@ -447,25 +520,60 @@
     function setupAiUI() {
         if (!aiSendBtn) return;
 
-        aiSendBtn.onclick = () => {
+        // --- Отправка обычного сообщения AI (блокировка + очистка) ---
+        aiSendBtn.onclick = async () => {
             const text = aiMessageInput ? aiMessageInput.value.trim() : '';
             const image = pendingImageFile;
-            if (!text && !image) { showToast('Введите сообщение или прикрепите изображение', 'warning'); return; }
-            if (aiMessageInput) aiMessageInput.value = '';
+            if (!text && !image) {
+                showToast('Введите сообщение или прикрепите изображение', 'warning');
+                return;
+            }
+
+            // Блокируем поле и все кнопки
+            aiMessageInput.disabled = true;
+            aiSendBtn.disabled = true;
+            aiAttachBtn.disabled = true;
+            if (aiImageGenBtn) aiImageGenBtn.disabled = true;
+            if (aiInternetBtn) aiInternetBtn.disabled = true;
+            if (aiReasoningBtn) aiReasoningBtn.disabled = true;
+            if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
+
+            const originalText = text;
+
+            // Удаляем прикреплённое изображение (если есть)
             if (pendingImageFile) {
                 document.getElementById('aiImagePreview')?.remove();
                 if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-                pendingImageFile = null; currentImagePreviewUrl = null;
+                pendingImageFile = null;
+                currentImagePreviewUrl = null;
             }
-            sendToAi(text, image);
+            if (aiMessageInput) aiMessageInput.value = '';
+            try {
+                await sendToAi(originalText, image);
+            } finally {
+                // Разблокируем всё
+                aiMessageInput.disabled = false;
+                aiSendBtn.disabled = false;
+                aiAttachBtn.disabled = false;
+                if (aiImageGenBtn) aiImageGenBtn.disabled = false;
+                if (aiInternetBtn) aiInternetBtn.disabled = false;
+                if (aiReasoningBtn) aiReasoningBtn.disabled = false;
+                if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
+                aiMessageInput.focus();
+            }
         };
 
+        // --- Enter для отправки ---
         if (aiMessageInput) {
             aiMessageInput.onkeydown = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSendBtn?.click(); }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    aiSendBtn?.click();
+                }
             };
         }
 
+        // --- Прикрепление изображения ---
         if (aiAttachBtn && aiImageInput) {
             aiAttachBtn.onclick = () => aiImageInput.click();
             aiImageInput.onchange = async (e) => {
@@ -493,12 +601,14 @@
                         previewContainer.remove();
                         currentImagePreviewUrl = null;
                     });
-                } else { showToast('Пожалуйста, выберите изображение', 'warning'); }
+                } else {
+                    showToast('Пожалуйста, выберите изображение', 'warning');
+                }
                 aiImageInput.value = '';
             };
         }
 
-        // 🧠 Reasoning
+        // --- Режим рассуждений (Reasoning) ---
         if (aiReasoningBtn) {
             reasoningEnabled = localStorage.getItem('ai_reasoning_mode') === 'true';
             aiReasoningBtn.style.opacity = reasoningEnabled ? '1' : '0.5';
@@ -512,7 +622,7 @@
             };
         }
 
-        // 🌐 Единая кнопка интернета
+        // --- Кнопка Интернета (вкл/выкл) ---
         if (aiInternetBtn) {
             internetEnabled = localStorage.getItem('ai_internet') === 'true';
             updateInternetBtnStyle();
@@ -524,8 +634,10 @@
             };
         }
 
+        // --- Кнопка очистки истории ---
         if (aiClearHistoryBtn) aiClearHistoryBtn.onclick = clearAiHistory;
 
+        // --- Кнопка закрытия AI-чата ---
         if (closeAiChatBtn) {
             closeAiChatBtn.onclick = () => {
                 if (window.selectConversation && window.State?.currentChatAddress === 'ai_bot') {
@@ -535,6 +647,94 @@
                     } else {
                         window.selectConversation('', '', false);
                     }
+                }
+            };
+        }
+
+        // --- Кнопка генерации изображения (автоматическое улучшение промта + очистка) ---
+        aiImageGenBtn = document.getElementById('aiImageGenBtn');
+        if (aiImageGenBtn) {
+            aiImageGenBtn.onclick = async () => {
+                const rawPrompt = aiMessageInput.value.trim();
+                if (!rawPrompt) {
+                    showToast('Enter a prompt first', 'warning');
+                    return;
+                }
+                if (isSending) {
+                    showToast('Please wait, current request in progress', 'warning');
+                    return;
+                }
+                isSending = true;
+                if (aiMessageInput) aiMessageInput.value = '';
+                // Блокируем поле и все кнопки
+                aiMessageInput.disabled = true;
+                aiSendBtn.disabled = true;
+                aiAttachBtn.disabled = true;
+                aiImageGenBtn.disabled = true;
+                if (aiInternetBtn) aiInternetBtn.disabled = true;
+                if (aiReasoningBtn) aiReasoningBtn.disabled = true;
+                if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
+
+                showAiTypingIndicator(true, '🎨 Generating image...');
+
+                let response = null;
+                let data = null;
+
+                try {
+                    let finalPrompt = rawPrompt;
+                    // Всегда улучшаем промт через LLM
+                    showAiTypingIndicator(true, '✨ Enhancing prompt with AI...');
+                    try {
+                        const enhanceResp = await fetch('/ai/enhance_prompt', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt: rawPrompt })
+                        });
+                        if (enhanceResp.ok) {
+                            const enhanceData = await enhanceResp.json();
+                            if (enhanceData.enhanced && enhanceData.enhanced !== rawPrompt) {
+                                finalPrompt = enhanceData.enhanced;
+                                showToast('Prompt enhanced', 'success');
+                            }
+                        }
+                    } catch (enhanceErr) {
+                        console.warn('Enhance failed, using original prompt', enhanceErr);
+                    }
+                    showAiTypingIndicator(true, '🎨 Generating image...');
+
+                    response = await fetch('/ai/generate_image', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: finalPrompt })
+                    });
+                    data = await response.json();
+
+                    if (response.ok && data.image_base64) {
+                        const imageMarkdown = `![generated](${data.image_base64})`;
+                        const finalText = `🎨 *Generated image for:*\n> ${rawPrompt}\n\n${imageMarkdown}`;
+                        displayAiMessage(finalText, false, null, true);
+                        // Очищаем поле после успешной генерации
+
+                    } else {
+                        showToast(data.detail || data.error || 'Generation failed', 'error');
+                    }
+                } catch (err) {
+                    console.error('Image generation error:', err);
+                    showToast('Network error or service unavailable', 'error');
+                } finally {
+                    isSending = false;
+                    showAiTypingIndicator(false);
+
+                    // Разблокируем всё
+                    aiMessageInput.disabled = false;
+                    aiSendBtn.disabled = false;
+                    aiAttachBtn.disabled = false;
+                    aiImageGenBtn.disabled = false;
+                    if (aiInternetBtn) aiInternetBtn.disabled = false;
+                    if (aiReasoningBtn) aiReasoningBtn.disabled = false;
+                    if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
+
+                    aiMessageInput.focus();
                 }
             };
         }
@@ -548,7 +748,7 @@
         aiSendBtn = document.getElementById('aiSendBtn');
         aiAttachBtn = document.getElementById('aiAttachBtn');
         aiReasoningBtn = document.getElementById('aiReasoningBtn');
-        aiInternetBtn = document.getElementById('aiInternetBtn');  // новая единая кнопка
+        aiInternetBtn = document.getElementById('aiInternetBtn');
         aiImageInput = document.getElementById('aiImageInput');
         aiClearHistoryBtn = document.getElementById('aiClearHistoryBtn');
         closeAiChatBtn = document.getElementById('closeAiChatBtn');

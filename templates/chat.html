@@ -101,16 +101,18 @@
       </div>
     </form>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         AI CHAT CONTAINER — исправлен: одна кнопка интернета, без подсказок
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- AI CHAT CONTAINER — кнопки вынесены из поля ввода в заголовок -->
     <div id="aiChatContainer" class="hidden" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
       <header class="chat-header">
         <div class="title">
           <span>🤖 AI Assistant</span>
           <span class="subtitle" id="aiStatusSubtitle">Интернет выключен · Streaming</span>
         </div>
-        <div class="actions">
+        <div class="actions" style="gap: 4px;">
+          <button type="button" id="aiImageGenBtn" class="btn btn-icon" title="Generate image">🎨</button>
+          <button type="button" id="aiInternetBtn" class="btn btn-icon" title="Интернет (поиск + чтение страниц)" style="opacity:0.5;">🌐</button>
+          <button type="button" id="aiReasoningBtn" class="btn btn-icon" title="Reasoning mode" style="opacity:0.5;">🧠</button>
+          <button type="button" id="aiClearHistoryBtn" class="btn btn-icon" title="Clear history">🗑</button>
           <button id="closeAiChatBtn" class="btn btn-icon" title="Close AI chat">✕</button>
         </div>
       </header>
@@ -122,24 +124,10 @@
           <textarea id="aiMessageInput" placeholder="Ask AI… (вставьте ссылку для чтения)" rows="1"></textarea>
           <div class="input-actions">
             <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
-
-            <!-- 📎 Прикрепить изображение -->
             <button type="button" id="aiAttachBtn" class="btn btn-icon" title="Attach image">📎</button>
-
-            <!-- 🌐 Единая кнопка интернета (вкл/выкл) — включает поиск и загрузку страниц -->
-            <button type="button" id="aiInternetBtn" class="btn btn-icon" title="Интернет (поиск + чтение страниц)" style="opacity:0.5;">🌐</button>
-
-            <!-- 🧠 Режим рассуждений -->
-            <button type="button" id="aiReasoningBtn" class="btn btn-icon" title="Reasoning mode" style="opacity:0.5;">🧠</button>
-
-            <!-- ➤ Отправить -->
             <button type="submit" id="aiSendBtn" class="btn btn-primary">➤</button>
-
-            <!-- 🗑 Очистить историю -->
-            <button type="button" id="aiClearHistoryBtn" class="btn btn-icon" title="Clear history">🗑</button>
           </div>
         </div>
-        <!-- Быстрые подсказки (Новости, Что такое и т.д.) полностью удалены -->
       </form>
     </div>
   </main>

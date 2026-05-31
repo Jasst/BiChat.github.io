@@ -88,7 +88,12 @@
 
         let imageHtml = '';
         if (msg.image) {
-            imageHtml = `<img src="${Utils.escapeHtml(msg.image)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(msg.image)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
+            let imageUrl = msg.image;
+            // Если строка не начинается с data:image и не является http-ссылкой – добавляем префикс
+            if (!imageUrl.startsWith('data:image') && !imageUrl.startsWith('http')) {
+            imageUrl = 'data:image/jpeg;base64,' + imageUrl;
+            }
+            imageHtml = `<img src="${Utils.escapeHtml(imageUrl)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(imageUrl)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
         }
 
         const timeStr = Utils.formatTimestamp(msg.timestamp);
