@@ -1,9 +1,60 @@
 // actions.js — все действия, инициируемые пользователем (кнопки, формы)
+// + добавлено превью изображения над полем ввода
 (function() {
     if (window._actionsLoaded) return;
     window._actionsLoaded = true;
 
-    // ========== Отправка сообщения ==========
+    // ========== Превью изображения для обычного чата ==========
+    let mainPendingImageFile = null;      // File объект
+    let mainImagePreviewUrl = null;       // blob URL (если используется)
+
+    function showMainImagePreview(file, dataUrl) {
+        // Удаляем старый контейнер, если есть
+        const oldPreview = document.getElementById('mainImagePreview');
+        if (oldPreview) oldPreview.remove();
+
+        // Создаём новый контейнер
+        const previewContainer = document.createElement('div');
+        previewContainer.id = 'mainImagePreview';
+        previewContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            margin: 8px 16px 0 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        `;
+
+        if (mainImagePreviewUrl && !mainImagePreviewUrl.startsWith('data:')) URL.revokeObjectURL(mainImagePreviewUrl);
+        mainImagePreviewUrl = dataUrl; // dataUrl уже base64, но сохраним
+
+        previewContainer.innerHTML = `
+            <img src="${Utils.escapeHtml(dataUrl)}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;">
+            <span style="font-size: 13px; color: var(--text-secondary); flex: 1;">${Utils.escapeHtml(file.name)}</span>
+            <button type="button" id="clearMainImage" class="btn btn-icon" style="font-size: 16px; padding: 4px;">✕</button>
+        `;
+
+        // Вставляем контейнер над формой ввода (перед .input-area)
+        const form = document.querySelector('.main-content .input-area');
+        if (form) {
+            form.parentNode.insertBefore(previewContainer, form);
+        } else {
+            const main = document.querySelector('.main-content');
+            if (main) main.appendChild(previewContainer);
+        }
+
+        document.getElementById('clearMainImage')?.addEventListener('click', () => {
+            if (mainImagePreviewUrl && !mainImagePreviewUrl.startsWith('data:')) URL.revokeObjectURL(mainImagePreviewUrl);
+            mainPendingImageFile = null;
+            State.pendingImageData = null;
+            previewContainer.remove();
+            mainImagePreviewUrl = null;
+        });
+    }
+
+    // ========== Отправка сообщения (исправлена очистка превью) ==========
     async function sendMessage() {
         if (State.currentChatAddress === 'ai_bot') { console.log('AI chat active'); return; }
         const contentEl = document.getElementById('messageContent');
@@ -11,7 +62,7 @@
         const attachBtn = document.getElementById('attachImageButton');
 
         if (window.isSending) { window.NotificationManager?.showToast('Sending in progress...', 'warning'); return; }
-        const content = contentEl ? contentEl.value.trim() : '';
+        let content = contentEl ? contentEl.value.trim() : '';
         const recipient = State.currentChatAddress;
         if (!recipient || (!content && !State.pendingImageData)) {
             window.NotificationManager?.showToast('Enter a message or attach an image', 'warning');
@@ -27,7 +78,14 @@
         const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
         if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
         const attachedImage = State.pendingImageData;
+        // Очищаем превью и данные до отправки (чтобы не повторить)
+        const previewDiv = document.getElementById('mainImagePreview');
+        if (previewDiv) previewDiv.remove();
+        if (mainImagePreviewUrl && !mainImagePreviewUrl.startsWith('data:')) URL.revokeObjectURL(mainImagePreviewUrl);
+        const imageFileToSend = mainPendingImageFile; // сохраняем File, если нужен
+        mainPendingImageFile = null;
         State.pendingImageData = null;
+        mainImagePreviewUrl = null;
 
         const tempId = 'temp-' + Date.now();
         const tempMsg = {
@@ -200,7 +258,7 @@
         }
     }
 
-    // ========== Изображения ==========
+    // ========== Изображения (исправлено: показ превью) ==========
     async function handleImageSelection(event) {
         const file = event.target.files[0];
         if (file && file.type?.startsWith('image/')) {
@@ -208,7 +266,10 @@
             reader.onload = async (e) => {
                 if (e.target?.result) {
                     try {
-                        State.pendingImageData = await window.compressImage(e.target.result);
+                        const compressedDataUrl = await window.compressImage(e.target.result);
+                        State.pendingImageData = compressedDataUrl;
+                        mainPendingImageFile = file;
+                        showMainImagePreview(file, compressedDataUrl);
                         window.NotificationManager?.showToast('Image attached', 'success');
                     } catch (err) {
                         window.NotificationManager?.showToast('Image processing failed', 'error');
@@ -356,7 +417,7 @@
         if (State.topObserver) { State.topObserver.disconnect(); State.topObserver = null; }
         if (window.NotificationManager && typeof NotificationManager.destroy === 'function') NotificationManager.destroy();
         window.stopHeartbeat();
-        window.stopUserStatusPolling();   // НОВОЕ
+        window.stopUserStatusPolling();
         window.stopStatusPolling();
     });
 
@@ -371,6 +432,16 @@
     window.openNewChatModal = openNewChatModal;
     window.closeNewChatModal = closeNewChatModal;
     window.startNewChat = startNewChat;
+
+    // Экспорт функции очистки для ui.js
+    window.clearMainImagePreview = function() {
+        const previewDiv = document.getElementById('mainImagePreview');
+        if (previewDiv) previewDiv.remove();
+        if (mainImagePreviewUrl && !mainImagePreviewUrl.startsWith('data:')) URL.revokeObjectURL(mainImagePreviewUrl);
+        mainPendingImageFile = null;
+        State.pendingImageData = null;
+        mainImagePreviewUrl = null;
+    };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initChat);
     else initChat();

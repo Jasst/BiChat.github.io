@@ -89,9 +89,8 @@
         let imageHtml = '';
         if (msg.image) {
             let imageUrl = msg.image;
-            // Если строка не начинается с data:image и не является http-ссылкой – добавляем префикс
             if (!imageUrl.startsWith('data:image') && !imageUrl.startsWith('http')) {
-            imageUrl = 'data:image/jpeg;base64,' + imageUrl;
+                imageUrl = 'data:image/jpeg;base64,' + imageUrl;
             }
             imageHtml = `<img src="${Utils.escapeHtml(imageUrl)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(imageUrl)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
         }
@@ -123,7 +122,6 @@
         else if (status === 'read') { icon.textContent = '✓✓'; icon.style.color = '#4caf50'; }
     }
 
-    // ========== НОВОЕ: получение статусов для массива адресов ==========
     async function fetchUserStatuses(addresses) {
         if (!addresses.length) return {};
         try {
@@ -175,7 +173,6 @@
                 convElements.push({ el: item, address, isGroup });
             }
 
-            // НОВОЕ: запрашиваем статусы для всех не-групповых диалогов (кроме себя)
             const addressesToCheck = convElements
                 .filter(c => !c.isGroup && c.address !== State.userAddress)
                 .map(c => c.address);
@@ -195,13 +192,20 @@
         } catch (error) { console.error('Load conversations error:', error); container.innerHTML = '<p class="text-muted text-center">Failed to load</p>'; }
     }
 
-    // ========== Выбор диалога и загрузка сообщений ==========
+    // ========== Выбор диалога и загрузка сообщений (добавлена очистка превью) ==========
     async function selectConversation(address, name, isGroup) {
         if (State.topObserver) { State.topObserver.disconnect(); State.topObserver = null; }
         if (window.isSending) window.isSending = false;
         State.currentChatAddress = address;
         State.currentChatIsGroup = !!isGroup;
         State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
+
+        // === Очищаем превью изображения при смене диалога ===
+        if (window.clearMainImagePreview) window.clearMainImagePreview();
+        else {
+            const previewDiv = document.getElementById('mainImagePreview');
+            if (previewDiv) previewDiv.remove();
+        }
 
         fetch('/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_chat: address }) }).catch(e=>{});
 
@@ -382,7 +386,6 @@
         }
     };
 
-    // НОВОЕ: обновить статус конкретного диалога по WebSocket
     window.updateConversationStatus = function(address, status) {
         const item = document.querySelector(`.conversation-item[data-address="${address}"]`);
         if (item && !item.dataset.isGroup) {
@@ -406,5 +409,5 @@
     window.setupTopObserver = setupTopObserver;
     window._enableChatControls = _enableChatControls;
     window._disableChatControls = _disableChatControls;
-    window.fetchUserStatuses = fetchUserStatuses; // НОВОЕ
+    window.fetchUserStatuses = fetchUserStatuses;
 })();

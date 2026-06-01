@@ -101,7 +101,7 @@
       </div>
     </form>
 
-    <!-- AI CHAT CONTAINER — кнопки вынесены из поля ввода в заголовок -->
+    <!-- AI CHAT CONTAINER — кнопки AI в строке ввода -->
     <div id="aiChatContainer" class="hidden" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
       <header class="chat-header">
         <div class="title">
@@ -109,9 +109,6 @@
           <span class="subtitle" id="aiStatusSubtitle">Интернет выключен · Streaming</span>
         </div>
         <div class="actions" style="gap: 4px;">
-          <button type="button" id="aiImageGenBtn" class="btn btn-icon" title="Generate image">🎨</button>
-          <button type="button" id="aiInternetBtn" class="btn btn-icon" title="Интернет (поиск + чтение страниц)" style="opacity:0.5;">🌐</button>
-          <button type="button" id="aiReasoningBtn" class="btn btn-icon" title="Reasoning mode" style="opacity:0.5;">🧠</button>
           <button type="button" id="aiClearHistoryBtn" class="btn btn-icon" title="Clear history">🗑</button>
           <button id="closeAiChatBtn" class="btn btn-icon" title="Close AI chat">✕</button>
         </div>
@@ -122,7 +119,20 @@
       <form class="input-area" onsubmit="return false;">
         <div class="input-wrapper">
           <textarea id="aiMessageInput" placeholder="Ask AI… (вставьте ссылку для чтения)" rows="1"></textarea>
-          <div class="input-actions">
+          <div class="input-actions" style="display: flex; gap: 6px; align-items: center;">
+            <!-- Кнопки AI -->
+            <button type="button" id="aiImageGenBtn" class="ai-tool-btn" data-tooltip="Генерация изображения">
+              <span class="ai-tool-icon">🎨</span>
+            </button>
+            <button type="button" id="aiInternetBtn" class="ai-tool-btn" data-tooltip="Поиск в интернете (вкл/выкл)" data-active="false">
+              <span class="ai-tool-icon">🌐</span>
+            </button>
+            <button type="button" id="aiReasoningBtn" class="ai-tool-btn" data-tooltip="Режим размышления (вкл/выкл)" data-active="false">
+              <span class="ai-tool-icon">🧠</span>
+            </button>
+
+            <span style="width: 1px; height: 24px; background: var(--border-color, #2a2a2a); margin: 0 4px;"></span>
+
             <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
             <button type="button" id="aiAttachBtn" class="btn btn-icon" title="Attach image">📎</button>
             <button type="submit" id="aiSendBtn" class="btn btn-primary">➤</button>
@@ -133,7 +143,7 @@
   </main>
 </div>
 
-<!-- Модальное окно нового чата (без изменений) -->
+<!-- Модальное окно нового чата -->
 <div id="newChatModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="newChatTitle">
   <div class="modal">
     <header class="modal-header">
@@ -169,7 +179,6 @@
   </div>
 </div>
 
-<!-- Модальное окно изображения -->
 <div id="imageModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal" style="max-width:90vw;max-height:90vh;background:transparent;border:none;box-shadow:none;">
     <button class="modal-close" onclick="closeImageModal()" style="position:absolute;top:var(--space-md);right:var(--space-md);color:var(--text-primary);z-index:1;" aria-label="Close">&times;</button>
@@ -181,6 +190,82 @@
 </div>
 
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- Стили для кнопок AI – единый полупрозрачный стиль для активного состояния -->
+<style>
+  /* Кнопки AI в строке ввода */
+  .ai-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md, 8px);
+    width: 34px;
+    height: 34px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    color: var(--text-secondary, #b0b0b0);
+  }
+
+  .ai-tool-btn:hover {
+    background: var(--bg-hover, #2a2a2a);
+    color: var(--text-primary, #ffffff);
+    transform: translateY(-1px);
+  }
+
+  /* Активное состояние – одинаковое для интернета и разума (полупрозрачный фон) */
+  .ai-tool-btn[data-active="true"] {
+    background: var(--accent-soft, rgba(255,255,255,0.1));
+    color: var(--accent, #ffffff);
+    box-shadow: 0 2px 6px rgba(255, 255, 255, 0.1);
+  }
+
+  .ai-tool-btn[data-active="true"]:hover {
+    background: var(--accent-soft);
+    opacity: 0.9;
+  }
+
+  /* Тултип при наведении */
+  .ai-tool-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 20, 20, 0.95);
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    margin-bottom: 8px;
+    z-index: 10;
+    font-family: var(--font-sans);
+    font-weight: normal;
+    letter-spacing: 0.3px;
+    border: 1px solid var(--border-color, #2a2a2a);
+  }
+
+  .ai-tool-btn:hover::after {
+    opacity: 1;
+  }
+
+  /* Для тёмной темы */
+  @media (prefers-color-scheme: dark) {
+    .ai-tool-btn {
+      color: #ccc;
+    }
+    .ai-tool-btn:hover {
+      background: #2c2c2c;
+    }
+  }
+</style>
 
 {% block scripts %}
 <script>window.process = window.process || { env: {} };</script>

@@ -1,6 +1,4 @@
-// AiChat.js — AI-чат с автоматической загрузкой нескольких страниц из поиска
-// Версия: поле очищается после отправки, блокируется на время запроса
-// + Добавлена возможность скачать сгенерированное изображение
+// AiChat.js — исправленное: кнопки интернета и разума используют только data-active, без инлайн-стилей
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
@@ -77,56 +75,39 @@
         });
     }
 
-    // ========== Функция добавления кнопок скачивания для изображений ==========
     function addImageDownloadButtons(container) {
         if (!container) return;
-        // Находим все изображения внутри контейнера (только в сообщениях ассистента)
         const images = container.querySelectorAll('img');
         images.forEach(img => {
-            // Проверяем, не добавлена ли уже кнопка для этого изображения
             if (img.parentNode.querySelector('.download-image-btn')) return;
-
             const imageUrl = img.src;
-            // Поддерживаем любые изображения, но особенно base64 (сгенерированные)
             if (!imageUrl) return;
-
-            // Создаём контейнер для обёртки, чтобы кнопка была под картинкой
             const wrapper = document.createElement('div');
             wrapper.style.cssText = 'position:relative; display:inline-block; margin:0 4px 8px 0;';
-
-            // Копируем атрибуты img
             const parent = img.parentNode;
             const imgClone = img.cloneNode(true);
-
-            // Создаём кнопку скачивания
             const downloadBtn = document.createElement('button');
             downloadBtn.textContent = '💾 Скачать';
             downloadBtn.className = 'download-image-btn';
             downloadBtn.style.cssText = 'display:block; margin-top:4px; background:var(--accent-soft); border:none; border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; color:var(--accent); width:100%; text-align:center;';
             downloadBtn.title = 'Сохранить изображение';
-
             downloadBtn.onclick = (e) => {
                 e.stopPropagation();
                 downloadImage(imageUrl, 'generated_image.png');
             };
-
-            // Заменяем img на обёртку с кнопкой
             wrapper.appendChild(imgClone);
             wrapper.appendChild(downloadBtn);
             parent.replaceChild(wrapper, img);
         });
     }
 
-    // Вспомогательная функция для скачивания изображения
     async function downloadImage(imageUrl, filename = 'image.png') {
         try {
             let blob;
             if (imageUrl.startsWith('data:image/')) {
-                // Преобразуем dataURL в Blob
                 const response = await fetch(imageUrl);
                 blob = await response.blob();
             } else {
-                // Обычный URL — запрашиваем как blob
                 const response = await fetch(imageUrl);
                 if (!response.ok) throw new Error('Network error');
                 blob = await response.blob();
@@ -163,7 +144,6 @@
         }
     }
 
-    // ========== История ==========
     function getStoredHistory() {
         try { return JSON.parse(localStorage.getItem('ai_chat_history') || '[]'); }
         catch (e) { return []; }
@@ -232,7 +212,6 @@
         else console.log(`[${type}] ${message}`);
     }
 
-    // ========== Отображение сообщений ==========
     function displayAiMessage(text, isUser, imagePreview = null, saveToStorage = true) {
         if (!aiMessagesContainer) return;
         const msgDiv = document.createElement('div');
@@ -262,7 +241,7 @@
             const markdownBody = msgDiv.querySelector('.markdown-body');
             if (markdownBody) {
                 enhanceCodeBlocks(markdownBody);
-                addImageDownloadButtons(markdownBody); // Добавляем кнопки скачивания для изображений
+                addImageDownloadButtons(markdownBody);
             }
         }
         aiMessagesContainer.appendChild(msgDiv);
@@ -322,7 +301,6 @@
         }
     }
 
-    // ========== Основная отправка ==========
     async function sendToAi(messageText, imageFile) {
         if (isSending) { showToast('Подождите, предыдущий запрос обрабатывается', 'warning'); return; }
         if (!messageText.trim() && !imageFile) { showToast('Введите сообщение или выберите изображение', 'warning'); return; }
@@ -456,7 +434,7 @@
                 const finalHtml = renderMarkdown(currentStreamingText);
                 markdownBody.innerHTML = finalHtml;
                 enhanceCodeBlocks(markdownBody);
-                addImageDownloadButtons(markdownBody); // Добавляем кнопки скачивания после финального рендера
+                addImageDownloadButtons(markdownBody);
                 saveAiMessage('assistant', currentStreamingText);
 
                 if (searchResults && searchResults.length) {
@@ -501,26 +479,70 @@
         } catch(e) {}
     }
 
-    // ========== Настройка UI ==========
+    // ========== Управление стилями (только data-active, без инлайн-стилей) ==========
     function updateInternetBtnStyle() {
         if (!aiInternetBtn) return;
-        if (internetEnabled) {
-            aiInternetBtn.style.opacity = '1';
-            aiInternetBtn.style.background = 'var(--accent-soft)';
-            aiInternetBtn.style.color = 'var(--accent)';
-            aiInternetBtn.title = 'Интернет ВКЛЮЧЁН (буду искать и читать страницы)';
-        } else {
-            aiInternetBtn.style.opacity = '0.5';
-            aiInternetBtn.style.background = '';
-            aiInternetBtn.style.color = '';
-            aiInternetBtn.title = 'Интернет ВЫКЛЮЧЕН (только мои знания)';
-        }
+        aiInternetBtn.setAttribute('data-active', internetEnabled ? 'true' : 'false');
+        // Меняем только title
+        aiInternetBtn.title = internetEnabled
+            ? 'Интернет ВКЛЮЧЁН (буду искать и читать страницы)'
+            : 'Интернет ВЫКЛЮЧЕН (только мои знания)';
     }
 
+    function updateReasoningBtnStyle() {
+        if (!aiReasoningBtn) return;
+        aiReasoningBtn.setAttribute('data-active', reasoningEnabled ? 'true' : 'false');
+        aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+    }
+
+    // ========== Превью изображения ==========
+    function showImagePreview(file) {
+        const oldPreview = document.getElementById('aiImagePreview');
+        if (oldPreview) oldPreview.remove();
+
+        const previewContainer = document.createElement('div');
+        previewContainer.id = 'aiImagePreview';
+        previewContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            margin: 8px 16px 0 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        `;
+
+        const blobUrl = URL.createObjectURL(file);
+        if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+        currentImagePreviewUrl = blobUrl;
+
+        previewContainer.innerHTML = `
+            <img src="${blobUrl}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;">
+            <span style="font-size: 13px; color: var(--text-secondary); flex: 1;">${escapeHtml(file.name)}</span>
+            <button type="button" id="clearAiImage" class="btn btn-icon" style="font-size: 16px; padding: 4px;">✕</button>
+        `;
+
+        const form = document.querySelector('#aiChatContainer .input-area');
+        if (form) {
+            form.parentNode.insertBefore(previewContainer, form);
+        } else {
+            const container = document.getElementById('aiChatContainer');
+            if (container) container.appendChild(previewContainer);
+        }
+
+        document.getElementById('clearAiImage')?.addEventListener('click', () => {
+            if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+            pendingImageFile = null;
+            previewContainer.remove();
+            currentImagePreviewUrl = null;
+        });
+    }
+
+    // ========== Настройка UI ==========
     function setupAiUI() {
         if (!aiSendBtn) return;
 
-        // --- Отправка обычного сообщения AI (блокировка + очистка) ---
         aiSendBtn.onclick = async () => {
             const text = aiMessageInput ? aiMessageInput.value.trim() : '';
             const image = pendingImageFile;
@@ -529,7 +551,6 @@
                 return;
             }
 
-            // Блокируем поле и все кнопки
             aiMessageInput.disabled = true;
             aiSendBtn.disabled = true;
             aiAttachBtn.disabled = true;
@@ -539,19 +560,16 @@
             if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
 
             const originalText = text;
+            const previewDiv = document.getElementById('aiImagePreview');
+            if (previewDiv) previewDiv.remove();
+            if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+            pendingImageFile = null;
+            currentImagePreviewUrl = null;
 
-            // Удаляем прикреплённое изображение (если есть)
-            if (pendingImageFile) {
-                document.getElementById('aiImagePreview')?.remove();
-                if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-                pendingImageFile = null;
-                currentImagePreviewUrl = null;
-            }
             if (aiMessageInput) aiMessageInput.value = '';
             try {
                 await sendToAi(originalText, image);
             } finally {
-                // Разблокируем всё
                 aiMessageInput.disabled = false;
                 aiSendBtn.disabled = false;
                 aiAttachBtn.disabled = false;
@@ -563,7 +581,6 @@
             }
         };
 
-        // --- Enter для отправки ---
         if (aiMessageInput) {
             aiMessageInput.onkeydown = (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -573,34 +590,13 @@
             };
         }
 
-        // --- Прикрепление изображения ---
         if (aiAttachBtn && aiImageInput) {
             aiAttachBtn.onclick = () => aiImageInput.click();
             aiImageInput.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (file && file.type.startsWith('image/')) {
                     pendingImageFile = file;
-                    let previewContainer = document.getElementById('aiImagePreview');
-                    if (!previewContainer) {
-                        previewContainer = document.createElement('div');
-                        previewContainer.id = 'aiImagePreview';
-                        previewContainer.style.cssText = 'margin-top:8px;display:flex;align-items:center;gap:8px;';
-                        const inputActions = aiAttachBtn.closest('.input-actions');
-                        if (inputActions) inputActions.parentNode.insertBefore(previewContainer, inputActions.nextSibling);
-                    }
-                    const blobUrl = URL.createObjectURL(file);
-                    if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-                    currentImagePreviewUrl = blobUrl;
-                    previewContainer.innerHTML = `
-                        <img src="${blobUrl}" style="max-width:60px;max-height:60px;border-radius:8px;">
-                        <span style="font-size:12px;color:var(--text-secondary);">${escapeHtml(file.name)}</span>
-                        <button type="button" id="clearAiImage" class="btn btn-icon" style="font-size:14px;">✕</button>`;
-                    document.getElementById('clearAiImage')?.addEventListener('click', () => {
-                        if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-                        pendingImageFile = null;
-                        previewContainer.remove();
-                        currentImagePreviewUrl = null;
-                    });
+                    showImagePreview(file);
                 } else {
                     showToast('Пожалуйста, выберите изображение', 'warning');
                 }
@@ -608,21 +604,17 @@
             };
         }
 
-        // --- Режим рассуждений (Reasoning) ---
         if (aiReasoningBtn) {
             reasoningEnabled = localStorage.getItem('ai_reasoning_mode') === 'true';
-            aiReasoningBtn.style.opacity = reasoningEnabled ? '1' : '0.5';
-            aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+            updateReasoningBtnStyle();
             aiReasoningBtn.onclick = () => {
                 reasoningEnabled = !reasoningEnabled;
-                aiReasoningBtn.style.opacity = reasoningEnabled ? '1' : '0.5';
-                aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+                updateReasoningBtnStyle();
                 localStorage.setItem('ai_reasoning_mode', reasoningEnabled);
                 showToast(`Режим рассуждений ${reasoningEnabled ? 'включён 🧠' : 'выключен'}`, 'info');
             };
         }
 
-        // --- Кнопка Интернета (вкл/выкл) ---
         if (aiInternetBtn) {
             internetEnabled = localStorage.getItem('ai_internet') === 'true';
             updateInternetBtnStyle();
@@ -634,10 +626,8 @@
             };
         }
 
-        // --- Кнопка очистки истории ---
         if (aiClearHistoryBtn) aiClearHistoryBtn.onclick = clearAiHistory;
 
-        // --- Кнопка закрытия AI-чата ---
         if (closeAiChatBtn) {
             closeAiChatBtn.onclick = () => {
                 if (window.selectConversation && window.State?.currentChatAddress === 'ai_bot') {
@@ -651,7 +641,6 @@
             };
         }
 
-        // --- Кнопка генерации изображения (автоматическое улучшение промта + очистка) ---
         aiImageGenBtn = document.getElementById('aiImageGenBtn');
         if (aiImageGenBtn) {
             aiImageGenBtn.onclick = async () => {
@@ -666,7 +655,6 @@
                 }
                 isSending = true;
                 if (aiMessageInput) aiMessageInput.value = '';
-                // Блокируем поле и все кнопки
                 aiMessageInput.disabled = true;
                 aiSendBtn.disabled = true;
                 aiAttachBtn.disabled = true;
@@ -677,12 +665,8 @@
 
                 showAiTypingIndicator(true, '🎨 Generating image...');
 
-                let response = null;
-                let data = null;
-
                 try {
                     let finalPrompt = rawPrompt;
-                    // Всегда улучшаем промт через LLM
                     showAiTypingIndicator(true, '✨ Enhancing prompt with AI...');
                     try {
                         const enhanceResp = await fetch('/ai/enhance_prompt', {
@@ -702,19 +686,17 @@
                     }
                     showAiTypingIndicator(true, '🎨 Generating image...');
 
-                    response = await fetch('/ai/generate_image', {
+                    const response = await fetch('/ai/generate_image', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ prompt: finalPrompt })
                     });
-                    data = await response.json();
+                    const data = await response.json();
 
                     if (response.ok && data.image_base64) {
                         const imageMarkdown = `![generated](${data.image_base64})`;
                         const finalText = `🎨 *Generated image for:*\n> ${rawPrompt}\n\n${imageMarkdown}`;
                         displayAiMessage(finalText, false, null, true);
-                        // Очищаем поле после успешной генерации
-
                     } else {
                         showToast(data.detail || data.error || 'Generation failed', 'error');
                     }
@@ -724,8 +706,6 @@
                 } finally {
                     isSending = false;
                     showAiTypingIndicator(false);
-
-                    // Разблокируем всё
                     aiMessageInput.disabled = false;
                     aiSendBtn.disabled = false;
                     aiAttachBtn.disabled = false;
@@ -733,7 +713,6 @@
                     if (aiInternetBtn) aiInternetBtn.disabled = false;
                     if (aiReasoningBtn) aiReasoningBtn.disabled = false;
                     if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
-
                     aiMessageInput.focus();
                 }
             };
