@@ -4,270 +4,129 @@
 
 {% block content %}
 <div id="app" data-user-address="{{ address }}"></div>
-<div class="chat-container">
-  <aside class="sidebar" id="sidebar" aria-label="Navigation">
-    <header class="sidebar-header">
-      <div class="user-info">
-        <span class="address font-mono" id="userAddress" data-full-address="{{ address }}">
-          {{ address[:10] }}…
-        </span>
-      </div>
-    </header>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" onclick="location.href='/chat'" aria-label="Chat" title="Chat">
-        <span class="tab-icon tab-icon-chat">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            <circle class="bubble-dot" cx="8" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-            <circle class="bubble-dot" cx="12" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-            <circle class="bubble-dot" cx="16" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-          </svg>
-        </span>
-      </button>
-      <button class="tab" onclick="location.href='/contacts'" aria-label="Contacts" title="Contacts">
-        <span class="tab-icon tab-icon-contacts">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="8" r="4"/>
-            <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8"/>
-          </svg>
-        </span>
-      </button>
-      <button class="tab" onclick="location.href='/groups'" aria-label="Groups" title="Groups">
-        <span class="tab-icon tab-icon-groups">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="8" cy="7" r="3"/>
-            <circle cx="16" cy="5" r="2.5"/>
-            <path d="M2 20c0-3.314 2.686-6 6-6" class="person-left"/>
-            <path d="M14 20c0-2.761 2.239-5 5-5" class="person-right"/>
-            <path d="M18 12h0.5a2.5 2.5 0 0 1 2.5 2.5V20"/>
-          </svg>
-        </span>
-      </button>
-      <button class="tab" onclick="location.href='/wallet'" aria-label="Wallet" title="Wallet">
-        <span class="tab-icon tab-icon-wallet">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M12 7v10M9 9.5c0-.828 1.12-1.5 3-1.5s3 .672 3 1.5-1.12 1.5-3 1.5"/>
-            <path d="M9 14.5c0 .828 1.12 1.5 3 1.5s3-.672 3-1.5"/>
-          </svg>
-        </span>
-      </button>
-      <button class="tab" onclick="location.href='/profile'" aria-label="Settings" title="Settings">
-        <span class="tab-icon tab-icon-settings tab-icon-gear">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-          </svg>
-        </span>
-      </button>
-    </nav>
-    <div id="chat-tab" class="tab-content active">
-      <div class="conversations-header">
-        <h3>Conversations</h3>
-        <div style="display: flex; gap: 8px;">
-          <button id="aiChatBtn" class="btn btn-icon" title="AI Assistant" style="background: var(--accent-soft);">🤖</button>
-          <button id="newChatBtn" class="btn btn-icon" title="New chat" aria-label="Start new chat">＋</button>
-        </div>
-      </div>
-      <div class="conversations-list" id="conversationsList" role="listbox">
-        <div class="empty-state"><div class="icon">💬</div><p>Select or start a conversation</p></div>
+
+<div class="chat-layout">
+  <!-- Левая панель: список чатов -->
+  <div class="conversations-panel" id="conversationsPanel">
+    <div class="conversations-header">
+      <h3>Chats</h3>
+      <div class="header-actions">
+        <button id="aiChatBtn" class="btn-icon-oval" title="AI Assistant">🤖</button>
+        <button id="newChatBtn" class="btn-icon-oval" title="New chat">＋</button>
       </div>
     </div>
-  </aside>
+    <div class="conversations-list" id="conversationsList">
+      <div class="empty-state"><div class="icon">💬</div><p>Select or start a conversation</p></div>
+    </div>
+  </div>
 
-  <main class="main-content" id="main" aria-label="Chat">
-    <header class="chat-header">
-      <button class="btn btn-icon menu-toggle" id="menuToggle" onclick="toggleSidebar()" aria-label="Toggle menu" style="display: none;">☰</button>
+  <!-- Правая панель: сообщения (на десктопе видна всегда, на мобильных управляется JS) -->
+  <div class="chat-panel" id="chatPanel">
+    <div class="chat-panel-header">
+      <button class="back-button" id="backToConversationsBtn" aria-label="Back">←</button>
       <div class="title">
         <span id="currentChatName">Select a conversation</span>
         <span class="subtitle" id="chatSubtitle"></span>
       </div>
       <div class="actions">
-        <button id="addToContactsBtn" class="btn btn-icon" onclick="addContactFromChat()" disabled title="Add to contacts">＋</button>
-        <button id="clearConversationBtn" class="btn btn-icon" onclick="clearConversation()" disabled title="Clear messages">🗑</button>
+        <button id="addToContactsBtn" class="btn-icon-oval" disabled title="Add to contacts">＋</button>
+        <button id="clearConversationBtn" class="btn-icon-oval" disabled title="Clear messages">🗑</button>
       </div>
-    </header>
+    </div>
+
     <div class="messages" id="messagesContainer" role="log" aria-live="polite">
       <div class="empty-state" id="emptyState"><div class="icon">👋</div><p>Select a conversation to start chatting</p></div>
     </div>
+
     <form class="input-area" onsubmit="sendMessage(); return false;">
       <div class="input-wrapper">
         <textarea id="messageContent" placeholder="Type a message…" rows="1" disabled aria-label="Message input"></textarea>
         <div class="input-actions">
           <input type="file" id="imageInput" accept="image/*" class="sr-only" onchange="handleImageSelection(event)">
-          <button type="button" class="btn btn-icon" onclick="document.getElementById('imageInput').click()" id="attachImageButton" disabled title="Attach image">📎</button>
-          <button type="submit" class="btn btn-primary" id="sendButton" disabled>➤</button>
+          <button type="button" class="btn-icon-oval" onclick="document.getElementById('imageInput').click()" id="attachImageButton" disabled title="Attach image">📎</button>
+          <button type="submit" class="btn-primary-oval" id="sendButton" disabled>➤</button>
         </div>
       </div>
     </form>
 
-    <!-- AI CHAT CONTAINER — кнопки AI в строке ввода -->
-    <div id="aiChatContainer" class="hidden" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
-      <header class="chat-header">
+    <!-- AI CHAT CONTAINER -->
+    <div id="aiChatContainer" class="hidden">
+      <div class="chat-panel-header">
+        <button class="back-button" id="closeAiFromChatBtn">←</button>
         <div class="title">
           <span>🤖 AI Assistant</span>
-          <span class="subtitle" id="aiStatusSubtitle">Интернет выключен · Streaming</span>
+          <span class="subtitle" id="aiStatusSubtitle">Internet · Streaming</span>
         </div>
-        <div class="actions" style="gap: 4px;">
-          <button type="button" id="aiClearHistoryBtn" class="btn btn-icon" title="Clear history">🗑</button>
-          <button id="closeAiChatBtn" class="btn btn-icon" title="Close AI chat">✕</button>
+        <div class="actions">
+          <button type="button" id="aiClearHistoryBtn" class="btn-icon-oval" title="Clear history">🗑</button>
         </div>
-      </header>
-
+      </div>
       <div id="aiMessagesContainer" class="messages"></div>
-
       <form class="input-area" onsubmit="return false;">
         <div class="input-wrapper">
-          <textarea id="aiMessageInput" placeholder="Ask AI… (вставьте ссылку для чтения)" rows="1"></textarea>
-          <div class="input-actions" style="display: flex; gap: 6px; align-items: center;">
-            <!-- Кнопки AI -->
-            <button type="button" id="aiImageGenBtn" class="ai-tool-btn" data-tooltip="Генерация изображения">
-              <span class="ai-tool-icon">🎨</span>
-            </button>
-            <button type="button" id="aiInternetBtn" class="ai-tool-btn" data-tooltip="Поиск в интернете (вкл/выкл)" data-active="false">
-              <span class="ai-tool-icon">🌐</span>
-            </button>
-            <button type="button" id="aiReasoningBtn" class="ai-tool-btn" data-tooltip="Режим размышления (вкл/выкл)" data-active="false">
-              <span class="ai-tool-icon">🧠</span>
-            </button>
-
-            <span style="width: 1px; height: 24px; background: var(--border-color, #2a2a2a); margin: 0 4px;"></span>
-
+          <textarea id="aiMessageInput" placeholder="Ask AI… (paste a link to read)" rows="1"></textarea>
+          <div class="input-actions">
+            <button type="button" id="aiImageGenBtn" class="ai-tool-btn" data-tooltip="Generate image">🎨</button>
+            <button type="button" id="aiInternetBtn" class="ai-tool-btn" data-tooltip="Web search on/off" data-active="false">🌐</button>
+            <button type="button" id="aiReasoningBtn" class="ai-tool-btn" data-tooltip="Reasoning on/off" data-active="false">🧠</button>
+            <span style="width:1px;height:24px;background:var(--border-color);margin:0 4px;"></span>
             <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
-            <button type="button" id="aiAttachBtn" class="btn btn-icon" title="Attach image">📎</button>
-            <button type="submit" id="aiSendBtn" class="btn btn-primary">➤</button>
+            <button type="button" id="aiAttachBtn" class="btn-icon-oval" title="Attach image">📎</button>
+            <button type="submit" id="aiSendBtn" class="btn-primary-oval">➤</button>
           </div>
         </div>
       </form>
     </div>
-  </main>
+  </div>
 </div>
 
-<!-- Модальное окно нового чата -->
-<div id="newChatModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="newChatTitle">
+<!-- New chat modal -->
+<div id="newChatModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
-      <h3 id="newChatTitle">Start New Chat</h3>
-      <button class="modal-close" onclick="closeNewChatModal()" aria-label="Close">&times;</button>
+      <h3>Start New Chat</h3>
+      <button class="modal-close" onclick="closeNewChatModal()">&times;</button>
     </header>
     <div class="modal-body">
-      <div class="text-center" style="margin-bottom: var(--space-md);">
-        <button class="btn btn-ghost" onclick="openQRScannerInModal()" id="scanQRBtn">📷 Scan QR Code</button>
-        <div id="qrScannerContainerModal" class="hidden" style="margin-top: var(--space-md);">
-          <div style="position: relative; display: inline-block;">
+      <div class="text-center">
+        <button class="btn-oval" onclick="openQRScannerInModal()">📷 Scan QR Code</button>
+        <div id="qrScannerContainerModal" class="hidden">
+          <div style="position:relative;display:inline-block;">
             <video id="qrVideoModal" style="width:200px;height:200px;border-radius:var(--radius-md);background:#000;"></video>
             <div style="position:absolute;inset:0;border:2px solid var(--accent);border-radius:var(--radius-md);pointer-events:none;"></div>
           </div>
-          <p class="text-muted" style="margin-top:var(--space-sm);font-size:12px;">Point camera at QR code</p>
-          <button class="btn btn-ghost" onclick="forceCloseQRScannerInModal()" style="margin-top:var(--space-sm);">Cancel</button>
+          <p class="text-muted">Point camera at QR code</p>
+          <button class="btn-oval" onclick="forceCloseQRScannerInModal()">Cancel</button>
         </div>
-        <div id="scanResultModal" class="hidden" style="margin-top:var(--space-sm);color:var(--status-success);font-weight:500;"></div>
+        <div id="scanResultModal" class="hidden scan-result"></div>
       </div>
       <div class="form-group">
-        <label for="newChatSelect" class="text-secondary" style="font-size:12px;display:block;margin-bottom:var(--space-xs);">Select from contacts</label>
+        <label class="text-secondary">Select from contacts</label>
         <select id="newChatSelect" class="input"><option value="">-- Choose a contact --</option></select>
       </div>
       <div class="form-group">
-        <label for="newChatAddress" class="text-secondary" style="font-size:12px;display:block;margin-bottom:var(--space-xs);">Or enter address</label>
+        <label class="text-secondary">Or enter address</label>
         <input type="text" id="newChatAddress" class="input input-monospace" placeholder="64-character hex address" maxlength="64">
       </div>
     </div>
     <footer class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeNewChatModal()">Cancel</button>
-      <button class="btn btn-primary" id="startNewChatBtn">Start Chat</button>
+      <button class="btn-oval" onclick="closeNewChatModal()">Cancel</button>
+      <button class="btn-primary-oval" id="startNewChatBtn">Start Chat</button>
     </footer>
   </div>
 </div>
 
-<div id="imageModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+<!-- Image modal -->
+<div id="imageModal" class="modal-overlay hidden">
   <div class="modal" style="max-width:90vw;max-height:90vh;background:transparent;border:none;box-shadow:none;">
-    <button class="modal-close" onclick="closeImageModal()" style="position:absolute;top:var(--space-md);right:var(--space-md);color:var(--text-primary);z-index:1;" aria-label="Close">&times;</button>
+    <button class="modal-close" onclick="closeImageModal()" style="position:absolute;top:16px;right:16px;color:var(--text-primary);z-index:1;">&times;</button>
     <img id="modalImage" src="" alt="Full size" style="max-width:100%;max-height:90vh;border-radius:var(--radius-md);">
-    <div class="text-center" style="margin-top:var(--space-md);">
-      <button class="btn btn-primary" id="downloadImageBtn">Download</button>
+    <div class="text-center" style="margin-top:16px;">
+      <button class="btn-primary-oval" id="downloadImageBtn">Download</button>
     </div>
   </div>
 </div>
 
-<div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
-
-<!-- Стили для кнопок AI – единый полупрозрачный стиль для активного состояния -->
-<style>
-  /* Кнопки AI в строке ввода */
-  .ai-tool-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-md, 8px);
-    width: 34px;
-    height: 34px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    color: var(--text-secondary, #b0b0b0);
-  }
-
-  .ai-tool-btn:hover {
-    background: var(--bg-hover, #2a2a2a);
-    color: var(--text-primary, #ffffff);
-    transform: translateY(-1px);
-  }
-
-  /* Активное состояние – одинаковое для интернета и разума (полупрозрачный фон) */
-  .ai-tool-btn[data-active="true"] {
-    background: var(--accent-soft, rgba(255,255,255,0.1));
-    color: var(--accent, #ffffff);
-    box-shadow: 0 2px 6px rgba(255, 255, 255, 0.1);
-  }
-
-  .ai-tool-btn[data-active="true"]:hover {
-    background: var(--accent-soft);
-    opacity: 0.9;
-  }
-
-  /* Тултип при наведении */
-  .ai-tool-btn::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(20, 20, 20, 0.95);
-    color: #fff;
-    font-size: 0.7rem;
-    padding: 4px 8px;
-    border-radius: 6px;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s;
-    margin-bottom: 8px;
-    z-index: 10;
-    font-family: var(--font-sans);
-    font-weight: normal;
-    letter-spacing: 0.3px;
-    border: 1px solid var(--border-color, #2a2a2a);
-  }
-
-  .ai-tool-btn:hover::after {
-    opacity: 1;
-  }
-
-  /* Для тёмной темы */
-  @media (prefers-color-scheme: dark) {
-    .ai-tool-btn {
-      color: #ccc;
-    }
-    .ai-tool-btn:hover {
-      background: #2c2c2c;
-    }
-  }
-</style>
-
-{% block scripts %}
 <script>window.process = window.process || { env: {} };</script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="{{ url_for('static', path='js/WebSocketClient.js') }}"></script>
@@ -277,5 +136,100 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="{{ url_for('static', path='js/AiChat.js') }}" defer></script>
-{% endblock %}
+
+<script>
+(function() {
+  const conversationsPanel = document.getElementById('conversationsPanel');
+  const chatPanel = document.getElementById('chatPanel');
+  const backBtn = document.getElementById('backToConversationsBtn');
+
+  function isMobile() { return window.innerWidth < 768; }
+
+  // На десктопе обе панели всегда видны, на мобильных переключаем
+  if (!isMobile()) {
+    conversationsPanel.style.display = 'flex';
+    chatPanel.style.display = 'flex';
+  }
+
+  window.showConversationsList = function() {
+    if (!isMobile()) return;
+    conversationsPanel.style.display = 'flex';
+    chatPanel.style.display = 'none';
+    document.body.classList.remove('chat-open');
+  };
+
+  window.showChatPanel = function() {
+    if (!isMobile()) return;
+    conversationsPanel.style.display = 'none';
+    chatPanel.style.display = 'flex';
+    document.body.classList.add('chat-open');
+  };
+
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      if (window.State?.currentChatAddress === 'ai_bot') {
+        const firstConv = document.querySelector('.conversation-item');
+        if (firstConv?.dataset.address) {
+          window.selectConversation(firstConv.dataset.address, '', firstConv.dataset.isGroup === '1');
+        } else {
+          if (isMobile()) window.showConversationsList();
+        }
+      } else {
+        if (isMobile()) window.showConversationsList();
+      }
+    });
+  }
+
+  const originalSelect = window.selectConversation;
+  if (originalSelect) {
+    window.selectConversation = function(address, name, isGroup) {
+      originalSelect(address, name, isGroup);
+      if (isMobile() && address) {
+        if (address === 'ai_bot' || (address && address !== '')) {
+          window.showChatPanel();
+        }
+      }
+    };
+  }
+
+  window.addEventListener('resize', () => {
+    if (!isMobile()) {
+      conversationsPanel.style.display = 'flex';
+      chatPanel.style.display = 'flex';
+      document.body.classList.remove('chat-open');
+    } else {
+      const activeChat = window.State?.currentChatAddress;
+      if (!activeChat || activeChat === '') {
+        window.showConversationsList();
+      } else {
+        window.showChatPanel();
+      }
+    }
+  });
+
+  const closeAiBtn = document.getElementById('closeAiFromChatBtn');
+  if (closeAiBtn) {
+    closeAiBtn.addEventListener('click', () => {
+      if (window.State?.currentChatAddress === 'ai_bot') {
+        const firstConv = document.querySelector('.conversation-item');
+        if (firstConv?.dataset.address) {
+          window.selectConversation(firstConv.dataset.address, '', firstConv.dataset.isGroup === '1');
+        } else {
+          if (isMobile()) window.showConversationsList();
+        }
+      } else {
+        if (isMobile()) window.showConversationsList();
+      }
+    });
+  }
+
+  // Начальное состояние на мобильных
+  if (isMobile() && !window.location.search.includes('start_with')) {
+    window.showConversationsList();
+  }
+  if (window.location.search.includes('start_with')) {
+    setTimeout(() => { if (isMobile()) window.showChatPanel(); }, 200);
+  }
+})();
+</script>
 {% endblock %}

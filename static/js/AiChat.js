@@ -1,4 +1,4 @@
-// AiChat.js — исправленное: кнопки интернета и разума используют только data-active, без инлайн-стилей
+// AiChat.js — исправленное: изображение в сообщении не пропадает после отправки
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
@@ -316,10 +316,22 @@
         const urlMatch = messageText.match(/https?:\/\/[^\s]+/);
         const urlToFetch = urlMatch ? urlMatch[0] : null;
 
-        let previewUrl = null;
+        // Сначала сжимаем изображение, чтобы получить постоянный data URL
+        let imageBase64 = null;
+        let imageMime = null;
+        let compressedDataUrl = null;
         if (imageFile) {
-            previewUrl = URL.createObjectURL(imageFile);
-            displayAiMessage(messageText || '📷 Изображение', true, previewUrl, true);
+            const reader = new FileReader();
+            compressedDataUrl = await new Promise((resolve) => {
+                reader.onload = async (e) => resolve(await compressImage(e.target.result));
+                reader.readAsDataURL(imageFile);
+            });
+            const parts = compressedDataUrl.split(',');
+            imageBase64 = parts[1];
+            const mimeMatch = parts[0].match(/^data:(image\/[a-zA-Z]+);?/);
+            imageMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+            // Показываем сообщение пользователя с изображением (base64)
+            displayAiMessage(messageText || '📷 Изображение', true, compressedDataUrl, true);
         } else {
             displayAiMessage(messageText, true, null, true);
         }
@@ -329,19 +341,6 @@
         showAiTypingIndicator(true, isSearching ? (urlToFetch ? `🔗 Загружаю ${urlToFetch.slice(0, 50)}…` : '🔍 Ищу в интернете и загружаю страницы…') : '');
 
         try {
-            let imageBase64 = null, imageMime = null;
-            if (imageFile) {
-                const reader = new FileReader();
-                const compressedDataUrl = await new Promise((resolve) => {
-                    reader.onload = async (e) => resolve(await compressImage(e.target.result));
-                    reader.readAsDataURL(imageFile);
-                });
-                const parts = compressedDataUrl.split(',');
-                imageBase64 = parts[1];
-                const mimeMatch = parts[0].match(/^data:(image\/[a-zA-Z]+);?/);
-                imageMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-            }
-
             const response = await fetch(CONFIG.apiEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -454,7 +453,6 @@
                 displayAiMessage('❌ Ошибка связи с AI-сервером.', false, null, true);
             }
         } finally {
-            if (previewUrl) URL.revokeObjectURL(previewUrl);
             if (currentStreamReader) {
                 try { currentStreamReader.releaseLock(); } catch(e) {}
                 currentStreamReader = null;
@@ -483,7 +481,6 @@
     function updateInternetBtnStyle() {
         if (!aiInternetBtn) return;
         aiInternetBtn.setAttribute('data-active', internetEnabled ? 'true' : 'false');
-        // Меняем только title
         aiInternetBtn.title = internetEnabled
             ? 'Интернет ВКЛЮЧЁН (буду искать и читать страницы)'
             : 'Интернет ВЫКЛЮЧЕН (только мои знания)';
@@ -539,6 +536,17 @@
         });
     }
 
+    // ========== Очистка превью (только над полем ввода) ==========
+    function clearImagePreview() {
+        const previewDiv = document.getElementById('aiImagePreview');
+        if (previewDiv) previewDiv.remove();
+        if (currentImagePreviewUrl) {
+            URL.revokeObjectURL(currentImagePreviewUrl);
+            currentImagePreviewUrl = null;
+        }
+        pendingImageFile = null;
+    }
+
     // ========== Настройка UI ==========
     function setupAiUI() {
         if (!aiSendBtn) return;
@@ -551,6 +559,7 @@
                 return;
             }
 
+            // Блокируем интерфейс
             aiMessageInput.disabled = true;
             aiSendBtn.disabled = true;
             aiAttachBtn.disabled = true;
@@ -560,16 +569,16 @@
             if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
 
             const originalText = text;
-            const previewDiv = document.getElementById('aiImagePreview');
-            if (previewDiv) previewDiv.remove();
-            if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-            pendingImageFile = null;
-            currentImagePreviewUrl = null;
+            const imageToSend = image;
 
+            // Очищаем поле ввода и превью над полем (но не сообщения в чате)
             if (aiMessageInput) aiMessageInput.value = '';
+            clearImagePreview();
+
             try {
-                await sendToAi(originalText, image);
+                await sendToAi(originalText, imageToSend);
             } finally {
+                // Разблокируем интерфейс
                 aiMessageInput.disabled = false;
                 aiSendBtn.disabled = false;
                 aiAttachBtn.disabled = false;

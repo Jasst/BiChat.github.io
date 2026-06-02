@@ -1,19 +1,18 @@
 // actions.js — все действия, инициируемые пользователем (кнопки, формы)
 // + добавлено превью изображения над полем ввода
+// + ИСПРАВЛЕНО: переход в AI-чат, очистка превью, корректная работа кнопки "Назад"
 (function() {
     if (window._actionsLoaded) return;
     window._actionsLoaded = true;
 
     // ========== Превью изображения для обычного чата ==========
-    let mainPendingImageFile = null;      // File объект
-    let mainImagePreviewUrl = null;       // blob URL (если используется)
+    let mainPendingImageFile = null;
+    let mainImagePreviewUrl = null;
 
     function showMainImagePreview(file, dataUrl) {
-        // Удаляем старый контейнер, если есть
         const oldPreview = document.getElementById('mainImagePreview');
         if (oldPreview) oldPreview.remove();
 
-        // Создаём новый контейнер
         const previewContainer = document.createElement('div');
         previewContainer.id = 'mainImagePreview';
         previewContainer.style.cssText = `
@@ -28,7 +27,7 @@
         `;
 
         if (mainImagePreviewUrl && !mainImagePreviewUrl.startsWith('data:')) URL.revokeObjectURL(mainImagePreviewUrl);
-        mainImagePreviewUrl = dataUrl; // dataUrl уже base64, но сохраним
+        mainImagePreviewUrl = dataUrl;
 
         previewContainer.innerHTML = `
             <img src="${Utils.escapeHtml(dataUrl)}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;">
@@ -36,12 +35,11 @@
             <button type="button" id="clearMainImage" class="btn btn-icon" style="font-size: 16px; padding: 4px;">✕</button>
         `;
 
-        // Вставляем контейнер над формой ввода (перед .input-area)
-        const form = document.querySelector('.main-content .input-area');
+        const form = document.querySelector('.chat-panel .input-area');
         if (form) {
             form.parentNode.insertBefore(previewContainer, form);
         } else {
-            const main = document.querySelector('.main-content');
+            const main = document.querySelector('.chat-panel');
             if (main) main.appendChild(previewContainer);
         }
 
@@ -54,14 +52,20 @@
         });
     }
 
-    // ========== Отправка сообщения (исправлена очистка превью) ==========
+    // ========== Отправка сообщения ==========
     async function sendMessage() {
-        if (State.currentChatAddress === 'ai_bot') { console.log('AI chat active'); return; }
+        if (State.currentChatAddress === 'ai_bot') {
+            console.log('AI chat active, use AI input instead');
+            return;
+        }
         const contentEl = document.getElementById('messageContent');
         const sendBtn = document.getElementById('sendButton');
         const attachBtn = document.getElementById('attachImageButton');
 
-        if (window.isSending) { window.NotificationManager?.showToast('Sending in progress...', 'warning'); return; }
+        if (window.isSending) {
+            window.NotificationManager?.showToast('Sending in progress...', 'warning');
+            return;
+        }
         let content = contentEl ? contentEl.value.trim() : '';
         const recipient = State.currentChatAddress;
         if (!recipient || (!content && !State.pendingImageData)) {
@@ -78,11 +82,11 @@
         const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
         if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
         const attachedImage = State.pendingImageData;
-        // Очищаем превью и данные до отправки (чтобы не повторить)
+
+        // Очищаем превью и данные
         const previewDiv = document.getElementById('mainImagePreview');
         if (previewDiv) previewDiv.remove();
         if (mainImagePreviewUrl && !mainImagePreviewUrl.startsWith('data:')) URL.revokeObjectURL(mainImagePreviewUrl);
-        const imageFileToSend = mainPendingImageFile; // сохраняем File, если нужен
         mainPendingImageFile = null;
         State.pendingImageData = null;
         mainImagePreviewUrl = null;
@@ -187,11 +191,10 @@
         }
     }
 
-    // ========== Удаление сообщения (исправлено: модальное окно) ==========
+    // ========== Удаление сообщения ==========
     async function deleteMessage(messageId, buttonEl) {
         const confirmed = await window.showConfirmModal('Delete Message', 'Are you sure you want to delete this message?');
         if (!confirmed) return;
-
         try {
             if (buttonEl) { buttonEl.disabled = true; buttonEl.textContent = '…'; }
             const res = await fetch('/delete_message', {
@@ -211,12 +214,11 @@
         }
     }
 
-    // ========== Очистка переписки (исправлено: модальное окно) ==========
+    // ========== Очистка переписки ==========
     async function clearConversation() {
         if (!State.currentChatAddress) return;
         const confirmed = await window.showConfirmModal('Clear Conversation', 'Are you sure you want to clear all messages in this conversation?');
         if (!confirmed) return;
-
         try {
             const res = await fetch('/clear_conversation', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_with: State.currentChatAddress })
@@ -237,7 +239,8 @@
     // ========== Добавление контакта ==========
     async function addContactFromChat() {
         if (!State.currentChatPartnerAddress || State.currentChatPartnerAddress === State.userAddress) {
-            window.NotificationManager?.showToast('Cannot add this conversation', 'warning'); return;
+            window.NotificationManager?.showToast('Cannot add this conversation', 'warning');
+            return;
         }
         const nameEl = document.getElementById('currentChatName');
         const name = nameEl ? nameEl.textContent : (State.currentChatPartnerAddress.slice(0,10)+'…');
@@ -258,7 +261,7 @@
         }
     }
 
-    // ========== Изображения (исправлено: показ превью) ==========
+    // ========== Обработка изображений ==========
     async function handleImageSelection(event) {
         const file = event.target.files[0];
         if (file && file.type?.startsWith('image/')) {
@@ -299,7 +302,7 @@
     }
     function closeImageModal() { document.getElementById('imageModal')?.classList.add('hidden'); }
 
-    // ========== Модальные окна (новый чат) ==========
+    // ========== Модальные окна нового чата ==========
     function openNewChatModal() {
         window.modalOpen = true;
         document.getElementById('newChatModal')?.classList.remove('hidden');
@@ -359,13 +362,14 @@
         window.selectConversation(address, name, false);
     }
 
-    // ========== Инициализация при загрузке страницы ==========
+    // ========== Инициализация чата ==========
     function initChat() {
         window.loadConversations();
 
         window.startHeartbeat();
         window.startStatusPolling();
         window.startUserStatusPolling();
+
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && window.wsClient && !window.wsClient.isConnected) {
                 console.log('📱 Tab active, reconnecting WebSocket...');
@@ -386,7 +390,10 @@
         const startWith = params.get('start_with');
         const startName = params.get('name');
         if (startWith && startName) {
-            setTimeout(() => { window.selectConversation(startWith, decodeURIComponent(startName), startWith.startsWith('group:')); history.replaceState({}, '', location.pathname); }, 100);
+            setTimeout(() => {
+                window.selectConversation(startWith, decodeURIComponent(startName), startWith.startsWith('group:'));
+                history.replaceState({}, '', location.pathname);
+            }, 100);
         }
 
         const input = document.getElementById('messageContent');
@@ -401,16 +408,20 @@
         window.addEventListener('click', e => { if (e.target.classList.contains('modal-overlay')) { e.target.classList.add('hidden'); if (window.QRScanner) QRScanner.close(); } });
         document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeNewChatModal(); closeImageModal(); if (window.QRScanner) QRScanner.close(); } });
 
+        // ✅ ИСПРАВЛЕНО: обработчик кнопки AI-чата – теперь он корректно переключает интерфейс
         const aiBtn = document.getElementById('aiChatBtn');
         if (aiBtn) {
             aiBtn.addEventListener('click', (e) => {
                 e.preventDefault();
+                // Если есть сайдбар на мобильных – закрываем
                 if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
+                // Переключаемся на AI-бота
                 window.selectConversation('ai_bot', 'AI Assistant', false);
             });
         }
     }
 
+    // Очистка перед выгрузкой страницы
     window.addEventListener('beforeunload', () => {
         if (window.wsClient) { window.wsClient.disconnect(); window.wsClient = null; }
         if (window.QRScanner && typeof QRScanner.close === 'function') QRScanner.close();
@@ -421,7 +432,7 @@
         window.stopStatusPolling();
     });
 
-    // Экспорт для глобального доступа (onclick)
+    // Экспорт глобальных функций
     window.sendMessage = sendMessage;
     window.deleteMessage = deleteMessage;
     window.clearConversation = clearConversation;
@@ -433,7 +444,6 @@
     window.closeNewChatModal = closeNewChatModal;
     window.startNewChat = startNewChat;
 
-    // Экспорт функции очистки для ui.js
     window.clearMainImagePreview = function() {
         const previewDiv = document.getElementById('mainImagePreview');
         if (previewDiv) previewDiv.remove();

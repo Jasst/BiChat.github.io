@@ -19,8 +19,67 @@
 <body>
   <a href="#main" class="sr-only">Skip to main content</a>
 
-  <div class="container">
-    {% block content %}{% endblock %}
+  <div class="app-container">
+    <div class="content-wrapper">
+      {% block content %}{% endblock %}
+    </div>
+
+    <!-- Показываем нижнюю панель только на страницах, где пользователь авторизован (не login и не index) -->
+    {% if request.path not in ['/', '/login'] %}
+    <nav class="bottom-nav" aria-label="Main navigation">
+      <a href="/chat" class="bottom-nav-item {% if request.path == '/chat' %}active{% endif %}" data-nav="chat">
+        <span class="nav-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <circle cx="8" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+            <circle cx="12" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+            <circle cx="16" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </span>
+        <span class="nav-label">Chat</span>
+      </a>
+      <a href="/contacts" class="bottom-nav-item {% if request.path == '/contacts' %}active{% endif %}" data-nav="contacts">
+        <span class="nav-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8"/>
+          </svg>
+        </span>
+        <span class="nav-label">Contacts</span>
+      </a>
+      <a href="/groups" class="bottom-nav-item {% if request.path == '/groups' %}active{% endif %}" data-nav="groups">
+        <span class="nav-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="7" r="3"/>
+            <circle cx="16" cy="5" r="2.5"/>
+            <path d="M2 20c0-3.314 2.686-6 6-6" class="person-left"/>
+            <path d="M14 20c0-2.761 2.239-5 5-5" class="person-right"/>
+            <path d="M18 12h0.5a2.5 2.5 0 0 1 2.5 2.5V20"/>
+          </svg>
+        </span>
+        <span class="nav-label">Groups</span>
+      </a>
+      <a href="/wallet" class="bottom-nav-item {% if request.path == '/wallet' %}active{% endif %}" data-nav="wallet">
+        <span class="nav-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 7v10M9 9.5c0-.828 1.12-1.5 3-1.5s3 .672 3 1.5-1.12 1.5-3 1.5"/>
+            <path d="M9 14.5c0 .828 1.12 1.5 3 1.5s3-.672 3-1.5"/>
+          </svg>
+        </span>
+        <span class="nav-label">Wallet</span>
+      </a>
+      <a href="/profile" class="bottom-nav-item {% if request.path == '/profile' %}active{% endif %}" data-nav="profile">
+        <span class="nav-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </span>
+        <span class="nav-label">Profile</span>
+      </a>
+    </nav>
+    {% endif %}
   </div>
 
   <div id="notification-container" aria-live="polite" aria-atomic="true"></div>
@@ -30,12 +89,10 @@
   <script src="{{ url_for('static', path='js/crypto-client.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/notification-manager.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/mnemonic-manager.js') }}" defer></script>
-  <!-- ✅ Новый модуль шифрования -->
   <script src="{{ url_for('static', path='js/storage-encryption.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/core.js') }}" defer></script>
 
   <script>
-    // Глобальная функция выхода (очищает и хранилища, и сессию)
     window.logout = async function() {
       localStorage.removeItem('encrypted_mnemonic');
       sessionStorage.removeItem('mnemonic');

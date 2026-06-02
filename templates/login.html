@@ -4,18 +4,18 @@
 
 {% block content %}
 <div class="auth-container">
-  <div class="auth-card animate-fade">
+  <div class="auth-card">
     <h1>Login</h1>
     <p class="subtitle">Enter your 24‑word mnemonic phrase</p>
 
     <form id="loginForm" class="auth-form">
       <input type="hidden" id="nonce" value="{{ nonce }}">
-      <textarea id="mnemonic" placeholder="Enter your mnemonic phrase" rows="5" autocomplete="off" autocorrect="off" spellcheck="false" autofocus required class="input input-monospace" style="font-size: 13px; line-height: 1.6;"></textarea>
+      <textarea id="mnemonic" placeholder="Enter your mnemonic phrase" rows="5" autocomplete="off" autocorrect="off" spellcheck="false" autofocus required class="input input-monospace"></textarea>
 
-      <div class="form-group" style="margin-top: 16px;">
+      <div class="form-group">
         <label><input type="checkbox" id="rememberCheckbox" checked> Remember me (encrypt and store wallet locally)</label>
       </div>
-      <div id="passwordGroup" style="display: block;">
+      <div id="passwordGroup">
         <div class="form-group">
           <label>Encryption password (required if remembering)</label>
           <input type="password" id="password" class="input" placeholder="Enter password">
@@ -27,7 +27,7 @@
       </div>
 
       <div id="errorMsg" class="hidden error"></div>
-      <button type="submit" class="btn btn-primary" id="loginBtn" style="width: 100%;">Login</button>
+      <button type="submit" class="btn-primary-oval full-width" id="loginBtn">Login</button>
     </form>
 
     <div class="auth-footer">
@@ -36,7 +36,6 @@
   </div>
 </div>
 
-{% block scripts %}
 <script src="{{ url_for('static', path='js/storage-encryption.js') }}"></script>
 <script>
 if (window._loginScriptLoaded) {
@@ -56,7 +55,6 @@ if (window._loginScriptLoaded) {
     const passwordInput = document.getElementById('password');
     const confirmInput = document.getElementById('confirmPassword');
 
-    // Показываем/скрываем поля пароля в зависимости от чекбокса
     rememberCheckbox.addEventListener('change', (e) => {
       passwordGroup.style.display = e.target.checked ? 'block' : 'none';
       if (!e.target.checked) {
@@ -103,7 +101,7 @@ if (window._loginScriptLoaded) {
           return;
         }
       } else {
-        password = ''; // не используем пароль, если не сохраняем
+        password = '';
       }
 
       try {
@@ -136,7 +134,6 @@ if (window._loginScriptLoaded) {
             const encrypted = await window.StorageEncryption.encryptMnemonic(mnemonic, password);
             localStorage.setItem('encrypted_mnemonic', encrypted);
           } else {
-            // Если пользователь не хочет сохранять, удаляем старые данные, если были
             localStorage.removeItem('encrypted_mnemonic');
           }
           window.location.href = '/chat';
@@ -181,5 +178,4 @@ if (window._loginScriptLoaded) {
   });
 }
 </script>
-{% endblock %}
 {% endblock %}

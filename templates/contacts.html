@@ -3,113 +3,38 @@
 {% block title %}Contacts — Dark Messenger{% endblock %}
 
 {% block content %}
-<div class="chat-container">
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar" aria-label="Navigation">
-    <header class="sidebar-header">
-      <div class="user-info">
-        <span class="address font-mono" id="userAddress">{{ address[:10] }}…</span>
+<div class="page-container">
+  <div class="page-header">
+    <h2>Contacts</h2>
+    <button class="btn-primary-oval" onclick="openQRScanner()">📷 Scan QR</button>
+  </div>
+
+  <!-- QR Scanner -->
+  <div id="qrScannerContainer" class="hidden qr-scanner-container">
+    <div class="text-center">
+      <div class="qr-video-wrapper">
+        <video id="qrVideo" class="qr-video" playsinline autoplay muted disablepictureinpicture></video>
       </div>
-    </header>
-
-    <nav class="tabs" role="tablist">
-  <button class="tab " onclick="location.href='/chat'" aria-label="Chat" title="Chat">
-    <span class="tab-icon tab-icon-chat">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        <circle class="bubble-dot" cx="8" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-        <circle class="bubble-dot" cx="12" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-        <circle class="bubble-dot" cx="16" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab active" onclick="location.href='/contacts'" aria-label="Contacts" title="Contacts">
-    <span class="tab-icon tab-icon-contacts">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="8" r="4"/>
-        <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab" onclick="location.href='/groups'" aria-label="Groups" title="Groups">
-    <span class="tab-icon tab-icon-groups">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="8" cy="7" r="3"/>
-        <circle cx="16" cy="5" r="2.5"/>
-        <path d="M2 20c0-3.314 2.686-6 6-6" class="person-left"/>
-        <path d="M14 20c0-2.761 2.239-5 5-5" class="person-right"/>
-        <path d="M18 12h0.5a2.5 2.5 0 0 1 2.5 2.5V20"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab" onclick="location.href='/wallet'" aria-label="Wallet" title="Wallet">
-    <span class="tab-icon tab-icon-wallet">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="12" r="9"/>
-        <path d="M12 7v10M9 9.5c0-.828 1.12-1.5 3-1.5s3 .672 3 1.5-1.12 1.5-3 1.5"/>
-        <path d="M9 14.5c0 .828 1.12 1.5 3 1.5s3-.672 3-1.5"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab" onclick="location.href='/profile'" aria-label="Settings" title="Settings">
-    <span class="tab-icon tab-icon-settings tab-icon-gear">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-      </svg>
-    </span>
-  </button>
-</nav>
-  </aside>
-
-  <!-- Main Content -->
-  <main class="main-content">
-    <header class="chat-header">
-      <button class="btn btn-icon menu-toggle" id="menuToggle"
-              onclick="toggleSidebar()" aria-label="Toggle menu"
-              style="display: none;">☰</button>
-      <h2>Contacts</h2>
-      <button class="btn btn-primary" onclick="openQRScanner()">📷 Scan QR</button>
-    </header>
-
-    <!-- QR Scanner -->
-    <div id="qrScannerContainer" class="hidden" style="padding: var(--space-md); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
-      <div class="text-center">
-        <div style="position: relative; display: inline-block; margin-bottom: var(--space-sm);">
-          <video id="qrVideo"
-                 style="width: 200px; height: 200px; border-radius: var(--radius-md); background: #000;"
-                 playsinline autoplay muted disablepictureinpicture></video>
-          <div style="position: absolute; inset: 0; border: 2px solid var(--accent); border-radius: var(--radius-md); pointer-events: none;"></div>
-        </div>
-        <p class="text-muted" style="font-size: 12px;">Point camera at QR code</p>
-        <div id="scanResult" class="hidden" style="margin-top: var(--space-sm); color: var(--status-success); font-weight: 500;"></div>
-        <button class="btn btn-ghost" onclick="forceCloseQRScanner()" style="margin-top: var(--space-sm);">Cancel</button>
-      </div>
+      <p class="text-muted">Point camera at QR code</p>
+      <div id="scanResult" class="hidden scan-result"></div>
+      <button class="btn-oval" onclick="forceCloseQRScanner()">Cancel</button>
     </div>
+  </div>
 
-    <!-- Contacts List -->
-    <div class="list-container" id="contactsList">
-      <div class="loading">Loading contacts…</div>
-    </div>
+  <!-- Contacts List -->
+  <div class="list-container" id="contactsList">
+    <div class="loading">Loading contacts…</div>
+  </div>
 
-    <!-- Add Contact Form -->
-    <div style="padding: var(--space-md); border-top: 1px solid var(--border-color); background: var(--bg-secondary);">
-      <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
-        <input type="text" id="contactName" class="input" placeholder="Name" maxlength="50" style="flex: 1; min-width: 120px;">
-        <input type="text" id="contactAddress" class="input input-monospace" placeholder="64-char address" maxlength="64" style="flex: 2; min-width: 200px;">
-        <button class="btn btn-primary" onclick="addContact()">Add</button>
-      </div>
-      <p class="text-muted" style="font-size: 11px; margin-top: var(--space-xs);">
-        Name: 1–50 chars • Address: exactly 64 hex characters
-      </p>
-    </div>
-  </main>
+  <!-- Add Contact Form -->
+  <div class="add-contact-form">
+    <input type="text" id="contactName" class="input" placeholder="Name" maxlength="50">
+    <input type="text" id="contactAddress" class="input input-monospace" placeholder="64-char address" maxlength="64">
+    <button class="btn-primary-oval" onclick="addContact()">Add</button>
+    <p class="text-muted form-hint">Name: 1–50 chars • Address: exactly 64 hex characters</p>
+  </div>
 </div>
 
-<!-- Overlay for mobile sidebar -->
-<div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
-
-{% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
 (function() {
@@ -117,7 +42,6 @@
   window._contactsScriptLoaded = true;
 
   const MAX_NAME_LENGTH = 50;
-  const ADDRESS_LENGTH = 64;
   const ADDRESS_REGEX = /^[0-9a-f]{64}$/i;
 
   let allContacts = [];
@@ -136,7 +60,6 @@
     return n.length >= 1 && n.length <= MAX_NAME_LENGTH && !/[\u0000-\u001F\u007F]/.test(n);
   };
 
-  // === Fetch wrapper ===
   async function secureFetch(url, options = {}) {
     const headers = {
       'Content-Type': 'application/json',
@@ -158,48 +81,31 @@
     }
   }
 
-  // === Кастомное модальное окно (prompt / confirm) ===
   function showCustomModal(options) {
     return new Promise((resolve) => {
       const modalId = 'custom-modal-' + Date.now();
       const modalHtml = `
-        <div id="${modalId}" class="modal-overlay hidden" role="dialog" aria-modal="true">
-          <div class="modal" style="max-width: 400px;">
-            <header class="modal-header">
-              <h3>${escapeHtml(options.title)}</h3>
-              <button class="modal-close" data-close>&times;</button>
-            </header>
-            <div class="modal-body">
-              ${options.bodyHtml || ''}
-            </div>
+        <div id="${modalId}" class="modal-overlay hidden">
+          <div class="modal" style="max-width:400px;">
+            <header class="modal-header"><h3>${escapeHtml(options.title)}</h3><button class="modal-close" data-close>&times;</button></header>
+            <div class="modal-body">${options.bodyHtml || ''}</div>
             <footer class="modal-footer">
-              ${options.buttons.map(btn => `<button class="btn ${btn.className || ''}" data-action="${btn.action}">${escapeHtml(btn.label)}</button>`).join('')}
+              ${options.buttons.map(btn => `<button class="${btn.className || 'btn-oval'}" data-action="${btn.action}">${escapeHtml(btn.label)}</button>`).join('')}
             </footer>
           </div>
-        </div>
-      `;
+        </div>`;
       document.body.insertAdjacentHTML('beforeend', modalHtml);
       const modalEl = document.getElementById(modalId);
       ModalManager.open(modalId, { closeOnOverlay: false, preventEscClose: false });
-
-      const handleClose = () => {
-        ModalManager.close(modalId);
-        modalEl.remove();
-      };
-
-      modalEl.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => {
-        resolve(null);
-        handleClose();
-      }));
-
+      const close = (result) => { ModalManager.close(modalId); modalEl.remove(); resolve(result); };
+      modalEl.querySelector('[data-close]')?.addEventListener('click', () => close(null));
       options.buttons.forEach(btn => {
         const btnEl = modalEl.querySelector(`[data-action="${btn.action}"]`);
         if (btnEl) {
           btnEl.addEventListener('click', () => {
             let result = btn.value;
             if (btn.getValue) result = btn.getValue(modalEl);
-            resolve(result);
-            handleClose();
+            close(result);
           });
         }
       });
@@ -209,10 +115,10 @@
   async function showPromptModal(title, placeholder, defaultValue = '') {
     return await showCustomModal({
       title: title,
-      bodyHtml: `<input type="text" id="prompt-input" class="input" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(defaultValue)}" style="width: 100%;">`,
+      bodyHtml: `<input type="text" id="prompt-input" class="input" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(defaultValue)}" style="width:100%;">`,
       buttons: [
-        { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: null },
-        { label: 'Save', className: 'btn-primary', action: 'save', getValue: (modal) => modal.querySelector('#prompt-input').value }
+        { label: 'Cancel', className: 'btn-oval', action: 'cancel', value: null },
+        { label: 'Save', className: 'btn-primary-oval', action: 'save', getValue: (modal) => modal.querySelector('#prompt-input').value }
       ]
     });
   }
@@ -222,150 +128,97 @@
       title: title,
       bodyHtml: `<p>${escapeHtml(message)}</p>`,
       buttons: [
-        { label: 'Cancel', className: 'btn-ghost', action: 'cancel', value: false },
-        { label: 'Delete', className: 'btn-error', action: 'confirm', value: true }
+        { label: 'Cancel', className: 'btn-oval', action: 'cancel', value: false },
+        { label: 'Delete', className: 'btn-primary-oval', action: 'confirm', value: true }
       ]
     });
   }
 
-  // === Load Contacts ===
   async function loadContacts() {
     const container = $('contactsList');
     if (!container) return;
-
     container.innerHTML = '<div class="loading">Loading contacts…</div>';
-
     try {
       const res = await secureFetch('/get_contacts');
       if (!res) throw new Error('Network error');
-
       const data = await res.json();
-      if (!res.ok || !Array.isArray(data.contacts)) {
-        throw new Error(data.error || 'Invalid response');
-      }
-
+      if (!res.ok || !Array.isArray(data.contacts)) throw new Error(data.error || 'Invalid response');
       allContacts = data.contacts;
-
       if (allContacts.length === 0) {
-        container.innerHTML = `
-          <div class="empty-state">
-            <div class="icon">👥</div>
-            <p>No contacts yet</p>
-            <p class="text-muted">Add contacts manually or scan QR code</p>
-          </div>
-        `;
+        container.innerHTML = `<div class="empty-state"><div class="icon">👥</div><p>No contacts yet</p><p class="text-muted">Add contacts manually or scan QR code</p></div>`;
         return;
       }
-
       container.innerHTML = '';
       allContacts.forEach((c, i) => {
         const item = document.createElement('div');
         item.className = 'list-item';
         item.dataset.address = c.address;
+        // Компактное отображение: имя в одну строку, адрес сокращён
+        const shortAddress = c.address.slice(0, 10) + '…' + c.address.slice(-6);
         item.innerHTML = `
           <div class="info">
-            <div class="name truncate" id="name-${i}" title="${escapeAttr(c.name)}">${escapeHtml(c.name)}</div>
-            <div class="address font-mono truncate" id="addr-${i}" title="Click to copy" style="cursor: pointer;">${escapeHtml(c.address)}</div>
+            <div class="name truncate">${escapeHtml(c.name)}</div>
+            <div class="address font-mono truncate" style="cursor:pointer; font-size: 12px;" title="Click to copy">${escapeHtml(shortAddress)}</div>
           </div>
           <div class="actions">
-            <button class="btn btn-icon" onclick="copyAddress('addr-${i}')" title="Copy address">📋</button>
-            <button class="btn btn-icon" onclick="startChat('${escapeAttr(c.address)}', '${escapeAttr(c.name)}')" title="Start chat">💬</button>
-            <button class="btn btn-icon" onclick="editContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}', this)" title="Edit name">✏️</button>
-            <button class="btn btn-icon" style="color: var(--status-error);" onclick="deleteContact('${escapeAttr(c.address)}', this)" title="Delete">✕</button>
-          </div>
-        `;
+            <button class="btn-icon-oval" onclick="copyAddressFromElement('${escapeAttr(c.address)}')" title="Copy address">📋</button>
+            <button class="btn-icon-oval" onclick="startChatWithContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}')" title="Start chat">💬</button>
+            <button class="btn-icon-oval" onclick="editContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}', this)" title="Edit name">✏️</button>
+            <button class="btn-icon-oval" style="color:var(--status-error);" onclick="deleteContact('${escapeAttr(c.address)}', this)" title="Delete">✕</button>
+          </div>`;
         container.appendChild(item);
       });
-
-      container.querySelectorAll('.address').forEach(el => {
+      document.querySelectorAll('.address').forEach(el => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          copyAddress(el.id);
+          const fullAddr = el.closest('.list-item')?.dataset.address;
+          if (fullAddr) copyAddressToClipboard(fullAddr);
         });
       });
-
     } catch (error) {
-      console.error('Load contacts error:', error);
+      console.error(error);
       container.innerHTML = '<p class="text-muted text-center">Failed to load contacts</p>';
       window.NotificationManager?.showToast('Failed to load contacts', 'error');
     }
   }
 
-  // === Copy Address ===
-  function copyAddress(elementId) {
-    const el = $(elementId);
-    if (!el) return;
-    const text = el.textContent.trim();
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        window.NotificationManager?.showToast('Address copied', 'success');
-      }).catch(() => fallbackCopy(text));
-    } else {
-      fallbackCopy(text);
-    }
+  function copyAddressToClipboard(text) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      window.NotificationManager?.showToast('Address copied', 'success');
+    }).catch(() => fallbackCopy(text));
   }
-
   function fallbackCopy(text) {
     const ta = document.createElement('textarea');
     ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    try {
-      document.execCommand('copy');
-      window.NotificationManager?.showToast('Address copied', 'success');
-    } catch {
-      window.NotificationManager?.showToast('Copy failed', 'error');
-    }
+    document.execCommand('copy');
     document.body.removeChild(ta);
+    window.NotificationManager?.showToast('Address copied', 'success');
   }
+  function copyAddressFromElement(addr) { copyAddressToClipboard(addr); }
 
-  // === Start Chat ===
-  function startChat(address, name) {
-    if (!isValidAddress(address)) {
-      window.NotificationManager?.showToast('Invalid address', 'error');
-      return;
-    }
+  function startChatWithContact(address, name) {
+    if (!isValidAddress(address)) { window.NotificationManager?.showToast('Invalid address', 'error'); return; }
     const params = new URLSearchParams({ start_with: address, name: name || '' });
     location.href = '/chat?' + params.toString();
   }
 
-  // === Add Contact ===
   async function addContact() {
     const nameInput = $('contactName');
     const addrInput = $('contactAddress');
     const name = nameInput?.value.trim();
     const address = addrInput?.value.trim().toLowerCase();
-
-    if (!name || !address) {
-      window.NotificationManager?.showToast('Fill in both fields', 'warning');
-      return false;
-    }
-    if (!isValidName(name)) {
-      window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning');
-      return false;
-    }
-    if (!isValidAddress(address)) {
-      window.NotificationManager?.showToast('Address must be 64 hex characters', 'error');
-      return false;
-    }
-
+    if (!name || !address) { window.NotificationManager?.showToast('Fill in both fields', 'warning'); return false; }
+    if (!isValidName(name)) { window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning'); return false; }
+    if (!isValidAddress(address)) { window.NotificationManager?.showToast('Address must be 64 hex characters', 'error'); return false; }
     const exists = allContacts.some(c => c.address.toLowerCase() === address);
-    if (exists) {
-      window.NotificationManager?.showToast('Contact already exists', 'warning');
-      const contact = allContacts.find(c => c.address.toLowerCase() === address);
-      startChat(address, contact.name);
-      return true;
-    }
-
+    if (exists) { window.NotificationManager?.showToast('Contact already exists', 'warning'); startChatWithContact(address, name); return true; }
     try {
-      const res = await secureFetch('/add_contact', {
-        method: 'POST',
-        body: JSON.stringify({ name, address })
-      });
+      const res = await secureFetch('/add_contact', { method: 'POST', body: JSON.stringify({ name, address }) });
       if (!res) return false;
-
       const data = await res.json();
       if (res.ok) {
         nameInput.value = '';
@@ -377,143 +230,82 @@
         window.NotificationManager?.showToast(data.error || 'Failed to add contact', 'error');
         return false;
       }
-    } catch (error) {
-      console.error('Add contact error:', error);
-      return false;
-    }
+    } catch (error) { console.error(error); return false; }
   }
 
-  // === Edit Contact ===
   async function editContact(address, currentName, btn) {
-    if (!isValidAddress(address)) {
-      window.NotificationManager?.showToast('Invalid contact', 'error');
-      return;
-    }
-
+    if (!isValidAddress(address)) { window.NotificationManager?.showToast('Invalid contact', 'error'); return; }
     const newName = await showPromptModal('Edit Contact Name', 'Enter new name', currentName);
     if (newName === null) return;
     const trimmed = newName.trim();
-
-    if (!isValidName(trimmed)) {
-      window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning');
-      return;
-    }
+    if (!isValidName(trimmed)) { window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning'); return; }
     if (trimmed === currentName) return;
-
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳';
     try {
-      btn.disabled = true;
-      const originalText = btn.innerHTML;
-      btn.innerHTML = '⏳';
-
-      const res = await secureFetch('/edit_contact', {
-        method: 'POST',
-        body: JSON.stringify({ address, name: trimmed })
-      });
+      const res = await secureFetch('/edit_contact', { method: 'POST', body: JSON.stringify({ address, name: trimmed }) });
       if (!res) return;
-
       const data = await res.json();
       if (res.ok) {
         const item = btn.closest('.list-item');
         const nameEl = item?.querySelector('.name');
         if (nameEl) nameEl.textContent = escapeHtml(trimmed);
-
         const idx = allContacts.findIndex(c => c.address.toLowerCase() === address.toLowerCase());
         if (idx !== -1) allContacts[idx].name = trimmed;
-
         window.NotificationManager?.showToast('Name updated', 'success');
       } else {
         window.NotificationManager?.showToast(data.error || 'Failed to update', 'error');
       }
-    } catch (error) {
-      console.error('Edit contact error:', error);
-      window.NotificationManager?.showToast('Network error', 'error');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '✏️';
-    }
+    } catch (error) { console.error(error); window.NotificationManager?.showToast('Network error', 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = originalText; }
   }
 
-  // === Delete Contact ===
   async function deleteContact(address, btn) {
     if (!isValidAddress(address)) return;
-
     const confirmed = await showConfirmModal('Delete Contact', `Delete this contact?\n\n${address}`);
     if (!confirmed) return;
-
+    btn.disabled = true;
+    btn.innerHTML = '⏳';
     try {
-      btn.disabled = true;
-      btn.innerHTML = '⏳';
-
-      const res = await secureFetch('/delete_contact', {
-        method: 'POST',
-        body: JSON.stringify({ address })
-      });
+      const res = await secureFetch('/delete_contact', { method: 'POST', body: JSON.stringify({ address }) });
       if (!res) return;
-
       if (res.ok) {
         const item = btn.closest('.list-item');
         item?.remove();
-
         allContacts = allContacts.filter(c => c.address.toLowerCase() !== address.toLowerCase());
-
         window.NotificationManager?.showToast('Contact deleted', 'success');
-
         if (allContacts.length === 0) {
-          $('contactsList').innerHTML = `
-            <div class="empty-state">
-              <div class="icon">👥</div>
-              <p>No contacts</p>
-              <p class="text-muted">Add a contact to get started</p>
-            </div>
-          `;
+          $('contactsList').innerHTML = `<div class="empty-state"><div class="icon">👥</div><p>No contacts</p><p class="text-muted">Add a contact to get started</p></div>`;
         }
       } else {
         const data = await res.json();
         window.NotificationManager?.showToast(data.error || 'Delete failed', 'error');
       }
-    } catch (error) {
-      console.error('Delete error:', error);
-      window.NotificationManager?.showToast('Network error', 'error');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '✕';
-    }
+    } catch (error) { console.error(error); window.NotificationManager?.showToast('Network error', 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = '✕'; }
   }
 
-  // === Init ===
   document.addEventListener('DOMContentLoaded', function() {
     loadContacts();
-
-    $('contactAddress')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addContact();
-      }
-    });
-
+    $('contactAddress')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') addContact(); });
     setTimeout(() => $('contactName')?.focus(), 300);
-
     const params = new URLSearchParams(window.location.search);
     const startWith = params.get('start_with');
     const startName = params.get('name');
     if (startWith && isValidAddress(startWith) && startName) {
-      setTimeout(() => {
-        startChat(decodeURIComponent(startWith), decodeURIComponent(startName));
-      }, 200);
+      setTimeout(() => startChatWithContact(decodeURIComponent(startWith), decodeURIComponent(startName)), 200);
     }
   });
 
-  // Экспорт глобальных функций для вызова из HTML (onclick)
   window.addContact = addContact;
-  window.startChat = startChat;
+  window.startChatWithContact = startChatWithContact;
   window.loadContacts = loadContacts;
-  window.copyAddress = copyAddress;
+  window.copyAddressFromElement = copyAddressFromElement;
   window.editContact = editContact;
   window.deleteContact = deleteContact;
-  // также нужны для модальных окон (если используются в HTML)
   window.showConfirmModal = showConfirmModal;
   window.showPromptModal = showPromptModal;
 })();
 </script>
-{% endblock %}
 {% endblock %}

@@ -33,7 +33,7 @@
         setTimeout(() => badge?.remove(), 15000);
     }
 
-    // ========== Пагинация (загрузка старых сообщений) ==========
+    // ========== Пагинация ==========
     async function loadOlderMessages(chatId, beforeId) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
@@ -146,7 +146,7 @@
             const res = await fetch('/get_conversations');
             const data = await res.json();
             if (!res.ok || !data.conversations?.length) {
-                container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>No conversations yet</p><button class="btn btn-primary" onclick="openNewChatModal()">Start one</button></div>';
+                container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>No conversations yet</p><button class="btn-primary-oval" onclick="openNewChatModal()">Start one</button></div>';
                 return;
             }
             container.innerHTML = '';
@@ -168,7 +168,9 @@
                         <div class="name truncate">${Utils.escapeHtml(shortName)}</div>
                         <div class="meta"><span class="status"></span><span class="truncate">${previewText}</span></div>
                     </div>`;
-                item.onclick = () => selectConversation(address, conv.name || address, isGroup);
+                item.onclick = (function(addr, name, group) {
+                    return function() { window.selectConversation(addr, name, group); };
+                })(address, conv.name || address, isGroup);
                 container.appendChild(item);
                 convElements.push({ el: item, address, isGroup });
             }
@@ -192,7 +194,7 @@
         } catch (error) { console.error('Load conversations error:', error); container.innerHTML = '<p class="text-muted text-center">Failed to load</p>'; }
     }
 
-    // ========== Выбор диалога и загрузка сообщений (добавлена очистка превью) ==========
+    // ========== Выбор диалога и загрузка сообщений ==========
     async function selectConversation(address, name, isGroup) {
         if (State.topObserver) { State.topObserver.disconnect(); State.topObserver = null; }
         if (window.isSending) window.isSending = false;
@@ -200,7 +202,7 @@
         State.currentChatIsGroup = !!isGroup;
         State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
 
-        // === Очищаем превью изображения при смене диалога ===
+        // Очищаем превью изображения
         if (window.clearMainImagePreview) window.clearMainImagePreview();
         else {
             const previewDiv = document.getElementById('mainImagePreview');
@@ -211,8 +213,8 @@
 
         const aiContainer = document.getElementById('aiChatContainer');
         const mainContainer = document.getElementById('messagesContainer');
-        const mainInputArea = document.querySelector('.main-content .input-area');
-        const mainChatHeader = document.querySelector('.main-content .chat-header');
+        const mainInputArea = document.querySelector('.chat-panel .input-area');
+        const mainChatHeader = document.querySelector('.chat-panel .chat-panel-header');
 
         if (address === 'ai_bot') {
             if (mainContainer) mainContainer.style.display = 'none';
@@ -256,7 +258,7 @@
         if (window.stopStatusPolling) window.stopStatusPolling();
         if (window.startStatusPolling) window.startStatusPolling();
         await loadMessagesForConversation(address, false);
-        if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
+        // На мобильных устройствах после выбора чата автоматически скрываем список (это делает отдельный обработчик в chat.html)
     }
 
     async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
@@ -373,7 +375,6 @@
         }
     }
 
-    // Callback для нового сообщения из WebSocket
     window.onNewMessageReceived = function(decrypted) {
         const container = document.getElementById('messagesContainer');
         if (container) {
@@ -397,7 +398,6 @@
         }
     };
 
-    // Экспорт для других модулей и глобального доступа
     window.loadConversations = loadConversations;
     window.selectConversation = selectConversation;
     window.loadMessagesForConversation = loadMessagesForConversation;

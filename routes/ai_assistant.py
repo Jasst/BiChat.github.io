@@ -85,8 +85,8 @@ SEARCH_CACHE_TTL = 300
 _search_cache: Dict[str, Tuple[str, float]] = {}
 
 # Количество страниц для загрузки из результатов поиска
-MAX_PAGES_TO_FETCH = 3
-PAGE_CONTENT_MAX_CHARS = 4000
+MAX_PAGES_TO_FETCH = 6
+PAGE_CONTENT_MAX_CHARS = 6000
 
 # ==================================================================
 # 🌐 Web Search Tool — использующий ddgs (duckduckgo-search)
@@ -1322,8 +1322,8 @@ async def generate_image(body: ImageGenRequest, address: str = Depends(require_a
         "sampler_name": "euler_a",
         "seed": body.seed if body.seed is not None else -1,
         "clip_skip": True,
-        "use_stable_diffusion_model": "sd-v1-5",
-        "use_vae_model": "vae-ft-mse-840000-ema-pruned",
+        "use_stable_diffusion_model": "fallenleafNSFWXLPony_v0620steps",
+        "use_vae_model": "",
     }
     headers = {"Content-Type": "application/json"}
 
@@ -1408,26 +1408,52 @@ async def generate_image(body: ImageGenRequest, address: str = Depends(require_a
 
 @router.post("/enhance_prompt")
 async def enhance_prompt(body: dict, address: str = Depends(require_auth)):
+    """
+    Улучшает промт для генерации изображений.
+    Принимает запрос пользователя на любом языке, возвращает детальный английский промт.
+    """
     prompt = body.get("prompt", "").strip()
     if not prompt:
         return {"enhanced": prompt}
 
     assistant = await get_assistant(address)
+
     system = (
-        "Ты — эксперт по написанию промтов для Stable Diffusion. "
-        "Улучши промт, сделай его более детальным, добавь ключевые слова: "
-        "'masterpiece, best quality, ultra HD, photorealistic, intricate details, cinematic lighting'. "
-        "Ответь только улучшенным промтом, без пояснений, без кавычек, без дополнительного текста."
+        "You are an expert prompt engineer for Stable Diffusion. "
+        "Your task: convert the user's request into a detailed, vivid, English prompt for image generation. "
+        "Include subject, environment, lighting, colors, composition, mood, style (e.g., photorealistic, cinematic, oil painting, anime), "
+        "and any specific details the user mentioned. "
+        "Do NOT include technical parameters like steps, width, height, or CFG scale. "
+        "Output ONLY the prompt text, nothing else. No quotes, no extra commentary."
     )
+
+    user_msg = (
+        f"User request: \"{prompt}\"\n"
+        "Generate a rich, detailed English prompt for Stable Diffusion that captures all the key elements."
+    )
+
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": f"Улучши этот промт: {prompt}"}
+        {"role": "user", "content": user_msg}
     ]
+
     enhanced = await assistant._call_llm(messages)
+
+    # Если не удалось получить качественный промт, пробуем хотя бы перевести
     if not enhanced or len(enhanced) < 5:
-        enhanced = prompt
+        fallback_msg = f"Translate the following into English, keep it detailed:\n{prompt}"
+        messages_fb = [
+            {"role": "system", "content": "You are a translator. Output only the English translation."},
+            {"role": "user", "content": fallback_msg}
+        ]
+        enhanced = await assistant._call_llm(messages_fb)
+        if not enhanced:
+            enhanced = prompt
+
+    # Очистка от возможных кавычек и лишних пробелов
     enhanced = enhanced.strip().strip('"').strip("'")
     return {"enhanced": enhanced}
+
 
 def _shutdown_all():
     for uid, a in _assistants.items():
