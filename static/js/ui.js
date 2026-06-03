@@ -371,21 +371,34 @@
             window.addMessagesToCache(chatWithAddress, newMessages, 'end');
 
             if (container) {
-                const wasAtBottom = isUserAtBottom(container, 30);
-                for (const msg of newMessages) {
-                    if (document.getElementById('msg-' + msg.id)) continue;
-                    const msgEl = createMessageElement(msg);
-                    container.appendChild(msgEl);
-                    if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
-                }
-                if (wasAtBottom) {
-                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-                } else if (!isNewMessage && cached.length === 0) {
-                    container.scrollTop = container.scrollHeight;
-                } else if (newMessages.length && !isNewMessage) {
-                    showNewMessagesBadge();
-                }
+    for (const msg of newMessages) {
+        if (document.getElementById('msg-' + msg.id)) continue;
+        const msgEl = createMessageElement(msg);
+        container.appendChild(msgEl);
+        if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
+    }
+
+    const wasAtBottom = isUserAtBottom(container, 30);
+    const isFirstOpen = !isNewMessage && cached.length === 0;
+
+    if (wasAtBottom) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else if (isFirstOpen) {
+        // Первое открытие (кеш пуст) — используем надёжный скролл с таймерами
+        const scrollToBottom = () => {
+            const lastMsg = container.querySelector('.message:last-child');
+            if (lastMsg) {
+                lastMsg.scrollIntoView({ behavior: 'auto', block: 'end' });
+            } else {
+                container.scrollTop = container.scrollHeight;
             }
+        };
+        setTimeout(scrollToBottom, 50);
+        setTimeout(scrollToBottom, 300);
+    } else if (newMessages.length && !isNewMessage) {
+        showNewMessagesBadge();
+    }
+}
 
             if (!isNewMessage && cached.length === 0 && newMessages.length) setupTopObserver();
 
