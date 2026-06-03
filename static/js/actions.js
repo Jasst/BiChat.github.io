@@ -39,45 +39,45 @@
     }
 
     function showFilePreview(file, type) {
-    const oldPreview = document.getElementById('filePreview');
-    if (oldPreview) oldPreview.remove();
+        const oldPreview = document.getElementById('filePreview');
+        if (oldPreview) oldPreview.remove();
 
-    const previewContainer = document.createElement('div');
-    previewContainer.id = 'filePreview';
-    previewContainer.style.cssText = `
-        display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-        margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
-        border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
-    `;
+        const previewContainer = document.createElement('div');
+        previewContainer.id = 'filePreview';
+        previewContainer.style.cssText = `
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
+            border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
+        `;
 
-    let previewContent;
-    let objectUrl = null;
+        let previewContent;
+        let objectUrl = null;
 
-    if (type.startsWith('image/')) {
-        objectUrl = URL.createObjectURL(file);
-        previewContent = `<img src="${objectUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px;">`;
-    } else {
-        previewContent = `<span>${type.startsWith('image') ? '🖼️' : '🎵'}</span>`;
+        if (type.startsWith('image/')) {
+            objectUrl = URL.createObjectURL(file);
+            previewContent = `<img src="${objectUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px;">`;
+        } else {
+            previewContent = `<span>${type.startsWith('image') ? '🖼️' : '🎵'}</span>`;
+        }
+
+        previewContainer.innerHTML = `
+            ${previewContent}
+            <span style="flex:1; font-size:13px;">${Utils.escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>
+            <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
+        `;
+
+        const form = document.querySelector('.chat-panel .input-area');
+        if (form) {
+            form.insertBefore(previewContainer, form.firstChild);
+        }
+
+        document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            pendingFile = null;
+            previewContainer.remove();
+            updateSendButtonVisibility();
+        });
     }
-
-    previewContainer.innerHTML = `
-        ${previewContent}
-        <span style="flex:1; font-size:13px;">${Utils.escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>
-        <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
-    `;
-
-    const form = document.querySelector('.chat-panel .input-area');
-    if (form) {
-        form.insertBefore(previewContainer, form.firstChild);
-    }
-
-    document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        pendingFile = null;
-        previewContainer.remove();
-        updateSendButtonVisibility();
-    });
-}
 
     // ========== Запись аудио ==========
     async function startRecording() {
@@ -136,7 +136,7 @@
         event.target.value = '';
     }
 
-    // ========== Новая функция управления видимостью кнопок ==========
+    // ========== Функция управления видимостью кнопок ==========
     function updateSendButtonVisibility() {
         const sendBtn = document.getElementById('sendButton');
         const recordBtn = document.getElementById('recordAudioButton');
@@ -293,6 +293,17 @@
             if (res.ok) {
                 const tempElem = document.getElementById('msg-' + tempId);
                 if (tempElem) tempElem.remove();
+                const sentMessage = {
+                    id: data.tx_id,
+                    sender: State.userAddress,
+                    recipient: isGroup ? recipient : recipient,
+                    content: content,
+                    timestamp: Date.now() / 1000,
+                    is_mine: true,
+                    status: 'sent',        // ← запятая добавлена
+                    isDecrypted: true
+                };
+                window.addMessageToCache(recipient, sentMessage, 'end');
                 await window.loadConversations();
                 window.updateConversationPreview(recipient, '✓ Sent');
                 await window.loadMessagesForConversation(recipient, true);
