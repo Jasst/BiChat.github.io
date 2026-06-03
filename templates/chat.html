@@ -20,7 +20,7 @@
     </div>
   </div>
 
-  <!-- Правая панель: сообщения (на десктопе видна всегда, на мобильных управляется JS) -->
+  <!-- Правая панель: сообщения -->
   <div class="chat-panel" id="chatPanel">
     <div class="chat-panel-header">
       <button class="back-button" id="backToConversationsBtn" aria-label="Back">←</button>
@@ -42,8 +42,17 @@
       <div class="input-wrapper">
         <textarea id="messageContent" placeholder="Type a message…" rows="1" disabled aria-label="Message input"></textarea>
         <div class="input-actions">
-          <input type="file" id="imageInput" accept="image/*" class="sr-only" onchange="handleImageSelection(event)">
-          <button type="button" class="btn-icon-oval" onclick="document.getElementById('imageInput').click()" id="attachImageButton" disabled title="Attach image">📎</button>
+          <!-- Изображение -->
+          <input type="file" id="imageInput" accept="image/*" class="sr-only">
+          <button type="button" class="btn-icon-oval" id="attachImageButton" disabled title="Attach image">📎</button>
+          <!-- Аудиофайл (скрыто) -->
+          <!--
+             <input type="file" id="audioInput" accept="audio/webm,audio/mp4,audio/ogg" class="sr-only">
+             <button type="button" class="btn-icon-oval" id="attachAudioButton" disabled title="Attach audio file">🎵</button>
+          -->
+          <!-- Запись голоса -->
+          <button type="button" class="btn-icon-oval" id="recordAudioButton" disabled title="Record voice message">🎤</button>
+          <!-- Отправка -->
           <button type="submit" class="btn-primary-oval" id="sendButton" disabled>➤</button>
         </div>
       </div>
@@ -111,7 +120,7 @@
     </div>
     <footer class="modal-footer">
       <button class="btn-oval" onclick="closeNewChatModal()">Cancel</button>
-      <button class="btn-primary-oval" id="startNewChatBtn">Start Chat</button>
+      <button class="btn-primary-oval" id="startNewChatBtn" onclick="startNewChat()">Start Chat</button>
     </footer>
   </div>
 </div>
@@ -145,7 +154,6 @@
 
   function isMobile() { return window.innerWidth < 768; }
 
-  // На десктопе обе панели всегда видны, на мобильных переключаем
   if (!isMobile()) {
     conversationsPanel.style.display = 'flex';
     chatPanel.style.display = 'flex';
@@ -223,13 +231,38 @@
     });
   }
 
-  // Начальное состояние на мобильных
   if (isMobile() && !window.location.search.includes('start_with')) {
     window.showConversationsList();
   }
   if (window.location.search.includes('start_with')) {
     setTimeout(() => { if (isMobile()) window.showChatPanel(); }, 200);
   }
+
+  // ✅ ИСПРАВЛЕНИЕ: обработка параметров start_with после полной загрузки DOM
+  document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const startWith = urlParams.get('start_with');
+    const startName = urlParams.get('name');
+    if (startWith) {
+      console.log('[Chat] Starting with', startWith);
+      // Даём время на инициализацию WebSocket и State
+      const trySelect = (attempt = 1) => {
+        if (typeof window.selectConversation === 'function') {
+          window.selectConversation(
+            startWith,
+            startName || (startWith.startsWith('group:') ? 'Group' : startWith.slice(0, 10) + '…'),
+            startWith.startsWith('group:')
+          );
+        } else if (attempt <= 3) {
+          console.warn(`[Chat] selectConversation not ready, retry ${attempt}/3`);
+          setTimeout(() => trySelect(attempt + 1), 500);
+        } else {
+          console.error('[Chat] selectConversation never became available');
+        }
+      };
+      setTimeout(() => trySelect(), 300);
+    }
+  });
 })();
 </script>
 {% endblock %}

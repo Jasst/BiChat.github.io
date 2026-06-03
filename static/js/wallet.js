@@ -368,40 +368,38 @@
     });
   }
 
-  // ================== Отправка монет ==================
-  async function sendCoins() {
+   async function sendCoins() {
     const addr = document.getElementById('sendAddress').value.trim().toLowerCase();
     const rawAmount = Number(document.getElementById('sendAmount').value);
     if (!addr || addr.length !== 64 || !/^[a-f0-9]{64}$/.test(addr)) {
-      alert('Enter a valid 64-character hex address.');
-      return;
+        window.NotificationManager?.showToast('Enter a valid 64-character hex address.', 'warning');
+        return;
     }
     if (isNaN(rawAmount) || rawAmount <= 0) {
-      alert('Enter a positive amount.');
-      return;
+        window.NotificationManager?.showToast('Enter a positive amount.', 'warning');
+        return;
     }
     const amount = Math.floor(rawAmount * BLOCKCOIN_SATS);
     const res = await fetch('/wallet/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipient: addr, amount })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: addr, amount })
     });
     const result = await res.json();
     const el = document.getElementById('sendResult');
     el.classList.remove('hidden');
     if (res.ok) {
-      el.textContent = '✓ Sent!';
-      el.style.color = 'var(--status-success)';
-      document.getElementById('sendAmount').value = '';
-      document.getElementById('sendAddress').value = '';
-      refreshBalance();
-      loadTx();
+        el.textContent = '✓ Sent!';
+        el.style.color = 'var(--status-success)';
+        document.getElementById('sendAmount').value = '';
+        document.getElementById('sendAddress').value = '';
+        refreshBalance();
+        loadTx();
     } else {
-      el.textContent = 'Error: ' + result.error;
-      el.style.color = 'var(--status-error)';
+        el.textContent = 'Error: ' + result.error;
+        el.style.color = 'var(--status-error)';
     }
-  }
-
+}
   // ================== QR-код и сканер ==================
   function toggleReceiveQR() {
     const block = document.getElementById('qrBlock');

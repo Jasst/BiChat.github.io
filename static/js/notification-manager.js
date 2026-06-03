@@ -285,6 +285,18 @@
     NotificationManager.init();
   }
 
+  toast.querySelector('.in-app-notification-content').onclick = () => {
+     console.log('[Notification] Clicked, chatId:', chatId, 'isGroup:', isGroup);
+    if (typeof window.selectConversation === 'function') {
+        window.selectConversation(chatId, senderName, isGroup);
+    } else {
+        console.warn('[Notification] selectConversation not available, redirecting');
+        const params = new URLSearchParams({ start_with: chatId, name: senderName || 'Contact' });
+        window.location.href = '/chat?' + params.toString();
+    }
+    toast.remove();
+  };
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       NotificationManager.stopBlink();

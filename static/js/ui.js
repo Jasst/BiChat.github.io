@@ -1,4 +1,4 @@
-// ui.js — все функции, связанные с DOM и интерфейсом чата
+// ui.js — все функции, связанные с DOM и интерфейсом чата, включая отображение файлов
 (function() {
     if (window._uiLoaded) return;
     window._uiLoaded = true;
@@ -8,7 +8,6 @@
         if (!container) return false;
         return container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
     }
-
     function smartScrollToBottom(container, force = false) {
         if (!container) return;
         if (force || isUserAtBottom(container)) {
@@ -17,7 +16,6 @@
             showNewMessagesBadge();
         }
     }
-
     function showNewMessagesBadge() {
         if (document.getElementById('newMessagesBadge')) return;
         const badge = document.createElement('button');
@@ -55,7 +53,6 @@
             }
         } catch (e) { console.error('Older messages error:', e); }
     }
-
     function setupTopObserver() {
         if (State.topObserver) State.topObserver.disconnect();
         const firstMsg = document.querySelector('#messagesContainer .message:first-of-type');
@@ -70,7 +67,7 @@
         }
     }
 
-    // ========== Создание элемента сообщения ==========
+    // ========== Создание элемента сообщения с поддержкой файлов ==========
     function createMessageElement(msg) {
         const messageDiv = document.createElement('div');
         messageDiv.id = 'msg-' + msg.id;
@@ -86,19 +83,33 @@
             ? ''
             : '<strong>' + Utils.escapeHtml(msg.sender_name || (msg.sender ? msg.sender.slice(0,10)+'…' : '')) + '</strong><br>';
 
-        let imageHtml = '';
+        let mediaHtml = '';
+        // Старый формат (image)
         if (msg.image) {
             let imageUrl = msg.image;
             if (!imageUrl.startsWith('data:image') && !imageUrl.startsWith('http')) {
                 imageUrl = 'data:image/jpeg;base64,' + imageUrl;
             }
-            imageHtml = `<img src="${Utils.escapeHtml(imageUrl)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(imageUrl)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
+            mediaHtml = `<img src="${Utils.escapeHtml(imageUrl)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(imageUrl)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
+        }
+        // Новый формат (зашифрованный файл) – экранирование атрибутов
+        if (msg.fileUrl && msg.fileKey && msg.fileIv) {
+            const safeUrl = Utils.escapeHtml(msg.fileUrl);
+            const safeKey = Utils.escapeHtml(msg.fileKey);
+            const safeIv = Utils.escapeHtml(msg.fileIv);
+            const safeType = Utils.escapeHtml(msg.fileType || '');
+            mediaHtml = `<div class="file-attachment" data-url="${safeUrl}"
+                         data-key="${safeKey}" data-iv="${safeIv}" data-type="${safeType}">
+                         <span>⏳ Decrypting...</span></div>`;
+            setTimeout(() => decryptAndShowAttachment(messageDiv), 0);
         }
 
         const timeStr = Utils.formatTimestamp(msg.timestamp);
         const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" title="Delete">🗑</button>` : '';
 
-        messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
+        messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div>
+                               <div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>
+                               ${mediaHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
 
         if (msg.is_mine) {
             const statusSpan = document.createElement('span');
@@ -112,6 +123,50 @@
             if (metaDiv) metaDiv.appendChild(statusSpan);
         }
         return messageDiv;
+    }
+
+    // ========== Расшифровка и отображение вложения ==========
+    async function decryptAndShowAttachment(messageDiv) {
+        const div = messageDiv.querySelector('.file-attachment');
+        if (!div) return;
+        const url = div.dataset.url;
+        const keyBase64 = div.dataset.key;
+        const ivBase64 = div.dataset.iv;
+        const fileType = div.dataset.type;
+
+        if (!url || !keyBase64 || !ivBase64) {
+            div.innerHTML = '<span class="text-error">Invalid file data</span>';
+            return;
+        }
+
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const encryptedBlob = await res.arrayBuffer();
+            const key = DarkCrypto.base64ToArrayBuffer(keyBase64);
+            const iv = DarkCrypto.base64ToArrayBuffer(ivBase64);
+            const decrypted = await DarkCrypto.decryptFile(
+                new Uint8Array(encryptedBlob),
+                new Uint8Array(key),
+                new Uint8Array(iv)
+            );
+            const blob = new Blob([decrypted], { type: fileType });
+            const objectUrl = URL.createObjectURL(blob);
+
+            if (fileType.startsWith('image/')) {
+                div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal && window.openImageModal('${objectUrl}')">`;
+            } else if (fileType.startsWith('audio/')) {
+                div.innerHTML = `<audio controls src="${objectUrl}" style="width:100%;"></audio>`;
+            } else {
+                div.innerHTML = `<a href="${objectUrl}" download>Download file</a>`;
+            }
+        } catch (err) {
+            console.error('Decryption error:', err);
+            div.innerHTML = `<span class="text-error">Failed to decrypt file</span>`;
+            if (window.NotificationManager) {
+                window.NotificationManager.showToast('Could not load file', 'error');
+            }
+        }
     }
 
     function updateStatusIcon(msgDiv, status) {
@@ -151,7 +206,6 @@
             }
             container.innerHTML = '';
             const convElements = [];
-
             for (const conv of data.conversations) {
                 const isGroup = !!conv.is_group;
                 const address = conv.address || '';
@@ -174,7 +228,6 @@
                 container.appendChild(item);
                 convElements.push({ el: item, address, isGroup });
             }
-
             const addressesToCheck = convElements
                 .filter(c => !c.isGroup && c.address !== State.userAddress)
                 .map(c => c.address);
@@ -202,7 +255,6 @@
         State.currentChatIsGroup = !!isGroup;
         State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
 
-        // Очищаем превью изображения
         if (window.clearMainImagePreview) window.clearMainImagePreview();
         else {
             const previewDiv = document.getElementById('mainImagePreview');
@@ -258,7 +310,6 @@
         if (window.stopStatusPolling) window.stopStatusPolling();
         if (window.startStatusPolling) window.startStatusPolling();
         await loadMessagesForConversation(address, false);
-        // На мобильных устройствах после выбора чата автоматически скрываем список (это делает отдельный обработчик в chat.html)
     }
 
     async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
@@ -357,13 +408,13 @@
     }
 
     function _disableChatControls() {
-        ['messageContent', 'attachImageButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
+        ['messageContent', 'attachImageButton', 'attachAudioButton', 'recordAudioButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.disabled = true;
         });
     }
     function _enableChatControls() {
-        ['messageContent', 'attachImageButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
+        ['messageContent', 'attachImageButton', 'attachAudioButton', 'recordAudioButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.disabled = false;
         });

@@ -1,127 +1,39 @@
 """
-routes/files.py — Загрузка файлов, удаление сообщений, очистка диалога (асинхронная версия)
-Исправлено: asyncpg-совместимость (fetchrow, execute-результат)
+routes/files.py — загрузка зашифрованных файлов (изображения/аудио)
 """
 import logging
 import os
 import uuid
-from typing import Optional
-
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
-
-from config import UPLOAD_FOLDER, CONFIG
+from config import UPLOAD_FOLDER, MAX_ENCRYPTED_FILE_SIZE
 from dependencies import require_auth
-from models import DeleteMessageRequest, ClearConversationRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['files'])
 
-
-IMAGE_MAGIC_BYTES = {
-    b'\xFF\xD8\xFF':       'image/jpeg',
-    b'\x89PNG\r\n\x1a\n': 'image/png',
-    b'GIF87a':             'image/gif',
-    b'GIF89a':             'image/gif',
-}
-
-
-def validate_image_file(content: bytes) -> Optional[str]:
-    for magic, mime_type in IMAGE_MAGIC_BYTES.items():
-        if content.startswith(magic):
-            return mime_type
-    return None
-
-
-@router.post('/upload_file')
-async def upload_file(
+@router.post('/upload_encrypted')
+async def upload_encrypted(
     file: UploadFile = File(...),
     address: str = Depends(require_auth),
 ):
-    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
-    ALLOWED_MIMES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
-    filepath = None
-    try:
-        content = await file.read()
-        if len(content) > CONFIG['MAX_UPLOAD_SIZE']:
-            raise HTTPException(413, 'File too large')
-        if not file.filename:
-            raise HTTPException(400, 'Empty filename')
-        detected_mime = validate_image_file(content[:12])
-        if not detected_mime:
-            raise HTTPException(400, 'Only image files are allowed')
-        if file.content_type and file.content_type not in ALLOWED_MIMES:
-            raise HTTPException(400, 'Invalid image MIME type')
-        ext = os.path.splitext(file.filename)[1].lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(400, 'Unsupported file extension')
-        safe_name = uuid.uuid4().hex
-        filepath = os.path.join(UPLOAD_FOLDER, safe_name)
-        with open(filepath, 'wb') as f:
-            f.write(content)
-        return {'file_url': f"/uploads/{safe_name}"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Upload error: {e}")
-        if filepath and os.path.exists(filepath):
-            os.remove(filepath)
-        raise HTTPException(500, 'Upload failed')
+    """Принимает уже зашифрованный клиентом файл (AES-GCM), сохраняет на диск."""
+    content = await file.read()
+    if len(content) > MAX_ENCRYPTED_FILE_SIZE:
+        raise HTTPException(413, f'File too large (max {MAX_ENCRYPTED_FILE_SIZE//1024//1024} MB)')
 
+    safe_name = uuid.uuid4().hex
+    filepath = os.path.join(UPLOAD_FOLDER, safe_name)
+    with open(filepath, 'wb') as f:
+        f.write(content)
+
+    logger.info(f"Encrypted file uploaded by {address[:16]}..., size {len(content)} bytes")
+    return {'file_url': f"/uploads/{safe_name}"}
 
 @router.get('/uploads/{filename}')
 async def serve_upload(filename: str, address: str = Depends(require_auth)):
+    """Отдаёт зашифрованный файл только авторизованным пользователям."""
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     if not os.path.exists(filepath):
         raise HTTPException(404, 'File not found')
-    with open(filepath, 'rb') as f:
-        content = f.read(12)
-    mime = validate_image_file(content)
-    if not mime:
-        raise HTTPException(403, 'Forbidden')
-    return FileResponse(filepath, media_type=mime, headers={
-        'Content-Disposition': 'inline' if mime.startswith('image/') else 'attachment'
-    })
-
-
-@router.post('/delete_message')
-async def delete_message(body: DeleteMessageRequest, request: Request, address: str = Depends(require_auth)):
-    from database import get_db_cursor
-    async with get_db_cursor() as conn:
-        # ✅ fetchrow вместо fetchone
-        row = await conn.fetchrow('SELECT sender FROM transactions WHERE id = $1', body.message_id)
-        if not row:
-            raise HTTPException(404, 'Message not found')
-        if row[0] != address:
-            raise HTTPException(403, 'Permission denied')
-        await conn.execute('DELETE FROM transactions WHERE id = $1', body.message_id)
-    logger.info(f"Message #{body.message_id} deleted by {address[:16]}...")
-    return {'message': 'Deleted'}
-
-
-@router.post('/clear_conversation')
-async def clear_conversation(body: ClearConversationRequest, request: Request, address: str = Depends(require_auth)):
-    chat_with = body.chat_with.strip()
-    if not chat_with:
-        raise HTTPException(400, 'Missing chat_with parameter')
-    from database import get_db_cursor
-    async with get_db_cursor() as conn:
-        if chat_with.startswith('group:'):
-            result = await conn.execute(
-                'DELETE FROM transactions WHERE sender = $1 AND recipient = $2',
-                address, chat_with
-            )
-        else:
-            result = await conn.execute(
-                'DELETE FROM transactions '
-                'WHERE (sender = $1 AND recipient = $2) OR (sender = $3 AND recipient = $4)',
-                address, chat_with, chat_with, address
-            )
-        # ✅ парсим количество удалённых строк из результата asyncpg
-        deleted = 0
-        if result:
-            parts = result.split()
-            if parts and parts[0] == 'DELETE' and len(parts) > 1:
-                deleted = int(parts[1])
-    logger.info(f"Cleared {deleted} messages for {address[:16]}... in {chat_with[:20]}...")
-    return {'message': f'Cleared {deleted} messages'}
+    return FileResponse(filepath, media_type='application/octet-stream')

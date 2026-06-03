@@ -511,6 +511,7 @@
   window.openDetail = openDetail;
   window.deleteGroup = deleteGroup;
   window.openGroupChatById = openGroupChatById;
+  window.openGroupChat = openGroupChat;
   window.switchTab = switchTab;
   window.submitRename = submitRename;
   window.submitAddMember = submitAddMember;
@@ -519,7 +520,8 @@
   window.toggleMember = toggleMember;
   window.addManualAddress = addManualAddress;
   window.removeMember = removeMember;
-
+  window.submitCreate = submitCreate;
+  window.showCreateError = showCreateError;
   document.addEventListener('DOMContentLoaded', () => {
     loadGroups();
     document.getElementById('groupName')?.addEventListener('input', function() { /* validation optional */ });

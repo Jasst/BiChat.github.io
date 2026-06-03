@@ -287,3 +287,57 @@ async def search_messages(
     blockchain = request.app.state.blockchain
     results = await blockchain.search_messages(address, q.strip())
     return {'results': results}
+
+
+@router.post('/clear_conversation')
+async def clear_conversation(body: dict, request: Request, address: str = Depends(require_auth)):
+    """Удаляет все сообщения в указанном диалоге (для текущего пользователя)."""
+    chat_with = body.get('chat_with')
+    if not chat_with:
+        raise HTTPException(400, 'Missing chat_with')
+    from database import get_db_cursor
+    async with get_db_cursor() as conn:
+        if chat_with.startswith('group:'):
+            # Групповой чат – удаляем все сообщения группы
+            groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
+            group_id = chat_with.split(':', 1)[1]
+            if not any(g['id'] == group_id and address in g['members'] for g in groups):
+                raise HTTPException(403, 'No access')
+            await conn.execute('DELETE FROM transactions WHERE recipient = $1', chat_with)
+        else:
+            # Личный диалог – удаляем сообщения между двумя адресами
+            await conn.execute('''
+                DELETE FROM transactions
+                WHERE (sender = $1 AND recipient = $2) OR (sender = $3 AND recipient = $4)
+            ''', address, chat_with, chat_with, address)
+        await invalidate_conversations_cache(address)
+    return {'status': 'ok'}
+
+
+@router.post('/delete_message')
+async def delete_message(body: dict, request: Request, address: str = Depends(require_auth)):
+    """Удаляет одно сообщение, если оно принадлежит текущему пользователю."""
+    msg_id = body.get('message_id')
+    if not msg_id:
+        raise HTTPException(400, 'Missing message_id')
+    from database import get_db_cursor
+    async with get_db_cursor() as conn:
+        row = await conn.fetchrow('SELECT sender, recipient FROM transactions WHERE id = $1', msg_id)
+        if not row:
+            raise HTTPException(404, 'Message not found')
+        sender, recipient = row
+        if sender != address:
+            raise HTTPException(403, 'You can only delete your own messages')
+        await conn.execute('DELETE FROM transactions WHERE id = $1', msg_id)
+        await invalidate_conversations_cache(address)
+        if recipient.startswith('group:'):
+            # Инвалидируем кэш диалогов для всех участников группы
+            groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
+            group_id = recipient.split(':', 1)[1]
+            group = next((g for g in groups if g['id'] == group_id), None)
+            if group:
+                for member in group['members']:
+                    await invalidate_conversations_cache(member)
+        else:
+            await invalidate_conversations_cache(recipient)
+    return {'status': 'ok'}

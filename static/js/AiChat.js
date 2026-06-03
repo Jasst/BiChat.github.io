@@ -166,14 +166,16 @@
         if (history.length === 0) displayWelcome();
     }
     function clearAiHistory() {
-        if (confirm('Очистить всю историю диалога с AI?')) {
-            localStorage.removeItem('ai_chat_history');
-            if (aiMessagesContainer) {
-                aiMessagesContainer.innerHTML = '';
-                displayWelcome();
-            }
-            showToast('История очищена', 'success');
-        }
+        window.showConfirmModal('Clear AI History', 'Are you sure you want to clear all AI chat history? This cannot be undone.').then((confirmed) => {
+           if (confirmed) {
+               localStorage.removeItem('ai_chat_history');
+               if (aiMessagesContainer) {
+                   aiMessagesContainer.innerHTML = '';
+                   displayWelcome();
+               }
+               showToast('History cleared', 'success');
+           }
+        });
     }
 
     function displayWelcome() {
