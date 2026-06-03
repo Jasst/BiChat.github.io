@@ -1,8 +1,6 @@
 /**
  * style.css — Modern Monochrome UI for Dark Messenger
- * + плавающий овал поля ввода с эффектом стекла
- * + сообщения прокручиваются под полем ввода
- * + убраны лишние фоны и разделители
+ * Исправления: sticky-панель, овальное поле ввода, плавающие превью.
  */
 
 :root {
@@ -363,16 +361,15 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
-
   overflow-y: auto;
 }
 .chat-panel {
-  position: relative;
   flex: 2;
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
-  overflow: hidden;     /* поменяйте visible на hidden – это заставит sticky работать правильно */
+  overflow: visible;   /* исправлено: не скрывать sticky */
+  height: 100%;
 }
 
 @media (max-width: 768px) {
@@ -392,16 +389,16 @@ body {
     display: flex;
   }
 }
+
+/* Верхняя панель – sticky, не убегает */
 .chat-panel-header {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   z-index: 15;
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  background: rgba(30, 30, 30, 0.90);
+  background: rgba(30, 30, 30, 0.9);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -440,13 +437,11 @@ body {
   gap: 8px;
   flex-shrink: 0;
 }
-/* На десктопе: кнопки строго справа */
 @media (min-width: 769px) {
   .chat-panel-header .actions {
     margin-left: auto;
   }
 }
-/* На мобильных: кнопки идут сразу за заголовком */
 @media (max-width: 768px) {
   .chat-panel-header {
     padding: 12px 12px;
@@ -457,6 +452,7 @@ body {
     margin-left: 0;
   }
 }
+
 .conversations-header {
   display: flex;
   justify-content: space-between;
@@ -531,15 +527,16 @@ body {
 @keyframes onlinePulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.6;transform:scale(1.15)} }
 @keyframes awayPulse { 0%,100%{opacity:1}50%{opacity:0.5} }
 
+/* Сообщения – скроллятся, отступ снизу под поле ввода */
 .messages {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  padding-top: 80px;        /* ← отступ под плавающий заголовок */
-  padding-bottom: 80px;     /* ← оставляем под поле ввода */
+  padding-bottom: 90px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  scroll-behavior: smooth;
 }
 
 .message {
@@ -609,62 +606,70 @@ body {
 }
 .message:hover .delete-btn { opacity: 1; }
 
-/* Поле ввода – сделать абсолютным, прижатым к низу */
+/* Поле ввода – овальная форма со стеклом */
 .input-area {
-  position: absolute;
-  bottom: 10px;
-  left: 0;
-  right: 0;
-  z-index: 20;
-  padding: 12px 16px;
-  background: rgba(30, 30, 30, 0.90);
-  border-radius: 60px;        /* ← овальная форма */
-  margin: 0;
-  border: none;
-  box-shadow: none;
+  position: relative;
+  padding: 8px 16px 16px 16px;
+  background: rgba(30, 30, 30, 0.4);
+  backdrop-filter: blur(12px);
+  border-radius: 60px;
+  margin: 0 8px 16px 8px;
 }
 
-/* Овал — убираем box-shadow, если она даёт черноту */
 .input-wrapper {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
-  background: rgba(30, 30, 30, 0.50);
-
-
+  background: transparent;
   padding: 4px 8px 4px 16px;
-  /* box-shadow: none;  ← раскомментируйте, если тень мешает */
-  transition: background 0.2s;
 }
 
-/* Поле ввода — занимает всё свободное место */
 .input-wrapper textarea {
   flex: 1;
   background: transparent;
   border: none;
   resize: none;
-  max-height: 100px;
+  max-height: 150px;
+  min-height: 36px;
   font-size: 15px;
   outline: none;
   color: var(--text-primary);
   padding: 8px 0;
   line-height: 1.4;
+  overflow-y: auto;
 }
 
-/* Кнопки — фиксированный размер, не сжимаются */
 .input-actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+  align-items: center;
 }
 
-/* AI чат — те же стили поля ввода */
+/* Превью файла – внутри овала, над textarea */
+#filePreview {
+  margin: 4px 0 8px 0;
+  background: rgba(30, 30, 30, 0.6);
+  border-radius: 40px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+#filePreview .btn-icon-oval {
+  background: var(--bg-tertiary);
+  border: none;
+  padding: 6px;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+/* AI чат – свои стили */
 #aiChatContainer .input-wrapper {
   background: rgba(30, 30, 30, 0.3);
   backdrop-filter: blur(12px);
 }
-
-/* ===== AI Chat Container fix ===== */
 #aiChatContainer {
   display: none;
   flex-direction: column;
@@ -679,27 +684,11 @@ body {
   overflow-y: auto;
 }
 #aiChatContainer .input-area {
-  margin-top: auto;        /* прижимаем к низу */
+  position: relative;
+  margin-top: auto;
 }
 
-/* Дополнительные стили для AI-чата на мобильных устройствах */
-@media (max-width: 768px) {
-  #aiChatContainer .message {
-    max-width: 95%;
-    width: 100%;
-  }
-  #aiChatContainer .message .content {
-    word-break: break-word;
-    overflow-wrap: break-word;
-    overflow-x: auto;
-  }
-  #aiChatContainer pre {
-    max-width: 100%;
-    overflow-x: auto;
-  }
-}
-
-/* Page container (for contacts, groups, wallet, profile) */
+/* Остальные стили (страницы, модалки) без изменений */
 .page-container {
   max-width: 800px;
   margin: 0 auto;
@@ -719,8 +708,6 @@ body {
   margin: 0;
   font-size: 1.5rem;
 }
-
-/* Cards */
 .profile-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -783,8 +770,6 @@ body {
   margin-top: 12px;
   color: var(--status-success);
 }
-
-/* Groups grid */
 .groups-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -838,8 +823,6 @@ body {
   gap: 6px;
   flex-shrink: 0;
 }
-
-/* Modal styles */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -940,8 +923,6 @@ body {
   word-break: break-all;
   text-align: center;
 }
-
-/* Mining progress */
 .mining-progress-bar {
   background: var(--bg-tertiary);
   border-radius: 8px;
@@ -963,8 +944,6 @@ body {
   50% { transform: scale(1.2); text-shadow: 0 0 30px #ffd700; }
   100% { transform: scale(1); text-shadow: 0 0 10px #ffd700; }
 }
-
-/* Status badges */
 .status-badge {
   padding: 4px 12px;
   border-radius: 60px;
@@ -972,8 +951,6 @@ body {
 }
 .status-success { background: rgba(136,136,136,0.2); color: #aaa; }
 .status-warning { background: rgba(170,170,170,0.2); color: #ccc; }
-
-/* In-app notifications */
 .in-app-notification {
   position: fixed;
   top: 16px;
@@ -1008,8 +985,6 @@ body {
 .in-app-sender { font-weight: 600; }
 .in-app-preview { font-size: 13px; color: var(--text-secondary); }
 .in-app-close { background: none; border: none; font-size: 20px; cursor: pointer; }
-
-/* System toasts */
 .system-toast {
   position: fixed;
   top: 20px;
@@ -1027,8 +1002,6 @@ body {
 }
 @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(-20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
 @keyframes toastOut { from { opacity:1; transform:translateX(-50%) translateY(0); } to { opacity:0; transform:translateX(-50%) translateY(-20px); } }
-
-/* AI tool buttons */
 .ai-tool-btn {
   display: inline-flex;
   align-items: center;
@@ -1064,8 +1037,6 @@ body {
   transition: opacity 0.15s;
 }
 .ai-tool-btn:hover::after { opacity: 1; }
-
-/* Markdown & code */
 .markdown-body pre {
   background: #1e1e1e;
   border-radius: 16px;
@@ -1088,8 +1059,6 @@ body {
   border-radius: 16px;
   margin: 12px 0;
 }
-
-/* Add contact form */
 .add-contact-form {
   display: flex;
   gap: 12px;
@@ -1106,8 +1075,6 @@ body {
   width: 100%;
   margin-top: 8px;
 }
-
-/* Responsive */
 @media (max-width: 768px) {
   .page-container { padding: 12px; padding-bottom: 80px; }
   .profile-row { flex-direction: column; align-items: flex-start; }
@@ -1120,8 +1087,6 @@ body {
   .list-item { padding: 8px 12px; }
   .list-item .actions { gap: 4px; }
   .list-item .btn-icon-oval { padding: 6px; min-width: 36px; }
-
-  /* Скрываем нижнее меню и убираем отступ, чтобы чат растянулся на весь экран */
   body.chat-open .bottom-nav {
     display: none;
   }
@@ -1153,8 +1118,6 @@ body {
     display: flex !important;
   }
 }
-
-/* Убираем горизонтальный скролл у поля ввода на ПК */
 @media (min-width: 769px) {
   .input-area,
   .input-wrapper {
@@ -1164,8 +1127,6 @@ body {
     min-width: 0;
   }
 }
-
-/* ===== AI Chat Container — убираем горизонтальный скролл на ПК ===== */
 @media (min-width: 769px) {
   #aiChatContainer .messages {
     overflow-x: hidden;

@@ -1,5 +1,6 @@
 // actions.js — полная версия с поддержкой зашифрованных файлов, аудиозаписи,
 // добавленными обработчиками AI, очистки чата, удаления сообщений и добавления контактов
+// + авто-расширение textarea и фикс позиционирования #filePreview
 (function() {
     if (window._actionsLoaded) return;
     window._actionsLoaded = true;
@@ -9,6 +10,14 @@
     let mediaRecorder = null;
     let audioChunks = [];
     let isRecording = false;
+
+    // ========== Автоматическое расширение textarea ==========
+    function autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        const newHeight = Math.min(textarea.scrollHeight, 150); // ограничение 150px
+        textarea.style.height = newHeight + 'px';
+    }
 
     // ========== Вспомогательные функции ==========
     async function uploadEncryptedFile(file) {
@@ -34,10 +43,11 @@
 
         const previewContainer = document.createElement('div');
         previewContainer.id = 'filePreview';
+        // Стили задаются через CSS, но добавим базовые inline на всякий случай
         previewContainer.style.cssText = `
             display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-            margin: 8px 16px 0 16px; background: var(--bg-secondary);
-            border-radius: var(--radius-md); border: 1px solid var(--border-color);
+            margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
+            border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
         `;
         let icon = type.startsWith('image') ? '🖼️' : '🎵';
         previewContainer.innerHTML = `
@@ -46,7 +56,10 @@
             <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
         `;
         const form = document.querySelector('.chat-panel .input-area');
-        if (form) form.parentNode.insertBefore(previewContainer, form);
+        if (form) {
+            // Вставляем ПЕРВЫМ ребёнком в .input-area (перед .input-wrapper)
+            form.insertBefore(previewContainer, form.firstChild);
+        }
         document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
             pendingFile = null;
             previewContainer.remove();
@@ -89,7 +102,7 @@
         }
     }
 
-    // ========== Выбор файла (изображение или аудио) ==========
+    // ========== Выбор файла ==========
     function handleFileSelection(event, type) {
         const file = event.target.files[0];
         if (!file) return;
@@ -108,7 +121,7 @@
         event.target.value = '';
     }
 
-    // ========== Отправка сообщения (исправлено: удаляем временное сообщение) ==========
+    // ========== Отправка сообщения (без изменений) ==========
     async function sendMessage() {
         if (State.currentChatAddress === 'ai_bot') return;
         if (window.isSending) return;
@@ -244,7 +257,6 @@
             });
             const data = await res.json();
             if (res.ok) {
-                // Удаляем временное сообщение, а не меняем его ID
                 const tempElem = document.getElementById('msg-' + tempId);
                 if (tempElem) tempElem.remove();
                 await window.loadConversations();
@@ -266,7 +278,7 @@
         }
     }
 
-    // ========== Модальные окна нового чата ==========
+    // ========== Модальные окна нового чата (без изменений) ==========
     function openNewChatModal() {
         window.modalOpen = true;
         document.getElementById('newChatModal')?.classList.remove('hidden');
@@ -335,8 +347,25 @@
         window.selectConversation(address, name, false);
     }
 
-    // ========== Инициализация кнопок ==========
+    // ========== Инициализация кнопок и авто-расширения ==========
     function initChatActions() {
+        // Авто-расширение textarea в основном чате и AI
+        const msgInput = document.getElementById('messageContent');
+        const aiInput = document.getElementById('aiMessageInput');
+        if (msgInput) {
+            msgInput.addEventListener('input', () => autoResizeTextarea(msgInput));
+            // Сброс высоты при очистке
+            msgInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        }
+        if (aiInput) {
+            aiInput.addEventListener('input', () => autoResizeTextarea(aiInput));
+        }
+
         // Кнопка Start Chat в модалке
         const startChatBtn = document.getElementById('startNewChatBtn');
         if (startChatBtn) startChatBtn.onclick = startNewChat;
@@ -372,7 +401,6 @@
         }
 
         // Кнопка добавить контакт
-        // Кнопка добавить контакт (используем showPromptModal вместо prompt)
         const addContactBtn = document.getElementById('addToContactsBtn');
         if (addContactBtn) {
             addContactBtn.onclick = async () => {
@@ -383,7 +411,7 @@
                    'Enter name for this contact:',
                     address.slice(0, 10) + '...'
                );
-               if (!name) return; // пользователь отменил
+               if (!name) return;
                const res = await fetch('/add_contact_from_chat', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -417,8 +445,6 @@
 
         const sendBtn = document.getElementById('sendButton');
         if (sendBtn) sendBtn.onclick = sendMessage;
-        const msgInput = document.getElementById('messageContent');
-        if (msgInput) msgInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
         // Новый чат
         const newChatBtn = document.getElementById('newChatBtn');
@@ -441,7 +467,6 @@
                 if (res.ok) {
                     const msgDiv = document.getElementById('msg-' + msgId);
                     if (msgDiv) msgDiv.remove();
-                    // Обновить список диалогов, так как изменился последний превью
                     window.loadConversations();
                 } else {
                     window.NotificationManager?.showToast('Delete failed', 'error');
@@ -456,4 +481,5 @@
     window.openNewChatModal = openNewChatModal;
     window.closeNewChatModal = closeNewChatModal;
     window.startNewChat = startNewChat;
+    window.autoResizeTextarea = autoResizeTextarea; // экспорт на случай ручного вызова
 })();
