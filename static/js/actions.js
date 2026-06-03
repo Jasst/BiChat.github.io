@@ -39,32 +39,45 @@
     }
 
     function showFilePreview(file, type) {
-        const oldPreview = document.getElementById('filePreview');
-        if (oldPreview) oldPreview.remove();
+    const oldPreview = document.getElementById('filePreview');
+    if (oldPreview) oldPreview.remove();
 
-        const previewContainer = document.createElement('div');
-        previewContainer.id = 'filePreview';
-        previewContainer.style.cssText = `
-            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-            margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
-            border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
-        `;
-        let icon = type.startsWith('image') ? '🖼️' : '🎵';
-        previewContainer.innerHTML = `
-            <span>${icon}</span>
-            <span style="flex:1; font-size:13px;">${Utils.escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>
-            <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
-        `;
-        const form = document.querySelector('.chat-panel .input-area');
-        if (form) {
-            form.insertBefore(previewContainer, form.firstChild);
-        }
-        document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
-            pendingFile = null;
-            previewContainer.remove();
-            updateSendButtonVisibility();
-        });
+    const previewContainer = document.createElement('div');
+    previewContainer.id = 'filePreview';
+    previewContainer.style.cssText = `
+        display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+        margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
+        border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
+    `;
+
+    let previewContent;
+    let objectUrl = null;
+
+    if (type.startsWith('image/')) {
+        objectUrl = URL.createObjectURL(file);
+        previewContent = `<img src="${objectUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px;">`;
+    } else {
+        previewContent = `<span>${type.startsWith('image') ? '🖼️' : '🎵'}</span>`;
     }
+
+    previewContainer.innerHTML = `
+        ${previewContent}
+        <span style="flex:1; font-size:13px;">${Utils.escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>
+        <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
+    `;
+
+    const form = document.querySelector('.chat-panel .input-area');
+    if (form) {
+        form.insertBefore(previewContainer, form.firstChild);
+    }
+
+    document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        pendingFile = null;
+        previewContainer.remove();
+        updateSendButtonVisibility();
+    });
+}
 
     // ========== Запись аудио ==========
     async function startRecording() {

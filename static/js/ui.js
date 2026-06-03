@@ -154,7 +154,7 @@
         const objectUrl = URL.createObjectURL(blob);
 
         if (fileType.startsWith('image/')) {
-            div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal && window.openImageModal('${objectUrl}')">`;
+            div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal('${objectUrl.replace(/'/g, "\\'")}')">`;
         } else if (fileType.startsWith('audio/')) {
             // Добавляем метку "Голосовое сообщение"
             div.innerHTML = `
@@ -430,6 +430,39 @@
         }
     }
 
+    // ========== Модальное окно для изображений ==========
+    function openImageModal(imageUrl) {
+    const modal = document.getElementById('imageModal');
+    const img = document.getElementById('modalImage');
+    if (!modal || !img) return;
+
+    img.src = imageUrl;
+    modal.classList.remove('hidden');
+
+    // Обновляем обработчик скачивания
+    const downloadBtn = document.getElementById('downloadImageBtn');
+    if (downloadBtn) {
+        const newBtn = downloadBtn.cloneNode(true);
+        downloadBtn.parentNode.replaceChild(newBtn, downloadBtn);
+        newBtn.onclick = () => {
+            const a = document.createElement('a');
+            a.href = img.src;
+            a.download = 'image.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            if (window.NotificationManager) {
+                window.NotificationManager.showToast('Изображение сохранено', 'success');
+            }
+        };
+    }
+}
+
+    function closeImageModal() {
+    const modal = document.getElementById('imageModal');
+    if (modal) modal.classList.add('hidden');
+}
+
     window.onNewMessageReceived = function(decrypted) {
         const container = document.getElementById('messagesContainer');
         if (container) {
@@ -465,4 +498,6 @@
     window._enableChatControls = _enableChatControls;
     window._disableChatControls = _disableChatControls;
     window.fetchUserStatuses = fetchUserStatuses;
+    window.openImageModal = openImageModal;
+    window.closeImageModal = closeImageModal;
 })();

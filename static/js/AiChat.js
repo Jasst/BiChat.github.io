@@ -76,30 +76,48 @@
     }
 
     function addImageDownloadButtons(container) {
-        if (!container) return;
-        const images = container.querySelectorAll('img');
-        images.forEach(img => {
-            if (img.parentNode.querySelector('.download-image-btn')) return;
-            const imageUrl = img.src;
-            if (!imageUrl) return;
-            const wrapper = document.createElement('div');
-            wrapper.style.cssText = 'position:relative; display:inline-block; margin:0 4px 8px 0;';
-            const parent = img.parentNode;
-            const imgClone = img.cloneNode(true);
-            const downloadBtn = document.createElement('button');
-            downloadBtn.textContent = '💾 Скачать';
-            downloadBtn.className = 'download-image-btn';
-            downloadBtn.style.cssText = 'display:block; margin-top:4px; background:var(--accent-soft); border:none; border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; color:var(--accent); width:100%; text-align:center;';
-            downloadBtn.title = 'Сохранить изображение';
-            downloadBtn.onclick = (e) => {
-                e.stopPropagation();
-                downloadImage(imageUrl, 'generated_image.png');
-            };
-            wrapper.appendChild(imgClone);
-            wrapper.appendChild(downloadBtn);
-            parent.replaceChild(wrapper, img);
+    if (!container) return;
+    const images = container.querySelectorAll('img');
+    images.forEach(img => {
+        // Не добавляем повторно
+        if (img.hasAttribute('data-modal-attached')) return;
+        img.setAttribute('data-modal-attached', 'true');
+
+        // Клик по изображению – открыть в модальном окне
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof window.openImageModal === 'function') {
+                window.openImageModal(img.src);
+            }
         });
-    }
+
+        // Кнопка скачивания (существующая логика)
+        if (img.parentNode.querySelector('.download-image-btn')) return;
+        const imageUrl = img.src;
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:relative; display:inline-block; margin:0 4px 8px 0;';
+        const parent = img.parentNode;
+        const imgClone = img.cloneNode(true);
+        imgClone.style.cursor = 'pointer';
+        // Переносим обработчик на клон
+        imgClone.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.openImageModal(imgClone.src);
+        });
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = '💾 Скачать';
+        downloadBtn.className = 'download-image-btn';
+        downloadBtn.style.cssText = 'display:block; margin-top:4px; background:var(--accent-soft); border:none; border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; color:var(--accent); width:100%; text-align:center;';
+        downloadBtn.onclick = (e) => {
+            e.stopPropagation();
+            downloadImage(imageUrl, 'generated_image.png');
+        };
+        wrapper.appendChild(imgClone);
+        wrapper.appendChild(downloadBtn);
+        parent.replaceChild(wrapper, img);
+    });
+}
 
     async function downloadImage(imageUrl, filename = 'image.png') {
         try {
