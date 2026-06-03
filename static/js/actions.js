@@ -1,6 +1,7 @@
 // actions.js — полная версия с поддержкой зашифрованных файлов, аудиозаписи,
 // добавленными обработчиками AI, очистки чата, удаления сообщений и добавления контактов
 // + авто-расширение textarea и фикс позиционирования #filePreview
+// + динамическое переключение кнопок «отправить» / «запись голоса»
 (function() {
     if (window._actionsLoaded) return;
     window._actionsLoaded = true;
@@ -15,7 +16,7 @@
     function autoResizeTextarea(textarea) {
         if (!textarea) return;
         textarea.style.height = 'auto';
-        const newHeight = Math.min(textarea.scrollHeight, 150); // ограничение 150px
+        const newHeight = Math.min(textarea.scrollHeight, 150);
         textarea.style.height = newHeight + 'px';
     }
 
@@ -43,7 +44,6 @@
 
         const previewContainer = document.createElement('div');
         previewContainer.id = 'filePreview';
-        // Стили задаются через CSS, но добавим базовые inline на всякий случай
         previewContainer.style.cssText = `
             display: flex; align-items: center; gap: 8px; padding: 8px 12px;
             margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
@@ -57,12 +57,12 @@
         `;
         const form = document.querySelector('.chat-panel .input-area');
         if (form) {
-            // Вставляем ПЕРВЫМ ребёнком в .input-area (перед .input-wrapper)
             form.insertBefore(previewContainer, form.firstChild);
         }
         document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
             pendingFile = null;
             previewContainer.remove();
+            updateSendButtonVisibility();  // NEW: обновить кнопки после отмены файла
         });
     }
 
@@ -85,6 +85,7 @@
                 const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
                 pendingFile = { file, type: 'audio/webm' };
                 showFilePreview(file, 'audio/webm');
+                updateSendButtonVisibility();  // NEW: после добавления аудио – показываем кнопку отправки
                 stream.getTracks().forEach(t => t.stop());
                 isRecording = false;
                 document.getElementById('recordIndicator')?.remove();
@@ -118,10 +119,30 @@
         }
         pendingFile = { file, type: file.type };
         showFilePreview(file, file.type);
+        updateSendButtonVisibility();  // NEW: прикреплён файл – показываем отправку
         event.target.value = '';
     }
 
-    // ========== Отправка сообщения (без изменений) ==========
+    // ========== Новая функция управления видимостью кнопок ==========
+    function updateSendButtonVisibility() {
+        const sendBtn = document.getElementById('sendButton');
+        const recordBtn = document.getElementById('recordAudioButton');
+        if (!sendBtn || !recordBtn) return;
+
+        const messageInput = document.getElementById('messageContent');
+        const hasText = messageInput && messageInput.value.trim() !== '';
+        const hasFile = pendingFile !== null;
+
+        if (hasText || hasFile) {
+            sendBtn.style.display = 'flex';
+            recordBtn.style.display = 'none';
+        } else {
+            sendBtn.style.display = 'none';
+            recordBtn.style.display = 'flex';
+        }
+    }
+
+    // ========== Отправка сообщения ==========
     async function sendMessage() {
         if (State.currentChatAddress === 'ai_bot') return;
         if (window.isSending) return;
@@ -275,6 +296,7 @@
             const sendBtn = document.getElementById('sendButton');
             if (sendBtn) sendBtn.disabled = false;
             document.getElementById('messageContent')?.focus();
+            updateSendButtonVisibility();  // NEW: после отправки сбросить состояние кнопок
         }
     }
 
@@ -353,8 +375,10 @@
         const msgInput = document.getElementById('messageContent');
         const aiInput = document.getElementById('aiMessageInput');
         if (msgInput) {
-            msgInput.addEventListener('input', () => autoResizeTextarea(msgInput));
-            // Сброс высоты при очистке
+            msgInput.addEventListener('input', () => {
+                autoResizeTextarea(msgInput);
+                updateSendButtonVisibility();   // NEW: при изменении текста обновить кнопки
+            });
             msgInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -393,6 +417,12 @@
                     if (res.ok) {
                         window.loadMessagesForConversation(State.currentChatAddress, false);
                         window.NotificationManager?.showToast('Chat cleared', 'success');
+                        // Очистить поле ввода и сбросить pendingFile
+                        const msgField = document.getElementById('messageContent');
+                        if (msgField) msgField.value = '';
+                        pendingFile = null;
+                        document.getElementById('filePreview')?.remove();
+                        updateSendButtonVisibility(); // обновить кнопки после очистки
                     } else {
                         window.NotificationManager?.showToast('Failed to clear', 'error');
                     }
@@ -449,6 +479,9 @@
         // Новый чат
         const newChatBtn = document.getElementById('newChatBtn');
         if (newChatBtn) newChatBtn.onclick = openNewChatModal;
+
+        // Начальное состояние кнопок
+        updateSendButtonVisibility();
     }
 
     // Глобальный обработчик удаления сообщений (делегирование)
@@ -481,5 +514,6 @@
     window.openNewChatModal = openNewChatModal;
     window.closeNewChatModal = closeNewChatModal;
     window.startNewChat = startNewChat;
-    window.autoResizeTextarea = autoResizeTextarea; // экспорт на случай ручного вызова
+    window.autoResizeTextarea = autoResizeTextarea;
+    window.updateSendButtonVisibility = updateSendButtonVisibility; // экспорт на случай внешних вызовов
 })();

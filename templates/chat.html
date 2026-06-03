@@ -42,23 +42,15 @@
       <div class="input-wrapper">
         <textarea id="messageContent" placeholder="Type a message…" rows="1" disabled aria-label="Message input"></textarea>
         <div class="input-actions">
-          <!-- Изображение -->
           <input type="file" id="imageInput" accept="image/*" class="sr-only">
           <button type="button" class="btn-icon-oval" id="attachImageButton" disabled title="Attach image">📎</button>
-          <!-- Аудиофайл (скрыто) -->
-          <!--
-             <input type="file" id="audioInput" accept="audio/webm,audio/mp4,audio/ogg" class="sr-only">
-             <button type="button" class="btn-icon-oval" id="attachAudioButton" disabled title="Attach audio file">🎵</button>
-          -->
-          <!-- Запись голоса -->
           <button type="button" class="btn-icon-oval" id="recordAudioButton" disabled title="Record voice message">🎤</button>
-          <!-- Отправка -->
-          <button type="submit" class="btn-primary-oval" id="sendButton" disabled>➤</button>
+          <button type="submit" class="btn-primary-oval" id="sendButton" disabled style="display: none;">➤</button>
         </div>
       </div>
     </form>
 
-    <!-- AI CHAT CONTAINER -->
+    <!-- AI CHAT CONTAINER (исправленная структура) -->
     <div id="aiChatContainer" class="hidden">
       <div class="chat-panel-header">
         <button class="back-button" id="closeAiFromChatBtn">←</button>
@@ -74,11 +66,13 @@
       <form class="input-area" onsubmit="return false;">
         <div class="input-wrapper">
           <textarea id="aiMessageInput" placeholder="Ask AI… (paste a link to read)" rows="1"></textarea>
-          <div class="input-actions">
+          <!-- NEW: кнопки разделены на левую и правую группу -->
+          <div class="input-actions-left">
             <button type="button" id="aiImageGenBtn" class="ai-tool-btn" data-tooltip="Generate image">🎨</button>
             <button type="button" id="aiInternetBtn" class="ai-tool-btn" data-tooltip="Web search on/off" data-active="false">🌐</button>
             <button type="button" id="aiReasoningBtn" class="ai-tool-btn" data-tooltip="Reasoning on/off" data-active="false">🧠</button>
-            <span style="width:1px;height:24px;background:var(--border-color);margin:0 4px;"></span>
+          </div>
+          <div class="input-actions-right">
             <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
             <button type="button" id="aiAttachBtn" class="btn-icon-oval" title="Attach image">📎</button>
             <button type="submit" id="aiSendBtn" class="btn-primary-oval">➤</button>
@@ -89,7 +83,7 @@
   </div>
 </div>
 
-<!-- New chat modal -->
+<!-- New chat modal (без изменений) -->
 <div id="newChatModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
@@ -147,6 +141,7 @@
 <script src="{{ url_for('static', path='js/AiChat.js') }}" defer></script>
 
 <script>
+// Адаптивная логика (без изменений)
 (function() {
   const conversationsPanel = document.getElementById('conversationsPanel');
   const chatPanel = document.getElementById('chatPanel');
@@ -238,14 +233,11 @@
     setTimeout(() => { if (isMobile()) window.showChatPanel(); }, 200);
   }
 
-  // ✅ ИСПРАВЛЕНИЕ: обработка параметров start_with после полной загрузки DOM
   document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     const startWith = urlParams.get('start_with');
     const startName = urlParams.get('name');
     if (startWith) {
-      console.log('[Chat] Starting with', startWith);
-      // Даём время на инициализацию WebSocket и State
       const trySelect = (attempt = 1) => {
         if (typeof window.selectConversation === 'function') {
           window.selectConversation(
@@ -254,10 +246,7 @@
             startWith.startsWith('group:')
           );
         } else if (attempt <= 3) {
-          console.warn(`[Chat] selectConversation not ready, retry ${attempt}/3`);
           setTimeout(() => trySelect(attempt + 1), 500);
-        } else {
-          console.error('[Chat] selectConversation never became available');
         }
       };
       setTimeout(() => trySelect(), 300);

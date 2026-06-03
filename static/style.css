@@ -1,6 +1,7 @@
 /**
  * style.css — Modern Monochrome UI for Dark Messenger
- * Исправления: sticky-панель, овальное поле ввода, плавающие превью.
+ * Исправления: единообразная навигация, овальное поле ввода AI-чата, группировка кнопок,
+ * адаптив AI-чата, стили для аудио.
  */
 
 :root {
@@ -209,7 +210,7 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* ===== Floating Bottom Navigation ===== */
+/* ===== Floating Bottom Navigation (единообразные кнопки) ===== */
 .app-container {
   display: flex;
   flex-direction: column;
@@ -239,12 +240,15 @@ body {
   border: 1px solid var(--border-color);
   z-index: 100;
 }
+/* NEW: единый размер для всех пунктов навигации */
 .bottom-nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   padding: 8px 12px;
+  min-width: 70px;
+  flex: 1;
   border-radius: 40px;
   background: transparent;
   color: var(--text-muted);
@@ -253,6 +257,7 @@ body {
   text-decoration: none;
   transition: all var(--transition-fast);
   cursor: pointer;
+  text-align: center;
 }
 .bottom-nav-item .nav-icon {
   width: 24px;
@@ -368,7 +373,7 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
-  overflow: visible;   /* исправлено: не скрывать sticky */
+  overflow: visible;
   height: 100%;
 }
 
@@ -390,7 +395,6 @@ body {
   }
 }
 
-/* Верхняя панель – sticky, не убегает */
 .chat-panel-header {
   position: sticky;
   top: 0;
@@ -527,7 +531,6 @@ body {
 @keyframes onlinePulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.6;transform:scale(1.15)} }
 @keyframes awayPulse { 0%,100%{opacity:1}50%{opacity:0.5} }
 
-/* Сообщения – скроллятся, отступ снизу под поле ввода */
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -606,7 +609,7 @@ body {
 }
 .message:hover .delete-btn { opacity: 1; }
 
-/* Поле ввода – овальная форма со стеклом */
+/* ===== Овальное поле ввода (общее для чатов) ===== */
 .input-area {
   position: relative;
   padding: 8px 16px 16px 16px;
@@ -615,7 +618,6 @@ body {
   border-radius: 60px;
   margin: 0 8px 16px 8px;
 }
-
 .input-wrapper {
   display: flex;
   align-items: flex-end;
@@ -623,7 +625,6 @@ body {
   background: transparent;
   padding: 4px 8px 4px 16px;
 }
-
 .input-wrapper textarea {
   flex: 1;
   background: transparent;
@@ -638,15 +639,27 @@ body {
   line-height: 1.4;
   overflow-y: auto;
 }
-
 .input-actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
   align-items: center;
 }
+/* NEW: разделение кнопок в AI-чате */
+.input-actions-left,
+.input-actions-right {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.input-actions-left {
+  flex: 1;
+  justify-content: flex-start;
+}
+.input-actions-right {
+  justify-content: flex-end;
+}
 
-/* Превью файла – внутри овала, над textarea */
 #filePreview {
   margin: 4px 0 8px 0;
   background: rgba(30, 30, 30, 0.6);
@@ -688,7 +701,46 @@ body {
   margin-top: auto;
 }
 
-/* Остальные стили (страницы, модалки) без изменений */
+/* ===== Адаптив для AI чата (мобильные) ===== */
+@media (max-width: 600px) {
+  #aiChatContainer .input-wrapper {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #aiChatContainer .input-wrapper textarea {
+    width: 100%;
+    order: 1;
+    flex: none;
+    margin-bottom: 4px;
+  }
+  #aiChatContainer .input-actions-left {
+    order: 2;
+    flex: 1;
+    justify-content: flex-start;
+  }
+  #aiChatContainer .input-actions-right {
+    order: 3;
+    justify-content: flex-end;
+  }
+}
+
+/* ===== Стили для аудиоэлементов ===== */
+audio {
+  width: 100%;
+  border-radius: 20px;
+  margin: 8px 0;
+  background: var(--bg-tertiary);
+}
+audio::-webkit-media-controls-panel {
+  background-color: var(--bg-secondary);
+  border-radius: 20px;
+}
+audio::-webkit-media-controls-current-time-display,
+audio::-webkit-media-controls-time-remaining-display {
+  color: var(--text-primary);
+}
+
+/* остальные стили (профиль, контакты, группы, модалки) без изменений */
 .page-container {
   max-width: 800px;
   margin: 0 auto;
@@ -1075,6 +1127,8 @@ body {
   width: 100%;
   margin-top: 8px;
 }
+
+/* Медиа‑запросы */
 @media (max-width: 768px) {
   .page-container { padding: 12px; padding-bottom: 80px; }
   .profile-row { flex-direction: column; align-items: flex-start; }
@@ -1083,7 +1137,7 @@ body {
   .message { max-width: 95%; }
   .groups-grid { grid-template-columns: 1fr; }
   .bottom-nav { bottom: 12px; left: 12px; right: 12px; padding: 6px 10px; }
-  .bottom-nav-item { padding: 6px 8px; font-size: 11px; }
+  .bottom-nav-item { padding: 6px 8px; min-width: 60px; font-size: 11px; }
   .list-item { padding: 8px 12px; }
   .list-item .actions { gap: 4px; }
   .list-item .btn-icon-oval { padding: 6px; min-width: 36px; }
