@@ -62,7 +62,7 @@
         document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
             pendingFile = null;
             previewContainer.remove();
-            updateSendButtonVisibility();  // NEW: обновить кнопки после отмены файла
+            updateSendButtonVisibility();
         });
     }
 
@@ -85,7 +85,7 @@
                 const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
                 pendingFile = { file, type: 'audio/webm' };
                 showFilePreview(file, 'audio/webm');
-                updateSendButtonVisibility();  // NEW: после добавления аудио – показываем кнопку отправки
+                updateSendButtonVisibility();
                 stream.getTracks().forEach(t => t.stop());
                 isRecording = false;
                 document.getElementById('recordIndicator')?.remove();
@@ -119,7 +119,7 @@
         }
         pendingFile = { file, type: file.type };
         showFilePreview(file, file.type);
-        updateSendButtonVisibility();  // NEW: прикреплён файл – показываем отправку
+        updateSendButtonVisibility();
         event.target.value = '';
     }
 
@@ -296,7 +296,7 @@
             const sendBtn = document.getElementById('sendButton');
             if (sendBtn) sendBtn.disabled = false;
             document.getElementById('messageContent')?.focus();
-            updateSendButtonVisibility();  // NEW: после отправки сбросить состояние кнопок
+            updateSendButtonVisibility();
         }
     }
 
@@ -371,13 +371,12 @@
 
     // ========== Инициализация кнопок и авто-расширения ==========
     function initChatActions() {
-        // Авто-расширение textarea в основном чате и AI
         const msgInput = document.getElementById('messageContent');
         const aiInput = document.getElementById('aiMessageInput');
         if (msgInput) {
             msgInput.addEventListener('input', () => {
                 autoResizeTextarea(msgInput);
-                updateSendButtonVisibility();   // NEW: при изменении текста обновить кнопки
+                updateSendButtonVisibility();
             });
             msgInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -390,11 +389,9 @@
             aiInput.addEventListener('input', () => autoResizeTextarea(aiInput));
         }
 
-        // Кнопка Start Chat в модалке
         const startChatBtn = document.getElementById('startNewChatBtn');
         if (startChatBtn) startChatBtn.onclick = startNewChat;
 
-        // Кнопка AI Assistant
         const aiChatBtn = document.getElementById('aiChatBtn');
         if (aiChatBtn) {
             aiChatBtn.onclick = () => {
@@ -402,7 +399,6 @@
             };
         }
 
-        // Кнопка очистки чата
         const clearConvBtn = document.getElementById('clearConversationBtn');
         if (clearConvBtn) {
             clearConvBtn.onclick = async () => {
@@ -417,12 +413,11 @@
                     if (res.ok) {
                         window.loadMessagesForConversation(State.currentChatAddress, false);
                         window.NotificationManager?.showToast('Chat cleared', 'success');
-                        // Очистить поле ввода и сбросить pendingFile
                         const msgField = document.getElementById('messageContent');
                         if (msgField) msgField.value = '';
                         pendingFile = null;
                         document.getElementById('filePreview')?.remove();
-                        updateSendButtonVisibility(); // обновить кнопки после очистки
+                        updateSendButtonVisibility();
                     } else {
                         window.NotificationManager?.showToast('Failed to clear', 'error');
                     }
@@ -430,7 +425,6 @@
             };
         }
 
-        // Кнопка добавить контакт
         const addContactBtn = document.getElementById('addToContactsBtn');
         if (addContactBtn) {
             addContactBtn.onclick = async () => {
@@ -457,7 +451,6 @@
             };
         }
 
-        // Обработка прикрепления изображения/аудио
         const attachImageBtn = document.getElementById('attachImageButton');
         const imageInput = document.getElementById('imageInput');
         if (attachImageBtn && imageInput) {
@@ -476,15 +469,12 @@
         const sendBtn = document.getElementById('sendButton');
         if (sendBtn) sendBtn.onclick = sendMessage;
 
-        // Новый чат
         const newChatBtn = document.getElementById('newChatBtn');
         if (newChatBtn) newChatBtn.onclick = openNewChatModal;
 
-        // Начальное состояние кнопок
         updateSendButtonVisibility();
     }
 
-    // Глобальный обработчик удаления сообщений (делегирование)
     document.addEventListener('click', async (e) => {
         const deleteBtn = e.target.closest('.delete-btn');
         if (deleteBtn && deleteBtn.dataset.id) {
@@ -515,5 +505,5 @@
     window.closeNewChatModal = closeNewChatModal;
     window.startNewChat = startNewChat;
     window.autoResizeTextarea = autoResizeTextarea;
-    window.updateSendButtonVisibility = updateSendButtonVisibility; // экспорт на случай внешних вызовов
+    window.updateSendButtonVisibility = updateSendButtonVisibility;
 })();

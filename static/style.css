@@ -1,7 +1,7 @@
 /**
  * style.css — Modern Monochrome UI for Dark Messenger
  * Исправления: единообразная навигация, овальное поле ввода AI-чата, группировка кнопок,
- * адаптив AI-чата, стили для аудио.
+ * адаптив AI-чата, стили для аудио, исправление выхода контента за границы.
  */
 
 :root {
@@ -240,7 +240,6 @@ body {
   border: 1px solid var(--border-color);
   z-index: 100;
 }
-/* NEW: единый размер для всех пунктов навигации */
 .bottom-nav-item {
   display: flex;
   flex-direction: column;
@@ -645,7 +644,6 @@ body {
   flex-shrink: 0;
   align-items: center;
 }
-/* NEW: разделение кнопок в AI-чате */
 .input-actions-left,
 .input-actions-right {
   display: flex;
@@ -678,10 +676,19 @@ body {
   min-height: 32px;
 }
 
-/* AI чат – свои стили */
-#aiChatContainer .input-wrapper {
-  background: rgba(30, 30, 30, 0.3);
+/* AI чат – свои стили (исправленные) */
+#aiChatContainer .input-area {
+  position: relative;
+  padding: 8px 16px 16px 16px;
+  background: rgba(30, 30, 30, 0.4);
   backdrop-filter: blur(12px);
+  border-radius: 60px;       /* овальное поле */
+  margin: 0 8px 16px 8px;
+  overflow: hidden;
+}
+#aiChatContainer .input-wrapper {
+  background: transparent;
+  backdrop-filter: none;
 }
 #aiChatContainer {
   display: none;
@@ -695,13 +702,30 @@ body {
 #aiChatContainer .messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  word-break: break-word;
 }
-#aiChatContainer .input-area {
-  position: relative;
-  margin-top: auto;
+#aiChatContainer .message {
+  max-width: 100% !important;
+}
+#aiChatContainer .message .content {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+#aiChatContainer pre,
+#aiChatContainer .markdown-body pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+#aiChatContainer img {
+  max-width: 100%;
+  height: auto;
 }
 
-/* ===== Адаптив для AI чата (мобильные) ===== */
+/* Адаптив для AI чата (мобильные) */
 @media (max-width: 600px) {
   #aiChatContainer .input-wrapper {
     flex-wrap: wrap;
@@ -725,11 +749,16 @@ body {
 }
 
 /* ===== Стили для аудиоэлементов ===== */
+/* ===== Стили для аудиоэлементов (исправление для Safari) ===== */
+/* ===== Стили для аудиоэлементов (исправление для Safari) ===== */
 audio {
   width: 100%;
+  min-width: 280px;      /* достаточно для мобильных, не ломает макет */
+  max-width: 100%;
   border-radius: 20px;
   margin: 8px 0;
   background: var(--bg-tertiary);
+  display: block;
 }
 audio::-webkit-media-controls-panel {
   background-color: var(--bg-secondary);
@@ -739,7 +768,18 @@ audio::-webkit-media-controls-current-time-display,
 audio::-webkit-media-controls-time-remaining-display {
   color: var(--text-primary);
 }
+.voice-message-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
 
+.message:has(audio) {
+  max-width: 95% !important;
+}
 /* остальные стили (профиль, контакты, группы, модалки) без изменений */
 .page-container {
   max-width: 800px;

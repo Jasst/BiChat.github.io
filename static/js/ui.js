@@ -127,47 +127,51 @@
 
     // ========== Расшифровка и отображение вложения ==========
     async function decryptAndShowAttachment(messageDiv) {
-        const div = messageDiv.querySelector('.file-attachment');
-        if (!div) return;
-        const url = div.dataset.url;
-        const keyBase64 = div.dataset.key;
-        const ivBase64 = div.dataset.iv;
-        const fileType = div.dataset.type;
+    const div = messageDiv.querySelector('.file-attachment');
+    if (!div) return;
+    const url = div.dataset.url;
+    const keyBase64 = div.dataset.key;
+    const ivBase64 = div.dataset.iv;
+    const fileType = div.dataset.type;
 
-        if (!url || !keyBase64 || !ivBase64) {
-            div.innerHTML = '<span class="text-error">Invalid file data</span>';
-            return;
+    if (!url || !keyBase64 || !ivBase64) {
+        div.innerHTML = '<span class="text-error">Invalid file data</span>';
+        return;
+    }
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const encryptedBlob = await res.arrayBuffer();
+        const key = DarkCrypto.base64ToArrayBuffer(keyBase64);
+        const iv = DarkCrypto.base64ToArrayBuffer(ivBase64);
+        const decrypted = await DarkCrypto.decryptFile(
+            new Uint8Array(encryptedBlob),
+            new Uint8Array(key),
+            new Uint8Array(iv)
+        );
+        const blob = new Blob([decrypted], { type: fileType });
+        const objectUrl = URL.createObjectURL(blob);
+
+        if (fileType.startsWith('image/')) {
+            div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal && window.openImageModal('${objectUrl}')">`;
+        } else if (fileType.startsWith('audio/')) {
+            // Добавляем метку "Голосовое сообщение"
+            div.innerHTML = `
+                <div class="voice-message-label">🎤 Голосовое сообщение расшифрованное    </div>
+                <audio controls src="${objectUrl}" style="width:100%;"></audio>
+            `;
+        } else {
+            div.innerHTML = `<a href="${objectUrl}" download>Download file</a>`;
         }
-
-        try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const encryptedBlob = await res.arrayBuffer();
-            const key = DarkCrypto.base64ToArrayBuffer(keyBase64);
-            const iv = DarkCrypto.base64ToArrayBuffer(ivBase64);
-            const decrypted = await DarkCrypto.decryptFile(
-                new Uint8Array(encryptedBlob),
-                new Uint8Array(key),
-                new Uint8Array(iv)
-            );
-            const blob = new Blob([decrypted], { type: fileType });
-            const objectUrl = URL.createObjectURL(blob);
-
-            if (fileType.startsWith('image/')) {
-                div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal && window.openImageModal('${objectUrl}')">`;
-            } else if (fileType.startsWith('audio/')) {
-                div.innerHTML = `<audio controls src="${objectUrl}" style="width:100%;"></audio>`;
-            } else {
-                div.innerHTML = `<a href="${objectUrl}" download>Download file</a>`;
-            }
-        } catch (err) {
-            console.error('Decryption error:', err);
-            div.innerHTML = `<span class="text-error">Failed to decrypt file</span>`;
-            if (window.NotificationManager) {
-                window.NotificationManager.showToast('Could not load file', 'error');
-            }
+    } catch (err) {
+        console.error('Decryption error:', err);
+        div.innerHTML = `<span class="text-error">Failed to decrypt file</span>`;
+        if (window.NotificationManager) {
+            window.NotificationManager.showToast('Could not load file', 'error');
         }
     }
+}
 
     function updateStatusIcon(msgDiv, status) {
         const icon = msgDiv.querySelector('.message-status');
