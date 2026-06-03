@@ -20,11 +20,20 @@ from typing import Dict, List, Optional, Tuple
 from collections import deque
 from dataclasses import dataclass, field, asdict
 import numpy as np
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import aiohttp
 from ddgs import DDGS
+
+from config import (
+    EASYDIFFUSION_ENABLED,
+    EASYDIFFUSION_URL,
+    EASYDIFFUSION_TIMEOUT,
+    EASYDIFFUSION_DEFAULT_STEPS,
+    EASYDIFFUSION_DEFAULT_WIDTH,
+    EASYDIFFUSION_DEFAULT_HEIGHT,
+)
 
 try:
     from dependencies import require_auth
@@ -76,12 +85,21 @@ SEARCH_CACHE_TTL = 300
 _search_cache: Dict[str, Tuple[str, float]] = {}
 
 # Количество страниц для загрузки из результатов поиска
-MAX_PAGES_TO_FETCH = 3
-PAGE_CONTENT_MAX_CHARS = 4000
+MAX_PAGES_TO_FETCH = 6
+PAGE_CONTENT_MAX_CHARS = 6000
 
 # ==================================================================
 # 🌐 Web Search Tool — использующий ddgs (duckduckgo-search)
 # ==================================================================
+# Модель для запроса генерации изображения
+class ImageGenRequest(BaseModel):
+    prompt: str = Field(..., description="Текстовое описание изображения")
+    negative_prompt: Optional[str] = Field("", description="Что не нужно изображать")
+    steps: int = Field(EASYDIFFUSION_DEFAULT_STEPS, ge=1, le=50)
+    width: int = Field(EASYDIFFUSION_DEFAULT_WIDTH, ge=256, le=1024)
+    height: int = Field(EASYDIFFUSION_DEFAULT_HEIGHT, ge=256, le=1024)
+    cfg_scale: float = Field(7.0, ge=1.0, le=20.0)
+    seed: Optional[int] = Field(None, description="Фиксированный seed для повторяемости")
 
 class WebSearchTool:
     """
@@ -785,6 +803,10 @@ class SelfImprovingAssistant:
         self.current_lr = LEARNING_RATE
         self.total_interactions = 0
         self.successful_learnings = 0
+        # внутри __init__, после других инициализаций
+        self.image_generation_cache: Dict[str, Tuple[str, float]] = {}
+        self.image_gen_cache_path = self.user_dir / 'image_gen_cache.pkl.gz'
+        self._load_image_gen_cache()
 
     def _load(self):
         if self.neural_path.exists():
@@ -848,6 +870,7 @@ class SelfImprovingAssistant:
         for path, attr in [(self.cache_path, 'cache'), (self.image_cache_path, 'image_cache')]:
             with gzip.open(path, 'wb') as f:
                 pickle.dump(getattr(self, attr), f)
+        self._save_image_gen_cache()
 
     def _cache_key(self, message, image_base64=None):
         if image_base64:
@@ -1196,7 +1219,22 @@ class SelfImprovingAssistant:
 
         yield "data: [DONE]\n\n"
 
+    def _load_image_gen_cache(self):
+        if self.image_gen_cache_path.exists():
+            try:
+                with gzip.open(self.image_gen_cache_path, 'rb') as f:
+                    data = pickle.load(f)
+                now = time.time()
+                self.image_generation_cache = {k: (v, ts) for k, (v, ts) in data.items() if now - ts < 3600}
+            except Exception as e:
+                logger.warning(f"Failed to load image gen cache: {e}")
 
+    def _save_image_gen_cache(self):
+        try:
+            with gzip.open(self.image_gen_cache_path, 'wb') as f:
+                pickle.dump(self.image_generation_cache, f)
+        except Exception as e:
+            logger.error(f"Failed to save image gen cache: {e}")
 # ==================================================================
 # 🌐 FastAPI роутер
 # ==================================================================
@@ -1230,7 +1268,11 @@ async def chat_with_ai(body: AIRequest, address: str = Depends(require_auth)):
                 web_search=body.web_search, url_to_fetch=body.url_to_fetch,
             ),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache,no-store,must-revalidate", "X-Accel-Buffering": "no"}
+            headers={
+                "Cache-Control": "no-cache,no-store,must-revalidate",
+                "X-Accel-Buffering": "no",
+                "Content-Encoding": "identity",  # запрещаем сжатие
+            }
         )
     response, meta = await assistant.get_response(
         message=body.message, image_base64=body.image_base64,
@@ -1262,6 +1304,157 @@ async def classify_query_endpoint(body: dict, address: str = Depends(require_aut
     query_type, _ = WebSearchTool.classify_query(message)
     should = WebSearchTool.should_auto_search(message)
     return {"should_search": should, "query_type": query_type}
+
+
+@router.post("/generate_image")
+async def generate_image(body: ImageGenRequest, address: str = Depends(require_auth)):
+    if not EASYDIFFUSION_ENABLED:
+        raise HTTPException(503, "Image generation is disabled on this server")
+
+    api_url = f"{EASYDIFFUSION_URL}/render"
+    payload = {
+        "prompt": body.prompt,
+        "negative_prompt": body.negative_prompt or "",
+        "width": body.width,
+        "height": body.height,
+        "num_inference_steps": body.steps,
+        "guidance_scale": body.cfg_scale,
+        "sampler_name": "euler_a",
+        "seed": body.seed if body.seed is not None else -1,
+        "clip_skip": True,
+        "use_stable_diffusion_model": "fallenleafNSFWXLPony_v0620steps",
+        'use_lora_model': 'Realism Lora By Stable Yogi_V3_Lite',
+        "use_vae_model": "",
+    }
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                api_url,
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=EASYDIFFUSION_TIMEOUT)
+            ) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    logger.error(f"Easy Diffusion HTTP {resp.status}: {error_text[:200]}")
+                    raise HTTPException(502, f"Image service error: {error_text[:100]}")
+
+                # Читаем как текст, чтобы избежать проблем с лишними данными
+                raw_text = await resp.text()
+                logger.debug(f"Raw response: {raw_text[:500]}")
+
+                # Пытаемся извлечь первый JSON-объект
+                data = None
+                decoder = json.JSONDecoder()
+                try:
+                    data, end_idx = decoder.raw_decode(raw_text)
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON decode error: {e}, raw: {raw_text[:200]}")
+                    # Возможно, ответ в формате SSE: ищем строку "data: "
+                    if raw_text.startswith("data: "):
+                        json_part = raw_text[6:].strip()
+                        data = json.loads(json_part)
+                    else:
+                        raise HTTPException(500, f"Invalid JSON response: {raw_text[:200]}")
+
+                if not data or not isinstance(data, dict):
+                    raise HTTPException(500, f"Invalid response format: {data}")
+
+            # Если получили асинхронный ответ с queue и stream
+            if "queue" in data and "stream" in data:
+                stream_url = f"{EASYDIFFUSION_URL}{data['stream']}"
+                task_id = data.get("task")
+                logger.info(f"Task {task_id} queued, polling {stream_url}")
+
+                start_time = time.time()
+                while time.time() - start_time < EASYDIFFUSION_TIMEOUT:
+                    await asyncio.sleep(1)
+                    async with session.get(stream_url) as stream_resp:
+                        if stream_resp.status != 200:
+                            continue
+                        stream_text = await stream_resp.text()
+                        # Извлекаем JSON из потока (может быть несколько строк)
+                        try:
+                            stream_data = json.loads(stream_text)
+                        except:
+                            # Если это SSE, ищем "data: {"
+                            if stream_text.startswith("data: "):
+                                stream_text = stream_text[6:].strip()
+                                stream_data = json.loads(stream_text)
+                            else:
+                                continue
+                        output = stream_data.get("output")
+                        if output and isinstance(output, list) and len(output) > 0 and "data" in output[0]:
+                            return {"image_base64": output[0]["data"], "cached": False}
+                raise HTTPException(504, "Timeout waiting for image generation")
+
+            # Синхронный ответ
+            output = data.get("output")
+            if output and isinstance(output, list) and len(output) > 0 and "data" in output[0]:
+                return {"image_base64": output[0]["data"], "cached": False}
+
+            raise HTTPException(500, f"Unexpected response: {data}")
+
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Image generation timeout")
+    except aiohttp.ClientError as e:
+        logger.error(f"Easy Diffusion connection error: {e}")
+        raise HTTPException(503, f"Cannot connect to Easy Diffusion at {EASYDIFFUSION_URL}")
+    except Exception as e:
+        logger.exception("Unexpected error in image generation")
+        raise HTTPException(500, f"Generation failed: {str(e)}")
+
+
+@router.post("/enhance_prompt")
+async def enhance_prompt(body: dict, address: str = Depends(require_auth)):
+    """
+    Улучшает промт для генерации изображений.
+    Принимает запрос пользователя на любом языке, возвращает детальный английский промт.
+    """
+    prompt = body.get("prompt", "").strip()
+    if not prompt:
+        return {"enhanced": prompt}
+
+    assistant = await get_assistant(address)
+
+    system = (
+        "You are an expert prompt engineer for Stable Diffusion. "
+        "Your task: convert the user's request into a detailed, vivid, English prompt for image generation. "
+        "Include subject, environment, lighting, colors, composition, mood, style (e.g., photorealistic, cinematic, oil painting, anime), "
+        "and any specific details the user mentioned. "
+        "Do NOT include technical parameters like steps, width, height, or CFG scale. "
+        "Output ONLY the prompt text, nothing else. No quotes, no extra commentary."
+    )
+
+    user_msg = (
+        f"User request: \"{prompt}\"\n"
+        "Generate a rich, detailed English prompt for Stable Diffusion that captures all the key elements."
+    )
+
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_msg}
+    ]
+
+    enhanced = await assistant._call_llm(messages)
+
+    # Если не удалось получить качественный промт, пробуем хотя бы перевести
+    if not enhanced or len(enhanced) < 5:
+        fallback_msg = f"Translate the following into English, keep it detailed:\n{prompt}"
+        messages_fb = [
+            {"role": "system", "content": "You are a translator. Output only the English translation."},
+            {"role": "user", "content": fallback_msg}
+        ]
+        enhanced = await assistant._call_llm(messages_fb)
+        if not enhanced:
+            enhanced = prompt
+
+    # Очистка от возможных кавычек и лишних пробелов
+    enhanced = enhanced.strip().strip('"').strip("'")
+    return {"enhanced": enhanced}
+
 
 def _shutdown_all():
     for uid, a in _assistants.items():

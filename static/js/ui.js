@@ -1,14 +1,12 @@
-// ui.js — все функции, связанные с DOM и интерфейсом чата
+// ui.js — полная версия с исправленным скроллом после кеша
 (function() {
     if (window._uiLoaded) return;
     window._uiLoaded = true;
 
-    // ========== Умный скролл и бейдж ==========
     function isUserAtBottom(container, threshold = 50) {
         if (!container) return false;
         return container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
     }
-
     function smartScrollToBottom(container, force = false) {
         if (!container) return;
         if (force || isUserAtBottom(container)) {
@@ -17,7 +15,6 @@
             showNewMessagesBadge();
         }
     }
-
     function showNewMessagesBadge() {
         if (document.getElementById('newMessagesBadge')) return;
         const badge = document.createElement('button');
@@ -33,7 +30,6 @@
         setTimeout(() => badge?.remove(), 15000);
     }
 
-    // ========== Пагинация (загрузка старых сообщений) ==========
     async function loadOlderMessages(chatId, beforeId) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
@@ -42,16 +38,23 @@
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             if (data.messages?.length) {
-                const fragment = document.createDocumentFragment();
+                const olderMessages = [];
                 for (const msg of data.messages) {
                     if (document.getElementById('msg-' + msg.id)) continue;
                     const decrypted = await window.processMessageDecryption(msg);
-                    const div = createMessageElement(decrypted);
-                    fragment.appendChild(div);
+                    olderMessages.push(decrypted);
                 }
-                container.insertBefore(fragment, container.firstChild);
-                State.lastKnownMessageId = Math.min(...data.messages.map(m => m.id));
-                setupTopObserver();
+                if (olderMessages.length) {
+                    window.addMessagesToCache(chatId, olderMessages, 'start');
+                    const fragment = document.createDocumentFragment();
+                    for (const msg of olderMessages) fragment.appendChild(createMessageElement(msg));
+                    const firstChild = container.firstChild;
+                    if (firstChild) container.insertBefore(fragment, firstChild);
+                    else container.appendChild(fragment);
+                    const firstMsgId = olderMessages[0]?.id;
+                    if (firstMsgId) State.lastKnownMessageId = Math.min(State.lastKnownMessageId, firstMsgId);
+                    setupTopObserver();
+                }
             }
         } catch (e) { console.error('Older messages error:', e); }
     }
@@ -70,7 +73,6 @@
         }
     }
 
-    // ========== Создание элемента сообщения ==========
     function createMessageElement(msg) {
         const messageDiv = document.createElement('div');
         messageDiv.id = 'msg-' + msg.id;
@@ -86,15 +88,30 @@
             ? ''
             : '<strong>' + Utils.escapeHtml(msg.sender_name || (msg.sender ? msg.sender.slice(0,10)+'…' : '')) + '</strong><br>';
 
-        let imageHtml = '';
+        let mediaHtml = '';
         if (msg.image) {
-            imageHtml = `<img src="${Utils.escapeHtml(msg.image)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(msg.image)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
+            let imageUrl = msg.image;
+            if (!imageUrl.startsWith('data:image') && !imageUrl.startsWith('http'))
+                imageUrl = 'data:image/jpeg;base64,' + imageUrl;
+            mediaHtml = `<img src="${Utils.escapeHtml(imageUrl)}" alt="Image" loading="lazy" onclick="openImageModal('${Utils.escapeHtml(imageUrl)}')" style="cursor:pointer;max-width:100%;border-radius:6px;margin:4px 0;">`;
+        }
+        if (msg.fileUrl && msg.fileKey && msg.fileIv) {
+            const safeUrl = Utils.escapeHtml(msg.fileUrl);
+            const safeKey = Utils.escapeHtml(msg.fileKey);
+            const safeIv = Utils.escapeHtml(msg.fileIv);
+            const safeType = Utils.escapeHtml(msg.fileType || '');
+            mediaHtml = `<div class="file-attachment" data-url="${safeUrl}"
+                         data-key="${safeKey}" data-iv="${safeIv}" data-type="${safeType}">
+                         <span>⏳ Decrypting...</span></div>`;
+            setTimeout(() => decryptAndShowAttachment(messageDiv), 0);
         }
 
         const timeStr = Utils.formatTimestamp(msg.timestamp);
         const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" title="Delete">🗑</button>` : '';
 
-        messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div><div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>${imageHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
+        messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div>
+                               <div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>
+                               ${mediaHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
 
         if (msg.is_mine) {
             const statusSpan = document.createElement('span');
@@ -110,6 +127,43 @@
         return messageDiv;
     }
 
+    async function decryptAndShowAttachment(messageDiv) {
+        const div = messageDiv.querySelector('.file-attachment');
+        if (!div) return;
+        const url = div.dataset.url;
+        const keyBase64 = div.dataset.key;
+        const ivBase64 = div.dataset.iv;
+        const fileType = div.dataset.type;
+
+        if (!url || !keyBase64 || !ivBase64) {
+            div.innerHTML = '<span class="text-error">Invalid file data</span>';
+            return;
+        }
+
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const encryptedBlob = await res.arrayBuffer();
+            const key = DarkCrypto.base64ToArrayBuffer(keyBase64);
+            const iv = DarkCrypto.base64ToArrayBuffer(ivBase64);
+            const decrypted = await DarkCrypto.decryptFile(new Uint8Array(encryptedBlob), new Uint8Array(key), new Uint8Array(iv));
+            const blob = new Blob([decrypted], { type: fileType });
+            const objectUrl = URL.createObjectURL(blob);
+
+            if (fileType.startsWith('image/')) {
+                div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal('${objectUrl.replace(/'/g, "\\'")}')">`;
+            } else if (fileType.startsWith('audio/')) {
+                div.innerHTML = `<div class="voice-message-label">🎤 Голосовое сообщение расшифрованное</div><audio controls src="${objectUrl}" style="width:100%;"></audio>`;
+            } else {
+                div.innerHTML = `<a href="${objectUrl}" download>Download file</a>`;
+            }
+        } catch (err) {
+            console.error('Decryption error:', err);
+            div.innerHTML = `<span class="text-error">Failed to decrypt file</span>`;
+            if (window.NotificationManager) window.NotificationManager.showToast('Could not load file', 'error');
+        }
+    }
+
     function updateStatusIcon(msgDiv, status) {
         const icon = msgDiv.querySelector('.message-status');
         if (!icon) return;
@@ -118,24 +172,15 @@
         else if (status === 'read') { icon.textContent = '✓✓'; icon.style.color = '#4caf50'; }
     }
 
-    // ========== НОВОЕ: получение статусов для массива адресов ==========
     async function fetchUserStatuses(addresses) {
         if (!addresses.length) return {};
         try {
-            const res = await fetch('/get_many_statuses', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ addresses })
-            });
+            const res = await fetch('/get_many_statuses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ addresses }) });
             const data = await res.json();
             return data.statuses || {};
-        } catch (err) {
-            console.warn('Failed to fetch statuses:', err);
-            return {};
-        }
+        } catch (err) { console.warn('Failed to fetch statuses:', err); return {}; }
     }
 
-    // ========== Загрузка списка диалогов ==========
     async function loadConversations() {
         const container = document.getElementById('conversationsList');
         if (!container) return;
@@ -143,12 +188,11 @@
             const res = await fetch('/get_conversations');
             const data = await res.json();
             if (!res.ok || !data.conversations?.length) {
-                container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>No conversations yet</p><button class="btn btn-primary" onclick="openNewChatModal()">Start one</button></div>';
+                container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>No conversations yet</p><button class="btn-primary-oval" onclick="openNewChatModal()">Start one</button></div>';
                 return;
             }
             container.innerHTML = '';
             const convElements = [];
-
             for (const conv of data.conversations) {
                 const isGroup = !!conv.is_group;
                 const address = conv.address || '';
@@ -161,36 +205,25 @@
                 const initials = displayName.slice(0,2).toUpperCase();
                 let previewText = Utils.escapeHtml(conv.last_preview || 'No messages');
                 item.innerHTML = `<div class="avatar ${isGroup ? 'group' : ''}">${Utils.escapeHtml(initials)}</div>
-                    <div class="info">
-                        <div class="name truncate">${Utils.escapeHtml(shortName)}</div>
-                        <div class="meta"><span class="status"></span><span class="truncate">${previewText}</span></div>
-                    </div>`;
-                item.onclick = () => selectConversation(address, conv.name || address, isGroup);
+                    <div class="info"><div class="name truncate">${Utils.escapeHtml(shortName)}</div><div class="meta"><span class="status"></span><span class="truncate">${previewText}</span></div></div>`;
+                item.onclick = ((addr, name, group) => () => window.selectConversation(addr, name, group))(address, conv.name || address, isGroup);
                 container.appendChild(item);
                 convElements.push({ el: item, address, isGroup });
             }
-
-            // НОВОЕ: запрашиваем статусы для всех не-групповых диалогов (кроме себя)
-            const addressesToCheck = convElements
-                .filter(c => !c.isGroup && c.address !== State.userAddress)
-                .map(c => c.address);
+            const addressesToCheck = convElements.filter(c => !c.isGroup && c.address !== State.userAddress).map(c => c.address);
             if (addressesToCheck.length) {
                 const statuses = await fetchUserStatuses(addressesToCheck);
                 for (const { el, address } of convElements) {
                     if (addressesToCheck.includes(address)) {
                         const status = statuses[address]?.status || 'offline';
                         const statusSpan = el.querySelector('.status');
-                        if (statusSpan) {
-                            statusSpan.className = `status ${status}`;
-                            statusSpan.title = status === 'online' ? 'Online' : 'Offline';
-                        }
+                        if (statusSpan) { statusSpan.className = `status ${status}`; statusSpan.title = status === 'online' ? 'Online' : 'Offline'; }
                     }
                 }
             }
         } catch (error) { console.error('Load conversations error:', error); container.innerHTML = '<p class="text-muted text-center">Failed to load</p>'; }
     }
 
-    // ========== Выбор диалога и загрузка сообщений ==========
     async function selectConversation(address, name, isGroup) {
         if (State.topObserver) { State.topObserver.disconnect(); State.topObserver = null; }
         if (window.isSending) window.isSending = false;
@@ -198,12 +231,15 @@
         State.currentChatIsGroup = !!isGroup;
         State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
 
+        if (window.clearMainImagePreview) window.clearMainImagePreview();
+        else { const previewDiv = document.getElementById('mainImagePreview'); if (previewDiv) previewDiv.remove(); }
+
         fetch('/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_chat: address }) }).catch(e=>{});
 
         const aiContainer = document.getElementById('aiChatContainer');
         const mainContainer = document.getElementById('messagesContainer');
-        const mainInputArea = document.querySelector('.main-content .input-area');
-        const mainChatHeader = document.querySelector('.main-content .chat-header');
+        const mainInputArea = document.querySelector('.chat-panel .input-area');
+        const mainChatHeader = document.querySelector('.chat-panel .chat-panel-header');
 
         if (address === 'ai_bot') {
             if (mainContainer) mainContainer.style.display = 'none';
@@ -247,7 +283,6 @@
         if (window.stopStatusPolling) window.stopStatusPolling();
         if (window.startStatusPolling) window.startStatusPolling();
         await loadMessagesForConversation(address, false);
-        if (window.innerWidth <= 768 && typeof closeSidebar === 'function') closeSidebar();
     }
 
     async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
@@ -258,74 +293,116 @@
             _enableChatControls();
             return;
         }
-        const isGroup = chatWithAddress.startsWith('group:');
-        const isPersonal = typeof Security !== 'undefined' ? Security.isValidAddress(chatWithAddress) : /^[a-f0-9]{64}$/.test(chatWithAddress);
-        if (!isGroup && !isPersonal) {
-            container.innerHTML = '<p class="text-muted text-center">Invalid conversation</p>';
-            container.classList.remove('loading');
+
+        const cached = window.getCachedMessages(chatWithAddress);
+        let lastKnownId = 0;
+
+        // ---------- ПОКАЗ КЕШИРОВАННЫХ СООБЩЕНИЙ (с исправленным скроллом) ----------
+        if (!isNewMessage && cached.length > 0) {
+            container.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            for (const msg of cached) {
+                let displayMsg = msg;
+                if (!msg.isDecrypted) {
+                    try {
+                        displayMsg = await window.processMessageDecryption(msg);
+                    } catch(e) {
+                        console.warn('Failed to decrypt cached message', msg.id, e);
+                        displayMsg = { ...msg, content: '🔒 Decrypt error', isDecrypted: false };
+                    }
+                }
+                fragment.appendChild(createMessageElement(displayMsg));
+                if (displayMsg.id > lastKnownId) lastKnownId = displayMsg.id;
+            }
+            container.appendChild(fragment);
+
+            // ✅ Исправленный скролл: дожидаемся отрисовки и скроллим к последнему сообщению
+            const scrollToBottom = () => {
+                const lastMsg = container.querySelector('.message:last-child');
+                if (lastMsg) {
+                    lastMsg.scrollIntoView({ behavior: 'auto', block: 'end' });
+                } else {
+                    container.scrollTop = container.scrollHeight;
+                }
+            };
+            setTimeout(scrollToBottom, 50);
+            setTimeout(scrollToBottom, 300); // повторный скролл для вложений
+
+            State.lastKnownMessageId = lastKnownId;
             _enableChatControls();
-            return;
+            setupTopObserver();
+            if (cached.length) markConversationAsRead(chatWithAddress, cached[cached.length-1].id);
+        } else if (!isNewMessage) {
+            container.innerHTML = '<div class="loading">Loading messages…</div>';
+            container.classList.add('loading');
         }
-        if (!isNewMessage) { container.innerHTML = '<div class="loading">Loading messages…</div>'; container.classList.add('loading'); }
+
+        // ---------- ЗАГРУЗКА НОВЫХ СООБЩЕНИЙ С СЕРВЕРА ----------
         try {
             const params = new URLSearchParams({ with: chatWithAddress });
-            if (isNewMessage && State.lastKnownMessageId > 0) params.append('last_message_id', State.lastKnownMessageId);
+            if (lastKnownId > 0) params.append('last_message_id', lastKnownId);
+
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
             const res = await fetch('/get_conversation?' + params.toString(), { signal: controller.signal });
             clearTimeout(timeout);
             const data = await res.json();
-            container.classList.remove('loading');
+
             if (!res.ok) throw new Error(data.error || 'Failed to load');
+
             const rawMessages = Array.isArray(data.messages) ? data.messages : [];
-            const messages = [];
-            for (const msg of rawMessages) {
-                try { messages.push(await window.processMessageDecryption(msg)); }
-                catch(e) { messages.push({ ...msg, content: '🔒 Decrypt error', image: null }); }
-            }
-            if (!messages.length) {
-                if (isNewMessage) { _enableChatControls(); return; }
-                container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">👋</div><p>No messages yet</p><p class="text-muted" style="font-size:12px">Start the conversation!</p></div>';
-                _enableChatControls();
+            if (rawMessages.length === 0) {
+                if (!isNewMessage && cached.length === 0) {
+                    container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">👋</div><p>No messages yet</p><p class="text-muted" style="font-size:12px">Start the conversation!</p></div>';
+                    _enableChatControls();
+                }
+                container.classList.remove('loading');
                 return;
             }
-            if (!isNewMessage) container.innerHTML = '';
-            let maxTimestamp = 0;
-            const fragment = document.createDocumentFragment();
-            messages.forEach(msg => {
-                if (document.getElementById('msg-'+msg.id)) return;
-                if (msg.timestamp > maxTimestamp) maxTimestamp = msg.timestamp;
-                fragment.appendChild(createMessageElement(msg));
-                if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
-                if (!msg.is_mine && isNewMessage) {
-                    window.NotificationManager?.handleIncomingMessage?.({ sender: msg.sender, chatId: chatWithAddress, content: msg.content, image: msg.image, timestamp: (msg.timestamp||Date.now()/1000)*1000 });
-                }
-            });
-            container.appendChild(fragment);
-            State.lastMessageTimestamp = maxTimestamp;
-            if (messages.length) markConversationAsRead(chatWithAddress, messages[messages.length-1].id);
-            if (!isNewMessage) { container.scrollTop = container.scrollHeight; }
-            else {
-                const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-                if (wasNearBottom) container.scrollTop = container.scrollHeight;
-                else showNewMessagesBadge();
+
+            const newMessages = [];
+            for (const msg of rawMessages) {
+                try {
+                    const decrypted = await window.processMessageDecryption(msg);
+                    newMessages.push(decrypted);
+                } catch(e) { newMessages.push({ ...msg, content: '🔒 Decrypt error', image: null }); }
             }
+
+            window.addMessagesToCache(chatWithAddress, newMessages, 'end');
+
+            if (container) {
+                const wasAtBottom = isUserAtBottom(container, 30);
+                for (const msg of newMessages) {
+                    if (document.getElementById('msg-' + msg.id)) continue;
+                    const msgEl = createMessageElement(msg);
+                    container.appendChild(msgEl);
+                    if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
+                }
+                if (wasAtBottom) {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                } else if (!isNewMessage && cached.length === 0) {
+                    container.scrollTop = container.scrollHeight;
+                } else if (newMessages.length && !isNewMessage) {
+                    showNewMessagesBadge();
+                }
+            }
+
+            if (!isNewMessage && cached.length === 0 && newMessages.length) setupTopObserver();
+
             _enableChatControls();
-            if (!isNewMessage) setupTopObserver();
+            if (newMessages.length) markConversationAsRead(chatWithAddress, newMessages[newMessages.length-1].id);
         } catch (error) {
             console.error('Load messages error:', error);
             container.classList.remove('loading');
-            if (!isNewMessage) container.innerHTML = '<p class="text-muted text-center">Failed to load messages</p>';
+            if (!isNewMessage && cached.length === 0) container.innerHTML = '<p class="text-muted text-center">Failed to load messages</p>';
             _enableChatControls();
         }
+        container.classList.remove('loading');
     }
 
     function markConversationAsRead(chatId, explicitLastMessageId) {
         const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
-        if (item) {
-            const meta = item.querySelector('.meta .truncate');
-            if (meta) { meta.textContent = '✓ Read'; meta.style.fontStyle = 'italic'; }
-        }
+        if (item) { const meta = item.querySelector('.meta .truncate'); if (meta) { meta.textContent = '✓ Read'; meta.style.fontStyle = 'italic'; } }
         let lastMessageId = explicitLastMessageId;
         if (lastMessageId === undefined) {
             const lastMsg = document.querySelector('#messagesContainer .message:last-of-type');
@@ -337,34 +414,41 @@
     function updateConversationPreview(chatId, newPreview) {
         const items = document.querySelectorAll('.conversation-item');
         for (const item of items) {
-            if (item.dataset.address === chatId) {
-                const meta = item.querySelector('.meta .truncate');
-                if (meta) meta.textContent = newPreview;
-                break;
-            }
+            if (item.dataset.address === chatId) { const meta = item.querySelector('.meta .truncate'); if (meta) meta.textContent = newPreview; break; }
         }
     }
 
     function _disableChatControls() {
-        ['messageContent', 'attachImageButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.disabled = true;
-        });
+        ['messageContent', 'attachImageButton', 'attachAudioButton', 'recordAudioButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
     }
     function _enableChatControls() {
-        ['messageContent', 'attachImageButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.disabled = false;
-        });
+        ['messageContent', 'attachImageButton', 'attachAudioButton', 'recordAudioButton', 'sendButton', 'addToContactsBtn', 'clearConversationBtn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
         const btn = document.getElementById('addToContactsBtn');
         if (btn) {
-            if (State.currentChatIsGroup || !State.currentChatPartnerAddress || State.currentChatPartnerAddress === State.userAddress) {
-                btn.disabled = true; btn.title = "Cannot add group or yourself";
-            } else { btn.disabled = false; btn.title = "Add to contacts"; }
+            if (State.currentChatIsGroup || !State.currentChatPartnerAddress || State.currentChatPartnerAddress === State.userAddress) { btn.disabled = true; btn.title = "Cannot add group or yourself"; }
+            else { btn.disabled = false; btn.title = "Add to contacts"; }
         }
     }
 
-    // Callback для нового сообщения из WebSocket
+    function openImageModal(imageUrl) {
+        const modal = document.getElementById('imageModal');
+        const img = document.getElementById('modalImage');
+        if (!modal || !img) return;
+        img.src = imageUrl;
+        modal.classList.remove('hidden');
+        const downloadBtn = document.getElementById('downloadImageBtn');
+        if (downloadBtn) {
+            const newBtn = downloadBtn.cloneNode(true);
+            downloadBtn.parentNode.replaceChild(newBtn, downloadBtn);
+            newBtn.onclick = () => {
+                const a = document.createElement('a'); a.href = img.src; a.download = 'image.png'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                if (window.NotificationManager) window.NotificationManager.showToast('Изображение сохранено', 'success');
+            };
+        }
+    }
+
+    function closeImageModal() { const modal = document.getElementById('imageModal'); if (modal) modal.classList.add('hidden'); }
+
     window.onNewMessageReceived = function(decrypted) {
         const container = document.getElementById('messagesContainer');
         if (container) {
@@ -373,23 +457,15 @@
             container.appendChild(msgElement);
             if (wasAtBottom) { setTimeout(() => { container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); }, 50); }
             else { showNewMessagesBadge(); }
-            if (!decrypted.is_mine) { fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e=>console.warn); }
+            if (!decrypted.is_mine) fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e=>console.warn);
         }
     };
 
-    // НОВОЕ: обновить статус конкретного диалога по WebSocket
     window.updateConversationStatus = function(address, status) {
         const item = document.querySelector(`.conversation-item[data-address="${address}"]`);
-        if (item && !item.dataset.isGroup) {
-            const statusSpan = item.querySelector('.status');
-            if (statusSpan) {
-                statusSpan.className = `status ${status}`;
-                statusSpan.title = status === 'online' ? 'Online' : 'Offline';
-            }
-        }
+        if (item && !item.dataset.isGroup) { const statusSpan = item.querySelector('.status'); if (statusSpan) { statusSpan.className = `status ${status}`; statusSpan.title = status === 'online' ? 'Online' : 'Offline'; } }
     };
 
-    // Экспорт для других модулей и глобального доступа
     window.loadConversations = loadConversations;
     window.selectConversation = selectConversation;
     window.loadMessagesForConversation = loadMessagesForConversation;
@@ -401,5 +477,7 @@
     window.setupTopObserver = setupTopObserver;
     window._enableChatControls = _enableChatControls;
     window._disableChatControls = _disableChatControls;
-    window.fetchUserStatuses = fetchUserStatuses; // НОВОЕ
+    window.fetchUserStatuses = fetchUserStatuses;
+    window.openImageModal = openImageModal;
+    window.closeImageModal = closeImageModal;
 })();

@@ -1,4 +1,4 @@
-// core.js — ядро мессенджера с поддержкой зашифрованного localStorage
+// core.js — ядро мессенджера с поддержкой зашифрованного localStorage и кеша сообщений
 (function() {
     if (window._coreLoaded) return;
     window._coreLoaded = true;
@@ -43,18 +43,62 @@
     window.userKeys = null;
     window.pubKeyCache = new Map();
 
+    // ========== 🧠 Кеш сообщений (в памяти, на время сессии) ==========
+    window.messagesCache = new Map(); // key = chatId (string), value = массив сообщений, отсортированных по id (возрастание)
+
+    window.addMessageToCache = function(chatId, message, position = 'end') {
+        if (!chatId || !message || !message.id) return;
+        let messages = window.messagesCache.get(chatId);
+        if (!messages) {
+            messages = [];
+            window.messagesCache.set(chatId, messages);
+        }
+        const exists = messages.some(m => m.id === message.id);
+        if (exists) return;
+        if (position === 'start') {
+            messages.unshift(message);
+        } else {
+            messages.push(message);
+        }
+        messages.sort((a, b) => a.id - b.id);
+    };
+
+    window.addMessagesToCache = function(chatId, newMessages, position = 'end') {
+        if (!chatId || !newMessages?.length) return;
+        let messages = window.messagesCache.get(chatId);
+        if (!messages) {
+            messages = [];
+            window.messagesCache.set(chatId, messages);
+        }
+        if (position === 'start') {
+            messages.unshift(...newMessages);
+        } else {
+            messages.push(...newMessages);
+        }
+        const unique = new Map();
+        for (const msg of messages) unique.set(msg.id, msg);
+        const sorted = Array.from(unique.values()).sort((a, b) => a.id - b.id);
+        window.messagesCache.set(chatId, sorted);
+    };
+
+    window.getCachedMessages = function(chatId) {
+        return window.messagesCache.get(chatId) || [];
+    };
+
+    window.clearMessageCache = function(chatId) {
+        if (chatId) window.messagesCache.delete(chatId);
+        else window.messagesCache.clear();
+    };
+
     // ========== Управление зашифрованной мнемоникой ==========
     async function restoreMnemonic() {
         if (sessionStorage.getItem('mnemonic')) return true;
-
-        // Защита от редиректа на публичных страницах
         const publicPaths = ['/login', '/', '/index', '/create_wallet'];
         const currentPath = window.location.pathname;
         if (publicPaths.some(p => currentPath === p || currentPath.startsWith(p + '?'))) {
             console.debug('Public page, skipping mnemonic restore');
             return false;
         }
-
         if (State._restoringMnemonic) {
             return new Promise(resolve => {
                 const interval = setInterval(() => {
@@ -66,23 +110,19 @@
             });
         }
         State._restoringMnemonic = true;
-
         const encrypted = localStorage.getItem('encrypted_mnemonic');
         if (!encrypted) {
             window.location.href = '/login';
             State._restoringMnemonic = false;
             return false;
         }
-
         return new Promise((resolve) => {
             const modal = document.createElement('div');
             modal.className = 'modal-overlay';
             modal.style.zIndex = '10000';
             modal.innerHTML = `
                 <div class="modal" style="max-width:400px;">
-                    <div class="modal-header">
-                        <h3>Unlock wallet</h3>
-                    </div>
+                    <div class="modal-header"><h3>Unlock wallet</h3></div>
                     <div class="modal-body">
                         <p>Your encrypted wallet was found. Enter password to unlock.</p>
                         <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;">
@@ -95,12 +135,10 @@
                 </div>
             `;
             document.body.appendChild(modal);
-
             const passwordInput = modal.querySelector('#unlockPassword');
             const errorDiv = modal.querySelector('#unlockError');
             const confirmBtn = modal.querySelector('#confirmUnlock');
             const cancelBtn = modal.querySelector('#cancelUnlock');
-
             const attemptUnlock = async () => {
                 const pwd = passwordInput.value;
                 if (!pwd) {
@@ -123,7 +161,6 @@
                     confirmBtn.textContent = 'Unlock';
                 }
             };
-
             const clearAndLogout = () => {
                 localStorage.removeItem('encrypted_mnemonic');
                 sessionStorage.removeItem('mnemonic');
@@ -131,7 +168,6 @@
                 State._restoringMnemonic = false;
                 resolve(false);
             };
-
             confirmBtn.onclick = attemptUnlock;
             cancelBtn.onclick = clearAndLogout;
             passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') attemptUnlock(); });
@@ -264,7 +300,6 @@
     }
 
     async function initWebSocket() {
-        // Сначала восстанавливаем мнемонику, если её ещё нет
         if (!sessionStorage.getItem('mnemonic')) {
             const restored = await restoreMnemonic();
             if (!restored) return;
@@ -298,46 +333,141 @@
         } catch (err) { console.error('Failed to init WebSocket:', err); }
     }
 
-    // ========== Обработка входящих сообщений (WebSocket) ==========
+    // ========== Обработка входящих сообщений (WebSocket + расшифровка файлов) с обновлением кеша ==========
     async function processMessageDecryption(msg) {
         if (!msg.content) return msg;
         let content = msg.content;
         let image = msg.image;
+        let fileUrl = null, fileKey = null, fileIv = null, fileType = null;
+
         try {
             const parsed = JSON.parse(content);
+            const keys = await ensureKeys();
+            const arraysEqual = (a, b) => {
+                if (!a || !b || a.length !== b.length) return false;
+                for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+                return true;
+            };
+
+            // ---------- ГРУППОВОЙ ЧАТ ----------
             if (parsed.encrypted_map) {
                 const myAddr = State.userAddress;
                 const myEnc = parsed.encrypted_map[myAddr];
                 if (!myEnc) return { ...msg, content: '🔒 No access' };
-                const keys = await ensureKeys();
                 const senderPubKeyBytes = DarkCrypto._fromBase64(myEnc.sender_pubkey);
-                try {
-                    const ciphertext = DarkCrypto._base64ToArrayBuffer(myEnc.self_ciphertext || myEnc.ciphertext);
-                    const iv = DarkCrypto._fromBase64(myEnc.self_iv || myEnc.iv);
+                const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
+                if (isMine && myEnc.self_text) {
+                    const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
+                    const ciphertext = DarkCrypto._base64ToArrayBuffer(myEnc.self_text.ciphertext);
+                    const iv = DarkCrypto._fromBase64(myEnc.self_text.iv);
+                    content = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
+                } else if (myEnc.text) {
                     const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
+                    const ciphertext = DarkCrypto._base64ToArrayBuffer(myEnc.text.ciphertext);
+                    const iv = DarkCrypto._fromBase64(myEnc.text.iv);
                     content = await DarkCrypto.decryptAES(shared, ciphertext, iv);
-                    image = myEnc.image || null;
-                } catch (e) { content = '🔒 Encrypted message'; }
-                return { ...msg, content, image };
-            }
-            if (parsed.ciphertext && parsed.iv && parsed.sender_pubkey) {
-                const keys = await ensureKeys();
-                if (msg.is_mine) {
-                    if (parsed.self_ciphertext && parsed.self_iv) {
-                        const selfCiphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_ciphertext);
-                        const selfIv = DarkCrypto._fromBase64(parsed.self_iv);
-                        const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-                        content = await DarkCrypto.decryptAES(selfShared, selfCiphertext, selfIv);
-                        image = parsed.image || null;
-                    } else content = '🔒 Encrypted message (no self-copy)';
                 } else {
-                    const senderPubKeyBytes = DarkCrypto._fromBase64(parsed.sender_pubkey);
-                    content = await DarkCrypto.decryptMessage(keys.ecdhPrivateKey, senderPubKeyBytes, parsed.iv, parsed.ciphertext);
-                    image = parsed.image || null;
+                    content = '';
+                }
+                if (myEnc.file_url) {
+                    fileUrl = myEnc.file_url;
+                    fileType = myEnc.file_type;
+                    if (isMine && myEnc.self_file_key && myEnc.self_file_iv) {
+                        fileKey = myEnc.self_file_key;
+                        fileIv = myEnc.self_file_iv;
+                    } else if (myEnc.file_key && myEnc.file_iv) {
+                        const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
+                        const keyCipher = DarkCrypto._base64ToArrayBuffer(myEnc.file_key.ciphertext);
+                        const keyIv = DarkCrypto._fromBase64(myEnc.file_key.iv);
+                        const decKey = await DarkCrypto.decryptAES(shared, keyCipher, keyIv);
+                        const ivCipher = DarkCrypto._base64ToArrayBuffer(myEnc.file_iv.ciphertext);
+                        const ivIv = DarkCrypto._fromBase64(myEnc.file_iv.iv);
+                        const decIv = await DarkCrypto.decryptAES(shared, ivCipher, ivIv);
+                        fileKey = decKey;
+                        fileIv = decIv;
+                    }
+                }
+                const chatId = msg.recipient;
+                return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true };
+            }
+
+            // ---------- ЛИЧНЫЙ ЧАТ ----------
+            const senderPubKeyB64 = parsed.sender_pubkey || (parsed.myPubKey ? parsed.myPubKey : null);
+            if (!senderPubKeyB64) {
+                if (parsed.file_url) {
+                    fileUrl = parsed.file_url;
+                    fileType = parsed.file_type;
+                    if (parsed.self_file_key && parsed.self_file_iv) {
+                        fileKey = parsed.self_file_key;
+                        fileIv = parsed.self_file_iv;
+                    }
+                }
+                const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
+                // Для сообщений без pubkey ставим isDecrypted: false (не расшифровано)
+                return { ...msg, content: '🔒 No sender pubkey', image: null, fileUrl, fileKey, fileIv, fileType, is_mine: false, chatId, isDecrypted: false };
+            }
+
+            const senderPubKeyBytes = DarkCrypto._fromBase64(senderPubKeyB64);
+            const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
+
+            let decryptedText = '';
+            if (parsed.text && parsed.text.ciphertext && parsed.text.iv) {
+                if (isMine && parsed.self_text && parsed.self_text.ciphertext) {
+                    const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
+                    const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_text.ciphertext);
+                    const iv = DarkCrypto._fromBase64(parsed.self_text.iv);
+                    decryptedText = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
+                } else {
+                    const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
+                    const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.text.ciphertext);
+                    const iv = DarkCrypto._fromBase64(parsed.text.iv);
+                    decryptedText = await DarkCrypto.decryptAES(shared, ciphertext, iv);
+                }
+                content = decryptedText;
+            } else if (parsed.ciphertext && parsed.iv) {
+                if (isMine && parsed.self_text && parsed.self_text.ciphertext) {
+                    const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
+                    const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_text.ciphertext);
+                    const iv = DarkCrypto._fromBase64(parsed.self_text.iv);
+                    decryptedText = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
+                } else {
+                    const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
+                    const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.ciphertext);
+                    const iv = DarkCrypto._fromBase64(parsed.iv);
+                    decryptedText = await DarkCrypto.decryptAES(shared, ciphertext, iv);
+                }
+                content = decryptedText;
+            } else {
+                content = '';
+            }
+
+            if (parsed.file_url) {
+                fileUrl = parsed.file_url;
+                fileType = parsed.file_type;
+                if (isMine && parsed.self_file_key && parsed.self_file_iv) {
+                    fileKey = parsed.self_file_key;
+                    fileIv = parsed.self_file_iv;
+                } else if (parsed.file_key && parsed.file_iv) {
+                    const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
+                    const keyCipher = DarkCrypto._base64ToArrayBuffer(parsed.file_key.ciphertext);
+                    const keyIv = DarkCrypto._fromBase64(parsed.file_key.iv);
+                    const decKey = await DarkCrypto.decryptAES(shared, keyCipher, keyIv);
+                    const ivCipher = DarkCrypto._base64ToArrayBuffer(parsed.file_iv.ciphertext);
+                    const ivIv = DarkCrypto._fromBase64(parsed.file_iv.iv);
+                    const decIv = await DarkCrypto.decryptAES(shared, ivCipher, ivIv);
+                    fileKey = decKey;
+                    fileIv = decIv;
                 }
             }
-        } catch (e) { console.error('Decryption error', msg.id, e); return { ...msg, content: '🔒 Decrypt error', image: null }; }
-        return { ...msg, content, image };
+
+            const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
+            // Успешно расшифрованное личное сообщение – помечаем isDecrypted: true
+            return { ...msg, content, image: null, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true };
+        } catch (e) {
+            console.error('Decryption error', msg.id, e);
+            const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
+            return { ...msg, content: '🔒 Decrypt error', image: null, chatId, isDecrypted: false };
+        }
     }
 
     async function handleWebSocketMessage(data) {
@@ -356,6 +486,11 @@
 
         const decrypted = await processMessageDecryption(data);
         const chatId = decrypted.chatId;
+
+        // ✅ Добавляем входящее сообщение в кеш
+        if (decrypted && decrypted.id) {
+            window.addMessageToCache(chatId, decrypted, 'end');
+        }
 
         if (!decrypted.is_mine) {
             fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn);
@@ -464,12 +599,9 @@
             }
         }
     }
-
     function startUserStatusPolling() {
         if (userStatusPollingInterval) clearInterval(userStatusPollingInterval);
-        userStatusPollingInterval = setInterval(() => {
-            pollUserStatuses();
-        }, 30000);
+        userStatusPollingInterval = setInterval(() => { pollUserStatuses(); }, 30000);
     }
     function stopUserStatusPolling() {
         if (userStatusPollingInterval) {
@@ -478,7 +610,7 @@
         }
     }
 
-    // Экспорт глобальных функций/переменных
+    // Экспорт глобальных функций
     window.getPubKey = getPubKey;
     window.compressImage = compressImage;
     window.ensureKeys = ensureKeys;

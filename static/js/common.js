@@ -3,6 +3,7 @@
  * QR Scanner, Utils, DOM helpers, Security, Forms, Modals
  * ✅ Защита от повторной загрузки + ФИКСЫ для авто-добавления после сканирования
  * ✅ Добавлены глобальные модальные окна confirm/prompt
+ * ✅ ИСПРАВЛЕН QR-сканер: увеличены таймауты, добавлен сброс по времени
  */
 
 // === 🛡️ Защита от повторного объявления модулей ===
@@ -12,7 +13,6 @@
     return;
   }
   global.DarkMsgCommonLoaded = true;
-  // В начале common.js, после защиты от повторной загрузки
   window.modalOpen = false;
 
 // =============================================================================
@@ -316,7 +316,7 @@ const FormHelpers = {
 };
 
 // =============================================================================
-// === 📷 QR Scanner Module (✅ FULLY FIXED) ===
+// === 📷 QR Scanner Module (✅ FULLY FIXED - improved waiting) ===
 // =============================================================================
 const QRScanner = {
   stream: null,
@@ -324,12 +324,15 @@ const QRScanner = {
   active: false,
   _canvas: null,
   _ctx: null,
+  _videoReadyTimeout: null,
   config: {
     videoWidth: 1280,
     videoHeight: 720,
     scanSize: 400,
     inversionAttempts: "attemptBoth",
-    scanInterval: 100
+    scanInterval: 100,
+    videoWaitTimeout: 5000,    // 5 секунд максимум на готовность видео
+    videoWaitInterval: 100     // проверка каждые 100 мс
   },
 
   open(options) {
@@ -364,16 +367,26 @@ const QRScanner = {
       return videoEl.play().catch(err => { console.error('Video play failed:', err); throw err; });
     })
     .then(() => {
-      const waitForVideo = () => {
+      // Ждём, пока видео получит размеры, с таймаутом
+      let attempts = 0;
+      const maxAttempts = this.config.videoWaitTimeout / this.config.videoWaitInterval;
+      const checkVideo = () => {
         if (!this.active) return;
         if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
           console.log('📹 Video ready:', videoEl.videoWidth, 'x', videoEl.videoHeight);
           this._startScanning({ videoEl, resultEl, onScan, containerEl });
         } else {
-          setTimeout(waitForVideo, 50);
+          attempts++;
+          if (attempts >= maxAttempts) {
+            console.warn('QRScanner: video not ready after timeout');
+            this._showError('Camera not responding', resultEl, onClose);
+            this.close({ containerEl, videoEl });
+            return;
+          }
+          setTimeout(checkVideo, this.config.videoWaitInterval);
         }
       };
-      waitForVideo();
+      checkVideo();
     })
     .catch(err => {
       console.error('QRScanner error:', err.name, err.message);
@@ -389,6 +402,7 @@ const QRScanner = {
     const { containerEl, videoEl, resultEl, onClose } = options;
     this.active = false;
     if (this.animationFrame) { cancelAnimationFrame(this.animationFrame); this.animationFrame = null; }
+    if (this._videoReadyTimeout) { clearTimeout(this._videoReadyTimeout); this._videoReadyTimeout = null; }
     if (this.stream) { this._stopStream(this.stream); this.stream = null; }
     this._canvas = null;
     this._ctx = null;
@@ -407,7 +421,11 @@ const QRScanner = {
   _showError(message, resultEl, onClose) {
     console.warn('QRScanner error shown to user:', message);
     window.NotificationManager?.showToast(message, 'error');
-    if (resultEl) { resultEl.textContent = '⚠️ ' + message; resultEl.style.color = 'var(--status-error)'; DOM.show(resultEl); }
+    if (resultEl) {
+      resultEl.textContent = '⚠️ ' + message;
+      resultEl.style.color = 'var(--status-error)';
+      DOM.show(resultEl);
+    }
     setTimeout(() => { if (!this.active) this.close({ onClose }); }, 3000);
   },
 
@@ -421,13 +439,13 @@ const QRScanner = {
     }
     const canvas = this._canvas;
     const ctx = this._ctx;
-    const { scanSize, inversionAttempts } = this.config;
+    const { scanSize, inversionAttempts, scanInterval } = this.config;
     let lastScanTime = 0;
 
     const scanFrame = () => {
       if (!this.active) return;
       const now = performance.now();
-      if (now - lastScanTime < this.config.scanInterval) {
+      if (now - lastScanTime < scanInterval) {
         this.animationFrame = requestAnimationFrame(scanFrame);
         return;
       }
@@ -487,12 +505,6 @@ const QRScanner = {
 // === 🖥️ Global Modal Dialogs (Confirm / Prompt) ===
 // =============================================================================
 
-/**
- * Показывает модальное окно подтверждения.
- * @param {string} title - Заголовок
- * @param {string} message - Текст сообщения
- * @returns {Promise<boolean>} - true, если пользователь подтвердил
- */
 window.showConfirmModal = function(title, message) {
     return new Promise((resolve) => {
         const modalId = 'global-confirm-modal-' + Date.now();
@@ -530,13 +542,6 @@ window.showConfirmModal = function(title, message) {
     });
 };
 
-/**
- * Показывает модальное окно с полем ввода.
- * @param {string} title - Заголовок
- * @param {string} placeholder - Плейсхолдер
- * @param {string} defaultValue - Значение по умолчанию
- * @returns {Promise<string|null>} - Введённое значение или null при отмене
- */
 window.showPromptModal = function(title, placeholder, defaultValue = '') {
     return new Promise((resolve) => {
         const modalId = 'global-prompt-modal-' + Date.now();
@@ -617,10 +622,9 @@ window.FormHelpers = FormHelpers;
 window.QRScanner = QRScanner;
 
 // =============================================================================
-// === 📷 QR Scanner Global Wrappers (✅ С АВТО-ДЕЙСТВИЯМИ ПОСЛЕ СКАНИРОВАНИЯ) ===
+// === 📷 QR Scanner Global Wrappers ===
 // =============================================================================
 
-// Для модального окна нового чата (чат не создаётся сразу — только заполняется поле)
 window.openQRScannerInModal = () => QRScanner.open({
   videoEl: DOM.getById('qrVideoModal'),
   resultEl: DOM.getById('scanResultModal'),
@@ -646,7 +650,6 @@ window.forceCloseQRScannerInModal = () => QRScanner.close({
   videoEl: DOM.getById('qrVideoModal')
 });
 
-// Для страницы контактов — ✅ АВТО-ДОБАВЛЕНИЕ КОНТАКТА ПОСЛЕ СКАНИРОВАНИЯ
 window.openQRScanner = () => QRScanner.open({
   videoEl: DOM.getById('qrVideo'),
   resultEl: DOM.getById('scanResult'),

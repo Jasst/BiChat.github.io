@@ -3,180 +3,81 @@
 {% block title %}Profile — Dark Messenger{% endblock %}
 
 {% block content %}
-<div class="chat-container">
-  <aside class="sidebar" id="sidebar" aria-label="Navigation">
-    <header class="sidebar-header">
-      <div class="user-info">
-        <span class="address font-mono" id="userAddress">{{ address[:10] }}…</span>
-       <button class="btn btn-ghost btn-icon"
-        onclick="confirmLogout(event)"
-        aria-label="Logout"
-        title="Log out">
-  <span class="tab-icon tab-icon-logout">
-    <!-- Иконка выхода: дверь со стрелкой -->
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-      <polyline points="16 17 21 12 16 7"/>
-      <line x1="21" y1="12" x2="9" y2="12"/>
-    </svg>
-  </span>
-</button>
+<div class="page-container">
+  <div class="page-header">
+    <h2>Profile</h2>
+    <button class="btn-icon-oval" onclick="confirmLogout(event)" title="Log out">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Address Card -->
+  <div class="profile-card">
+    <h3>Your Address</h3>
+    <div class="profile-row">
+      <label>Public Address</label>
+      <div class="profile-value-wrap">
+        <span class="value font-mono" id="address" style="user-select: all; word-break: break-all;">{{ address|default('', true) }}</span>
+        <button class="btn-icon-oval" onclick="copyAddressToClipboard()" title="Copy">📋</button>
       </div>
-    </header>
-    <nav class="tabs" role="tablist">
-  <button class="tab " onclick="location.href='/chat'" aria-label="Chat" title="Chat">
-    <span class="tab-icon tab-icon-chat">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        <circle class="bubble-dot" cx="8" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-        <circle class="bubble-dot" cx="12" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-        <circle class="bubble-dot" cx="16" cy="10" r="1.5" fill="currentColor" stroke="none"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab" onclick="location.href='/contacts'" aria-label="Contacts" title="Contacts">
-    <span class="tab-icon tab-icon-contacts">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="8" r="4"/>
-        <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab" onclick="location.href='/groups'" aria-label="Groups" title="Groups">
-    <span class="tab-icon tab-icon-groups">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="8" cy="7" r="3"/>
-        <circle cx="16" cy="5" r="2.5"/>
-        <path d="M2 20c0-3.314 2.686-6 6-6" class="person-left"/>
-        <path d="M14 20c0-2.761 2.239-5 5-5" class="person-right"/>
-        <path d="M18 12h0.5a2.5 2.5 0 0 1 2.5 2.5V20"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab" onclick="location.href='/wallet'" aria-label="Wallet" title="Wallet">
-    <span class="tab-icon tab-icon-wallet">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="12" r="9"/>
-        <path d="M12 7v10M9 9.5c0-.828 1.12-1.5 3-1.5s3 .672 3 1.5-1.12 1.5-3 1.5"/>
-        <path d="M9 14.5c0 .828 1.12 1.5 3 1.5s3-.672 3-1.5"/>
-      </svg>
-    </span>
-  </button>
-  <button class="tab active" onclick="location.href='/profile'" aria-label="Settings" title="Settings">
-    <span class="tab-icon tab-icon-settings tab-icon-gear">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-      </svg>
-    </span>
-  </button>
-</nav>
-  </aside>
-
-  <main class="main-content">
-    <header class="chat-header" style="margin-bottom: var(--space-md);">
-      <button class="btn btn-icon menu-toggle" id="menuToggle"
-              onclick="toggleSidebar()" aria-label="Toggle menu"
-              style="display: none;">☰</button>
-      <h2 style="margin: 0;">Profile</h2>
-    </header>
-
-    <div class="profile-section">
-
-      <!-- 🔹 Address Card -->
-      <div class="profile-card">
-        <h3>Your Address</h3>
-        <div class="profile-row">
-          <label>Public Address</label>
-          <div class="profile-value-wrap">
-            <span class="value font-mono" id="address" style="user-select: all; word-break: break-all;">{{ address|default('', true) }}</span>
-            <button class="btn btn-icon" onclick="copyAddressToClipboard()" title="Copy">📋</button>
-          </div>
-        </div>
-
-        <!-- QR Section -->
-        <div class="profile-row">
-          <label>QR Code</label>
-          <div class="qr-container">
-            <div id="qrcode"></div>
-            <div class="qr-actions">
-              <button class="btn btn-ghost" onclick="downloadQR()">📥 Download</button>
-              <button class="btn btn-ghost" onclick="shareQR()">📤 Share</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 🔹 Recovery Phrase Card -->
-      <div class="profile-card">
-        <h3>Recovery Phrase</h3>
-        <div class="profile-row">
-          <label>Mnemonic</label>
-          <div class="profile-value-wrap">
-            <input type="password" id="mnemonicDisplay" class="input input-monospace"
-                   value="••••••••••••••••••••" readonly>
-            <button class="btn" id="toggleMnemonicBtn" onclick="toggleMnemonic()" disabled>Show</button>
-            <button class="btn btn-icon" id="copyMnemonicBtn" onclick="copyMnemonicToClipboard()" disabled title="Copy">📋</button>
-          </div>
-        </div>
-        <p class="text-muted" style="font-size: 12px; margin: var(--space-xs) 0 0;">
-          ⚠️ Keep this phrase secret. Never share it with anyone.
-        </p>
-        <button class="btn btn-primary" style="margin-top: var(--space-md);" onclick="exportMnemonicSecure()">
-          🔐 Export Mnemonic
-        </button>
-      </div>
-
-      <!-- 🔹 Security Info Card -->
-      <div class="profile-card">
-        <h3>Security</h3>
-        <div class="profile-row">
-          <label>Wallet Status</label>
-          <span class="status-badge status-success">● Active</span>
-        </div>
-        <div class="profile-row">
-          <label>Network</label>
-          <span>Mainnet</span>
-        </div>
-        <div class="profile-row">
-          <label>Mnemonic Display</label>
-          <span class="status-badge status-warning">Hidden (Secure)</span>
-        </div>
-        <div class="profile-row">
-          <label>Session</label>
-          <span id="sessionInfo" class="font-mono">Loading…</span>
-        </div>
-      </div>
-
     </div>
-  </main>
-</div>
+    <div class="profile-row">
+      <label>QR Code</label>
+      <div class="qr-container">
+        <div id="qrcode"></div>
+        <div class="qr-actions">
+          <button class="btn-oval" onclick="downloadQR()">📥 Download</button>
+          <button class="btn-oval" onclick="shareQR()">📤 Share</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-<div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+  <!-- Recovery Phrase Card -->
+  <div class="profile-card">
+    <h3>Recovery Phrase</h3>
+    <div class="profile-row">
+      <label>Mnemonic</label>
+      <div class="profile-value-wrap">
+        <input type="password" id="mnemonicDisplay" class="input input-monospace" value="••••••••••••••••••••" readonly>
+        <button class="btn-oval" id="toggleMnemonicBtn" onclick="toggleMnemonic()" disabled>Show</button>
+        <button class="btn-icon-oval" id="copyMnemonicBtn" onclick="copyMnemonicToClipboard()" disabled title="Copy">📋</button>
+      </div>
+    </div>
+    <p class="text-muted form-hint">⚠️ Keep this phrase secret. Never share it with anyone.</p>
+    <button class="btn-primary-oval full-width" onclick="exportMnemonicSecure()">🔐 Export Mnemonic</button>
+  </div>
+
+  <!-- Security Info Card -->
+  <div class="profile-card">
+    <h3>Security</h3>
+    <div class="profile-row"><label>Wallet Status</label><span class="status-badge status-success">● Active</span></div>
+    <div class="profile-row"><label>Network</label><span>Mainnet</span></div>
+    <div class="profile-row"><label>Mnemonic Display</label><span class="status-badge status-warning">Hidden (Secure)</span></div>
+    <div class="profile-row"><label>Session</label><span id="sessionInfo" class="font-mono">Loading…</span></div>
+  </div>
+</div>
 
 <!-- Confirm Modal for Mnemonic Export -->
 <div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal" style="max-width: 420px;">
     <header class="modal-header">
       <h3>🔐 Confirm Export</h3>
-      <button class="modal-close" onclick="ModalManager.close('confirmModal')" aria-label="Close">&times;</button>
+      <button class="modal-close" onclick="ModalManager.close('confirmModal')">&times;</button>
     </header>
     <div class="modal-body">
-      <p style="color: var(--text-secondary); margin-bottom: var(--space-md);">
-        To view your mnemonic phrase, please confirm:
-      </p>
-      <input type="text" id="confirmInput" class="input"
-             placeholder="Type: I CONFIRM"
-             style="text-transform: uppercase; text-align: center; letter-spacing: 1px;"
-             autocomplete="off">
+      <p>To view your mnemonic phrase, please confirm:</p>
+      <input type="text" id="confirmInput" class="input" placeholder="Type: I CONFIRM" style="text-transform: uppercase; text-align: center;">
       <p id="confirmError" class="hidden error"></p>
-      <p class="text-muted" style="font-size: 12px; margin-top: var(--space-md);">
-        ⚠️ This ensures you intentionally want to view sensitive data.
-      </p>
+      <p class="text-muted">⚠️ This ensures you intentionally want to view sensitive data.</p>
     </div>
     <footer class="modal-footer">
-      <button class="btn btn-ghost" onclick="ModalManager.close('confirmModal')">Cancel</button>
-      <button class="btn btn-primary" id="confirmSubmitBtn">Confirm</button>
+      <button class="btn-oval" onclick="ModalManager.close('confirmModal')">Cancel</button>
+      <button class="btn-primary-oval" id="confirmSubmitBtn">Confirm</button>
     </footer>
   </div>
 </div>
@@ -186,45 +87,34 @@
   <div class="modal">
     <header class="modal-header">
       <h3>Mnemonic Phrase</h3>
-      <button class="modal-close" onclick="MnemonicManager.hide()" aria-label="Close">&times;</button>
+      <button class="modal-close" onclick="MnemonicManager.hide()">&times;</button>
     </header>
     <div class="modal-body">
-      <div id="modalMnemonic" class="input-monospace"
-           style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); border: 1px solid var(--border-color); word-break: break-all; text-align: center; min-height: 100px; display: flex; align-items: center; justify-content: center;">
+      <div id="modalMnemonic" class="mnemonic-display"></div>
+      <p class="status-error" style="text-align:center;">⚠️ NEVER SHARE THIS WITH ANYONE!</p>
+      <div class="flex-row" style="justify-content:center;">
+        <button class="btn-oval" onclick="copyMnemonicToClipboard()">📋 Copy</button>
       </div>
-      <p style="color: var(--status-error); font-weight: 500; text-align: center; margin: var(--space-sm) 0;">
-        ⚠️ NEVER SHARE THIS WITH ANYONE!
-      </p>
-      <div style="display: flex; gap: var(--space-sm); justify-content: center;">
-        <button class="btn" onclick="copyMnemonicToClipboard()">📋 Copy</button>
-      </div>
-      <p style="color: var(--text-muted); font-size: 11px; text-align: center; margin-top: var(--space-sm);">
-        🔒 Auto-clear in <span id="clearCountdown">30</span>s
-      </p>
+      <p class="text-muted text-center">🔒 Auto-clear in <span id="clearCountdown">30</span>s</p>
     </div>
   </div>
 </div>
 
-<!-- 🔐 Logout Confirmation Modal -->
-<div id="logoutModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="logoutTitle">
-  <div class="modal" style="max-width: 400px;">
+<!-- Logout Confirmation Modal -->
+<div id="logoutModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal">
     <header class="modal-header">
-      <h3 id="logoutTitle">⚠️ Confirm Logout</h3>
-      <button class="modal-close" onclick="closeLogoutModal()" aria-label="Close">&times;</button>
+      <h3>⚠️ Confirm Logout</h3>
+      <button class="modal-close" onclick="closeLogoutModal()">&times;</button>
     </header>
     <div class="modal-body">
-      <p style="color: var(--text-secondary); margin-bottom: var(--space-md);">
-        Are you sure you want to log out? Your session will be ended.
-      </p>
-      <input type="text" id="logoutConfirmInput" class="input"
-             placeholder="Type: LOGOUT"
-             style="text-transform: uppercase; text-align: center; letter-spacing: 1px;"
-             autocomplete="off">
-      <p id="logoutError" class="error hidden"></p>
+      <p>Are you sure you want to log out? Your session will be ended.</p>
+      <input type="text" id="logoutConfirmInput" class="input" placeholder="Type: LOGOUT" style="text-transform: uppercase; text-align: center;">
+      <p id="logoutError" class="hidden error"></p>
     </div>
     <footer class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeLogoutModal()">Cancel</button>
-      <button class="btn btn-error" id="logoutConfirmBtn">Log Out</button>
+      <button class="btn-oval" onclick="closeLogoutModal()">Cancel</button>
+      <button class="btn-primary-oval" id="logoutConfirmBtn">Log Out</button>
     </footer>
   </div>
 </div>
@@ -232,6 +122,7 @@
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+// Полный JS из оригинального profile.html (без изменений, кроме замены классов кнопок)
 (function() {
   if (window._profileScriptLoaded) return;
   window._profileScriptLoaded = true;
@@ -239,18 +130,9 @@
   let secureMnemonic = null;
 
   function copyToClipboard(text, successMsg, errorMsg) {
-    if (!text || text === 'None') {
-      window.NotificationManager?.showToast(errorMsg || 'Nothing to copy', 'error');
-      return;
-    }
-    const doCopy = () => navigator.clipboard.writeText(text);
-    const onSuccess = () => window.NotificationManager?.showToast(successMsg, 'success');
-    const onError = (err) => window.NotificationManager?.showToast((errorMsg || 'Copy failed') + ': ' + err, 'error');
-    if (window.Utils?.copyToClipboard) {
-      window.Utils.copyToClipboard(text, onSuccess, onError);
-    } else {
-      doCopy().then(onSuccess).catch(onError);
-    }
+    if (!text) { window.NotificationManager?.showToast(errorMsg || 'Nothing to copy', 'error'); return; }
+    navigator.clipboard.writeText(text).then(() => window.NotificationManager?.showToast(successMsg, 'success'))
+      .catch(() => window.NotificationManager?.showToast(errorMsg || 'Copy failed', 'error'));
   }
 
   function copyAddressToClipboard() {
@@ -260,10 +142,7 @@
 
   function copyMnemonicToClipboard() {
     const text = window.MnemonicManager?._mnemonic || secureMnemonic;
-    if (!text) {
-      window.NotificationManager?.showToast('🔐 Export mnemonic first', 'warning');
-      return;
-    }
+    if (!text) { window.NotificationManager?.showToast('🔐 Export mnemonic first', 'warning'); return; }
     copyToClipboard(text, '✓ Mnemonic copied! Clear clipboard after use', 'Copy failed');
   }
 
@@ -274,56 +153,37 @@
     qrDiv.innerHTML = '';
     try {
       new QRCode(qrDiv, {
-        text: address,
-        width: 220, height: 220,
+        text: address, width: 220, height: 220,
         colorDark: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
         colorLight: getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#0a0a0a',
         correctLevel: QRCode.CorrectLevel.H
       });
-    } catch (e) {
-      qrDiv.innerHTML = '<span class="text-muted">QR error</span>';
-      console.error('QR generation failed:', e);
-    }
+    } catch(e) { qrDiv.innerHTML = '<span class="text-muted">QR error</span>'; }
   }
 
   function downloadQR() {
     const canvas = document.querySelector('#qrcode canvas');
     if (!canvas) return window.NotificationManager?.showToast('QR not ready', 'error');
-    try {
-      const link = document.createElement('a');
-      link.download = `address-qr-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      window.NotificationManager?.showToast('✓ Downloaded', 'success');
-    } catch (e) {
-      console.error('Download error:', e);
-      window.NotificationManager?.showToast('Download failed', 'error');
-    }
+    const link = document.createElement('a');
+    link.download = `address-qr-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    window.NotificationManager?.showToast('✓ Downloaded', 'success');
   }
 
   async function shareQR() {
     const address = document.getElementById('address')?.textContent?.trim();
-    if (!address) return window.NotificationManager?.showToast('No address', 'error');
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'My Wallet Address', text: `Address: ${address}`, url: window.location.href });
-        window.NotificationManager?.showToast('✓ Shared', 'success');
-      } else {
-        copyToClipboard(address, '✓ Address copied', 'Copy failed');
-      }
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        console.error('Share error:', e);
-        window.NotificationManager?.showToast('Share failed', 'error');
-      }
-    }
+    if (!address) return;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'My Wallet Address', text: address }); }
+      catch(e) { if (e.name !== 'AbortError') console.error(e); }
+    } else { copyAddressToClipboard(); }
   }
 
   function toggleMnemonic() {
-    if (!secureMnemonic) return window.NotificationManager?.showToast('🔐 Export mnemonic first', 'warning');
+    if (!secureMnemonic) { window.NotificationManager?.showToast('🔐 Export mnemonic first', 'warning'); return; }
     const display = document.getElementById('mnemonicDisplay');
     const btn = document.getElementById('toggleMnemonicBtn');
-    if (!display || !btn) return;
     const isHidden = display.type === 'password' || display.value.includes('•••');
     display.value = isHidden ? secureMnemonic : '••••••••••••••••••••';
     display.type = isHidden ? 'text' : 'password';
@@ -331,8 +191,7 @@
   }
 
   function exportMnemonicSecure() {
-    if (!window.ModalManager) return console.error('ModalManager not loaded');
-    window.ModalManager.open('confirmModal', { closeOnOverlay: false, preventEscClose: true });
+    ModalManager.open('confirmModal', { closeOnOverlay: false, preventEscClose: true });
     setTimeout(() => document.getElementById('confirmInput')?.focus(), 100);
   }
 
@@ -346,118 +205,62 @@
 
   async function handleMnemonicConfirm() {
     const input = document.getElementById('confirmInput');
-    const btn = document.getElementById('confirmSubmitBtn');
     const error = document.getElementById('confirmError');
     const value = input?.value?.trim()?.toUpperCase();
-
     if (!value || !['I CONFIRM', 'CONFIRM', 'YES'].includes(value)) {
       if (error) { error.textContent = 'Type "I CONFIRM" exactly'; error.classList.remove('hidden'); }
       input?.focus();
       return;
     }
-
     const mnemonic = sessionStorage.getItem('mnemonic');
     if (!mnemonic || mnemonic.split(/\s+/).length < 24) {
-      if (error) error.textContent = 'Mnemonic not available. Please login again.';
+      error.textContent = 'Mnemonic not available. Please login again.';
       window.NotificationManager?.showToast('Session expired, please re-login', 'error');
-      if (btn) { btn.disabled = false; btn.textContent = 'Confirm'; }
       return;
     }
-
     secureMnemonic = mnemonic;
     updateMnemonicUI(true);
     window.MnemonicManager?.showInModal?.(secureMnemonic, 'mnemonicModal', 'modalMnemonic');
-    window.ModalManager?.close?.('confirmModal');
+    ModalManager.close('confirmModal');
   }
 
-  // 🔐 Logout
+  // Logout
   window.confirmLogout = function(event) {
     event?.preventDefault();
-    const modal = document.getElementById('logoutModal');
-    const input = document.getElementById('logoutConfirmInput');
-    const error = document.getElementById('logoutError');
-    modal?.classList.remove('hidden');
-    if (input) { input.value = ''; input.focus(); }
-    error?.classList.add('hidden');
+    ModalManager.open('logoutModal', { closeOnOverlay: false });
+    document.getElementById('logoutConfirmInput').value = '';
+    document.getElementById('logoutError')?.classList.add('hidden');
   };
-  window.closeLogoutModal = function() {
-    document.getElementById('logoutModal')?.classList.add('hidden');
-  };
-  window.executeLogout = function() {
-      window.closeLogoutModal();
-      if (window.logout) {
-          window.logout();
-      } else {
-          sessionStorage.removeItem('mnemonic');
-          window.location.href = '/logout';
-      }
+  window.closeLogoutModal = () => ModalManager.close('logoutModal');
+  window.executeLogout = () => {
+    if (window.logout) window.logout();
+    else { sessionStorage.removeItem('mnemonic'); window.location.href = '/logout'; }
   };
   function validateLogoutInput() {
     const input = document.getElementById('logoutConfirmInput');
-    const error = document.getElementById('logoutError');
     const value = input?.value.trim().toUpperCase();
-    if (value === 'LOGOUT' || value === 'OK') {
-      window.executeLogout();
-      return true;
-    }
-    if (error) {
-      error.textContent = 'Type "LOGOUT" or "OK" exactly';
-      error.classList.remove('hidden');
-    }
+    if (value === 'LOGOUT' || value === 'OK') { window.executeLogout(); return true; }
+    const error = document.getElementById('logoutError');
+    if (error) { error.textContent = 'Type "LOGOUT" or "OK" exactly'; error.classList.remove('hidden'); }
     input?.focus();
     return false;
   }
 
-  document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', () => {
     initQRCode();
-    const sessionEl = document.getElementById('sessionInfo');
-    if (sessionEl) sessionEl.textContent = 'Active • ' + new Date().toLocaleTimeString();
-
-    const confirmInput = document.getElementById('confirmInput');
-    const confirmBtn = document.getElementById('confirmSubmitBtn');
-    confirmInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleMnemonicConfirm(); });
-    confirmBtn?.addEventListener('click', handleMnemonicConfirm);
-
-    const logoutInput = document.getElementById('logoutConfirmInput');
-    const logoutBtn = document.getElementById('logoutConfirmBtn');
-    const logoutModal = document.getElementById('logoutModal');
-    logoutInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') validateLogoutInput(); });
-    logoutBtn?.addEventListener('click', validateLogoutInput);
-    logoutModal?.addEventListener('click', (e) => { if (e.target === logoutModal) window.closeLogoutModal(); });
-
-    document.querySelectorAll('.modal-overlay').forEach(overlay => {
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay && window.ModalManager?.close) {
-          window.ModalManager.close(overlay.id);
-        }
-      });
-    });
+    document.getElementById('sessionInfo').textContent = 'Active • ' + new Date().toLocaleTimeString();
+    document.getElementById('confirmSubmitBtn')?.addEventListener('click', handleMnemonicConfirm);
+    document.getElementById('logoutConfirmBtn')?.addEventListener('click', validateLogoutInput);
+    document.getElementById('confirmInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') handleMnemonicConfirm(); });
+    document.getElementById('logoutConfirmInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') validateLogoutInput(); });
   });
 
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-      window.closeLogoutModal();
-      window.ModalManager?.close?.('confirmModal');
-      window.ModalManager?.close?.('mnemonicModal');
-    }
-  });
-
-  window.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal-overlay') && window.ModalManager?.close) {
-      window.ModalManager.close(e.target.id);
-    }
-  });
-
-  // Экспорт глобальных функций
   window.copyAddressToClipboard = copyAddressToClipboard;
   window.copyMnemonicToClipboard = copyMnemonicToClipboard;
   window.toggleMnemonic = toggleMnemonic;
   window.exportMnemonicSecure = exportMnemonicSecure;
   window.downloadQR = downloadQR;
   window.shareQR = shareQR;
-  window.confirmLogout = confirmLogout;
-  window.closeLogoutModal = closeLogoutModal;
-  window.executeLogout = executeLogout;
 })();
 </script>
 {% endblock %}

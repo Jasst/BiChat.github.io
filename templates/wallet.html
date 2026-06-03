@@ -3,187 +3,123 @@
 {% block title %}Wallet — Dark Messenger{% endblock %}
 
 {% block content %}
-<div class="chat-container">
-  <!-- Sidebar (без изменений) -->
-  <aside class="sidebar" id="sidebar" aria-label="Navigation">
-    <header class="sidebar-header">
-      <div class="user-info">
-        <span class="address font-mono" id="userAddress">{{ address[:10] }}…</span>
-      </div>
-    </header>
-    <nav class="tabs" role="tablist">
-      <button class="tab " onclick="location.href='/chat'" aria-label="Chat" title="Chat">
-        <span class="tab-icon tab-icon-chat"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle class="bubble-dot" cx="8" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle class="bubble-dot" cx="12" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle class="bubble-dot" cx="16" cy="10" r="1.5" fill="currentColor" stroke="none"/></svg></span>
-      </button>
-      <button class="tab " onclick="location.href='/contacts'" aria-label="Contacts" title="Contacts">
-        <span class="tab-icon tab-icon-contacts"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8"/></svg></span>
-      </button>
-      <button class="tab" onclick="location.href='/groups'" aria-label="Groups" title="Groups">
-        <span class="tab-icon tab-icon-groups"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="7" r="3"/><circle cx="16" cy="5" r="2.5"/><path d="M2 20c0-3.314 2.686-6 6-6" class="person-left"/><path d="M14 20c0-2.761 2.239-5 5-5" class="person-right"/><path d="M18 12h0.5a2.5 2.5 0 0 1 2.5 2.5V20"/></svg></span>
-      </button>
-      <button class="tab active" onclick="location.href='/wallet'" aria-label="Wallet" title="Wallet">
-        <span class="tab-icon tab-icon-wallet"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-.828 1.12-1.5 3-1.5s3 .672 3 1.5-1.12 1.5-3 1.5"/><path d="M9 14.5c0 .828 1.12 1.5 3 1.5s3-.672 3-1.5"/></svg></span>
-      </button>
-      <button class="tab" onclick="location.href='/profile'" aria-label="Settings" title="Settings">
-        <span class="tab-icon tab-icon-settings tab-icon-gear"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span>
-      </button>
-    </nav>
-  </aside>
+<div class="page-container">
+  <div class="page-header">
+    <h2>Wallet</h2>
+  </div>
 
-  <main class="main-content">
-    <header class="chat-header">
-      <button class="btn btn-icon menu-toggle" id="menuToggle" onclick="toggleSidebar()" aria-label="Toggle menu" style="display: none;">☰</button>
-      <h2>Wallet</h2>
-    </header>
+  <!-- Balance Card -->
+  <div class="profile-card">
+    <h3>Balance</h3>
+    <div class="profile-row">
+      <label>Available</label>
+      <span class="value" id="balanceDisplay">0.000000 BlockCoin</span>
+      <button class="btn-icon-oval" onclick="refreshBalance()">🔄</button>
+    </div>
+    <div class="profile-row" id="stakedInfo" style="display:none;">
+      <label>Staked</label>
+      <span class="value" id="stakedDisplay">0.000000 BlockCoin</span>
+    </div>
+  </div>
 
-    <div class="profile-section">
-      <!-- Balance Card -->
-      <div class="profile-card">
-        <h3>Balance</h3>
-        <div class="profile-row">
-          <label>Available</label>
-          <span class="value" id="balanceDisplay">0.000000 BlockCoin</span>
-          <button class="btn btn-icon" onclick="refreshBalance()">🔄</button>
-        </div>
-        <div class="profile-row" id="stakedInfo" style="display:none;">
-          <label>Staked</label>
-          <span class="value" id="stakedDisplay">0.000000 BlockCoin</span>
-        </div>
-      </div>
+  <!-- Network Statistics Card -->
+  <div class="profile-card">
+    <h3>🌐 Network Statistics</h3>
+    <div class="profile-row"><label>Total Supply</label><span class="value" id="totalSupply">0.000000 BlockCoin</span><button class="btn-icon-oval" onclick="refreshNetworkStats()">🔄</button></div>
+    <div class="profile-row" id="remainingRow"><label>Remaining to Mine</label><span class="value" id="remainingSupply">∞</span></div>
+    <div class="profile-row"><label>Staking Pool Balance</label><span class="value" id="stakingPoolBalance">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label>Message Fee</label><span class="value" id="messageFee">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label>Block Reward</label><span class="value" id="blockReward">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label>Total Blocks</label><span class="value" id="totalBlocks">0</span></div>
+    <div class="profile-row"><label>Total Staked</label><span class="value" id="totalStaked">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label>Current Difficulty</label><span class="value" id="difficulty">0</span></div>
+  </div>
 
-      <!-- Network Statistics Card -->
-      <div class="profile-card">
-        <h3>🌐 Network Statistics</h3>
-        <div class="profile-row">
-          <label>Total Supply</label>
-          <span class="value" id="totalSupply">0.000000 BlockCoin</span>
-          <button class="btn btn-icon" onclick="refreshNetworkStats()">🔄</button>
-        </div>
-        <div class="profile-row" id="remainingRow">
-          <label>Remaining to Mine</label>
-          <span class="value" id="remainingSupply">∞</span>
-        </div>
-        <div class="profile-row">
-          <label>Staking Pool Balance</label>
-          <span class="value" id="stakingPoolBalance">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Message Fee</label>
-          <span class="value" id="messageFee">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Block Reward</label>
-          <span class="value" id="blockReward">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Total Blocks</label>
-          <span class="value" id="totalBlocks">0</span>
-        </div>
-        <div class="profile-row">
-          <label>Total Staked</label>
-          <span class="value" id="totalStaked">0.000000 BlockCoin</span>
-        </div>
-        <div class="profile-row">
-          <label>Current Difficulty</label>
-          <span class="value" id="difficulty">0</span>
-        </div>
-      </div>
+  <!-- Mining Card -->
+  <div class="profile-card" id="miningCard">
+    <h3>⛏ Mining</h3>
+    <div id="miningStatus" class="text-muted">Not mining</div>
+    <div class="flex-row">
+      <button id="startMiningBtn" class="btn-primary-oval" onclick="startMining()">Start Mining</button>
+      <button id="stopMiningBtn" class="btn-oval hidden" onclick="stopMining()">Stop</button>
+    </div>
+    <div id="miningProgress" class="hidden mining-progress-bar"><div class="mining-progress-bar-fill"></div></div>
+  </div>
 
-      <!-- Mining Card -->
-      <div class="profile-card" id="miningCard">
-        <h3>⛏ Mining</h3>
-        <div id="miningStatus" class="text-muted" style="margin-bottom:8px;">Not mining</div>
-        <button id="startMiningBtn" class="btn" onclick="startMining()">Start Mining</button>
-        <button id="stopMiningBtn" class="btn hidden" onclick="stopMining()">Stop</button>
-        <div id="miningProgress" class="hidden mining-progress-bar">
-          <div class="mining-progress-bar-fill"></div>
-        </div>
-      </div>
+  <!-- Staking Card -->
+  <div class="profile-card" id="stakingCard">
+    <h3>🔒 Staking</h3>
+    <div id="stakingInfo" class="text-muted">Load staking info...</div>
+    <div class="flex-row">
+      <input type="number" id="stakeAmount" class="input" placeholder="Amount" step="0.000001">
+      <button class="btn-primary-oval" onclick="stake()">Stake</button>
+      <button class="btn-oval" onclick="unstake()">Unstake</button>
+    </div>
+    <div id="stakeResult" class="hidden text-muted"></div>
+  </div>
 
-      <!-- Staking Card -->
-      <div class="profile-card" id="stakingCard">
-        <h3>🔒 Staking</h3>
-        <div id="stakingInfo" class="text-muted" style="margin-bottom:8px;">Load staking info...</div>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <input type="number" id="stakeAmount" class="input" placeholder="Amount" step="0.000001">
-          <button class="btn btn-primary" onclick="stake()">Stake</button>
-          <button class="btn btn-ghost" onclick="unstake()">Unstake</button>
-        </div>
-        <div id="stakeResult" class="hidden text-muted" style="font-size:12px; margin-top:4px;"></div>
-      </div>
-
-      <!-- Receive Card -->
-      <div class="profile-card" id="receiveCard">
-        <h3>Receive Coins</h3>
-        <div class="profile-row">
-          <label>Your Address</label>
-          <div class="profile-value-wrap">
-            <span class="value font-mono" id="receiveAddress" style="word-break: break-all;">{{ address|default('', true) }}</span>
-            <button class="btn btn-icon" onclick="copyAddressToClipboard()" title="Copy">📋</button>
-          </div>
-        </div>
-        <div class="profile-row">
-          <label>QR Code</label>
-          <div class="profile-value-wrap" style="align-items: center;">
-            <button id="toggleQRBtn" class="btn" onclick="toggleReceiveQR()">
-              <span id="toggleQRIcon">📱</span>
-              <span id="toggleQRLabel">Show QR Code</span>
-            </button>
-          </div>
-        </div>
-        <div id="qrBlock" class="hidden animate-fade" style="margin-top: var(--space-sm);">
-          <div class="qr-container">
-            <div id="qrcode"></div>
-            <div class="qr-actions">
-              <button class="btn btn-ghost" onclick="downloadQR()">📥 Download</button>
-              <button class="btn btn-ghost" onclick="shareQR()">📤 Share</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Send Card -->
-      <div class="profile-card">
-        <h3>Send BlockCoin</h3>
-        <div class="form-group" style="display:flex; flex-direction:column; gap:var(--space-sm);">
-          <div style="display:flex; gap:var(--space-sm);">
-            <input type="text" id="sendAddress" class="input input-monospace" placeholder="Recipient address (64 hex)" maxlength="64" style="flex:1;">
-            <button class="btn btn-icon" onclick="openWalletQRScanner()" title="Scan QR Code">📷</button>
-          </div>
-          <div id="qrScannerContainer" class="hidden" style="margin-bottom: var(--space-sm); background: var(--bg-secondary); border-radius: var(--radius-md); padding: var(--space-sm);">
-            <div class="text-center">
-              <video id="qrVideo" style="width: 220px; height: 220px; border-radius: var(--radius-md); background: #000;" playsinline autoplay muted disablepictureinpicture></video>
-              <p class="text-muted" style="font-size:12px;">Point camera at QR code</p>
-              <div id="scanResult" class="hidden" style="color: var(--status-success); font-weight: 500; margin-top: var(--space-xs);"></div>
-              <button class="btn btn-ghost" onclick="forceCloseWalletQRScanner()">Cancel</button>
-            </div>
-          </div>
-          <div style="display:flex; gap:var(--space-sm);">
-            <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001" style="flex:2;">
-            <button class="btn btn-primary" onclick="sendCoins()" style="flex:1;">Send</button>
-          </div>
-          <p class="text-muted" style="font-size:12px;" id="sendFeeDisplay">Fee: 0.010000 BlockCoin</p>
-          <div id="sendResult" class="hidden text-muted" style="font-size:12px;"></div>
-        </div>
-      </div>
-
-      <!-- Transactions Card -->
-      <div class="profile-card">
-        <h3>Transaction History</h3>
-        <div id="txList" class="list-container" style="max-height:300px; overflow-y:auto;">
-          <div class="loading">Loading…</div>
-        </div>
+  <!-- Receive Card -->
+  <div class="profile-card">
+    <h3>Receive Coins</h3>
+    <div class="profile-row">
+      <label>Your Address</label>
+      <div class="profile-value-wrap">
+        <span class="value font-mono" id="receiveAddress" style="word-break: break-all;">{{ address|default('', true) }}</span>
+        <button class="btn-icon-oval" onclick="copyAddressToClipboard()" title="Copy">📋</button>
       </div>
     </div>
-  </main>
-</div>
+    <div class="profile-row">
+      <label>QR Code</label>
+      <button id="toggleQRBtn" class="btn-oval" onclick="toggleReceiveQR()">📱 Show QR Code</button>
+    </div>
+    <div id="qrBlock" class="hidden animate-fade qr-container">
+      <div id="qrcode"></div>
+      <div class="qr-actions">
+        <button class="btn-oval" onclick="downloadQR()">📥 Download</button>
+        <button class="btn-oval" onclick="shareQR()">📤 Share</button>
+      </div>
+    </div>
+  </div>
 
-<div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+  <!-- Send Card -->
+  <div class="profile-card">
+    <h3>Send BlockCoin</h3>
+    <div class="form-group">
+      <div class="flex-row">
+        <input type="text" id="sendAddress" class="input input-monospace" placeholder="Recipient address (64 hex)" maxlength="64">
+        <button class="btn-icon-oval" onclick="openWalletQRScanner()" title="Scan QR Code">📷</button>
+      </div>
+      <div id="qrScannerContainer" class="hidden qr-scanner-container">
+        <div class="text-center">
+          <div class="qr-video-wrapper">
+            <video id="qrVideo" class="qr-video" playsinline autoplay muted disablepictureinpicture></video>
+          </div>
+          <p class="text-muted">Point camera at QR code</p>
+          <div id="scanResult" class="hidden scan-result"></div>
+          <button class="btn-oval" onclick="forceCloseWalletQRScanner()">Cancel</button>
+        </div>
+      </div>
+      <div class="flex-row">
+        <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001">
+        <button class="btn-primary-oval" onclick="sendCoins()">Send</button>
+      </div>
+      <p class="text-muted" id="sendFeeDisplay">Fee: 0.010000 BlockCoin</p>
+      <div id="sendResult" class="hidden text-muted"></div>
+    </div>
+  </div>
+
+  <!-- Transactions Card -->
+  <div class="profile-card">
+    <h3>Transaction History</h3>
+    <div id="txList" class="list-container" style="max-height:300px; overflow-y:auto;">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</div>
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
 <script src="{{ url_for('static', path='js/wallet.js') }}" defer></script>
-
 {% endblock %}
 {% endblock %}

@@ -1,4 +1,4 @@
-// AiChat.js — AI-чат с автоматической загрузкой нескольких страниц из поиска
+// AiChat.js — исправленное: изображение в сообщении не пропадает после отправки
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
@@ -11,17 +11,17 @@
     let isSending = false;
     let currentImagePreviewUrl = null;
     let reasoningEnabled = false;
-    let internetEnabled = false;          // ОДНА кнопка: интернет (вкл/выкл)
-
+    let internetEnabled = false;
     let aiMessagesContainer = null;
     let aiMessageInput = null;
     let aiSendBtn = null;
     let aiAttachBtn = null;
     let aiReasoningBtn = null;
-    let aiInternetBtn = null;              // новая единая кнопка
+    let aiInternetBtn = null;
     let aiImageInput = null;
     let aiClearHistoryBtn = null;
     let closeAiChatBtn = null;
+    let aiImageGenBtn = null;
 
     const CONFIG = {
         historyMaxLength: 200,
@@ -75,6 +75,76 @@
         });
     }
 
+    function addImageDownloadButtons(container) {
+    if (!container) return;
+    const images = container.querySelectorAll('img');
+    images.forEach(img => {
+        // Не добавляем повторно
+        if (img.hasAttribute('data-modal-attached')) return;
+        img.setAttribute('data-modal-attached', 'true');
+
+        // Клик по изображению – открыть в модальном окне
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof window.openImageModal === 'function') {
+                window.openImageModal(img.src);
+            }
+        });
+
+        // Кнопка скачивания (существующая логика)
+        if (img.parentNode.querySelector('.download-image-btn')) return;
+        const imageUrl = img.src;
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:relative; display:inline-block; margin:0 4px 8px 0;';
+        const parent = img.parentNode;
+        const imgClone = img.cloneNode(true);
+        imgClone.style.cursor = 'pointer';
+        // Переносим обработчик на клон
+        imgClone.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.openImageModal(imgClone.src);
+        });
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = '💾 Скачать';
+        downloadBtn.className = 'download-image-btn';
+        downloadBtn.style.cssText = 'display:block; margin-top:4px; background:var(--accent-soft); border:none; border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; color:var(--accent); width:100%; text-align:center;';
+        downloadBtn.onclick = (e) => {
+            e.stopPropagation();
+            downloadImage(imageUrl, 'generated_image.png');
+        };
+        wrapper.appendChild(imgClone);
+        wrapper.appendChild(downloadBtn);
+        parent.replaceChild(wrapper, img);
+    });
+}
+
+    async function downloadImage(imageUrl, filename = 'image.png') {
+        try {
+            let blob;
+            if (imageUrl.startsWith('data:image/')) {
+                const response = await fetch(imageUrl);
+                blob = await response.blob();
+            } else {
+                const response = await fetch(imageUrl);
+                if (!response.ok) throw new Error('Network error');
+                blob = await response.blob();
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Изображение сохранено', 'success');
+        } catch (err) {
+            console.error('Ошибка скачивания:', err);
+            showToast('Не удалось сохранить изображение', 'error');
+        }
+    }
+
     function renderMarkdown(text) {
         if (!text) return '';
         try {
@@ -92,7 +162,6 @@
         }
     }
 
-    // ========== История ==========
     function getStoredHistory() {
         try { return JSON.parse(localStorage.getItem('ai_chat_history') || '[]'); }
         catch (e) { return []; }
@@ -115,14 +184,16 @@
         if (history.length === 0) displayWelcome();
     }
     function clearAiHistory() {
-        if (confirm('Очистить всю историю диалога с AI?')) {
-            localStorage.removeItem('ai_chat_history');
-            if (aiMessagesContainer) {
-                aiMessagesContainer.innerHTML = '';
-                displayWelcome();
-            }
-            showToast('История очищена', 'success');
-        }
+        window.showConfirmModal('Clear AI History', 'Are you sure you want to clear all AI chat history? This cannot be undone.').then((confirmed) => {
+           if (confirmed) {
+               localStorage.removeItem('ai_chat_history');
+               if (aiMessagesContainer) {
+                   aiMessagesContainer.innerHTML = '';
+                   displayWelcome();
+               }
+               showToast('History cleared', 'success');
+           }
+        });
     }
 
     function displayWelcome() {
@@ -131,7 +202,8 @@
             '- 🌐 Кнопка "Интернет" включает поиск и чтение целых страниц (до 3 результатов)\n' +
             '- 🧠 Режим рассуждений показывает ход мыслей\n' +
             '- 🔗 Вставь ссылку — я прочитаю содержимое\n' +
-            '- 📎 Прикрепи изображение для анализа',
+            '- 📎 Прикрепи изображение для анализа\n' +
+            '- 🎨 Генерация изображений — кнопка рядом с полем ввода',
             false, null, false
         );
     }
@@ -160,7 +232,6 @@
         else console.log(`[${type}] ${message}`);
     }
 
-    // ========== Отображение сообщений ==========
     function displayAiMessage(text, isUser, imagePreview = null, saveToStorage = true) {
         if (!aiMessagesContainer) return;
         const msgDiv = document.createElement('div');
@@ -188,7 +259,10 @@
                     <div class="meta"><span>${time}</span></div>
                 </div>`;
             const markdownBody = msgDiv.querySelector('.markdown-body');
-            if (markdownBody) enhanceCodeBlocks(markdownBody);
+            if (markdownBody) {
+                enhanceCodeBlocks(markdownBody);
+                addImageDownloadButtons(markdownBody);
+            }
         }
         aiMessagesContainer.appendChild(msgDiv);
         aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
@@ -247,7 +321,6 @@
         }
     }
 
-    // ========== Основная отправка ==========
     async function sendToAi(messageText, imageFile) {
         if (isSending) { showToast('Подождите, предыдущий запрос обрабатывается', 'warning'); return; }
         if (!messageText.trim() && !imageFile) { showToast('Введите сообщение или выберите изображение', 'warning'); return; }
@@ -263,33 +336,31 @@
         const urlMatch = messageText.match(/https?:\/\/[^\s]+/);
         const urlToFetch = urlMatch ? urlMatch[0] : null;
 
-        let previewUrl = null;
+        // Сначала сжимаем изображение, чтобы получить постоянный data URL
+        let imageBase64 = null;
+        let imageMime = null;
+        let compressedDataUrl = null;
         if (imageFile) {
-            previewUrl = URL.createObjectURL(imageFile);
-            displayAiMessage(messageText || '📷 Изображение', true, previewUrl, true);
+            const reader = new FileReader();
+            compressedDataUrl = await new Promise((resolve) => {
+                reader.onload = async (e) => resolve(await compressImage(e.target.result));
+                reader.readAsDataURL(imageFile);
+            });
+            const parts = compressedDataUrl.split(',');
+            imageBase64 = parts[1];
+            const mimeMatch = parts[0].match(/^data:(image\/[a-zA-Z]+);?/);
+            imageMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+            // Показываем сообщение пользователя с изображением (base64)
+            displayAiMessage(messageText || '📷 Изображение', true, compressedDataUrl, true);
         } else {
             displayAiMessage(messageText, true, null, true);
         }
 
-        // Используем интернет, если кнопка включена (и нет ручного URL – он обрабатывается отдельно)
         const useWebSearch = internetEnabled && !urlToFetch;
         const isSearching = useWebSearch || !!urlToFetch;
         showAiTypingIndicator(true, isSearching ? (urlToFetch ? `🔗 Загружаю ${urlToFetch.slice(0, 50)}…` : '🔍 Ищу в интернете и загружаю страницы…') : '');
 
         try {
-            let imageBase64 = null, imageMime = null;
-            if (imageFile) {
-                const reader = new FileReader();
-                const compressedDataUrl = await new Promise((resolve) => {
-                    reader.onload = async (e) => resolve(await compressImage(e.target.result));
-                    reader.readAsDataURL(imageFile);
-                });
-                const parts = compressedDataUrl.split(',');
-                imageBase64 = parts[1];
-                const mimeMatch = parts[0].match(/^data:(image\/[a-zA-Z]+);?/);
-                imageMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-            }
-
             const response = await fetch(CONFIG.apiEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -369,7 +440,6 @@
                             streamFinished = true;
                             break;
                         } else if (data.sources) {
-                            // Сохраняем источники для отображения после ответа
                             searchResults = data.sources;
                         }
                     } catch(e) {}
@@ -383,12 +453,12 @@
                 const finalHtml = renderMarkdown(currentStreamingText);
                 markdownBody.innerHTML = finalHtml;
                 enhanceCodeBlocks(markdownBody);
+                addImageDownloadButtons(markdownBody);
                 saveAiMessage('assistant', currentStreamingText);
 
                 if (searchResults && searchResults.length) {
                     displaySearchSources(searchResults);
                 } else if (useWebSearch && !searchResults) {
-                    // попытка получить источники отдельно (опционально)
                     _tryFetchSearchSources(messageText);
                 }
             }
@@ -403,7 +473,6 @@
                 displayAiMessage('❌ Ошибка связи с AI-сервером.', false, null, true);
             }
         } finally {
-            if (previewUrl) URL.revokeObjectURL(previewUrl);
             if (currentStreamReader) {
                 try { currentStreamReader.releaseLock(); } catch(e) {}
                 currentStreamReader = null;
@@ -428,41 +497,125 @@
         } catch(e) {}
     }
 
-    // ========== Настройка UI ==========
+    // ========== Управление стилями (только data-active, без инлайн-стилей) ==========
     function updateInternetBtnStyle() {
         if (!aiInternetBtn) return;
-        if (internetEnabled) {
-            aiInternetBtn.style.opacity = '1';
-            aiInternetBtn.style.background = 'var(--accent-soft)';
-            aiInternetBtn.style.color = 'var(--accent)';
-            aiInternetBtn.title = 'Интернет ВКЛЮЧЁН (буду искать и читать страницы)';
-        } else {
-            aiInternetBtn.style.opacity = '0.5';
-            aiInternetBtn.style.background = '';
-            aiInternetBtn.style.color = '';
-            aiInternetBtn.title = 'Интернет ВЫКЛЮЧЕН (только мои знания)';
-        }
+        aiInternetBtn.setAttribute('data-active', internetEnabled ? 'true' : 'false');
+        aiInternetBtn.title = internetEnabled
+            ? 'Интернет ВКЛЮЧЁН (буду искать и читать страницы)'
+            : 'Интернет ВЫКЛЮЧЕН (только мои знания)';
     }
 
+    function updateReasoningBtnStyle() {
+        if (!aiReasoningBtn) return;
+        aiReasoningBtn.setAttribute('data-active', reasoningEnabled ? 'true' : 'false');
+        aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+    }
+
+    // ========== Превью изображения ==========
+    function showImagePreview(file) {
+        const oldPreview = document.getElementById('aiImagePreview');
+        if (oldPreview) oldPreview.remove();
+
+        const previewContainer = document.createElement('div');
+        previewContainer.id = 'aiImagePreview';
+        previewContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            margin: 8px 16px 0 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        `;
+
+        const blobUrl = URL.createObjectURL(file);
+        if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+        currentImagePreviewUrl = blobUrl;
+
+        previewContainer.innerHTML = `
+            <img src="${blobUrl}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px;">
+            <span style="font-size: 13px; color: var(--text-secondary); flex: 1;">${escapeHtml(file.name)}</span>
+            <button type="button" id="clearAiImage" class="btn btn-icon" style="font-size: 16px; padding: 4px;">✕</button>
+        `;
+
+        const form = document.querySelector('#aiChatContainer .input-area');
+        if (form) {
+            form.parentNode.insertBefore(previewContainer, form);
+        } else {
+            const container = document.getElementById('aiChatContainer');
+            if (container) container.appendChild(previewContainer);
+        }
+
+        document.getElementById('clearAiImage')?.addEventListener('click', () => {
+            if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+            pendingImageFile = null;
+            previewContainer.remove();
+            currentImagePreviewUrl = null;
+        });
+    }
+
+    // ========== Очистка превью (только над полем ввода) ==========
+    function clearImagePreview() {
+        const previewDiv = document.getElementById('aiImagePreview');
+        if (previewDiv) previewDiv.remove();
+        if (currentImagePreviewUrl) {
+            URL.revokeObjectURL(currentImagePreviewUrl);
+            currentImagePreviewUrl = null;
+        }
+        pendingImageFile = null;
+    }
+
+    // ========== Настройка UI ==========
     function setupAiUI() {
         if (!aiSendBtn) return;
 
-        aiSendBtn.onclick = () => {
+        aiSendBtn.onclick = async () => {
             const text = aiMessageInput ? aiMessageInput.value.trim() : '';
             const image = pendingImageFile;
-            if (!text && !image) { showToast('Введите сообщение или прикрепите изображение', 'warning'); return; }
-            if (aiMessageInput) aiMessageInput.value = '';
-            if (pendingImageFile) {
-                document.getElementById('aiImagePreview')?.remove();
-                if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-                pendingImageFile = null; currentImagePreviewUrl = null;
+            if (!text && !image) {
+                showToast('Введите сообщение или прикрепите изображение', 'warning');
+                return;
             }
-            sendToAi(text, image);
+
+            // Блокируем интерфейс
+            aiMessageInput.disabled = true;
+            aiSendBtn.disabled = true;
+            aiAttachBtn.disabled = true;
+            if (aiImageGenBtn) aiImageGenBtn.disabled = true;
+            if (aiInternetBtn) aiInternetBtn.disabled = true;
+            if (aiReasoningBtn) aiReasoningBtn.disabled = true;
+            if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
+
+            const originalText = text;
+            const imageToSend = image;
+
+            // Очищаем поле ввода и превью над полем (но не сообщения в чате)
+            if (aiMessageInput) aiMessageInput.value = '';
+            clearImagePreview();
+
+            try {
+                await sendToAi(originalText, imageToSend);
+            } finally {
+                // Разблокируем интерфейс
+                aiMessageInput.disabled = false;
+                aiSendBtn.disabled = false;
+                aiAttachBtn.disabled = false;
+                if (aiImageGenBtn) aiImageGenBtn.disabled = false;
+                if (aiInternetBtn) aiInternetBtn.disabled = false;
+                if (aiReasoningBtn) aiReasoningBtn.disabled = false;
+                if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
+                aiMessageInput.focus();
+            }
         };
 
         if (aiMessageInput) {
             aiMessageInput.onkeydown = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSendBtn?.click(); }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    aiSendBtn?.click();
+                }
             };
         }
 
@@ -472,47 +625,25 @@
                 const file = e.target.files[0];
                 if (file && file.type.startsWith('image/')) {
                     pendingImageFile = file;
-                    let previewContainer = document.getElementById('aiImagePreview');
-                    if (!previewContainer) {
-                        previewContainer = document.createElement('div');
-                        previewContainer.id = 'aiImagePreview';
-                        previewContainer.style.cssText = 'margin-top:8px;display:flex;align-items:center;gap:8px;';
-                        const inputActions = aiAttachBtn.closest('.input-actions');
-                        if (inputActions) inputActions.parentNode.insertBefore(previewContainer, inputActions.nextSibling);
-                    }
-                    const blobUrl = URL.createObjectURL(file);
-                    if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-                    currentImagePreviewUrl = blobUrl;
-                    previewContainer.innerHTML = `
-                        <img src="${blobUrl}" style="max-width:60px;max-height:60px;border-radius:8px;">
-                        <span style="font-size:12px;color:var(--text-secondary);">${escapeHtml(file.name)}</span>
-                        <button type="button" id="clearAiImage" class="btn btn-icon" style="font-size:14px;">✕</button>`;
-                    document.getElementById('clearAiImage')?.addEventListener('click', () => {
-                        if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
-                        pendingImageFile = null;
-                        previewContainer.remove();
-                        currentImagePreviewUrl = null;
-                    });
-                } else { showToast('Пожалуйста, выберите изображение', 'warning'); }
+                    showImagePreview(file);
+                } else {
+                    showToast('Пожалуйста, выберите изображение', 'warning');
+                }
                 aiImageInput.value = '';
             };
         }
 
-        // 🧠 Reasoning
         if (aiReasoningBtn) {
             reasoningEnabled = localStorage.getItem('ai_reasoning_mode') === 'true';
-            aiReasoningBtn.style.opacity = reasoningEnabled ? '1' : '0.5';
-            aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+            updateReasoningBtnStyle();
             aiReasoningBtn.onclick = () => {
                 reasoningEnabled = !reasoningEnabled;
-                aiReasoningBtn.style.opacity = reasoningEnabled ? '1' : '0.5';
-                aiReasoningBtn.title = reasoningEnabled ? 'Reasoning ON' : 'Reasoning OFF';
+                updateReasoningBtnStyle();
                 localStorage.setItem('ai_reasoning_mode', reasoningEnabled);
                 showToast(`Режим рассуждений ${reasoningEnabled ? 'включён 🧠' : 'выключен'}`, 'info');
             };
         }
 
-        // 🌐 Единая кнопка интернета
         if (aiInternetBtn) {
             internetEnabled = localStorage.getItem('ai_internet') === 'true';
             updateInternetBtnStyle();
@@ -538,6 +669,83 @@
                 }
             };
         }
+
+        aiImageGenBtn = document.getElementById('aiImageGenBtn');
+        if (aiImageGenBtn) {
+            aiImageGenBtn.onclick = async () => {
+                const rawPrompt = aiMessageInput.value.trim();
+                if (!rawPrompt) {
+                    showToast('Enter a prompt first', 'warning');
+                    return;
+                }
+                if (isSending) {
+                    showToast('Please wait, current request in progress', 'warning');
+                    return;
+                }
+                isSending = true;
+                if (aiMessageInput) aiMessageInput.value = '';
+                aiMessageInput.disabled = true;
+                aiSendBtn.disabled = true;
+                aiAttachBtn.disabled = true;
+                aiImageGenBtn.disabled = true;
+                if (aiInternetBtn) aiInternetBtn.disabled = true;
+                if (aiReasoningBtn) aiReasoningBtn.disabled = true;
+                if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
+
+                showAiTypingIndicator(true, '🎨 Generating image...');
+
+                try {
+                    let finalPrompt = rawPrompt;
+                    showAiTypingIndicator(true, '✨ Enhancing prompt with AI...');
+                    try {
+                        const enhanceResp = await fetch('/ai/enhance_prompt', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt: rawPrompt })
+                        });
+                        if (enhanceResp.ok) {
+                            const enhanceData = await enhanceResp.json();
+                            if (enhanceData.enhanced && enhanceData.enhanced !== rawPrompt) {
+                                finalPrompt = enhanceData.enhanced;
+                                showToast('Prompt enhanced', 'success');
+                            }
+                        }
+                    } catch (enhanceErr) {
+                        console.warn('Enhance failed, using original prompt', enhanceErr);
+                    }
+                    showAiTypingIndicator(true, '🎨 Generating image...');
+
+                    const response = await fetch('/ai/generate_image', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: finalPrompt })
+                    });
+                    const data = await response.json();
+
+                    if (response.ok && data.image_base64) {
+                        const imageMarkdown = `![generated](${data.image_base64})`;
+                        const finalText = `🎨 *Generated image for:*\n> ${rawPrompt}\n\n${imageMarkdown}`;
+                        displayAiMessage(finalText, false, null, true);
+                    } else {
+                        showToast(data.detail || data.error || 'Generation failed', 'error');
+                    }
+                } catch (err) {
+                    console.error('Image generation error:', err);
+                    showToast('Network error or service unavailable', 'error');
+                } finally {
+                    isSending = false;
+                    showAiTypingIndicator(false);
+                    aiMessageInput.disabled = false;
+                    aiSendBtn.disabled = false;
+                    aiAttachBtn.disabled = false;
+                    aiImageGenBtn.disabled = false;
+                    if (aiInternetBtn) aiInternetBtn.disabled = false;
+                    if (aiReasoningBtn) aiReasoningBtn.disabled = false;
+                    if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
+                    aiMessageInput.focus();
+                }
+            };
+        }
     }
 
     function initAiChat() {
@@ -548,7 +756,7 @@
         aiSendBtn = document.getElementById('aiSendBtn');
         aiAttachBtn = document.getElementById('aiAttachBtn');
         aiReasoningBtn = document.getElementById('aiReasoningBtn');
-        aiInternetBtn = document.getElementById('aiInternetBtn');  // новая единая кнопка
+        aiInternetBtn = document.getElementById('aiInternetBtn');
         aiImageInput = document.getElementById('aiImageInput');
         aiClearHistoryBtn = document.getElementById('aiClearHistoryBtn');
         closeAiChatBtn = document.getElementById('closeAiChatBtn');

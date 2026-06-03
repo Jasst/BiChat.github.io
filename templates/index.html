@@ -4,39 +4,39 @@
 
 {% block content %}
 <div class="auth-container">
-  <div class="auth-card animate-fade">
-    <div class="auth-brand" style="margin-bottom: var(--space-lg); text-align: center;">
-      <div style="width: 64px; height: 64px; margin: 0 auto var(--space-md); background: var(--accent); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--text-inverse); box-shadow: 0 4px 20px rgba(255,255,255,0.15);">🔐</div>
-      <h1 style="font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.5px;">Dark Messenger</h1>
-      <p class="subtitle" style="color: var(--text-secondary); font-size: 14px; margin-top: var(--space-xs); line-height: 1.5;">Decentralized • End-to-end encrypted • Your keys, your messages</p>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-icon">🔐</div>
+      <h1>Dark Messenger</h1>
+      <p class="subtitle">Decentralized • End-to-end encrypted • Your keys, your messages</p>
     </div>
 
     <div class="auth-form">
-      <button class="btn btn-primary" onclick="location.href='/login'" style="width: 100%;">🔑 Login with Mnemonic</button>
-      <button class="btn" id="createWalletBtn" onclick="showCreateWalletModal()" style="width: 100%;">✨ Create New Wallet</button>
+      <button class="btn-primary-oval full-width" onclick="location.href='/login'">🔑 Login with Mnemonic</button>
+      <button class="btn-oval full-width" id="createWalletBtn" onclick="showCreateWalletModal()">✨ Create New Wallet</button>
     </div>
 
-    <div class="auth-footer" style="margin-top: var(--space-xl); text-align: center; color: var(--text-muted); font-size: 12px;">
+    <div class="auth-footer">
       <p>🔐 No central server • No data collection</p>
-      <p style="margin-top: var(--space-xs);"><a href="#" onclick="return false;" style="color: var(--text-secondary); text-decoration: none;">Learn more about security →</a></p>
+      <p><a href="#" onclick="return false;">Learn more about security →</a></p>
     </div>
   </div>
 </div>
 
-<!-- 🔐 Модальное окно для пароля при создании кошелька -->
+<!-- Модальное окно для пароля при создании кошелька -->
 <div id="createWalletModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
-  <div class="modal" style="max-width: 400px;">
+  <div class="modal">
     <header class="modal-header">
       <h3>🔐 Save wallet locally?</h3>
       <button class="modal-close" onclick="ModalManager.close('createWalletModal')">&times;</button>
     </header>
     <div class="modal-body">
-      <p style="margin-bottom: var(--space-md);">Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.</p>
+      <p>Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.</p>
       <div class="form-group">
         <label><input type="checkbox" id="saveLocallyCheckbox" checked> Save locally (with password)</label>
-        <p class="text-muted" style="font-size: 12px; margin-top: 4px;">If saved, you won't need to re-enter mnemonic on next visit.</p>
+        <p class="text-muted">If saved, you won't need to re-enter mnemonic on next visit.</p>
       </div>
-      <div id="passwordGroup" style="display: block;">
+      <div id="passwordGroup">
         <div class="form-group">
           <label>Encryption password</label>
           <input type="password" id="createPassword" class="input" placeholder="Enter password">
@@ -46,11 +46,11 @@
           <input type="password" id="createConfirmPassword" class="input" placeholder="Repeat password">
         </div>
       </div>
-      <div id="createWalletError" class="error hidden" style="margin-top: var(--space-sm);"></div>
+      <div id="createWalletError" class="hidden error"></div>
     </div>
     <footer class="modal-footer">
-      <button class="btn btn-ghost" onclick="ModalManager.close('createWalletModal')">Cancel</button>
-      <button class="btn btn-primary" id="proceedCreateBtn">Create Wallet</button>
+      <button class="btn-oval" onclick="ModalManager.close('createWalletModal')">Cancel</button>
+      <button class="btn-primary-oval" id="proceedCreateBtn">Create Wallet</button>
     </footer>
   </div>
 </div>
@@ -59,37 +59,32 @@
 <div id="mnemonicModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="mnemonicTitle">
   <div class="modal animate-slide" style="max-width: 520px;">
     <header class="modal-header">
-      <h3 id="mnemonicTitle" style="margin: 0; color: var(--accent);">✅ Wallet Created</h3>
-      <button class="modal-close" onclick="MnemonicManager.hide('mnemonicModal')" aria-label="Close">&times;</button>
+      <h3 id="mnemonicTitle">✅ Wallet Created</h3>
+      <button class="modal-close" onclick="MnemonicManager.hide('mnemonicModal')">&times;</button>
     </header>
     <div class="modal-body">
-      <p style="color: var(--status-warning); font-weight: 500; margin: 0 0 var(--space-md); padding: var(--space-sm); background: rgba(170, 170, 170, 0.1); border-radius: var(--radius-sm);">
-        ⚠️ Save this phrase securely. It cannot be recovered if lost!
-      </p>
-      <div id="mnemonicDisplay" class="input-monospace" style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); border: 1px solid var(--border-color); word-break: break-all; user-select: all; min-height: 80px; display: flex; align-items: center; text-align: center; justify-content: center; font-size: 13px; line-height: 1.6;"></div>
-      <div style="display: flex; gap: var(--space-sm); margin: var(--space-md) 0;">
-        <button class="btn" onclick="MnemonicManager.copy(() => NotificationManager?.showToast('✓ Copied!', 'success'))" style="flex: 1;">📋 Copy</button>
-        <button class="btn" onclick="MnemonicManager.download()" style="flex: 1;">📥 Download</button>
+      <p class="warning-text">⚠️ Save this phrase securely. It cannot be recovered if lost!</p>
+      <div id="mnemonicDisplay" class="mnemonic-display"></div>
+      <div class="flex-row" style="justify-content: center;">
+        <button class="btn-oval" onclick="MnemonicManager.copy(() => NotificationManager?.showToast('✓ Copied!', 'success'))">📋 Copy</button>
+        <button class="btn-oval" onclick="MnemonicManager.download()">📥 Download</button>
       </div>
-      <div style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary);">
-        <strong style="color: var(--text-primary);">🔒 Security tips:</strong>
-        <ul style="margin: var(--space-xs) 0 0 var(--space-md); padding: 0;">
+      <div class="security-tips">
+        <strong>🔒 Security tips:</strong>
+        <ul>
           <li>Write it down on paper</li>
           <li>Store in a secure location</li>
           <li>Never share or enter on suspicious sites</li>
         </ul>
       </div>
-      <p style="color: var(--text-muted); font-size: 11px; text-align: center; margin-top: var(--space-md);">
-        <span id="clearCountdown" style="font-weight: 600; color: var(--accent);">30</span>
-      </p>
+      <p class="text-muted text-center">Auto-clear in <span id="clearCountdown" class="accent">30</span>s</p>
     </div>
     <footer class="modal-footer">
-      <button class="btn btn-primary" onclick="proceedToChat()" style="width: 100%;">✓ I've Saved It — Continue</button>
+      <button class="btn-primary-oval full-width" onclick="proceedToChat()">✓ I've Saved It — Continue</button>
     </footer>
   </div>
 </div>
 
-{% block scripts %}
 <script>
 let generatedMnemonic = null;
 let isCreating = false;
@@ -189,5 +184,4 @@ document.getElementById('proceedCreateBtn').addEventListener('click', createWall
 window.showCreateWalletModal = showCreateWalletModal;
 window.proceedToChat = proceedToChat;
 </script>
-{% endblock %}
 {% endblock %}
