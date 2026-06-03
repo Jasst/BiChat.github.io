@@ -1323,6 +1323,7 @@ async def generate_image(body: ImageGenRequest, address: str = Depends(require_a
         "seed": body.seed if body.seed is not None else -1,
         "clip_skip": True,
         "use_stable_diffusion_model": "fallenleafNSFWXLPony_v0620steps",
+        'use_lora_model': 'Realism Lora By Stable Yogi_V3_Lite',
         "use_vae_model": "",
     }
     headers = {"Content-Type": "application/json"}
