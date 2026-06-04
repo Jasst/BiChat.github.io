@@ -401,22 +401,21 @@
     }
 }
   // ================== QR-код и сканер ==================
-  function toggleReceiveQR() {
+   function toggleReceiveQR() {
     const block = document.getElementById('qrBlock');
-    const icon = document.getElementById('toggleQRIcon');
-    const label = document.getElementById('toggleQRLabel');
+    const btn = document.getElementById('toggleQRBtn');
+    if (!block || !btn) return;
+
     const isHidden = block.classList.contains('hidden');
     if (isHidden) {
-      block.classList.remove('hidden');
-      if (!qrGenerated) generateQR();
-      icon.textContent = '📱';
-      label.textContent = 'Hide QR Code';
+        block.classList.remove('hidden');
+        if (!qrGenerated) generateQR();   // глобальная переменная
+        btn.innerHTML = '📱 Hide QR Code';
     } else {
-      block.classList.add('hidden');
-      icon.textContent = '📱';
-      label.textContent = 'Show QR Code';
+        block.classList.add('hidden');
+        btn.innerHTML = '📱 Show QR Code';
     }
-  }
+}
 
   function generateQR() {
     const address = MY_ADDRESS;
