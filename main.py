@@ -29,6 +29,12 @@ async def lifespan(app: FastAPI):
     init_wallet_service(blockchain)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     logger.info("BiChat server started ✅")
+
+    # Запускаем фоновое коллективное обучение AI
+    from routes.ai_assistant import start_global_merge_task
+    start_global_merge_task()
+    logger.info("🌍 Global AI learning task started")
+
     yield
     await close_db()
     logger.info("Shutdown complete")

@@ -89,6 +89,624 @@ MAX_PAGES_TO_FETCH = 6
 PAGE_CONTENT_MAX_CHARS = 6000
 
 # ==================================================================
+# 🌍 Глобальная база коллективных знаний
+# Все пользователи анонимно вносят вклад, AI учится от всех сразу.
+# ==================================================================
+
+GLOBAL_KNOWLEDGE_DIR = Path("ai_memory_v3/_global")
+GLOBAL_KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Параметры глобального обучения
+GLOBAL_VOCAB_PATH       = GLOBAL_KNOWLEDGE_DIR / "vocab.pkl.gz"
+GLOBAL_NEURAL_PATH      = GLOBAL_KNOWLEDGE_DIR / "neural.pkl.gz"
+GLOBAL_EPISODES_PATH    = GLOBAL_KNOWLEDGE_DIR / "episodes.pkl.gz"
+GLOBAL_MERGE_LOG_PATH   = GLOBAL_KNOWLEDGE_DIR / "merge_log.jsonl"
+GLOBAL_STATS_PATH       = GLOBAL_KNOWLEDGE_DIR / "stats.json"
+
+# Сколько лучших эпизодов каждого пользователя берём при слиянии
+MERGE_TOP_EPISODES_PER_USER = 20
+# Веса при слиянии эмбеддингов: global vs local
+GLOBAL_BLEND_ALPHA      = 0.3   # 30% от глобального, 70% своего
+# Минимальный quality-порог для передачи знания в глобальный пул
+MIN_GLOBAL_QUALITY      = 0.55
+# Интервал автоматического слияния (секунды) – каждые ~30 мин
+GLOBAL_MERGE_INTERVAL   = 1800
+# Максимальный размер глобального эпизодического хранилища
+MAX_GLOBAL_EPISODES     = 5000
+
+
+@dataclass
+class GlobalEpisode:
+    """Анонимный эпизод в глобальной памяти."""
+    content_hash: str          # SHA-256 от содержимого (анонимизация)
+    embedding: np.ndarray
+    importance: float
+    topic_tags: List[str]      # автоматически извлечённые темы
+    timestamp: float
+    contributor_hash: str      # sha256(user_id) – не раскрывает личность
+    usage_count: int = 0
+
+
+class GlobalKnowledgeBase:
+    """
+    Единое глобальное хранилище знаний, общее для всех пользователей.
+
+    Архитектура:
+    ┌─────────────────────────────────────────────────────┐
+    │   Пользователь A  →  личная память  ──┐             │
+    │   Пользователь B  →  личная память  ──┼──► Global   │
+    │   Пользователь C  →  личная память  ──┘   KnBase    │
+    │                                              │       │
+    │   При загрузке каждый ассистент ◄────────────┘       │
+    │   получает глобальный контекст                       │
+    └─────────────────────────────────────────────────────┘
+
+    Что хранится глобально (без персональных данных):
+    - Обезличенные эмбеддинги вопрос/ответ пар
+    - Частотный словарь с усреднёнными весами
+    - Усреднённые веса нейросети (Federated Averaging)
+    - Извлечённые концепты и темы
+    """
+
+    _instance: Optional['GlobalKnowledgeBase'] = None
+    _lock: asyncio.Lock = None
+
+    def __init__(self):
+        self._io_lock  = asyncio.Lock()
+        self._episodes: List[GlobalEpisode] = []
+        self._mat: Optional[np.ndarray]     = None
+        self._dirty                         = True
+
+        # Глобальная нейросеть (Federated Averaging — усреднение весов)
+        self._global_W1: Optional[np.ndarray] = None
+        self._global_b1: Optional[np.ndarray] = None
+        self._global_W2: Optional[np.ndarray] = None
+        self._global_b2: Optional[np.ndarray] = None
+        self._global_hidden: int               = INITIAL_HIDDEN
+
+        # Глобальный словарь embeddings: word → averaged vector
+        self._global_embeddings: Dict[str, np.ndarray] = {}
+        self._global_word_counts: Dict[str, int]       = {}
+
+        # Статистика
+        self.total_contributors:   int   = 0
+        self.total_merges:         int   = 0
+        self.total_episodes_added: int   = 0
+        self.last_merge_time:      float = 0.0
+
+        self._load()
+        logger.info(f"🌍 GlobalKnowledgeBase loaded: "
+                    f"{len(self._episodes)} episodes, "
+                    f"{len(self._global_embeddings)} words")
+
+    # ── Singleton ──────────────────────────────────────────────────
+
+    @classmethod
+    def get_instance(cls) -> 'GlobalKnowledgeBase':
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    @classmethod
+    def get_lock(cls) -> asyncio.Lock:
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        return cls._lock
+
+    # ── Persist ────────────────────────────────────────────────────
+
+    def _load(self):
+        # Эпизоды
+        if GLOBAL_EPISODES_PATH.exists():
+            try:
+                with gzip.open(GLOBAL_EPISODES_PATH, 'rb') as f:
+                    raw = pickle.load(f)
+                self._episodes = []
+                for d in raw:
+                    d['embedding'] = np.array(d['embedding'])
+                    self._episodes.append(GlobalEpisode(**d))
+                self._dirty = True
+                logger.info(f"  ✅ {len(self._episodes)} global episodes loaded")
+            except Exception as e:
+                logger.error(f"GlobalKB episodes load error: {e}")
+
+        # Нейросеть
+        if GLOBAL_NEURAL_PATH.exists():
+            try:
+                with gzip.open(GLOBAL_NEURAL_PATH, 'rb') as f:
+                    s = pickle.load(f)
+                self._global_W1     = s['W1']
+                self._global_b1     = s['b1']
+                self._global_W2     = s['W2']
+                self._global_b2     = s['b2']
+                self._global_hidden = s['hidden']
+                logger.info(f"  ✅ Global neural loaded h={self._global_hidden}")
+            except Exception as e:
+                logger.error(f"GlobalKB neural load error: {e}")
+
+        # Словарь
+        if GLOBAL_VOCAB_PATH.exists():
+            try:
+                with gzip.open(GLOBAL_VOCAB_PATH, 'rb') as f:
+                    s = pickle.load(f)
+                self._global_embeddings  = {k: np.array(v) for k, v in s['embeddings'].items()}
+                self._global_word_counts = s['counts']
+                logger.info(f"  ✅ Global vocab loaded: {len(self._global_embeddings)} words")
+            except Exception as e:
+                logger.error(f"GlobalKB vocab load error: {e}")
+
+        # Статы
+        if GLOBAL_STATS_PATH.exists():
+            try:
+                with open(GLOBAL_STATS_PATH, 'r', encoding='utf-8') as f:
+                    s = json.load(f)
+                self.total_contributors   = s.get('contributors', 0)
+                self.total_merges         = s.get('merges', 0)
+                self.total_episodes_added = s.get('episodes_added', 0)
+                self.last_merge_time      = s.get('last_merge', 0.0)
+            except Exception:
+                pass
+
+    def _save(self):
+        try:
+            # Эпизоды
+            raw = []
+            for ep in self._episodes:
+                raw.append({
+                    'content_hash':     ep.content_hash,
+                    'embedding':        ep.embedding.tolist(),
+                    'importance':       ep.importance,
+                    'topic_tags':       ep.topic_tags,
+                    'timestamp':        ep.timestamp,
+                    'contributor_hash': ep.contributor_hash,
+                    'usage_count':      ep.usage_count,
+                })
+            with gzip.open(GLOBAL_EPISODES_PATH, 'wb') as f:
+                pickle.dump(raw, f)
+
+            # Нейросеть
+            if self._global_W1 is not None:
+                with gzip.open(GLOBAL_NEURAL_PATH, 'wb') as f:
+                    pickle.dump({
+                        'W1': self._global_W1, 'b1': self._global_b1,
+                        'W2': self._global_W2, 'b2': self._global_b2,
+                        'hidden': self._global_hidden,
+                    }, f)
+
+            # Словарь
+            with gzip.open(GLOBAL_VOCAB_PATH, 'wb') as f:
+                pickle.dump({
+                    'embeddings': {k: v.tolist() for k, v in self._global_embeddings.items()},
+                    'counts':     self._global_word_counts,
+                }, f)
+
+            # Статы
+            with open(GLOBAL_STATS_PATH, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'contributors':   self.total_contributors,
+                    'merges':         self.total_merges,
+                    'episodes_added': self.total_episodes_added,
+                    'last_merge':     self.last_merge_time,
+                }, f, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            logger.error(f"GlobalKB save error: {e}")
+
+    # ── Вспомогательные ────────────────────────────────────────────
+
+    @staticmethod
+    def _anon_hash(text: str) -> str:
+        return hashlib.sha256(text.encode('utf-8')).hexdigest()[:32]
+
+    @staticmethod
+    def _extract_topics(text: str) -> List[str]:
+        """Извлекает ключевые темы из текста по частотности."""
+        stop_words = {
+            'и','в','на','с','по','из','для','что','как','это','но','или',
+            'the','a','an','is','are','was','were','be','been','to','of',
+            'and','or','but','in','on','at','by','for','with','not',
+        }
+        words = re.findall(r'\b[а-яёa-z]{4,}\b', text.lower())
+        freq: Dict[str, int] = {}
+        for w in words:
+            if w not in stop_words:
+                freq[w] = freq.get(w, 0) + 1
+        return sorted(freq, key=freq.get, reverse=True)[:5]
+
+    def _rebuild_matrix(self):
+        if self._episodes:
+            self._mat   = np.vstack([ep.embedding for ep in self._episodes])
+        else:
+            self._mat   = np.zeros((0, EMBEDDING_DIM))
+        self._dirty = False
+
+    # ── Поиск в глобальной памяти ─────────────────────────────────
+
+    def search_global(self, query_emb: np.ndarray, top_k: int = 5) -> List[Tuple[GlobalEpisode, float]]:
+        if not self._episodes:
+            return []
+        if self._dirty:
+            self._rebuild_matrix()
+        qn     = query_emb / (np.linalg.norm(query_emb) + 1e-8)
+        norms  = np.linalg.norm(self._mat, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-8
+        sims   = (self._mat / norms) @ qn
+        idx    = np.argsort(sims)[::-1][:top_k]
+        return [(self._episodes[i], float(sims[i]))
+                for i in idx if sims[i] > 0.30]
+
+    def get_global_context(self, query_emb: np.ndarray, top_k: int = 3) -> str:
+        """Возвращает строку с релевантными глобальными знаниями для подмешивания в промт."""
+        hits = self.search_global(query_emb, top_k=top_k)
+        if not hits:
+            return ""
+        parts = ["=== 🌍 Знания сообщества (анонимно) ==="]
+        for ep, score in hits:
+            tags = ', '.join(ep.topic_tags[:3]) if ep.topic_tags else '—'
+            parts.append(f"[{score:.2f} | {tags}] (обезличенный опыт #{ep.content_hash[:8]})")
+        return "\n".join(parts)
+
+    # ── Приём знаний от пользователя ──────────────────────────────
+
+    async def contribute(
+        self,
+        user_id:   str,
+        content:   str,
+        embedding: np.ndarray,
+        importance: float,
+        assistant: 'SelfImprovingAssistant',
+    ) -> bool:
+        """
+        Анонимно добавляет эпизод от пользователя в глобальную базу.
+        Ничего персонального не хранится — только хэш контента и эмбеддинг.
+        """
+        if importance < MIN_GLOBAL_QUALITY:
+            return False
+
+        async with self.get_lock():
+            c_hash    = self._anon_hash(content)
+            u_hash    = self._anon_hash(user_id)
+            topics    = self._extract_topics(content)
+
+            # Дедупликация по хэшу контента
+            existing_hashes = {ep.content_hash for ep in self._episodes}
+            if c_hash in existing_hashes:
+                return False
+
+            ep = GlobalEpisode(
+                content_hash     = c_hash,
+                embedding        = embedding.copy(),
+                importance       = importance,
+                topic_tags       = topics,
+                timestamp        = time.time(),
+                contributor_hash = u_hash,
+            )
+            self._episodes.append(ep)
+            self._dirty             = True
+            self.total_episodes_added += 1
+
+            # Обновляем глобальный словарь (running average)
+            for word, idx in assistant.vocab.word2idx.items():
+                if idx < len(assistant.vocab.embeddings):
+                    local_emb = assistant.vocab.embeddings[idx]
+                    if word in self._global_embeddings:
+                        n = self._global_word_counts.get(word, 1)
+                        # running mean: new_avg = (n*old + new) / (n+1)
+                        self._global_embeddings[word] = (
+                            self._global_embeddings[word] * n + local_emb
+                        ) / (n + 1)
+                        self._global_word_counts[word] = n + 1
+                    else:
+                        self._global_embeddings[word]  = local_emb.copy()
+                        self._global_word_counts[word]  = 1
+
+            # Обрезаем при переполнении (удаляем наименее важные старые)
+            if len(self._episodes) > MAX_GLOBAL_EPISODES:
+                self._episodes.sort(key=lambda e: e.importance * (
+                    1.0 - min(1.0, (time.time() - e.timestamp) / (86400 * 30))
+                ), reverse=True)
+                self._episodes = self._episodes[:MAX_GLOBAL_EPISODES]
+                self._dirty = True
+
+            return True
+
+    # ── Federated Averaging нейросети ─────────────────────────────
+
+    async def federated_average_neural(
+        self,
+        assistants: List['SelfImprovingAssistant'],
+    ) -> None:
+        """
+        Усредняет веса нейросетей всех пользователей.
+        Реализует упрощённый Federated Averaging (McMahan et al. 2017).
+        Совместимые слои усредняются поэлементно с взвешиванием по числу обновлений.
+        """
+        if not assistants:
+            return
+
+        valid = [a for a in assistants if a.neural.total_updates > 0]
+        if not valid:
+            return
+
+        total_updates = sum(a.neural.total_updates for a in valid)
+        if total_updates == 0:
+            return
+
+        # Берём размерность самой «умной» сети как ориентир
+        ref = max(valid, key=lambda a: a.neural.total_updates)
+
+        W1_agg = np.zeros_like(ref.neural.W1)
+        b1_agg = np.zeros_like(ref.neural.b1)
+        W2_agg = np.zeros_like(ref.neural.W2)
+        b2_agg = np.zeros_like(ref.neural.b2)
+
+        weight_sum = 0.0
+        for a in valid:
+            w = a.neural.total_updates / total_updates
+            n = a.neural
+
+            # Совместимость по размеру скрытого слоя — берём минимум
+            h_min  = min(n.hidden, ref.neural.hidden)
+            in_dim = min(n.input_dim, ref.neural.input_dim)
+            out_   = min(n.output, ref.neural.output)
+
+            W1_agg[:in_dim, :h_min]  += w * n.W1[:in_dim, :h_min]
+            b1_agg[:h_min]           += w * n.b1[:h_min]
+            W2_agg[:h_min, :out_]    += w * n.W2[:h_min, :out_]
+            b2_agg[:out_]            += w * n.b2[:out_]
+            weight_sum += w
+
+        if weight_sum > 0:
+            self._global_W1     = W1_agg / weight_sum
+            self._global_b1     = b1_agg / weight_sum
+            self._global_W2     = W2_agg / weight_sum
+            self._global_b2     = b2_agg / weight_sum
+            self._global_hidden = ref.neural.hidden
+
+        logger.info(f"🔗 Federated avg: {len(valid)} users, {total_updates} updates")
+
+    # ── Применение глобальных знаний к локальной сети ─────────────
+
+    def apply_global_to_local(
+        self,
+        assistant: 'SelfImprovingAssistant',
+        alpha: float = GLOBAL_BLEND_ALPHA,
+    ) -> None:
+        """
+        Подмешивает глобальные веса в локальную нейросеть.
+        alpha = 0.3 означает: 30% глобальное, 70% личное.
+        """
+        if self._global_W1 is None:
+            return
+
+        n = assistant.neural
+        h_min  = min(n.hidden, self._global_hidden)
+        in_dim = min(n.input_dim, self._global_W1.shape[0])
+        out_   = min(n.output,  self._global_W2.shape[1])
+
+        try:
+            n.W1[:in_dim, :h_min] = (
+                (1 - alpha) * n.W1[:in_dim, :h_min]
+                + alpha     * self._global_W1[:in_dim, :h_min]
+            )
+            n.b1[:h_min] = (
+                (1 - alpha) * n.b1[:h_min]
+                + alpha     * self._global_b1[:h_min]
+            )
+            n.W2[:h_min, :out_] = (
+                (1 - alpha) * n.W2[:h_min, :out_]
+                + alpha     * self._global_W2[:h_min, :out_]
+            )
+            n.b2[:out_] = (
+                (1 - alpha) * n.b2[:out_]
+                + alpha     * self._global_b2[:out_]
+            )
+        except Exception as e:
+            logger.warning(f"apply_global_to_local: {e}")
+
+    def apply_global_vocab_to_local(
+        self,
+        assistant: 'SelfImprovingAssistant',
+        alpha: float = GLOBAL_BLEND_ALPHA,
+    ) -> None:
+        """
+        Обогащает локальный словарь глобальными усреднёнными эмбеддингами.
+        Новые слова из глобального словаря добавляются в локальный.
+        """
+        if not self._global_embeddings:
+            return
+
+        added = 0
+        blended = 0
+        for word, g_emb in self._global_embeddings.items():
+            if word in assistant.vocab.word2idx:
+                idx       = assistant.vocab.word2idx[word]
+                local_emb = assistant.vocab.embeddings[idx]
+                # Смешиваем: alpha глобального + (1-alpha) локального
+                assistant.vocab.embeddings[idx] = (
+                    (1 - alpha) * local_emb + alpha * g_emb
+                )
+                blended += 1
+            else:
+                # Добавляем новое слово из глобального словаря
+                new_idx = assistant.vocab.add_word(word)
+                if new_idx < len(assistant.vocab.embeddings):
+                    assistant.vocab.embeddings[new_idx] = g_emb.copy()
+                    added += 1
+
+        if added or blended:
+            logger.debug(f"Global vocab → {assistant.user_id[:8]}: "
+                         f"+{added} new, {blended} blended")
+
+    # ── Периодическое слияние ──────────────────────────────────────
+
+    async def merge_all(self, assistants: List['SelfImprovingAssistant']) -> Dict:
+        """
+        Полный цикл слияния:
+        1. Собираем лучшие эпизоды от всех пользователей
+        2. Federated Averaging нейросетей
+        3. Применяем глобальные знания ко всем локальным ассистентам
+        4. Сохраняем глобальное состояние
+        """
+        async with self.get_lock():
+            t0 = time.time()
+
+            # 1. Сбор эпизодов
+            episodes_added = 0
+            contributor_ids = set()
+            for a in assistants:
+                contributor_ids.add(a.user_id)
+                top_eps = sorted(
+                    a.memory.episodic.items,
+                    key=lambda e: e.importance, reverse=True
+                )[:MERGE_TOP_EPISODES_PER_USER]
+
+                for ep in top_eps:
+                    added = await self._add_episode_unlocked(
+                        user_id   = a.user_id,
+                        content   = ep.content,
+                        embedding = ep.embedding,
+                        importance= ep.importance,
+                        assistant = a,
+                    )
+                    if added:
+                        episodes_added += 1
+
+            # 2. Federated Averaging
+            await self.federated_average_neural(assistants)
+
+            # 3. Применяем глобальные знания к каждому ассистенту
+            for a in assistants:
+                self.apply_global_to_local(a, alpha=GLOBAL_BLEND_ALPHA)
+                self.apply_global_vocab_to_local(a, alpha=GLOBAL_BLEND_ALPHA)
+
+            self.total_contributors = max(self.total_contributors, len(contributor_ids))
+            self.total_merges      += 1
+            self.last_merge_time    = time.time()
+
+            # 4. Сохраняем
+            self._save()
+
+            elapsed = time.time() - t0
+            result  = {
+                'episodes_added': episodes_added,
+                'total_episodes': len(self._episodes),
+                'global_vocab':   len(self._global_embeddings),
+                'contributors':   len(contributor_ids),
+                'merge_time_s':   round(elapsed, 2),
+            }
+
+            # Пишем лог
+            try:
+                with open(GLOBAL_MERGE_LOG_PATH, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({
+                        'ts':      time.time(),
+                        'elapsed': elapsed,
+                        **result,
+                    }) + '\n')
+            except Exception:
+                pass
+
+            logger.info(f"🌍 Merge #{self.total_merges}: "
+                        f"+{episodes_added} eps, "
+                        f"{len(self._episodes)} total, "
+                        f"{elapsed:.1f}s")
+            return result
+
+    async def _add_episode_unlocked(
+        self,
+        user_id:    str,
+        content:    str,
+        embedding:  np.ndarray,
+        importance: float,
+        assistant:  'SelfImprovingAssistant',
+    ) -> bool:
+        """Внутренняя версия contribute() без повторного захвата лока."""
+        if importance < MIN_GLOBAL_QUALITY:
+            return False
+        c_hash = self._anon_hash(content)
+        if any(ep.content_hash == c_hash for ep in self._episodes):
+            return False
+
+        topics = self._extract_topics(content)
+        u_hash = self._anon_hash(user_id)
+        ep     = GlobalEpisode(
+            content_hash     = c_hash,
+            embedding        = embedding.copy(),
+            importance       = importance,
+            topic_tags       = topics,
+            timestamp        = time.time(),
+            contributor_hash = u_hash,
+        )
+        self._episodes.append(ep)
+        self._dirty              = True
+        self.total_episodes_added += 1
+
+        # Обновляем глобальный словарь
+        for word, idx in assistant.vocab.word2idx.items():
+            if idx < len(assistant.vocab.embeddings):
+                local_emb = assistant.vocab.embeddings[idx]
+                if word in self._global_embeddings:
+                    n = self._global_word_counts.get(word, 1)
+                    self._global_embeddings[word] = (
+                        self._global_embeddings[word] * n + local_emb
+                    ) / (n + 1)
+                    self._global_word_counts[word] = n + 1
+                else:
+                    self._global_embeddings[word]  = local_emb.copy()
+                    self._global_word_counts[word]  = 1
+
+        if len(self._episodes) > MAX_GLOBAL_EPISODES:
+            self._episodes.sort(
+                key=lambda e: e.importance * (
+                    1.0 - min(1.0, (time.time() - e.timestamp) / (86400 * 30))
+                ), reverse=True
+            )
+            self._episodes = self._episodes[:MAX_GLOBAL_EPISODES]
+            self._dirty    = True
+
+        return True
+
+    def stats(self) -> Dict:
+        return {
+            'total_episodes':     len(self._episodes),
+            'global_vocab_size':  len(self._global_embeddings),
+            'total_contributors': self.total_contributors,
+            'total_merges':       self.total_merges,
+            'episodes_added':     self.total_episodes_added,
+            'last_merge':         self.last_merge_time,
+            'has_global_neural':  self._global_W1 is not None,
+        }
+
+
+# Фоновая задача автоматического слияния
+_merge_task: Optional[asyncio.Task] = None
+
+async def _auto_merge_loop():
+    """Запускается при старте приложения, каждые GLOBAL_MERGE_INTERVAL секунд сливает знания."""
+    await asyncio.sleep(60)   # первый запуск через 1 минуту
+    while True:
+        try:
+            gkb = GlobalKnowledgeBase.get_instance()
+            async with _assistants_lock:
+                all_assistants = list(_assistants.values())
+            if len(all_assistants) >= 1:
+                result = await gkb.merge_all(all_assistants)
+                logger.info(f"🌍 Auto-merge: {result}")
+            else:
+                logger.debug("Auto-merge skipped: no active assistants")
+        except Exception as e:
+            logger.error(f"Auto-merge error: {e}")
+        await asyncio.sleep(GLOBAL_MERGE_INTERVAL)
+
+
+def start_global_merge_task():
+    """Вызывается один раз при старте FastAPI-приложения."""
+    global _merge_task
+    _merge_task = asyncio.create_task(_auto_merge_loop())
+    logger.info("🌍 Global merge task started")
+
+# ==================================================================
 # 🌐 Web Search Tool — использующий ddgs (duckduckgo-search)
 # ==================================================================
 # Модель для запроса генерации изображения
@@ -844,6 +1462,15 @@ class SelfImprovingAssistant:
                 except Exception:
                     pass
 
+        # ── Обогащаем новый ассистент глобальными знаниями ──────────
+        try:
+            gkb = GlobalKnowledgeBase.get_instance()
+            gkb.apply_global_vocab_to_local(self, alpha=GLOBAL_BLEND_ALPHA)
+            gkb.apply_global_to_local(self, alpha=GLOBAL_BLEND_ALPHA)
+            logger.info(f"🌍 Global knowledge applied to {self.user_id[:8]}")
+        except Exception as e:
+            logger.warning(f"Global KB apply on load failed: {e}")
+
     def _save(self):
         state = {
             'emb': self.vocab.embeddings,
@@ -1063,6 +1690,22 @@ class SelfImprovingAssistant:
             self.memory.consolidate()
             self._save()
 
+        # ── Вклад в глобальную базу знаний (анонимно) ────────────────
+        if quality >= MIN_GLOBAL_QUALITY and not has_web:
+            try:
+                emb_contrib = self.vocab.encode(message + " " + response)
+                asyncio.create_task(
+                    GlobalKnowledgeBase.get_instance().contribute(
+                        user_id   = self.user_id,
+                        content   = "Q: " + message + "\nA: " + response,
+                        embedding = emb_contrib,
+                        importance= quality,
+                        assistant = self,
+                    )
+                )
+            except Exception as e:
+                logger.debug(f"Global contribute failed: {e}")
+
         return response, {
             'quality': round(quality, 3), 'loss': loss,
             'response_time': time.time() - start,
@@ -1217,6 +1860,22 @@ class SelfImprovingAssistant:
                 self.memory.consolidate()
                 self._save()
 
+            # ── Вклад в глобальную базу знаний (анонимно) ────────────
+            if quality >= MIN_GLOBAL_QUALITY and not has_web:
+                try:
+                    emb_contrib = self.vocab.encode(f"{message}\n{full_response}")
+                    asyncio.create_task(
+                        GlobalKnowledgeBase.get_instance().contribute(
+                            user_id   = self.user_id,
+                            content   = "Q: " + message + "\nA: " + full_response,
+                            embedding = emb_contrib,
+                            importance= quality,
+                            assistant = self,
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Global contribute (stream) failed: {e}")
+
         yield "data: [DONE]\n\n"
 
     def _load_image_gen_cache(self):
@@ -1247,6 +1906,9 @@ async def get_assistant(user_id: str) -> SelfImprovingAssistant:
         if user_id not in _assistants:
             _assistants[user_id] = SelfImprovingAssistant(user_id)
         return _assistants[user_id]
+
+
+
 
 class AIRequest(BaseModel):
     message: str = Field(..., description="Текстовый запрос пользователя")
@@ -1456,7 +2118,60 @@ async def enhance_prompt(body: dict, address: str = Depends(require_auth)):
     return {"enhanced": enhanced}
 
 
+# ==================================================================
+# 📊 Endpoints глобальной базы знаний
+# ==================================================================
+
+@router.get("/global_stats")
+async def global_knowledge_stats(address: str = Depends(require_auth)):
+    gkb = GlobalKnowledgeBase.get_instance()
+    assistant = await get_assistant(address)
+    return {
+        "global":          gkb.stats(),
+        "my_episodes":     len(assistant.memory.episodic.items),
+        "my_vocab_size":   assistant.vocab.next_idx,
+        "my_interactions": assistant.total_interactions,
+        "my_lr":           round(assistant.current_lr, 6),
+        "neural_arch":     assistant.neural.stats(),
+    }
+
+
+@router.post("/force_merge")
+async def force_global_merge(address: str = Depends(require_auth)):
+    gkb = GlobalKnowledgeBase.get_instance()
+    async with _assistants_lock:
+        all_assistants = list(_assistants.values())
+    if not all_assistants:
+        return {"status": "no active assistants"}
+    result = await gkb.merge_all(all_assistants)
+    return {"status": "merged", **result}
+
+
+@router.post("/apply_global")
+async def apply_global_to_me(address: str = Depends(require_auth)):
+    gkb       = GlobalKnowledgeBase.get_instance()
+    assistant = await get_assistant(address)
+    gkb.apply_global_to_local(assistant,       alpha=GLOBAL_BLEND_ALPHA)
+    gkb.apply_global_vocab_to_local(assistant, alpha=GLOBAL_BLEND_ALPHA)
+    return {
+        "status":          "applied",
+        "global_episodes": len(gkb._episodes),
+        "global_vocab":    len(gkb._global_embeddings),
+        "has_neural":      gkb._global_W1 is not None,
+    }
+
+
 def _shutdown_all():
+    try:
+        gkb = GlobalKnowledgeBase.get_instance()
+        import asyncio as _asyncio
+        loop = _asyncio.new_event_loop()
+        loop.run_until_complete(gkb.merge_all(list(_assistants.values())))
+        loop.close()
+        logger.info("Global merge on shutdown done")
+    except Exception as e:
+        logger.error(f"Shutdown merge failed: {e}")
+
     for uid, a in _assistants.items():
         try:
             a._save()
