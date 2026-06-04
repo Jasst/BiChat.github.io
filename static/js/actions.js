@@ -451,28 +451,49 @@
 
         const addContactBtn = document.getElementById('addToContactsBtn');
         if (addContactBtn) {
-            addContactBtn.onclick = async () => {
-               const address = State.currentChatPartnerAddress;
-               if (!address) return;
-               const name = await window.showPromptModal(
-                   'Add Contact',
-                   'Enter name for this contact:',
-                    address.slice(0, 10) + '...'
-               );
-               if (!name) return;
-               const res = await fetch('/add_contact_from_chat', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ contact_address: address, contact_name: name })
-               });
-               if (res.ok) {
-                  window.NotificationManager?.showToast('Contact added', 'success');
-                  addContactBtn.disabled = true;
-               } else {
-                  const err = await res.json();
-                  window.NotificationManager?.showToast(err.error || 'Failed', 'error');
-               }
-            };
+          addContactBtn.onclick = async () => {
+             const address = State.currentChatPartnerAddress;
+             if (!address) return;
+
+              // 1. Проверяем, не добавлен ли уже этот контакт
+             try {
+                 const res = await fetch('/get_contacts');
+                 const data = await res.json();
+                 if (res.ok && data.contacts) {
+                   const alreadyExists = data.contacts.some(c => c.address === address);
+                   if (alreadyExists) {
+                     window.NotificationManager?.showToast('This contact is already in your list', 'warning');
+                     return;
+                   }
+                 }
+             } catch (err) {
+               console.warn('Failed to check contacts', err);
+             }
+
+             const name = await window.showPromptModal(
+               'Add Contact',
+               'Enter name for this contact:',
+               address.slice(0, 10) + '...'
+             );
+             if (!name) return;
+
+             const res = await fetch('/add_contact_from_chat', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ contact_address: address, contact_name: name })
+             });
+             if (res.ok) {
+                window.NotificationManager?.showToast('Contact added', 'success');
+                addContactBtn.disabled = true;
+             // Обновляем локальный список контактов, чтобы повторная проверка работала
+                const refreshRes = await fetch('/get_contacts');
+                const refreshData = await refreshRes.json();
+                if (refreshRes.ok) State.allContacts = refreshData.contacts;
+             } else {
+                const err = await res.json();
+                window.NotificationManager?.showToast(err.error || 'Failed', 'error');
+             }
+          };
         }
 
         const attachImageBtn = document.getElementById('attachImageButton');
