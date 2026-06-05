@@ -387,8 +387,8 @@
                         fileIv = decIv;
                     }
                 }
-                const chatId = msg.recipient;
-                return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true };
+                const chatId = msg.recipient; // уже содержит "group:..." из БД
+                return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isGroup: true, isDecrypted: true };
             }
 
             // ---------- ЛИЧНЫЙ ЧАТ ----------
@@ -497,9 +497,14 @@
         }
 
         let isCurrent = false;
-        if (State.currentChatAddress === chatId) isCurrent = true;
-        else if (decrypted.isGroup && State.currentChatAddress === chatId) isCurrent = true;
-        else if (!decrypted.isGroup && (decrypted.sender === State.currentChatAddress || decrypted.recipient === State.currentChatAddress)) isCurrent = true;
+        if (State.currentChatAddress === chatId) {
+            isCurrent = true;
+        } else if (!decrypted.isGroup && (
+            decrypted.sender === State.currentChatAddress ||
+            decrypted.recipient === State.currentChatAddress
+        )) {
+            isCurrent = true;
+        }
 
         if (!isCurrent) {
             const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);

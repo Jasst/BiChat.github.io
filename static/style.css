@@ -679,7 +679,8 @@ body {
 /* Чтобы последнее сообщение не перекрывалось полем, добавляем внутренний отступ-спейсер */
 .messages::after {
   content: '';
-  display: none
+  display: block;
+  height: 80px;
 }
 #filePreview .btn-icon-oval {
   background: var(--bg-tertiary);

@@ -74,14 +74,19 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
             message_obj = {
                 'id': tx_id, 'sender': sender, 'sender_name': None,
                 'chatId': f"group:{body.group_id}", 'isGroup': True,
+                'recipient': f"group:{body.group_id}",
                 'preview': '💬 Новое сообщение в группе',
                 'timestamp': time.time(),
                 'content': json.dumps({'encrypted_map': body.encrypted_map}),
                 'image': None,
             }
+            # ВАЖНО: коммитим ДО отправки WS, чтобы клиент мог сразу запросить сообщение из БД
+            await conn.execute('COMMIT')
+            # Рассылаем всем участникам через notifier (поддерживает оффлайн-буфер)
+            from services.notifier import message_notifier
             for member in group['members']:
-                if member != sender:
-                    await manager.send_personal_message(member, message_obj)
+                # Отправляем всем, включая отправителя (для синхронизации нескольких вкладок/устройств)
+                await message_notifier.add_message(member, message_obj)
         else:
             recipient = body.recipient
             if not recipient:
@@ -102,21 +107,26 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
             message_obj = {
                 'id': tx_id, 'sender': sender, 'sender_name': None,
                 'chatId': recipient, 'isGroup': False,
+                'recipient': recipient,
                 'preview': '💬 Новое сообщение',
                 'timestamp': time.time(),
                 'content': json.dumps(body.payload),
                 'image': None,
             }
-            await manager.send_personal_message(recipient, message_obj)
-        await conn.execute('COMMIT')
-        await invalidate_conversations_cache(sender)
-        if msg_type == 'group' and body.group_id and group:
-            for member in group['members']:
-                await invalidate_conversations_cache(member)
-        else:
-            await invalidate_conversations_cache(body.recipient)
+            # ВАЖНО: коммитим ДО отправки WS
+            await conn.execute('COMMIT')
+            # Отправляем получателю через notifier (поддерживает оффлайн-буфер)
+            from services.notifier import message_notifier
+            await message_notifier.add_message(recipient, message_obj)
 
-        return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
+    await invalidate_conversations_cache(sender)
+    if msg_type == 'group' and body.group_id and group:
+        for member in group['members']:
+            await invalidate_conversations_cache(member)
+    else:
+        await invalidate_conversations_cache(body.recipient)
+
+    return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
 
 
 @router.get('/get_conversation')

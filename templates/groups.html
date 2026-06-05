@@ -298,29 +298,60 @@
     el.classList.remove('hidden');
   }
 
-  async function submitCreate() {
+ async function submitCreate() {
     const name = document.getElementById('groupName').value.trim();
     const members = Object.keys(selectedMembers);
-    if (!name || name.length > 100) { showCreateError('Name required (max 100 chars)'); return; }
-    if (!members.length) { showCreateError('Add at least one member'); return; }
+    if (!name || name.length > 100) {
+        showCreateError('Name required (max 100 chars)');
+        return;
+    }
+    if (!members.length) {
+        showCreateError('Add at least one member');
+        return;
+    }
     const btn = document.getElementById('createSubmitBtn');
     btn.disabled = true;
     btn.textContent = 'Creating…';
     try {
-      const res = await fetch('/create_group', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, members })
-      });
-      const data = await res.json();
-      if (!res.ok) { showCreateError(data.error || 'Failed'); return; }
-      ModalManager.close('createModal');
-      await loadGroups();
-      const confirmed = await showConfirmModal('Group Created', `Group "${name}" created!\nOpen chat now?`);
-      if (confirmed) openGroupChatById('group:' + data.group_id, name);
-    } catch(err) { showCreateError('Network error'); }
-    finally { btn.disabled = false; btn.textContent = 'Create'; }
-  }
+        const res = await fetch('/create_group', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, members })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showCreateError(data.error || 'Failed');
+            return;
+        }
+        // Закрываем модалку создания
+        ModalManager.close('createModal');
+        // Обновляем список групп
+        await loadGroups();
+        // 🔥 НОВОЕ: подписываемся на WebSocket-канал этой группы
+        if (window.wsClient && window.wsClient.isConnected) {
+            window.wsClient.send({
+                type: 'subscribe_group',
+                group_id: data.group_id
+            });
+            console.log('✅ Subscribed to group:', data.group_id);
+        } else {
+            console.warn('WebSocket not available, group subscription skipped');
+        }
+        // Спрашиваем, открыть ли чат
+        const confirmed = await window.showConfirmModal(
+            'Group Created',
+            `Group "${name}" created!\nOpen chat now?`
+        );
+        if (confirmed) {
+            openGroupChatById('group:' + data.group_id, name);
+        }
+    } catch (err) {
+        showCreateError('Network error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create';
+    }
+}
 
   // Detail modal
   async function openDetail(groupJson) {
