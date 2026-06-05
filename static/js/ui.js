@@ -1,4 +1,4 @@
-// ui.js — полная версия с исправленным скроллом после кеша
+// ui.js — полная версия с исправленным скроллом после кеша и отправки
 (function() {
     if (window._uiLoaded) return;
     window._uiLoaded = true;
@@ -285,125 +285,121 @@
         await loadMessagesForConversation(address, false);
     }
 
-    async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
-    const container = document.getElementById('messagesContainer');
-    if (!container) return;
-    if (!chatWithAddress) {
-        if (!isNewMessage) container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">💬</div><p>Select a conversation to start chatting</p></div>';
-        _enableChatControls();
-        return;
-    }
-
-    const cached = window.getCachedMessages(chatWithAddress);
-    let lastKnownId = 0;
-
-    // ---------- ПОКАЗ КЕШИРОВАННЫХ СООБЩЕНИЙ ----------
-    if (!isNewMessage && cached.length > 0) {
-        container.innerHTML = '';
-        const fragment = document.createDocumentFragment();
-        for (const msg of cached) {
-            let displayMsg = msg;
-            if (!msg.isDecrypted) {
-                try {
-                    displayMsg = await window.processMessageDecryption(msg);
-                } catch(e) {
-                    console.warn('Failed to decrypt cached message', msg.id, e);
-                    displayMsg = { ...msg, content: '🔒 Decrypt error', isDecrypted: false };
-                }
-            }
-            fragment.appendChild(createMessageElement(displayMsg));
-            if (displayMsg.id > lastKnownId) lastKnownId = displayMsg.id;
-        }
-        container.appendChild(fragment);
-
-        // ✅ Прокрутка к последнему сообщению (без перекрытия полем)
-        const lastMsg = container.querySelector('.message:last-child');
-        if (lastMsg) {
-            lastMsg.scrollIntoView({ behavior: 'auto', block: 'end' });
-        } else {
-            container.scrollTop = container.scrollHeight;
-        }
-
-        State.lastKnownMessageId = lastKnownId;
-        _enableChatControls();
-        setupTopObserver();
-        if (cached.length) markConversationAsRead(chatWithAddress, cached[cached.length-1].id);
-    } else if (!isNewMessage) {
-        container.innerHTML = '<div class="loading">Loading messages…</div>';
-        container.classList.add('loading');
-    }
-
-    // ---------- ЗАГРУЗКА НОВЫХ СООБЩЕНИЙ С СЕРВЕРА ----------
-    try {
-        const params = new URLSearchParams({ with: chatWithAddress });
-        if (lastKnownId > 0) params.append('last_message_id', lastKnownId);
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch('/get_conversation?' + params.toString(), { signal: controller.signal });
-        clearTimeout(timeout);
-        const data = await res.json();
-
-        if (!res.ok) throw new Error(data.error || 'Failed to load');
-
-        const rawMessages = Array.isArray(data.messages) ? data.messages : [];
-        if (rawMessages.length === 0) {
-            if (!isNewMessage && cached.length === 0) {
-                container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">👋</div><p>No messages yet</p><p class="text-muted" style="font-size:12px">Start the conversation!</p></div>';
-                _enableChatControls();
-            }
-            container.classList.remove('loading');
+    // ГЛАВНАЯ ФУНКЦИЯ ЗАГРУЗКИ СООБЩЕНИЙ (С ИСПРАВЛЕННЫМ СКРОЛЛОМ)
+    async function loadMessagesForConversation(chatWithAddress, isNewMessage = false, forceScroll = false) {
+        const container = document.getElementById('messagesContainer');
+        if (!container) return;
+        if (!chatWithAddress) {
+            if (!isNewMessage) container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">💬</div><p>Select a conversation to start chatting</p></div>';
+            _enableChatControls();
             return;
         }
 
-        const newMessages = [];
-        for (const msg of rawMessages) {
-            try {
-                const decrypted = await window.processMessageDecryption(msg);
-                newMessages.push(decrypted);
-            } catch(e) {
-                newMessages.push({ ...msg, content: '🔒 Decrypt error', image: null });
-            }
-        }
+        const cached = window.getCachedMessages(chatWithAddress);
+        let lastKnownId = 0;
 
-        window.addMessagesToCache(chatWithAddress, newMessages, 'end');
-
-        if (container) {
-            for (const msg of newMessages) {
-                if (document.getElementById('msg-' + msg.id)) continue;
-                const msgEl = createMessageElement(msg);
-                container.appendChild(msgEl);
-                if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
-            }
-
-            const wasAtBottom = isUserAtBottom(container, 30);
-            const isFirstOpen = !isNewMessage && cached.length === 0;
-
-            // ✅ Прокрутка к последнему сообщению
-            if (wasAtBottom || isFirstOpen) {
-                const lastMsg = container.querySelector('.message:last-child');
-                if (lastMsg) {
-                    lastMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                } else {
-                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        // ---------- ПОКАЗ КЕШИРОВАННЫХ СООБЩЕНИЙ ----------
+        if (!isNewMessage && cached.length > 0) {
+            container.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            for (const msg of cached) {
+                let displayMsg = msg;
+                if (!msg.isDecrypted) {
+                    try {
+                        displayMsg = await window.processMessageDecryption(msg);
+                    } catch(e) {
+                        console.warn('Failed to decrypt cached message', msg.id, e);
+                        displayMsg = { ...msg, content: '🔒 Decrypt error', isDecrypted: false };
+                    }
                 }
-            } else if (newMessages.length && !isNewMessage) {
+                fragment.appendChild(createMessageElement(displayMsg));
+                if (displayMsg.id > lastKnownId) lastKnownId = displayMsg.id;
+            }
+            container.appendChild(fragment);
+
+            // ✅ Прокрутка к последнему сообщению с учётом forceScroll
+            const wasAtBottom = isUserAtBottom(container, 30);
+            if (wasAtBottom || forceScroll) {
+                container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+            } else {
                 showNewMessagesBadge();
             }
+
+            State.lastKnownMessageId = lastKnownId;
+            _enableChatControls();
+            setupTopObserver();
+            if (cached.length) markConversationAsRead(chatWithAddress, cached[cached.length-1].id);
+        } else if (!isNewMessage) {
+            container.innerHTML = '<div class="loading">Loading messages…</div>';
+            container.classList.add('loading');
         }
 
-        if (!isNewMessage && cached.length === 0 && newMessages.length) setupTopObserver();
+        // ---------- ЗАГРУЗКА НОВЫХ СООБЩЕНИЙ С СЕРВЕРА ----------
+        try {
+            const params = new URLSearchParams({ with: chatWithAddress });
+            if (lastKnownId > 0) params.append('last_message_id', lastKnownId);
 
-        _enableChatControls();
-        if (newMessages.length) markConversationAsRead(chatWithAddress, newMessages[newMessages.length-1].id);
-    } catch (error) {
-        console.error('Load messages error:', error);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            const res = await fetch('/get_conversation?' + params.toString(), { signal: controller.signal });
+            clearTimeout(timeout);
+            const data = await res.json();
+
+            if (!res.ok) throw new Error(data.error || 'Failed to load');
+
+            const rawMessages = Array.isArray(data.messages) ? data.messages : [];
+            if (rawMessages.length === 0) {
+                if (!isNewMessage && cached.length === 0) {
+                    container.innerHTML = '<div class="empty-state animate-fade"><div class="icon">👋</div><p>No messages yet</p><p class="text-muted" style="font-size:12px">Start the conversation!</p></div>';
+                    _enableChatControls();
+                }
+                container.classList.remove('loading');
+                return;
+            }
+
+            const newMessages = [];
+            for (const msg of rawMessages) {
+                try {
+                    const decrypted = await window.processMessageDecryption(msg);
+                    newMessages.push(decrypted);
+                } catch(e) {
+                    newMessages.push({ ...msg, content: '🔒 Decrypt error', image: null });
+                }
+            }
+
+            window.addMessagesToCache(chatWithAddress, newMessages, 'end');
+
+            if (container) {
+                for (const msg of newMessages) {
+                    if (document.getElementById('msg-' + msg.id)) continue;
+                    const msgEl = createMessageElement(msg);
+                    container.appendChild(msgEl);
+                    if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
+                }
+
+                const wasAtBottom = isUserAtBottom(container, 30);
+                const isFirstOpen = !isNewMessage && cached.length === 0;
+
+                // ✅ Исправленный скролл: всегда прокручиваем до конца при forceScroll или был внизу
+                if (wasAtBottom || isFirstOpen || forceScroll) {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                } else if (newMessages.length && !isNewMessage) {
+                    showNewMessagesBadge();
+                }
+            }
+
+            if (!isNewMessage && cached.length === 0 && newMessages.length) setupTopObserver();
+
+            _enableChatControls();
+            if (newMessages.length) markConversationAsRead(chatWithAddress, newMessages[newMessages.length-1].id);
+        } catch (error) {
+            console.error('Load messages error:', error);
+            container.classList.remove('loading');
+            if (!isNewMessage && cached.length === 0) container.innerHTML = '<p class="text-muted text-center">Failed to load messages</p>';
+            _enableChatControls();
+        }
         container.classList.remove('loading');
-        if (!isNewMessage && cached.length === 0) container.innerHTML = '<p class="text-muted text-center">Failed to load messages</p>';
-        _enableChatControls();
     }
-    container.classList.remove('loading');
-}
 
     function markConversationAsRead(chatId, explicitLastMessageId) {
         const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
@@ -460,8 +456,13 @@
             const wasAtBottom = isUserAtBottom(container, 30);
             const msgElement = createMessageElement(decrypted);
             container.appendChild(msgElement);
-            if (wasAtBottom) { setTimeout(() => { container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); }, 50); }
-            else { showNewMessagesBadge(); }
+            if (wasAtBottom) {
+                setTimeout(() => {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                }, 50);
+            } else {
+                showNewMessagesBadge();
+            }
             if (!decrypted.is_mine) fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e=>console.warn);
         }
     };

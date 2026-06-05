@@ -311,7 +311,7 @@
             window.addMessageToCache(recipient, sentMessage, 'end');
             await window.loadConversations();
             window.updateConversationPreview(recipient, '✓ Sent');
-            await window.loadMessagesForConversation(recipient, true);
+            await window.loadMessagesForConversation(recipient, true, true); // forceScroll = true
         } else {
             document.getElementById('msg-' + tempId)?.remove();
             window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
