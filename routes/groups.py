@@ -65,13 +65,15 @@ async def delete_group(body: DeleteGroupRequest, request: Request, address: str 
         group_name = row[1]
         members = json.loads(row[3]) if row[3] else []
         await conn.execute('DELETE FROM groups WHERE id = $1', body.group_id)
+        # ↓↓↓ ДОБАВИТЬ ЭТУ СТРОКУ ↓↓↓
+        await conn.execute('DELETE FROM transactions WHERE recipient = $1', f'group:{body.group_id}')
+        # ↑↑↑ КОНЕЦ ВСТАВКИ ↑↑↑
     await bump_groups_cache_version()
     from services.messaging import invalidate_conversations_cache
     for member in members:
         await invalidate_conversations_cache(member)
     logger.info(f"Group '{group_name}' deleted by {address[:16]}...")
     return {'message': 'Group deleted', 'group_id': body.group_id, 'group_name': group_name}
-
 
 @router.post('/rename_group')
 async def rename_group(body: RenameGroupRequest, request: Request, address: str = Depends(require_auth)):

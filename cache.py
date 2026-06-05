@@ -187,10 +187,6 @@ async def get_contact_name_cached(user_address: str, contact_address: str,
 
 
 async def get_user_groups_cached(address: str, cache_version: int = 0):
-    key = (address, cache_version)
-    cached = await user_groups_cache.get(key)
-    if cached is not None:
-        return cached
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         rows = await conn.fetch('SELECT id, name, creator, members, created_at FROM groups')
@@ -205,10 +201,7 @@ async def get_user_groups_cached(address: str, cache_version: int = 0):
                     'members': members,
                     'created_at': row['created_at'],
                 })
-        result = tuple(groups)
-        await user_groups_cache.set(key, result)
-        return result
-
+        return groups   # теперь всегда свежие данные из БД
 
 async def clear_all_caches() -> None:
     await pubkey_cache.invalidate()

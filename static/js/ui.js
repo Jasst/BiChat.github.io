@@ -348,6 +348,18 @@
             const timeout = setTimeout(() => controller.abort(), 10000);
             const res = await fetch('/get_conversation?' + params.toString(), { signal: controller.signal });
             clearTimeout(timeout);
+            // ✅ НОВАЯ ПРОВЕРКА НА 403
+            if (res.status === 403) {
+            window.NotificationManager?.showToast('Чат больше не доступен (группа удалена)', 'error');
+            const convItem = document.querySelector(`.conversation-item[data-address="${chatWithAddress}"]`);
+            if (convItem) convItem.remove();
+            if (State.currentChatAddress === chatWithAddress) {
+                container.innerHTML = '<div class="empty-state"><p>Чат недоступен</p></div>';
+                State.currentChatAddress = '';
+                _enableChatControls();
+            }
+            return;
+        }
             const data = await res.json();
 
             if (!res.ok) throw new Error(data.error || 'Failed to load');
