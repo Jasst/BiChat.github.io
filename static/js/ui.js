@@ -1,4 +1,4 @@
-// ui.js — полная версия с исправленным скроллом после кеша
+// ui.js — полная версия с исправленным скроллом после кеша и отправки
 (function() {
     if (window._uiLoaded) return;
     window._uiLoaded = true;
@@ -128,41 +128,46 @@
     }
 
     async function decryptAndShowAttachment(messageDiv) {
-        const div = messageDiv.querySelector('.file-attachment');
-        if (!div) return;
-        const url = div.dataset.url;
-        const keyBase64 = div.dataset.key;
-        const ivBase64 = div.dataset.iv;
-        const fileType = div.dataset.type;
+    const div = messageDiv.querySelector('.file-attachment');
+    if (!div) return;
+    const url = div.dataset.url;
+    const keyBase64 = div.dataset.key;
+    const ivBase64 = div.dataset.iv;
+    const fileType = div.dataset.type;
 
-        if (!url || !keyBase64 || !ivBase64) {
-            div.innerHTML = '<span class="text-error">Invalid file data</span>';
-            return;
-        }
-
-        try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const encryptedBlob = await res.arrayBuffer();
-            const key = DarkCrypto.base64ToArrayBuffer(keyBase64);
-            const iv = DarkCrypto.base64ToArrayBuffer(ivBase64);
-            const decrypted = await DarkCrypto.decryptFile(new Uint8Array(encryptedBlob), new Uint8Array(key), new Uint8Array(iv));
-            const blob = new Blob([decrypted], { type: fileType });
-            const objectUrl = URL.createObjectURL(blob);
-
-            if (fileType.startsWith('image/')) {
-                div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal('${objectUrl.replace(/'/g, "\\'")}')">`;
-            } else if (fileType.startsWith('audio/')) {
-                div.innerHTML = `<div class="voice-message-label">🎤 Голосовое сообщение расшифрованное</div><audio controls src="${objectUrl}" style="width:100%;"></audio>`;
-            } else {
-                div.innerHTML = `<a href="${objectUrl}" download>Download file</a>`;
-            }
-        } catch (err) {
-            console.error('Decryption error:', err);
-            div.innerHTML = `<span class="text-error">Failed to decrypt file</span>`;
-            if (window.NotificationManager) window.NotificationManager.showToast('Could not load file', 'error');
-        }
+    if (!url || !keyBase64 || !ivBase64) {
+        div.innerHTML = '<span class="text-error">Invalid file data</span>';
+        return;
     }
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const encryptedBlob = await res.arrayBuffer();
+        const key = DarkCrypto.base64ToArrayBuffer(keyBase64);
+        const iv = DarkCrypto.base64ToArrayBuffer(ivBase64);
+        const decrypted = await DarkCrypto.decryptFile(new Uint8Array(encryptedBlob), new Uint8Array(key), new Uint8Array(iv));
+        const blob = new Blob([decrypted], { type: fileType });
+        const objectUrl = URL.createObjectURL(blob);
+
+        if (fileType.startsWith('image/')) {
+            div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal('${objectUrl.replace(/'/g, "\\'")}')">`;
+        } else if (fileType.startsWith('audio/')) {
+            // 🎵 Исправление: предзагрузка аудио
+            div.innerHTML = `<div class="voice-message-label">🎤 Голосовое сообщение расшифрованное</div><audio controls src="${objectUrl}" style="width:100%;" preload="auto"></audio>`;
+            const audioEl = div.querySelector('audio');
+            if (audioEl) {
+                audioEl.load(); // принудительная буферизация
+            }
+        } else {
+            div.innerHTML = `<a href="${objectUrl}" download>Download file</a>`;
+        }
+    } catch (err) {
+        console.error('Decryption error:', err);
+        div.innerHTML = `<span class="text-error">Failed to decrypt file</span>`;
+        if (window.NotificationManager) window.NotificationManager.showToast('Could not load file', 'error');
+    }
+}
 
     function updateStatusIcon(msgDiv, status) {
         const icon = msgDiv.querySelector('.message-status');
@@ -285,7 +290,8 @@
         await loadMessagesForConversation(address, false);
     }
 
-    async function loadMessagesForConversation(chatWithAddress, isNewMessage = false) {
+    // ГЛАВНАЯ ФУНКЦИЯ ЗАГРУЗКИ СООБЩЕНИЙ (С ИСПРАВЛЕННЫМ СКРОЛЛОМ)
+    async function loadMessagesForConversation(chatWithAddress, isNewMessage = false, forceScroll = false) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
         if (!chatWithAddress) {
@@ -297,7 +303,7 @@
         const cached = window.getCachedMessages(chatWithAddress);
         let lastKnownId = 0;
 
-        // ---------- ПОКАЗ КЕШИРОВАННЫХ СООБЩЕНИЙ (с исправленным скроллом) ----------
+        // ---------- ПОКАЗ КЕШИРОВАННЫХ СООБЩЕНИЙ ----------
         if (!isNewMessage && cached.length > 0) {
             container.innerHTML = '';
             const fragment = document.createDocumentFragment();
@@ -316,17 +322,13 @@
             }
             container.appendChild(fragment);
 
-            // ✅ Исправленный скролл: дожидаемся отрисовки и скроллим к последнему сообщению
-            const scrollToBottom = () => {
-                const lastMsg = container.querySelector('.message:last-child');
-                if (lastMsg) {
-                    lastMsg.scrollIntoView({ behavior: 'auto', block: 'end' });
-                } else {
-                    container.scrollTop = container.scrollHeight;
-                }
-            };
-            setTimeout(scrollToBottom, 50);
-            setTimeout(scrollToBottom, 300); // повторный скролл для вложений
+            // ✅ Прокрутка к последнему сообщению с учётом forceScroll
+            const wasAtBottom = isUserAtBottom(container, 30);
+            if (wasAtBottom || forceScroll) {
+                container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+            } else {
+                showNewMessagesBadge();
+            }
 
             State.lastKnownMessageId = lastKnownId;
             _enableChatControls();
@@ -346,6 +348,18 @@
             const timeout = setTimeout(() => controller.abort(), 10000);
             const res = await fetch('/get_conversation?' + params.toString(), { signal: controller.signal });
             clearTimeout(timeout);
+            // ✅ НОВАЯ ПРОВЕРКА НА 403
+            if (res.status === 403) {
+            window.NotificationManager?.showToast('Чат больше не доступен (группа удалена)', 'error');
+            const convItem = document.querySelector(`.conversation-item[data-address="${chatWithAddress}"]`);
+            if (convItem) convItem.remove();
+            if (State.currentChatAddress === chatWithAddress) {
+                container.innerHTML = '<div class="empty-state"><p>Чат недоступен</p></div>';
+                State.currentChatAddress = '';
+                _enableChatControls();
+            }
+            return;
+        }
             const data = await res.json();
 
             if (!res.ok) throw new Error(data.error || 'Failed to load');
@@ -365,23 +379,27 @@
                 try {
                     const decrypted = await window.processMessageDecryption(msg);
                     newMessages.push(decrypted);
-                } catch(e) { newMessages.push({ ...msg, content: '🔒 Decrypt error', image: null }); }
+                } catch(e) {
+                    newMessages.push({ ...msg, content: '🔒 Decrypt error', image: null });
+                }
             }
 
             window.addMessagesToCache(chatWithAddress, newMessages, 'end');
 
             if (container) {
-                const wasAtBottom = isUserAtBottom(container, 30);
                 for (const msg of newMessages) {
                     if (document.getElementById('msg-' + msg.id)) continue;
                     const msgEl = createMessageElement(msg);
                     container.appendChild(msgEl);
                     if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
                 }
-                if (wasAtBottom) {
+
+                const wasAtBottom = isUserAtBottom(container, 30);
+                const isFirstOpen = !isNewMessage && cached.length === 0;
+
+                // ✅ Исправленный скролл: всегда прокручиваем до конца при forceScroll или был внизу
+                if (wasAtBottom || isFirstOpen || forceScroll) {
                     container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-                } else if (!isNewMessage && cached.length === 0) {
-                    container.scrollTop = container.scrollHeight;
                 } else if (newMessages.length && !isNewMessage) {
                     showNewMessagesBadge();
                 }
@@ -455,8 +473,13 @@
             const wasAtBottom = isUserAtBottom(container, 30);
             const msgElement = createMessageElement(decrypted);
             container.appendChild(msgElement);
-            if (wasAtBottom) { setTimeout(() => { container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); }, 50); }
-            else { showNewMessagesBadge(); }
+            if (wasAtBottom) {
+                setTimeout(() => {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                }, 50);
+            } else {
+                showNewMessagesBadge();
+            }
             if (!decrypted.is_mine) fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e=>console.warn);
         }
     };

@@ -109,6 +109,8 @@ async def get_conversations_list(user_address: str) -> List[Dict[str, Any]]:
                 if is_group:
                     group_id = partner.split(':', 1)[1]
                     group = groups_by_id.get(group_id)
+                    if not group:  # группа удалена — не показываем диалог
+                        continue
                     name = group['name'] if group else f'Группа {group_id[:8]}...'
                 else:
                     name = (await get_contact_name_cached(user_address, partner,

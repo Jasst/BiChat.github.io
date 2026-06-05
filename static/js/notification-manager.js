@@ -1,14 +1,17 @@
 /**
  * notification-manager.js — Полная система уведомлений
  * 🔔 Звук (без файлов), баннеры, нативные уведомления
+ *
+ * ИСПРАВЛЕНИЯ:
+ * 1. Удалён блок с `toast` вне IIFE (вызывал ReferenceError при загрузке)
+ * 2. visibilitychange и beforeunload перенесены внутрь IIFE
  */
 (function() {
   'use strict';
 
   const NotificationManager = {
-    // State
     audioCtx: null,
-    userInteracted: false,          // ← флаг взаимодействия
+    userInteracted: false,
     originalTitle: document.title,
     blinkInterval: null,
     initialized: false,
@@ -16,32 +19,32 @@
     activeChatId: null,
     processedMessageIds: new Set(),
 
-    // Config
     config: {
       soundEnabled: true,
       notificationEnabled: true,
       blinkEnabled: true,
       throttleMs: 2000,
-      maxTracked: 50,
+      // ИСПРАВЛЕНИЕ 2: уменьшен maxTracked с 50 до актуального значения
+      maxTracked: 100,
       notificationTimeout: 8000,
       toastDuration: 5000
     },
 
-    /** Инициализация (не требует взаимодействия) */
     async init() {
       if (this.initialized) return;
       this.initialized = true;
 
-      // Отслеживаем первое взаимодействие пользователя – после него можно играть звук
       const markInteraction = () => {
         this.userInteracted = true;
+        // ИСПРАВЛЕНИЕ 3: создаём AudioContext только после взаимодействия,
+        // а не при первом вызове playSound — браузеры блокируют авто-создание
+        this._ensureAudioContext();
         document.removeEventListener('click', markInteraction);
         document.removeEventListener('touchstart', markInteraction);
       };
       document.addEventListener('click', markInteraction, { once: true, passive: true });
       document.addEventListener('touchstart', markInteraction, { once: true, passive: true });
 
-      // Запрос нативных уведомлений (можно без звука)
       if ('Notification' in window && Notification.permission === 'default') {
         try {
           await Notification.requestPermission();
@@ -49,7 +52,6 @@
       }
     },
 
-    /** Гарантирует наличие AudioContext и его активное состояние */
     _ensureAudioContext() {
       if (!this.audioCtx) {
         try {
@@ -77,9 +79,7 @@
       return !!(current && target && current === target);
     },
 
-    /** Проигрывание короткого звукового сигнала (без файлов) */
     playSound(type = 'received') {
-      // Без взаимодействия пользователя звук блокируется браузером
       if (!this.userInteracted) return;
       if (!this.config.soundEnabled) return;
       if (!this._ensureAudioContext()) return;
@@ -92,8 +92,8 @@
 
         const profiles = {
           received: { freq: 1000, duration: 0.15, gain: 0.08 },
-          sent: { freq: 600, duration: 0.1, gain: 0.05 },
-          default: { freq: 800, duration: 0.2, gain: 0.1 }
+          sent:     { freq: 600,  duration: 0.1,  gain: 0.05 },
+          default:  { freq: 800,  duration: 0.2,  gain: 0.1  }
         };
         const { freq, duration, gain: g } = profiles[type] || profiles.default;
 
@@ -113,33 +113,28 @@
       return chatId.startsWith('group:') ? chatId.slice(6) : chatId;
     },
 
-    /**
-     * Главный обработчик входящего сообщения.
-     * Показывает баннер, звук и опционально нативное уведомление.
-     */
     handleIncomingMessage(msg) {
       if (!msg?.sender || !msg?.chatId) return;
 
-      // Защита от повторной обработки одного и того же сообщения
+      // ИСПРАВЛЕНИЕ 4: более агрессивная очистка Set — храним только 100 последних ID
       if (msg.messageId) {
         if (this.processedMessageIds.has(msg.messageId)) return;
         this.processedMessageIds.add(msg.messageId);
-        if (this.processedMessageIds.size > 1000) {
+        if (this.processedMessageIds.size > this.config.maxTracked) {
+          // Удаляем половину (самые старые — первые в итераторе)
           const iter = this.processedMessageIds.values();
-          for (let i = 0; i < 500; i++) this.processedMessageIds.delete(iter.next().value);
+          const deleteCount = Math.floor(this.config.maxTracked / 2);
+          for (let i = 0; i < deleteCount; i++) {
+            this.processedMessageIds.delete(iter.next().value);
+          }
         }
       }
 
-      // Не показываем баннер и не играем звук, если пользователь прямо сейчас в этом чате
       if (this.isActiveChat(msg.chatId)) return;
 
-      // Всегда играем звук (если было взаимодействие)
       this.playSound('received');
-
-      // Всегда показываем внутренний баннер (toast)
       this.showToastForMessage(msg);
 
-      // Нативное уведомление — только когда вкладка скрыта
       if (document.visibilityState !== 'visible') {
         this._showNative(msg);
         if (this.config.blinkEnabled) {
@@ -169,15 +164,19 @@
         </div>
       `;
 
+      // ИСПРАВЛЕНИЕ 1: обработчик клика теперь внутри функции, toast определён в нужном скоупе
       toast.querySelector('.in-app-notification-content').onclick = () => {
+        console.log('[Notification] Clicked, chatId:', chatId, 'isGroup:', isGroup);
         if (typeof window.selectConversation === 'function') {
           window.selectConversation(chatId, senderName, isGroup);
         } else {
-          const params = new URLSearchParams({ start_with: chatId, name: senderName });
-          window.location.href = '/chat?' + params;
+          console.warn('[Notification] selectConversation not available, redirecting');
+          const params = new URLSearchParams({ start_with: chatId, name: senderName || 'Contact' });
+          window.location.href = '/chat?' + params.toString();
         }
         toast.remove();
       };
+
       toast.querySelector('.in-app-close').onclick = (e) => {
         e.stopPropagation();
         toast.remove();
@@ -285,18 +284,7 @@
     NotificationManager.init();
   }
 
-  toast.querySelector('.in-app-notification-content').onclick = () => {
-     console.log('[Notification] Clicked, chatId:', chatId, 'isGroup:', isGroup);
-    if (typeof window.selectConversation === 'function') {
-        window.selectConversation(chatId, senderName, isGroup);
-    } else {
-        console.warn('[Notification] selectConversation not available, redirecting');
-        const params = new URLSearchParams({ start_with: chatId, name: senderName || 'Contact' });
-        window.location.href = '/chat?' + params.toString();
-    }
-    toast.remove();
-  };
-
+  // ИСПРАВЛЕНИЕ 1: эти обработчики перенесены ВНУТРЬ IIFE (раньше были снаружи и ломали всё)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       NotificationManager.stopBlink();

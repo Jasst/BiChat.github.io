@@ -24,15 +24,14 @@ templates = Jinja2Templates(directory=TEMPLATE_FOLDER)
 def index(request: Request):
     if request.session.get('address'):
         return RedirectResponse('/chat')
-    return templates.TemplateResponse('index.html', {'request': request})
+    return templates.TemplateResponse(request, 'index.html')
 
 
 @router.get('/chat', response_class=HTMLResponse)
 def chat(request: Request):
     if not request.session.get('address'):
         return RedirectResponse('/')
-    return templates.TemplateResponse('chat.html', {
-        'request': request,
+    return templates.TemplateResponse(request, 'chat.html', {
         'address': request.session['address'],
     })
 
@@ -41,8 +40,7 @@ def chat(request: Request):
 def contacts_page(request: Request):
     if not request.session.get('address'):
         return RedirectResponse('/')
-    return templates.TemplateResponse('contacts.html', {
-        'request': request,
+    return templates.TemplateResponse(request, 'contacts.html', {
         'address': request.session['address'],
     })
 
@@ -51,8 +49,7 @@ def contacts_page(request: Request):
 def groups_page(request: Request):
     if not request.session.get('address'):
         return RedirectResponse('/')
-    return templates.TemplateResponse('groups.html', {
-        'request': request,
+    return templates.TemplateResponse(request, 'groups.html', {
         'address': request.session['address'],
     })
 
@@ -61,8 +58,7 @@ def groups_page(request: Request):
 def profile(request: Request):
     if not request.session.get('address'):
         return RedirectResponse('/')
-    return templates.TemplateResponse('profile.html', {
-        'request': request,
+    return templates.TemplateResponse(request, 'profile.html', {
         'address': request.session['address'],
     })
 
@@ -71,8 +67,7 @@ def profile(request: Request):
 def wallet_page(request: Request):
     if not request.session.get('address'):
         return RedirectResponse('/')
-    return templates.TemplateResponse('wallet.html', {
-        'request': request,
+    return templates.TemplateResponse(request, 'wallet.html', {
         'address': request.session['address'],
     })
 
@@ -109,7 +104,7 @@ async def create_wallet(body: CreateWalletRequest, request: Request):
 def login_page(request: Request):
     nonce = secrets.token_hex(32)
     request.session['login_nonce'] = nonce
-    return templates.TemplateResponse('login.html', {'request': request, 'nonce': nonce})
+    return templates.TemplateResponse(request, 'login.html', {'nonce': nonce})
 
 
 @router.post('/login')

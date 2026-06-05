@@ -168,7 +168,7 @@ echo.
 cd /d "%PROJECT_DIR%"
 
 :: Запуск run_win.py напрямую (так Ctrl+C будет работать правильно)
-python run_win.py
+python run.py
 
 :: Сюда попадаем после остановки (Ctrl+C или ошибка)
 set "EXIT_CODE=%errorlevel%"
@@ -240,7 +240,7 @@ if exist "%PROJECT_DIR%\venv\Scripts\activate.bat" (
 
 :: Запуск с флагом monitor
 set WAITRESS_MODE=stable
-python run_win.py
+python run.py
 
 :: Если сервер упал - перезапускаем
 if errorlevel 1 (

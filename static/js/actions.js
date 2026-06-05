@@ -157,96 +157,64 @@
 
     // ========== Отправка сообщения ==========
     async function sendMessage() {
-        if (State.currentChatAddress === 'ai_bot') return;
-        if (window.isSending) return;
-        const contentEl = document.getElementById('messageContent');
-        let content = contentEl ? contentEl.value.trim() : '';
-        if (!content && !pendingFile) {
-            window.NotificationManager?.showToast('Enter message or attach file', 'warning');
-            return;
+    if (State.currentChatAddress === 'ai_bot') return;
+    if (window.isSending) return;
+    const contentEl = document.getElementById('messageContent');
+    let content = contentEl ? contentEl.value.trim() : '';
+    if (!content && !pendingFile) {
+        window.NotificationManager?.showToast('Enter message or attach file', 'warning');
+        return;
+    }
+
+    window.isSending = true;
+    const recipient = State.currentChatAddress;
+    const isGroup = State.currentChatIsGroup;
+    const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
+
+    if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
+    const fileToSend = pendingFile;
+    pendingFile = null;
+    document.getElementById('filePreview')?.remove();
+
+    const tempId = 'temp-' + Date.now();
+    const tempMsg = { id: tempId, sender: State.userAddress, recipient, content, timestamp: Date.now()/1000, is_mine: true, status: 'sent' };
+    const container = document.getElementById('messagesContainer');
+    if (container) {
+        const emptyState = container.querySelector('.empty-state');
+        if (emptyState) emptyState.remove();
+        container.appendChild(window.createMessageElement(tempMsg));
+
+        // ✅ Прокрутка к последнему сообщению (временному)
+        const lastMsg = container.querySelector('.message:last-child');
+        if (lastMsg) {
+            lastMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+    }
+
+    try {
+        const keys = await window.ensureKeys();
+        let fileAttachment = null;
+        if (fileToSend) {
+            const { url, key, iv } = await uploadEncryptedFile(fileToSend.file);
+            fileAttachment = { url, key, iv, type: fileToSend.type };
         }
 
-        window.isSending = true;
-        const recipient = State.currentChatAddress;
-        const isGroup = State.currentChatIsGroup;
-        const groupId = isGroup && recipient.startsWith('group:') ? recipient.split(':')[1] : null;
-
-        if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
-        const fileToSend = pendingFile;
-        pendingFile = null;
-        document.getElementById('filePreview')?.remove();
-
-        const tempId = 'temp-' + Date.now();
-        const tempMsg = { id: tempId, sender: State.userAddress, recipient, content, timestamp: Date.now()/1000, is_mine: true, status: 'sent' };
-        const container = document.getElementById('messagesContainer');
-        if (container) {
-            const emptyState = container.querySelector('.empty-state');
-            if (emptyState) emptyState.remove();
-            container.appendChild(window.createMessageElement(tempMsg));
-            window.smartScrollToBottom(container, true);
-        }
-
-        try {
-            const keys = await window.ensureKeys();
-            let fileAttachment = null;
-            if (fileToSend) {
-                const { url, key, iv } = await uploadEncryptedFile(fileToSend.file);
-                fileAttachment = { url, key, iv, type: fileToSend.type };
-            }
-
-            let payload = {};
-            if (isGroup && groupId) {
-                const gRes = await fetch('/get_groups');
-                const gData = await gRes.json();
-                const freshGroup = gData.groups?.find(g => g.id === groupId);
-                const members = freshGroup?.members || [];
-                if (!members.length) throw new Error('Group members not loaded');
-                const encryptedMap = {};
-                for (const addr of members) {
-                    const pubKeyB64 = await window.getPubKey(addr);
-                    const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
-                    const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
-                    let encryptedText = null;
-                    if (content) {
-                        const { ciphertext, iv: textIv } = await DarkCrypto.encryptAES(shared, content);
-                        encryptedText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(textIv) };
-                    }
-                    let encFileKey = null, encFileIv = null;
-                    if (fileAttachment) {
-                        const fileKeyBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.key);
-                        const fileIvBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.iv);
-                        const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
-                        const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
-                        encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
-                        encFileIv = { ciphertext: DarkCrypto._arrayBufferToBase64(encIv.ciphertext), iv: DarkCrypto._toBase64(encIv.iv) };
-                    }
-                    encryptedMap[addr] = {
-                        text: encryptedText,
-                        file_url: fileAttachment?.url,
-                        file_key: encFileKey,
-                        file_iv: encFileIv,
-                        file_type: fileAttachment?.type,
-                        sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey)
-                    };
-                    if (addr === State.userAddress) {
-                        encryptedMap[addr].self_text = content ? { ciphertext: encryptedText.ciphertext, iv: encryptedText.iv } : null;
-                        if (fileAttachment) {
-                            encryptedMap[addr].self_file_key = fileAttachment.key;
-                            encryptedMap[addr].self_file_iv = fileAttachment.iv;
-                        }
-                    }
-                }
-                payload = { message_type: 'group', group_id: groupId, encrypted_map: encryptedMap };
-            } else {
-                const pubRes = await fetch(`/get_public_key/${recipient}`);
-                if (!pubRes.ok) throw new Error('Recipient public key not found');
-                const pubData = await pubRes.json();
-                const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
-                const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, recipientPubKeyBytes);
+        let payload = {};
+        if (isGroup && groupId) {
+            const gRes = await fetch('/get_groups');
+            const gData = await gRes.json();
+            const freshGroup = gData.groups?.find(g => g.id === groupId);
+            const members = freshGroup?.members || [];
+            if (!members.length) throw new Error('Group members not loaded');
+            const encryptedMap = {};
+            for (const addr of members) {
+                const pubKeyB64 = await window.getPubKey(addr);
+                const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
+                const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
                 let encryptedText = null;
                 if (content) {
-                    const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content);
-                    encryptedText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(iv) };
+                    const { ciphertext, iv: textIv } = await DarkCrypto.encryptAES(shared, content);
+                    encryptedText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(textIv) };
                 }
                 let encFileKey = null, encFileIv = null;
                 if (fileAttachment) {
@@ -257,72 +225,109 @@
                     encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
                     encFileIv = { ciphertext: DarkCrypto._arrayBufferToBase64(encIv.ciphertext), iv: DarkCrypto._toBase64(encIv.iv) };
                 }
-                const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-                let selfEncText = null, selfFileKey = null, selfFileIv = null;
-                if (content) {
-                    const { ciphertext, iv } = await DarkCrypto.encryptAES(selfShared, content);
-                    selfEncText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(iv) };
-                }
-                if (fileAttachment) {
-                    selfFileKey = fileAttachment.key;
-                    selfFileIv = fileAttachment.iv;
-                }
-                payload = {
-                    recipient: recipient,
-                    payload: {
-                        text: encryptedText,
-                        file_url: fileAttachment?.url,
-                        file_key: encFileKey,
-                        file_iv: encFileIv,
-                        file_type: fileAttachment?.type,
-                        sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
-                        self_text: selfEncText,
-                        self_file_key: selfFileKey,
-                        self_file_iv: selfFileIv
-                    },
-                    message_type: 'direct'
+                encryptedMap[addr] = {
+                    text: encryptedText,
+                    file_url: fileAttachment?.url,
+                    file_key: encFileKey,
+                    file_iv: encFileIv,
+                    file_type: fileAttachment?.type,
+                    sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey)
                 };
+                if (addr === State.userAddress) {
+                    encryptedMap[addr].self_text = content ? { ciphertext: encryptedText.ciphertext, iv: encryptedText.iv } : null;
+                    if (fileAttachment) {
+                        encryptedMap[addr].self_file_key = fileAttachment.key;
+                        encryptedMap[addr].self_file_iv = fileAttachment.iv;
+                    }
+                }
             }
-
-            const res = await fetch('/send_message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            if (res.ok) {
-                const tempElem = document.getElementById('msg-' + tempId);
-                if (tempElem) tempElem.remove();
-                const sentMessage = {
-                    id: data.tx_id,
-                    sender: State.userAddress,
-                    recipient: isGroup ? recipient : recipient,
-                    content: content,
-                    timestamp: Date.now() / 1000,
-                    is_mine: true,
-                    status: 'sent',        // ← запятая добавлена
-                    isDecrypted: true
-                };
-                window.addMessageToCache(recipient, sentMessage, 'end');
-                await window.loadConversations();
-                window.updateConversationPreview(recipient, '✓ Sent');
-                await window.loadMessagesForConversation(recipient, true);
-            } else {
-                document.getElementById('msg-' + tempId)?.remove();
-                window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
+            payload = { message_type: 'group', group_id: groupId, encrypted_map: encryptedMap };
+        } else {
+            const pubRes = await fetch(`/get_public_key/${recipient}`);
+            if (!pubRes.ok) throw new Error('Recipient public key not found');
+            const pubData = await pubRes.json();
+            const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
+            const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, recipientPubKeyBytes);
+            let encryptedText = null;
+            if (content) {
+                const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content);
+                encryptedText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(iv) };
             }
-        } catch (err) {
-            console.error(err);
-            document.getElementById('msg-' + tempId)?.remove();
-            window.NotificationManager?.showToast(err.message, 'error');
-        } finally {
-            window.isSending = false;
-            const sendBtn = document.getElementById('sendButton');
-            if (sendBtn) sendBtn.disabled = false;
-            document.getElementById('messageContent')?.focus();
-            updateSendButtonVisibility();
+            let encFileKey = null, encFileIv = null;
+            if (fileAttachment) {
+                const fileKeyBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.key);
+                const fileIvBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.iv);
+                const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
+                const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
+                encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
+                encFileIv = { ciphertext: DarkCrypto._arrayBufferToBase64(encIv.ciphertext), iv: DarkCrypto._toBase64(encIv.iv) };
+            }
+            const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
+            let selfEncText = null, selfFileKey = null, selfFileIv = null;
+            if (content) {
+                const { ciphertext, iv } = await DarkCrypto.encryptAES(selfShared, content);
+                selfEncText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(iv) };
+            }
+            if (fileAttachment) {
+                selfFileKey = fileAttachment.key;
+                selfFileIv = fileAttachment.iv;
+            }
+            payload = {
+                recipient: recipient,
+                payload: {
+                    text: encryptedText,
+                    file_url: fileAttachment?.url,
+                    file_key: encFileKey,
+                    file_iv: encFileIv,
+                    file_type: fileAttachment?.type,
+                    sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
+                    self_text: selfEncText,
+                    self_file_key: selfFileKey,
+                    self_file_iv: selfFileIv
+                },
+                message_type: 'direct'
+            };
         }
+
+        const res = await fetch('/send_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            const tempElem = document.getElementById('msg-' + tempId);
+            if (tempElem) tempElem.remove();
+            const sentMessage = {
+                id: data.tx_id,
+                sender: State.userAddress,
+                recipient: isGroup ? recipient : recipient,
+                content: content,
+                timestamp: Date.now() / 1000,
+                is_mine: true,
+                status: 'sent',
+                isDecrypted: true
+            };
+            window.addMessageToCache(recipient, sentMessage, 'end');
+            await window.loadConversations();
+            window.updateConversationPreview(recipient, '✓ Sent');
+            await window.loadMessagesForConversation(recipient, true, true); // forceScroll = true
+        } else {
+            document.getElementById('msg-' + tempId)?.remove();
+            window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
+        }
+    } catch (err) {
+        console.error(err);
+        document.getElementById('msg-' + tempId)?.remove();
+        window.NotificationManager?.showToast(err.message, 'error');
+    } finally {
+        window.isSending = false;
+        const sendBtn = document.getElementById('sendButton');
+        if (sendBtn) sendBtn.disabled = false;
+        document.getElementById('messageContent')?.focus();
+        updateSendButtonVisibility();
     }
+}
 
     // ========== Модальные окна нового чата (без изменений) ==========
     function openNewChatModal() {
@@ -451,28 +456,49 @@
 
         const addContactBtn = document.getElementById('addToContactsBtn');
         if (addContactBtn) {
-            addContactBtn.onclick = async () => {
-               const address = State.currentChatPartnerAddress;
-               if (!address) return;
-               const name = await window.showPromptModal(
-                   'Add Contact',
-                   'Enter name for this contact:',
-                    address.slice(0, 10) + '...'
-               );
-               if (!name) return;
-               const res = await fetch('/add_contact_from_chat', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ contact_address: address, contact_name: name })
-               });
-               if (res.ok) {
-                  window.NotificationManager?.showToast('Contact added', 'success');
-                  addContactBtn.disabled = true;
-               } else {
-                  const err = await res.json();
-                  window.NotificationManager?.showToast(err.error || 'Failed', 'error');
-               }
-            };
+          addContactBtn.onclick = async () => {
+             const address = State.currentChatPartnerAddress;
+             if (!address) return;
+
+              // 1. Проверяем, не добавлен ли уже этот контакт
+             try {
+                 const res = await fetch('/get_contacts');
+                 const data = await res.json();
+                 if (res.ok && data.contacts) {
+                   const alreadyExists = data.contacts.some(c => c.address === address);
+                   if (alreadyExists) {
+                     window.NotificationManager?.showToast('This contact is already in your list', 'warning');
+                     return;
+                   }
+                 }
+             } catch (err) {
+               console.warn('Failed to check contacts', err);
+             }
+
+             const name = await window.showPromptModal(
+               'Add Contact',
+               'Enter name for this contact:',
+               address.slice(0, 10) + '...'
+             );
+             if (!name) return;
+
+             const res = await fetch('/add_contact_from_chat', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ contact_address: address, contact_name: name })
+             });
+             if (res.ok) {
+                window.NotificationManager?.showToast('Contact added', 'success');
+                addContactBtn.disabled = true;
+             // Обновляем локальный список контактов, чтобы повторная проверка работала
+                const refreshRes = await fetch('/get_contacts');
+                const refreshData = await refreshRes.json();
+                if (refreshRes.ok) State.allContacts = refreshData.contacts;
+             } else {
+                const err = await res.json();
+                window.NotificationManager?.showToast(err.error || 'Failed', 'error');
+             }
+          };
         }
 
         const attachImageBtn = document.getElementById('attachImageButton');
