@@ -19,6 +19,7 @@ from services.messaging import get_conversations_list_cached, invalidate_convers
 from services.wallet import staking_manager
 from setup import message_limiter
 from routes.ws import manager
+from services.push import send_push
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['messages'])
@@ -85,8 +86,16 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
             # Рассылаем всем участникам через notifier (поддерживает оффлайн-буфер)
             from services.notifier import message_notifier
             for member in group['members']:
-                # Отправляем всем, включая отправителя (для синхронизации нескольких вкладок/устройств)
                 await message_notifier.add_message(member, message_obj)
+            # Отправляем push-уведомления всем участникам, кроме отправителя
+            for member in group['members']:
+                if member != sender:
+                    await send_push(
+                        user_address=member,
+                        title=f"Группа {group['name']}",
+                        body="Новое сообщение в группе",
+                        url=f"/chat?start_with=group:{body.group_id}"
+                    )
         else:
             recipient = body.recipient
             if not recipient:
@@ -118,6 +127,13 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
             # Отправляем получателю через notifier (поддерживает оффлайн-буфер)
             from services.notifier import message_notifier
             await message_notifier.add_message(recipient, message_obj)
+            # Отправляем push-уведомление получателю
+            await send_push(
+                user_address=recipient,
+                title=f"Новое сообщение от {sender[:8]}...",
+                body="Новое сообщение",
+                url=f"/chat?start_with={sender}"
+            )
 
     await invalidate_conversations_cache(sender)
     if msg_type == 'group' and body.group_id and group:
@@ -127,7 +143,6 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
         await invalidate_conversations_cache(body.recipient)
 
     return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
-
 
 @router.get('/get_conversation')
 async def get_conversation(

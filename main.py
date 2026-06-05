@@ -81,6 +81,7 @@ from routes.files import router as files_router
 from routes.status import router as status_router
 from routes.ai_assistant import router as ai_router
 from routes.ws import router as ws_router
+from routes.push import router as push_router
 
 app.include_router(auth_router)
 app.include_router(messages_router)
@@ -91,6 +92,7 @@ app.include_router(files_router)
 app.include_router(status_router)
 app.include_router(ai_router)
 app.include_router(ws_router)
+app.include_router(push_router)
 
 
 @app.middleware('http')

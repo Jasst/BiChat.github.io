@@ -324,12 +324,14 @@
                 onConnect: () => {
                     console.log('✅ WebSocket connected');
                     if (window.loadConversations) window.loadConversations();
+                    if (window.initPushNotifications) window.initPushNotifications();
                 },
                 onDisconnect: () => console.warn('⚠️ WebSocket disconnected'),
                 onError: (err) => console.error('WebSocket error:', err)
             });
             window.wsClient.setAuth(address, signatureHex, nonce);
             window.wsClient.connect();
+
         } catch (err) { console.error('Failed to init WebSocket:', err); }
     }
 
@@ -614,6 +616,50 @@
             userStatusPollingInterval = null;
         }
     }
+
+    // Добавь в конец core.js (перед последней строкой с экспортами, если они есть)
+
+window.initPushNotifications = initPushNotifications;
+window.urlBase64ToUint8Array = urlBase64ToUint8Array;
+
+async function initPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  let permission = await Notification.permission;
+  if (permission !== 'granted') {
+    permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  const publicKey = 'BPa5fghsHcpAbmlQTdXg6WzoMC_iPaDMzFY4mc2BUipmno6sLxN6KoSfaZfgUFkh9c0B34XhBvC93WXn92xKlkw'; // Замени на реальный ключ
+  const applicationServerKey = urlBase64ToUint8Array(publicKey);
+
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey
+    });
+  }
+
+  await fetch('/push/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(subscription)
+  });
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
     // Экспорт глобальных функций
     window.getPubKey = getPubKey;

@@ -153,6 +153,13 @@ async def _create_tables(conn: asyncpg.Connection):
             version    INTEGER PRIMARY KEY,
             applied_at DOUBLE PRECISION
         );
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+              id            SERIAL PRIMARY KEY,
+              user_address  TEXT NOT NULL,
+              subscription  TEXT NOT NULL,
+              created_at    DOUBLE PRECISION DEFAULT (extract(epoch from now())),
+             UNIQUE(user_address, subscription)
+        );
     """)
     await conn.execute("INSERT INTO schema_version (version, applied_at) VALUES (0, extract(epoch from now())) ON CONFLICT DO NOTHING")
 
@@ -176,7 +183,19 @@ async def _apply_migrations(conn: asyncpg.Connection):
     if current_version < 4:
         await conn.execute("ALTER TABLE stakes ADD COLUMN IF NOT EXISTS reward_debt BIGINT DEFAULT 0")
         await conn.execute("UPDATE schema_version SET version = 4")
+    if current_version < 5:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id            SERIAL PRIMARY KEY,
+                user_address  TEXT NOT NULL,
+                subscription  TEXT NOT NULL,
+                created_at    DOUBLE PRECISION DEFAULT extract(epoch from now()),
+                UNIQUE(user_address, subscription)
+            )
+        """)
+        await conn.execute("UPDATE schema_version SET version = 5 WHERE version = 4")
     logger.info(f"Database schema at version {current_version}")
+
 
 
 async def _create_indexes(conn: asyncpg.Connection):
