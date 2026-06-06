@@ -542,10 +542,11 @@
 
         const form = document.querySelector('#aiChatContainer .input-area');
         if (form) {
-            form.parentNode.insertBefore(previewContainer, form);
+    // Вставляем в начало формы, как в обычном чате
+           form.insertBefore(previewContainer, form.firstChild);
         } else {
-            const container = document.getElementById('aiChatContainer');
-            if (container) container.appendChild(previewContainer);
+           const container = document.getElementById('aiChatContainer');
+           if (container) container.appendChild(previewContainer);
         }
 
         document.getElementById('clearAiImage')?.addEventListener('click', () => {
