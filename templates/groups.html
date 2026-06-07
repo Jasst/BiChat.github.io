@@ -5,13 +5,12 @@
 {% block content %}
 <div class="page-container">
   <div class="page-header">
-    <h2>Groups</h2>
-    <button class="btn-primary-oval" onclick="openCreateModal()">+ New Group</button>
+    <h2 data-i18n="groups">Groups</h2>
+    <button class="btn-primary-oval" onclick="openCreateModal()" data-i18n="create_group">+ New Group</button>
   </div>
 
-  <!-- Контейнер для списка групп (сетка) -->
   <div class="groups-grid" id="groupsList">
-    <div class="loading">Loading groups…</div>
+    <div class="loading" data-i18n="loading">Loading groups…</div>
   </div>
 </div>
 
@@ -19,81 +18,81 @@
 <div id="createModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
-      <h3>Create Group</h3>
+      <h3 data-i18n="create_group">Create Group</h3>
       <button class="modal-close" onclick="ModalManager.close('createModal')" aria-label="Close">&times;</button>
     </header>
     <div class="modal-body">
       <div class="form-group">
-        <label class="text-secondary">Group Name</label>
-        <input type="text" id="groupName" class="input" placeholder="e.g. Team Alpha" maxlength="100" data-validate="name">
+        <label class="text-secondary" data-i18n="group_name">Group Name</label>
+        <input type="text" id="groupName" class="input" placeholder="e.g. Team Alpha" maxlength="100" data-validate="name" data-i18n-placeholder="group_name">
       </div>
       <div class="form-group">
-        <label class="text-secondary">Add from Contacts</label>
+        <label class="text-secondary" data-i18n="add_from_contacts">Add from Contacts</label>
         <div id="contactsList" class="contacts-selector"></div>
       </div>
       <div class="form-group">
-        <label class="text-secondary">Or Add Address</label>
+        <label class="text-secondary" data-i18n="or_add_address">Or Add Address</label>
         <div class="flex-row">
-          <input type="text" id="manualAddress" class="input input-monospace" placeholder="64-char hex" maxlength="64">
-          <button class="btn-oval" onclick="addManualAddress()">Add</button>
+          <input type="text" id="manualAddress" class="input input-monospace" placeholder="64-char hex" maxlength="64" data-i18n-placeholder="address_placeholder">
+          <button class="btn-oval" onclick="addManualAddress()" data-i18n="add">Add</button>
         </div>
       </div>
       <div id="selectedSection" class="hidden">
-        <label class="text-secondary">Selected (<span id="memberCount">0</span>)</label>
+        <label class="text-secondary"><span data-i18n="selected">Selected</span> (<span id="memberCount">0</span>)</label>
         <div id="selectedList" class="selected-members"></div>
       </div>
       <div id="createError" class="hidden error"></div>
     </div>
     <footer class="modal-footer">
-      <button class="btn-oval" onclick="ModalManager.close('createModal')">Cancel</button>
-      <button class="btn-primary-oval" id="createSubmitBtn" onclick="submitCreate()">Create</button>
+      <button class="btn-oval" onclick="ModalManager.close('createModal')" data-i18n="cancel">Cancel</button>
+      <button class="btn-primary-oval" id="createSubmitBtn" onclick="submitCreate()" data-i18n="create">Create</button>
     </footer>
   </div>
 </div>
 
-<!-- GROUP DETAILS MODAL (info + manage for creator) -->
+<!-- GROUP DETAILS MODAL -->
 <div id="detailModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal" style="max-width: 480px;">
     <header class="modal-header">
-      <h3 id="detailTitle">Group Details</h3>
+      <h3 id="detailTitle" data-i18n="group_details">Group Details</h3>
       <button class="modal-close" onclick="ModalManager.close('detailModal')">&times;</button>
     </header>
     <div id="detailTabs" class="hidden detail-tabs">
-      <button class="detail-tab active" id="tabInfo" onclick="switchTab('info')">Info</button>
-      <button class="detail-tab" id="tabManage" onclick="switchTab('manage')">Manage</button>
+      <button class="detail-tab active" id="tabInfo" onclick="switchTab('info')" data-i18n="info">Info</button>
+      <button class="detail-tab" id="tabManage" onclick="switchTab('manage')" data-i18n="manage">Manage</button>
     </div>
     <div class="modal-body">
       <div id="panelInfo">
-        <div class="detail-row"><span class="text-secondary">Group ID</span><span class="font-mono" id="detailId"></span></div>
-        <div class="detail-row"><span class="text-secondary">Created by</span><span class="font-mono" id="detailCreator"></span></div>
-        <div class="detail-row"><span class="text-secondary">Created</span><span id="detailDate"></span></div>
+        <div class="detail-row"><span class="text-secondary" data-i18n="group_id">Group ID</span><span class="font-mono" id="detailId"></span></div>
+        <div class="detail-row"><span class="text-secondary" data-i18n="created_by">Created by</span><span class="font-mono" id="detailCreator"></span></div>
+        <div class="detail-row"><span class="text-secondary" data-i18n="created">Created</span><span id="detailDate"></span></div>
         <div class="form-group">
-          <label class="text-secondary">Members (<span id="detailCount">0</span>)</label>
+          <label class="text-secondary"><span data-i18n="members">Members</span> (<span id="detailCount">0</span>)</label>
           <div id="detailMembers" class="members-list"></div>
         </div>
-        <button class="btn-primary-oval full-width" onclick="openGroupChat()">💬 Open Chat</button>
+        <button class="btn-primary-oval full-width" onclick="openGroupChat()" data-i18n="open_chat">💬 Open Chat</button>
       </div>
       <div id="panelManage" class="hidden">
         <div class="form-group">
-          <label class="text-secondary">Rename Group</label>
+          <label class="text-secondary" data-i18n="rename_group">Rename Group</label>
           <div class="flex-row">
-            <input type="text" id="renameInput" class="input" placeholder="New name…" maxlength="100">
-            <button class="btn-oval" onclick="submitRename()">Save</button>
+            <input type="text" id="renameInput" class="input" placeholder="New name…" maxlength="100" data-i18n-placeholder="new_name">
+            <button class="btn-oval" onclick="submitRename()" data-i18n="save">Save</button>
           </div>
         </div>
         <div class="form-group">
-          <label class="text-secondary">Add Member from Contacts</label>
+          <label class="text-secondary" data-i18n="add_member_contacts">Add Member from Contacts</label>
           <div id="addContactsList" class="contacts-selector"></div>
         </div>
         <div class="form-group">
-          <label class="text-secondary">Or Add by Address</label>
+          <label class="text-secondary" data-i18n="or_add_address">Or Add by Address</label>
           <div class="flex-row">
-            <input type="text" id="addMemberInput" class="input input-monospace" placeholder="64-char hex" maxlength="64">
-            <button class="btn-oval" onclick="submitAddMember()">Add</button>
+            <input type="text" id="addMemberInput" class="input input-monospace" placeholder="64-char hex" maxlength="64" data-i18n-placeholder="address_placeholder">
+            <button class="btn-oval" onclick="submitAddMember()" data-i18n="add">Add</button>
           </div>
         </div>
         <div class="form-group">
-          <label class="text-secondary">Current Members (<span id="manageCount">0</span>)</label>
+          <label class="text-secondary"><span data-i18n="current_members">Current Members</span> (<span id="manageCount">0</span>)</label>
           <div id="manageMembers" class="members-list"></div>
         </div>
         <div id="manageError" class="hidden error"></div>
@@ -104,9 +103,6 @@
 
 {% block scripts %}
 <script>
-// Полный код из оригинального groups.html (без изменений, кроме замены классов кнопок)
-// Для краткости привожу полную логику, адаптированную под овальные кнопки.
-// В реальном проекте вы можете использовать свой существующий код, заменив .btn на .btn-oval и .btn-primary на .btn-primary-oval.
 (function() {
   if (window._groupsScriptLoaded) return;
   window._groupsScriptLoaded = true;
@@ -116,7 +112,6 @@
   let selectedMembers = {};
   let currentGroup = null;
 
-  // Helper: escapeHtml
   function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
@@ -125,11 +120,12 @@
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
   }
 
-  // Modal helpers (confirm/prompt) – такие же как в common.js, но дублируем для автономности
-  function showConfirmModal(title, message) {
+  function t(key, opts) { return i18next.t(key, opts); }
+
+  async function showConfirmModal(title, message) {
     return new Promise((resolve) => {
       const modalId = 'confirm-' + Date.now();
-      const html = `<div id="${modalId}" class="modal-overlay hidden"><div class="modal"><header class="modal-header"><h3>${escapeHtml(title)}</h3><button class="modal-close" data-close>&times;</button></header><div class="modal-body"><p>${escapeHtml(message)}</p></div><footer class="modal-footer"><button class="btn-oval" data-action="cancel">Cancel</button><button class="btn-primary-oval" data-action="confirm">Confirm</button></footer></div></div>`;
+      const html = `<div id="${modalId}" class="modal-overlay hidden"><div class="modal"><header class="modal-header"><h3>${escapeHtml(title)}</h3><button class="modal-close" data-close>&times;</button></header><div class="modal-body"><p>${escapeHtml(message)}</p></div><footer class="modal-footer"><button class="btn-oval" data-action="cancel">${t('cancel')}</button><button class="btn-primary-oval" data-action="confirm">${t('confirm')}</button></footer></div></div>`;
       document.body.insertAdjacentHTML('beforeend', html);
       const modalEl = document.getElementById(modalId);
       const close = (result) => { ModalManager.close(modalId); modalEl.remove(); resolve(result); };
@@ -143,7 +139,7 @@
   async function showPromptModal(title, placeholder, defaultValue = '') {
     return new Promise((resolve) => {
       const modalId = 'prompt-' + Date.now();
-      const html = `<div id="${modalId}" class="modal-overlay hidden"><div class="modal"><header class="modal-header"><h3>${escapeHtml(title)}</h3><button class="modal-close" data-close>&times;</button></header><div class="modal-body"><input type="text" id="prompt-input" class="input" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(defaultValue)}"></div><footer class="modal-footer"><button class="btn-oval" data-action="cancel">Cancel</button><button class="btn-primary-oval" data-action="ok">OK</button></footer></div></div>`;
+      const html = `<div id="${modalId}" class="modal-overlay hidden"><div class="modal"><header class="modal-header"><h3>${escapeHtml(title)}</h3><button class="modal-close" data-close>&times;</button></header><div class="modal-body"><input type="text" id="prompt-input" class="input" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(defaultValue)}"></div><footer class="modal-footer"><button class="btn-oval" data-action="cancel">${t('cancel')}</button><button class="btn-primary-oval" data-action="ok">${t('ok')}</button></footer></div></div>`;
       document.body.insertAdjacentHTML('beforeend', html);
       const modalEl = document.getElementById(modalId);
       const input = modalEl.querySelector('#prompt-input');
@@ -159,7 +155,7 @@
   async function showDeleteGroupModal(name) {
     return new Promise((resolve) => {
       const modalId = 'delete-group-' + Date.now();
-      const html = `<div id="${modalId}" class="modal-overlay hidden"><div class="modal"><header class="modal-header"><h3>Delete Group</h3><button class="modal-close" data-close>&times;</button></header><div class="modal-body"><p>Delete group "${escapeHtml(name)}"?<br><span style="color: var(--status-error);">⚠️ This cannot be undone.</span></p><div class="form-group"><label>Type "DELETE" to confirm:</label><input type="text" id="delete-confirm-input" class="input" placeholder="DELETE"></div></div><footer class="modal-footer"><button class="btn-oval" data-action="cancel">Cancel</button><button class="btn-primary-oval" data-action="delete">Delete</button></footer></div></div>`;
+      const html = `<div id="${modalId}" class="modal-overlay hidden"><div class="modal"><header class="modal-header"><h3>${t('delete_group')}</h3><button class="modal-close" data-close>&times;</button></header><div class="modal-body"><p>${t('delete_group_confirm', { name: escapeHtml(name) })}<br><span style="color: var(--status-error);">⚠️ ${t('cannot_undo')}</span></p><div class="form-group"><label>${t('type_delete_confirm')}</label><input type="text" id="delete-confirm-input" class="input" placeholder="DELETE"></div></div><footer class="modal-footer"><button class="btn-oval" data-action="cancel">${t('cancel')}</button><button class="btn-primary-oval" data-action="delete">${t('delete')}</button></footer></div></div>`;
       document.body.insertAdjacentHTML('beforeend', html);
       const modalEl = document.getElementById(modalId);
       const input = modalEl.querySelector('#delete-confirm-input');
@@ -171,18 +167,21 @@
     });
   }
 
-  // Load groups
   async function loadGroups() {
     const container = document.getElementById('groupsList');
     if (!container) return;
-    container.innerHTML = '<div class="loading">Loading…</div>';
+    container.innerHTML = `<div class="loading">${t('loading')}</div>`;
     try {
       const res = await fetch('/get_groups');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Unknown');
       if (!data.groups?.length) {
-        container.innerHTML = `<div class="empty-state"><div class="icon">👥</div><p>No groups yet</p><button class="btn-primary-oval" onclick="openCreateModal()">Create one</button></div>`;
-        return;
+container.innerHTML = `<div class="empty-state">
+  <div class="icon">👥</div>
+  <p data-i18n="no_groups">No groups</p>
+  <button class="btn-primary-oval" onclick="openCreateModal()" data-i18n="create_group">+ New Group</button>
+</div>`;
+ return;
       }
       container.innerHTML = '';
       data.groups.forEach(g => {
@@ -190,28 +189,27 @@
         card.className = 'list-item group-card';
         card.dataset.id = g.id;
         const isCreator = g.creator === MY_ADDR;
-        const initials = g.name.slice(0,2).toUpperCase();
         const date = g.created_at ? new Date(g.created_at * 1000).toLocaleDateString() : '—';
         card.innerHTML = `
           <div class="info" style="flex:1;">
             <div class="name">${escapeHtml(g.name)}</div>
             <div class="address font-mono">ID: ${g.id.slice(0,12)}…</div>
-            <div class="text-muted" style="font-size:12px;">${g.members.length} member${g.members.length !== 1 ? 's' : ''} · ${date}</div>
+            <div class="text-muted" style="font-size:12px;">${g.members.length} ${t('members').toLowerCase()} · ${date}</div>
           </div>
           <div class="actions">
-            <button class="btn-primary-oval" onclick="openGroupChatById('group:${escapeAttr(g.id)}', '${escapeAttr(g.name)}')">💬 Chat</button>
-            <button class="btn-oval" onclick="openDetail('${escapeAttr(JSON.stringify(g))}')">Info</button>
-            ${isCreator ? `<button class="btn-icon-oval" style="color:var(--status-error);" onclick="deleteGroup('${escapeAttr(g.id)}', '${escapeAttr(g.name)}')" title="Delete">🗑</button>` : ''}
+            <button class="btn-primary-oval" onclick="openGroupChatById('group:${escapeAttr(g.id)}', '${escapeAttr(g.name)}')">💬 ${t('chat')}</button>
+            <button class="btn-oval" onclick="openDetail('${escapeAttr(JSON.stringify(g))}')">${t('info')}</button>
+            ${isCreator ? `<button class="btn-icon-oval" style="color:var(--status-error);" onclick="deleteGroup('${escapeAttr(g.id)}', '${escapeAttr(g.name)}')" title="${t('delete')}">🗑</button>` : ''}
           </div>`;
         container.appendChild(card);
       });
+
     } catch (err) {
       console.error(err);
-      container.innerHTML = '<p class="text-muted text-center">Failed to load groups</p>';
+      container.innerHTML = `<p class="text-muted text-center">${t('error_load')}</p>`;
     }
   }
 
-  // Create modal logic
   async function openCreateModal() {
     selectedMembers = {};
     document.getElementById('groupName').value = '';
@@ -220,19 +218,19 @@
     renderSelected();
     ModalManager.open('createModal');
     const listDiv = document.getElementById('contactsList');
-    listDiv.innerHTML = '<div class="loading">Loading contacts…</div>';
+    listDiv.innerHTML = `<div class="loading">${t('loading_contacts')}</div>`;
     try {
       const res = await fetch('/get_contacts');
       const data = await res.json();
       allContacts = res.ok ? data.contacts : [];
       renderContactsList();
-    } catch(e) { listDiv.innerHTML = '<p class="text-muted">Could not load</p>'; }
+    } catch(e) { listDiv.innerHTML = `<p class="text-muted">${t('could_not_load')}</p>`; }
   }
 
   function renderContactsList() {
     const container = document.getElementById('contactsList');
     if (!allContacts.length) {
-      container.innerHTML = '<p class="text-muted">No contacts yet.</p>';
+      container.innerHTML = `<p class="text-muted">${t('no_contacts_yet')}</p>`;
       return;
     }
     container.innerHTML = '';
@@ -245,29 +243,28 @@
     });
   }
 
-  function toggleMember(addr, name, checked) {
+  window.toggleMember = (addr, name, checked) => {
     if (checked) selectedMembers[addr] = name;
     else delete selectedMembers[addr];
     renderSelected();
-  }
+  };
 
-  function addManualAddress() {
+  window.addManualAddress = () => {
     const input = document.getElementById('manualAddress');
     const addr = input.value.trim().toLowerCase();
     if (!addr || addr.length !== 64 || !/^[a-f0-9]{64}$/.test(addr)) {
-      showCreateError('Invalid address (64 hex chars)');
+      showCreateError(t('invalid_address_64'));
       return;
     }
-    if (addr === MY_ADDR) { showCreateError('You are included automatically'); return; }
-    if (selectedMembers[addr]) { showCreateError('Already added'); return; }
+    if (addr === MY_ADDR) { showCreateError(t('you_auto_included')); return; }
+    if (selectedMembers[addr]) { showCreateError(t('already_added')); return; }
     selectedMembers[addr] = addr.slice(0,10)+'…';
     input.value = '';
     document.getElementById('createError')?.classList.add('hidden');
     renderSelected();
-    // uncheck checkbox if any
     const cb = document.querySelector(`#contactsList input[value="${addr}"]`);
     if (cb) cb.checked = false;
-  }
+  };
 
   function renderSelected() {
     const count = Object.keys(selectedMembers).length;
@@ -285,12 +282,12 @@
     });
   }
 
-  function removeMember(addr) {
+  window.removeMember = (addr) => {
     delete selectedMembers[addr];
     const cb = document.querySelector(`#contactsList input[value="${addr}"]`);
     if (cb) cb.checked = false;
     renderSelected();
-  }
+  };
 
   function showCreateError(msg) {
     const el = document.getElementById('createError');
@@ -298,63 +295,49 @@
     el.classList.remove('hidden');
   }
 
- async function submitCreate() {
+  window.submitCreate = async () => {
     const name = document.getElementById('groupName').value.trim();
     const members = Object.keys(selectedMembers);
     if (!name || name.length > 100) {
-        showCreateError('Name required (max 100 chars)');
-        return;
+      showCreateError(t('name_required'));
+      return;
     }
     if (!members.length) {
-        showCreateError('Add at least one member');
-        return;
+      showCreateError(t('at_least_one_member'));
+      return;
     }
     const btn = document.getElementById('createSubmitBtn');
     btn.disabled = true;
-    btn.textContent = 'Creating…';
+    btn.textContent = t('creating');
     try {
-        const res = await fetch('/create_group', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, members })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            showCreateError(data.error || 'Failed');
-            return;
-        }
-        // Закрываем модалку создания
-        ModalManager.close('createModal');
-        // Обновляем список групп
-        await loadGroups();
-        // 🔥 НОВОЕ: подписываемся на WebSocket-канал этой группы
-        if (window.wsClient && window.wsClient.isConnected) {
-            window.wsClient.send({
-                type: 'subscribe_group',
-                group_id: data.group_id
-            });
-            console.log('✅ Subscribed to group:', data.group_id);
-        } else {
-            console.warn('WebSocket not available, group subscription skipped');
-        }
-        // Спрашиваем, открыть ли чат
-        const confirmed = await window.showConfirmModal(
-            'Group Created',
-            `Group "${name}" created!\nOpen chat now?`
-        );
-        if (confirmed) {
-            openGroupChatById('group:' + data.group_id, name);
-        }
+      const res = await fetch('/create_group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, members })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showCreateError(data.error || t('failed'));
+        return;
+      }
+      ModalManager.close('createModal');
+      await loadGroups();
+      if (window.wsClient && window.wsClient.isConnected) {
+        window.wsClient.send({ type: 'subscribe_group', group_id: data.group_id });
+      }
+      const confirmed = await showConfirmModal(t('group_created'), t('open_chat_now', { name }));
+      if (confirmed) {
+        openGroupChatById('group:' + data.group_id, name);
+      }
     } catch (err) {
-        showCreateError('Network error');
+      showCreateError(t('network_error'));
     } finally {
-        btn.disabled = false;
-        btn.textContent = 'Create';
+      btn.disabled = false;
+      btn.textContent = t('create');
     }
-}
+  };
 
-  // Detail modal
-  async function openDetail(groupJson) {
+  window.openDetail = async (groupJson) => {
     const g = JSON.parse(groupJson);
     currentGroup = g;
     const isCreator = g.creator === MY_ADDR;
@@ -364,25 +347,25 @@
     switchTab('info');
     document.getElementById('detailTitle').textContent = g.name;
     document.getElementById('detailId').textContent = g.id;
-    document.getElementById('detailCreator').textContent = g.creator === MY_ADDR ? g.creator + ' (You)' : g.creator;
+    document.getElementById('detailCreator').textContent = g.creator === MY_ADDR ? g.creator + ' (' + t('you') + ')' : g.creator;
     document.getElementById('detailDate').textContent = g.created_at ? new Date(g.created_at * 1000).toLocaleString() : '—';
     document.getElementById('detailCount').textContent = g.members.length;
     renderMemberList(g.members, document.getElementById('detailMembers'), false);
     ModalManager.open('detailModal');
-  }
+  };
 
   function renderMemberList(members, container, withRemove) {
     container.innerHTML = '';
     members.forEach(addr => {
       const isMe = addr === MY_ADDR;
-      const label = isMe ? 'You' : addr.slice(0,16)+'…';
+      const label = isMe ? t('you') : addr.slice(0,16)+'…';
       const row = document.createElement('div');
       row.className = 'member-row';
       row.innerHTML = `<div class="member-avatar">${label[0]}</div>
                        <div class="member-info"><div>${escapeHtml(label)}</div><div class="text-muted font-mono">${addr}</div></div>
-                       ${isMe ? '<span class="member-badge">ME</span>' : ''}
-                       ${addr === currentGroup?.creator ? '<span class="member-badge">owner</span>' : ''}
-                       ${withRemove && !isMe && addr !== currentGroup?.creator ? `<button class="btn-icon-oval" onclick="submitRemoveMember('${escapeAttr(addr)}')" title="Remove">✕</button>` : ''}`;
+                       ${isMe ? `<span class="member-badge">${t('me')}</span>` : ''}
+                       ${addr === currentGroup?.creator ? `<span class="member-badge">${t('owner')}</span>` : ''}
+                       ${withRemove && !isMe && addr !== currentGroup?.creator ? `<button class="btn-icon-oval" onclick="submitRemoveMember('${escapeAttr(addr)}')" title="${t('remove')}">✕</button>` : ''}`;
       container.appendChild(row);
     });
   }
@@ -407,7 +390,7 @@
       }
       const available = contacts.filter(c => !currentMembers.includes(c.address));
       if (!available.length) {
-        container.innerHTML = '<p class="text-muted">All contacts are already in the group.</p>';
+        container.innerHTML = `<p class="text-muted">${t('all_contacts_in_group')}</p>`;
         return;
       }
       container.innerHTML = '';
@@ -415,10 +398,10 @@
         const div = document.createElement('div');
         div.className = 'contact-add-row';
         div.innerHTML = `<div><strong>${escapeHtml(c.name)}</strong><br><span class="text-muted">${c.address.slice(0,20)}…</span></div>
-                         <button class="btn-oval" onclick="submitAddMemberAddr('${escapeAttr(c.address)}')">+ Add</button>`;
+                         <button class="btn-oval" onclick="submitAddMemberAddr('${escapeAttr(c.address)}')">+ ${t('add')}</button>`;
         container.appendChild(div);
       });
-    } catch(e) { container.innerHTML = '<p class="text-muted">Could not load contacts.</p>'; }
+    } catch(e) { container.innerHTML = `<p class="text-muted">${t('could_not_load')}</p>`; }
   }
 
   function showManageError(msg) {
@@ -427,10 +410,10 @@
     el.classList.remove('hidden');
   }
 
-  async function submitRename() {
+  window.submitRename = async () => {
     if (!currentGroup) return;
     const name = document.getElementById('renameInput').value.trim();
-    if (!name || name.length > 100) { showManageError('Name must be 1–100 characters'); return; }
+    if (!name || name.length > 100) { showManageError(t('name_required')); return; }
     try {
       const res = await fetch('/rename_group', {
         method: 'POST',
@@ -438,22 +421,22 @@
         body: JSON.stringify({ group_id: currentGroup.id, name })
       });
       const data = await res.json();
-      if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+      if (!res.ok) { showManageError(data.error || t('failed')); return; }
       currentGroup.name = name;
       document.getElementById('detailTitle').textContent = name;
-      window.NotificationManager?.showToast('Group renamed', 'success');
+      window.NotificationManager?.showToast(t('group_renamed'), 'success');
       await loadGroups();
-    } catch { showManageError('Network error'); }
-  }
+    } catch { showManageError(t('network_error')); }
+  };
 
-  async function submitAddMember() {
+  window.submitAddMember = async () => {
     const addr = document.getElementById('addMemberInput').value.trim().toLowerCase();
-    if (!addr || addr.length !== 64 || !/^[a-f0-9]{64}$/.test(addr)) { showManageError('Invalid address (64 hex chars)'); return; }
+    if (!addr || addr.length !== 64 || !/^[a-f0-9]{64}$/.test(addr)) { showManageError(t('invalid_address_64')); return; }
     await submitAddMemberAddr(addr);
     document.getElementById('addMemberInput').value = '';
-  }
+  };
 
-  async function submitAddMemberAddr(addr) {
+  window.submitAddMemberAddr = async (addr) => {
     if (!currentGroup) return;
     try {
       const res = await fetch('/add_group_member', {
@@ -462,21 +445,21 @@
         body: JSON.stringify({ group_id: currentGroup.id, address: addr })
       });
       const data = await res.json();
-      if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+      if (!res.ok) { showManageError(data.error || t('failed')); return; }
       currentGroup.members = data.members;
       document.getElementById('manageCount').textContent = currentGroup.members.length;
       document.getElementById('detailCount').textContent = currentGroup.members.length;
       renderMemberList(currentGroup.members, document.getElementById('manageMembers'), true);
       renderMemberList(currentGroup.members, document.getElementById('detailMembers'), false);
       await loadAddContactsList(currentGroup.members);
-      window.NotificationManager?.showToast('Member added', 'success');
+      window.NotificationManager?.showToast(t('member_added'), 'success');
       await loadGroups();
-    } catch { showManageError('Network error'); }
-  }
+    } catch { showManageError(t('network_error')); }
+  };
 
-  async function submitRemoveMember(addr) {
+  window.submitRemoveMember = async (addr) => {
     if (!currentGroup) return;
-    const confirmed = await showConfirmModal('Remove Member', `Remove ${addr.slice(0,16)}… from the group?`);
+    const confirmed = await showConfirmModal(t('remove_member'), t('confirm_remove_member', { addr: addr.slice(0,16)+'…' }));
     if (!confirmed) return;
     try {
       const res = await fetch('/remove_group_member', {
@@ -485,38 +468,38 @@
         body: JSON.stringify({ group_id: currentGroup.id, address: addr })
       });
       const data = await res.json();
-      if (!res.ok) { showManageError(data.error || 'Failed'); return; }
+      if (!res.ok) { showManageError(data.error || t('failed')); return; }
       currentGroup.members = data.members;
       document.getElementById('manageCount').textContent = currentGroup.members.length;
       document.getElementById('detailCount').textContent = currentGroup.members.length;
       renderMemberList(currentGroup.members, document.getElementById('manageMembers'), true);
       renderMemberList(currentGroup.members, document.getElementById('detailMembers'), false);
       await loadAddContactsList(currentGroup.members);
-      window.NotificationManager?.showToast('Member removed', 'success');
+      window.NotificationManager?.showToast(t('member_removed'), 'success');
       await loadGroups();
-    } catch { showManageError('Network error'); }
-  }
+    } catch { showManageError(t('network_error')); }
+  };
 
-  function switchTab(tab) {
+  window.switchTab = (tab) => {
     const isInfo = tab === 'info';
     document.getElementById('panelInfo').classList.toggle('hidden', !isInfo);
     document.getElementById('panelManage').classList.toggle('hidden', isInfo);
     document.getElementById('tabInfo').classList.toggle('active', isInfo);
     document.getElementById('tabManage').classList.toggle('active', !isInfo);
     if (!isInfo && currentGroup) loadManagePanel(currentGroup);
-  }
+  };
 
-  function openGroupChat() {
+  window.openGroupChat = () => {
     if (!currentGroup) return;
     openGroupChatById('group:' + currentGroup.id, currentGroup.name);
-  }
+  };
 
-  function openGroupChatById(addr, name) {
+  window.openGroupChatById = (addr, name) => {
     const params = new URLSearchParams({ start_with: addr, name });
     location.href = '/chat?' + params;
-  }
+  };
 
-  async function deleteGroup(id, name) {
+  window.deleteGroup = async (id, name) => {
     const confirmed = await showDeleteGroupModal(name);
     if (!confirmed) return;
     try {
@@ -527,15 +510,22 @@
       });
       const data = await res.json();
       if (res.ok) {
-        window.NotificationManager?.showToast('Group deleted', 'success');
+        window.NotificationManager?.showToast(t('group_deleted'), 'success');
         await loadGroups();
       } else if (res.status === 403) {
-        window.NotificationManager?.showToast('Permission denied', 'error');
+        window.NotificationManager?.showToast(t('permission_denied'), 'error');
       } else {
-        window.NotificationManager?.showToast(data.error || 'Failed to delete', 'error');
+        window.NotificationManager?.showToast(data.error || t('failed_delete'), 'error');
       }
-    } catch(err) { window.NotificationManager?.showToast('Network error', 'error'); }
-  }
+    } catch(err) { window.NotificationManager?.showToast(t('network_error'), 'error'); }
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadGroups();
+    document.getElementById('groupName')?.addEventListener('input', () => {});
+    document.getElementById('manualAddress')?.addEventListener('keypress', e => { if (e.key === 'Enter') addManualAddress(); });
+    document.getElementById('addMemberInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') submitAddMember(); });
+  });
 
   // Expose globals
   window.openCreateModal = openCreateModal;
@@ -548,17 +538,8 @@
   window.submitAddMember = submitAddMember;
   window.submitAddMemberAddr = submitAddMemberAddr;
   window.submitRemoveMember = submitRemoveMember;
-  window.toggleMember = toggleMember;
-  window.addManualAddress = addManualAddress;
-  window.removeMember = removeMember;
-  window.submitCreate = submitCreate;
   window.showCreateError = showCreateError;
-  document.addEventListener('DOMContentLoaded', () => {
-    loadGroups();
-    document.getElementById('groupName')?.addEventListener('input', function() { /* validation optional */ });
-    document.getElementById('manualAddress')?.addEventListener('keypress', e => { if (e.key === 'Enter') addManualAddress(); });
-    document.getElementById('addMemberInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') submitAddMember(); });
-  });
+  window.showConfirmModal = showConfirmModal;
 })();
 </script>
 {% endblock %}

@@ -5,114 +5,114 @@
 {% block content %}
 <div class="page-container">
   <div class="page-header">
-    <h2>Wallet</h2>
+    <h2 data-i18n="wallet">Wallet</h2>
   </div>
 
   <!-- Balance Card -->
   <div class="profile-card">
-    <h3>Balance</h3>
+    <h3 data-i18n="balance">Balance</h3>
     <div class="profile-row">
-      <label>Available</label>
+      <label data-i18n="available">Available</label>
       <span class="value" id="balanceDisplay">0.000000 BlockCoin</span>
-      <button class="btn-icon-oval" onclick="refreshBalance()">🔄</button>
+      <button class="btn-icon-oval" onclick="refreshBalance()" title="Refresh">🔄</button>
     </div>
     <div class="profile-row" id="stakedInfo" style="display:none;">
-      <label>Staked</label>
+      <label data-i18n="staked">Staked</label>
       <span class="value" id="stakedDisplay">0.000000 BlockCoin</span>
     </div>
   </div>
 
   <!-- Network Statistics Card -->
   <div class="profile-card">
-    <h3>🌐 Network Statistics</h3>
-    <div class="profile-row"><label>Total Supply</label><span class="value" id="totalSupply">0.000000 BlockCoin</span><button class="btn-icon-oval" onclick="refreshNetworkStats()">🔄</button></div>
-    <div class="profile-row" id="remainingRow"><label>Remaining to Mine</label><span class="value" id="remainingSupply">∞</span></div>
-    <div class="profile-row"><label>Staking Pool Balance</label><span class="value" id="stakingPoolBalance">0.000000 BlockCoin</span></div>
-    <div class="profile-row"><label>Message Fee</label><span class="value" id="messageFee">0.000000 BlockCoin</span></div>
-    <div class="profile-row"><label>Block Reward</label><span class="value" id="blockReward">0.000000 BlockCoin</span></div>
-    <div class="profile-row"><label>Total Blocks</label><span class="value" id="totalBlocks">0</span></div>
-    <div class="profile-row"><label>Total Staked</label><span class="value" id="totalStaked">0.000000 BlockCoin</span></div>
-    <div class="profile-row"><label>Current Difficulty</label><span class="value" id="difficulty">0</span></div>
+    <h3 data-i18n="network_stats">🌐 Network Statistics</h3>
+    <div class="profile-row"><label data-i18n="total_supply">Total Supply</label><span class="value" id="totalSupply">0.000000 BlockCoin</span><button class="btn-icon-oval" onclick="refreshNetworkStats()" title="Refresh">🔄</button></div>
+    <div class="profile-row" id="remainingRow"><label data-i18n="remaining_to_mine">Remaining to Mine</label><span class="value" id="remainingSupply">∞</span></div>
+    <div class="profile-row"><label data-i18n="staking_pool_balance">Staking Pool Balance</label><span class="value" id="stakingPoolBalance">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label data-i18n="message_fee">Message Fee</label><span class="value" id="messageFee">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label data-i18n="block_reward">Block Reward</label><span class="value" id="blockReward">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label data-i18n="total_blocks">Total Blocks</label><span class="value" id="totalBlocks">0</span></div>
+    <div class="profile-row"><label data-i18n="total_staked">Total Staked</label><span class="value" id="totalStaked">0.000000 BlockCoin</span></div>
+    <div class="profile-row"><label data-i18n="current_difficulty">Current Difficulty</label><span class="value" id="difficulty">0</span></div>
   </div>
 
   <!-- Mining Card -->
   <div class="profile-card" id="miningCard">
-    <h3>⛏ Mining</h3>
-    <div id="miningStatus" class="text-muted">Not mining</div>
+    <h3 data-i18n="mining">⛏ Mining</h3>
+    <div id="miningStatus" class="text-muted" data-i18n="not_mining">Not mining</div>
     <div class="flex-row">
-      <button id="startMiningBtn" class="btn-primary-oval" onclick="startMining()">Start Mining</button>
-      <button id="stopMiningBtn" class="btn-oval hidden" onclick="stopMining()">Stop</button>
+      <button id="startMiningBtn" class="btn-primary-oval" onclick="startMining()" data-i18n="start_mining">Start Mining</button>
+      <button id="stopMiningBtn" class="btn-oval hidden" onclick="stopMining()" data-i18n="stop_mining">Stop</button>
     </div>
     <div id="miningProgress" class="hidden mining-progress-bar"><div class="mining-progress-bar-fill"></div></div>
   </div>
 
   <!-- Staking Card -->
   <div class="profile-card" id="stakingCard">
-    <h3>🔒 Staking</h3>
-    <div id="stakingInfo" class="text-muted">Load staking info...</div>
+    <h3 data-i18n="staking">🔒 Staking</h3>
+    <div id="stakingInfo" class="text-muted" data-i18n="loading_staking">Load staking info...</div>
     <div class="flex-row">
-      <input type="number" id="stakeAmount" class="input" placeholder="Amount" step="0.000001">
-      <button class="btn-primary-oval" onclick="stake()">Stake</button>
-      <button class="btn-oval" onclick="unstake()">Unstake</button>
+      <input type="number" id="stakeAmount" class="input" placeholder="Amount" step="0.000001" data-i18n-placeholder="amount">
+      <button class="btn-primary-oval" onclick="stake()" data-i18n="stake">Stake</button>
+      <button class="btn-oval" onclick="unstake()" data-i18n="unstake">Unstake</button>
     </div>
     <div id="stakeResult" class="hidden text-muted"></div>
   </div>
 
   <!-- Receive Card -->
   <div class="profile-card">
-    <h3>Receive Coins</h3>
+    <h3 data-i18n="receive">Receive Coins</h3>
     <div class="profile-row">
-      <label>Your Address</label>
+      <label data-i18n="your_address_receive">Your Address</label>
       <div class="profile-value-wrap">
         <span class="value font-mono" id="receiveAddress" style="word-break: break-all;">{{ address|default('', true) }}</span>
-        <button class="btn-icon-oval" onclick="copyAddressToClipboard()" title="Copy">📋</button>
+        <button class="btn-icon-oval" onclick="copyAddressToClipboard()" title="Copy" data-i18n="copy">📋</button>
       </div>
     </div>
     <div class="profile-row">
-      <label>QR Code</label>
-      <button id="toggleQRBtn" class="btn-oval" onclick="toggleReceiveQR()">📱 Show QR Code</button>
+      <label data-i18n="qr_code">QR Code</label>
+      <button id="toggleQRBtn" class="btn-oval" onclick="toggleReceiveQR()" data-i18n="show_qr">📱 Show QR Code</button>
     </div>
     <div id="qrBlock" class="hidden animate-fade qr-container">
       <div id="qrcode"></div>
       <div class="qr-actions">
-        <button class="btn-oval" onclick="downloadQR()">📥 Download</button>
-        <button class="btn-oval" onclick="shareQR()">📤 Share</button>
+        <button class="btn-oval" onclick="downloadQR()" data-i18n="download">📥 Download</button>
+        <button class="btn-oval" onclick="shareQR()" data-i18n="share">📤 Share</button>
       </div>
     </div>
   </div>
 
   <!-- Send Card -->
   <div class="profile-card">
-    <h3>Send BlockCoin</h3>
+    <h3 data-i18n="send_coins">Send BlockCoin</h3>
     <div class="form-group">
       <div class="flex-row">
-        <input type="text" id="sendAddress" class="input input-monospace" placeholder="Recipient address (64 hex)" maxlength="64">
-        <button class="btn-icon-oval" onclick="openWalletQRScanner()" title="Scan QR Code">📷</button>
+        <input type="text" id="sendAddress" class="input input-monospace" placeholder="Recipient address (64 hex)" maxlength="64" data-i18n-placeholder="send_recipient">
+        <button class="btn-icon-oval" onclick="openWalletQRScanner()" title="Scan QR Code" data-i18n="scan_qr">📷</button>
       </div>
       <div id="qrScannerContainer" class="hidden qr-scanner-container">
         <div class="text-center">
           <div class="qr-video-wrapper">
             <video id="qrVideo" class="qr-video" playsinline autoplay muted disablepictureinpicture></video>
           </div>
-          <p class="text-muted">Point camera at QR code</p>
+          <p class="text-muted" data-i18n="scan_qr_hint">Point camera at QR code</p>
           <div id="scanResult" class="hidden scan-result"></div>
-          <button class="btn-oval" onclick="forceCloseWalletQRScanner()">Cancel</button>
+          <button class="btn-oval" onclick="forceCloseWalletQRScanner()" data-i18n="cancel">Cancel</button>
         </div>
       </div>
       <div class="flex-row">
-        <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001">
-        <button class="btn-primary-oval" onclick="sendCoins()">Send</button>
+        <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001" data-i18n-placeholder="send_amount">
+        <button class="btn-primary-oval" onclick="sendCoins()" data-i18n="send_coins">Send</button>
       </div>
-      <p class="text-muted" id="sendFeeDisplay">Fee: 0.010000 BlockCoin</p>
+      <p class="text-muted" id="sendFeeDisplay"></p>
       <div id="sendResult" class="hidden text-muted"></div>
     </div>
   </div>
 
   <!-- Transactions Card -->
   <div class="profile-card">
-    <h3>Transaction History</h3>
+    <h3 data-i18n="transaction_history">Transaction History</h3>
     <div id="txList" class="list-container" style="max-height:300px; overflow-y:auto;">
-      <div class="loading">Loading…</div>
+      <div class="loading" data-i18n="loading">Loading…</div>
     </div>
   </div>
 </div>

@@ -5,33 +5,33 @@
 {% block content %}
 <div class="auth-container">
   <div class="auth-card">
-    <h1>Login</h1>
-    <p class="subtitle">Enter your 24‑word mnemonic phrase</p>
+    <h1 data-i18n="login_title">Login</h1>
+    <p class="subtitle" data-i18n="enter_mnemonic">Enter your 24‑word mnemonic phrase</p>
 
     <form id="loginForm" class="auth-form">
       <input type="hidden" id="nonce" value="{{ nonce }}">
-      <textarea id="mnemonic" placeholder="Enter your mnemonic phrase" rows="5" autocomplete="off" autocorrect="off" spellcheck="false" autofocus required class="input input-monospace"></textarea>
+      <textarea id="mnemonic" placeholder="Enter your mnemonic phrase" rows="5" autocomplete="off" autocorrect="off" spellcheck="false" autofocus required class="input input-monospace" data-i18n-placeholder="mnemonic_placeholder"></textarea>
 
       <div class="form-group">
-        <label><input type="checkbox" id="rememberCheckbox" checked> Remember me (encrypt and store wallet locally)</label>
+        <label><input type="checkbox" id="rememberCheckbox" checked> <span data-i18n="remember_me">Remember me (encrypt and store wallet locally)</span></label>
       </div>
       <div id="passwordGroup">
         <div class="form-group">
-          <label>Encryption password (required if remembering)</label>
-          <input type="password" id="password" class="input" placeholder="Enter password">
+          <label data-i18n="encryption_password_required">Encryption password (required if remembering)</label>
+          <input type="password" id="password" class="input" placeholder="Enter password" data-i18n-placeholder="enter_password">
         </div>
         <div class="form-group">
-          <label>Confirm password</label>
-          <input type="password" id="confirmPassword" class="input" placeholder="Repeat password">
+          <label data-i18n="confirm_password">Confirm password</label>
+          <input type="password" id="confirmPassword" class="input" placeholder="Repeat password" data-i18n-placeholder="repeat_password">
         </div>
       </div>
 
       <div id="errorMsg" class="hidden error"></div>
-      <button type="submit" class="btn-primary-oval full-width" id="loginBtn">Login</button>
+      <button type="submit" class="btn-primary-oval full-width" id="loginBtn" data-i18n="login">Login</button>
     </form>
 
     <div class="auth-footer">
-      <a href="#" id="backToHomeLink">← Back to Home</a>
+      <a href="#" id="backToHomeLink" data-i18n="back_to_home">← Back to Home</a>
     </div>
   </div>
 </div>
@@ -64,7 +64,7 @@ if (window._loginScriptLoaded) {
     });
 
     if (!nonce) {
-      error.textContent = 'No challenge (nonce) received. Refresh the page.';
+      error.textContent = i18next.t('no_nonce');
       error.classList.remove('hidden');
       return;
     }
@@ -76,7 +76,7 @@ if (window._loginScriptLoaded) {
       if (isSubmitting) return;
       isSubmitting = true;
       btn.disabled = true;
-      btn.textContent = 'Signing in…';
+      btn.textContent = i18next.t('signing_in');
       error.classList.add('hidden');
 
       const remember = rememberCheckbox.checked;
@@ -85,19 +85,19 @@ if (window._loginScriptLoaded) {
 
       if (remember) {
         if (!password || password.length < 4) {
-          error.textContent = 'Password must be at least 4 characters';
+          error.textContent = i18next.t('password_min_length');
           error.classList.remove('hidden');
           isSubmitting = false;
           btn.disabled = false;
-          btn.textContent = 'Login';
+          btn.textContent = i18next.t('login');
           return;
         }
         if (password !== confirm) {
-          error.textContent = 'Passwords do not match';
+          error.textContent = i18next.t('passwords_do_not_match');
           error.classList.remove('hidden');
           isSubmitting = false;
           btn.disabled = false;
-          btn.textContent = 'Login';
+          btn.textContent = i18next.t('login');
           return;
         }
       } else {
@@ -107,10 +107,10 @@ if (window._loginScriptLoaded) {
       try {
         const mnemonic = document.getElementById('mnemonic').value.trim();
         const words = mnemonic.split(/\s+/).filter(w => w.length > 0);
-        if (words.length < 24) throw new Error('Mnemonic must be 24 words');
+        if (words.length < 24) throw new Error(i18next.t('mnemonic_24_words'));
 
         if (typeof window.DarkCrypto === 'undefined') {
-          throw new Error('Crypto module not loaded. Check crypto-client.js.');
+          throw new Error(i18next.t('crypto_not_loaded'));
         }
 
         const keys = await DarkCrypto.deriveKeyPair(mnemonic);
@@ -138,25 +138,25 @@ if (window._loginScriptLoaded) {
           }
           window.location.href = '/chat';
         } else {
-          let msg = 'Login failed';
+          let msg = i18next.t('login_failed');
           if (typeof data.error === 'string') msg = data.error;
           else if (typeof data.error === 'object') {
             const values = Object.values(data.error).flat();
-            msg = values[0] || 'Invalid credentials';
+            msg = values[0] || i18next.t('invalid_credentials');
           }
-          error.textContent = 'Error: ' + msg;
+          error.textContent = i18next.t('error_prefix') + msg;
           error.classList.remove('hidden');
           isSubmitting = false;
           btn.disabled = false;
-          btn.textContent = 'Login';
+          btn.textContent = i18next.t('login');
         }
       } catch (err) {
         console.error(err);
-        error.textContent = err.message || 'An unexpected error occurred';
+        error.textContent = err.message || i18next.t('unexpected_error');
         error.classList.remove('hidden');
         isSubmitting = false;
         btn.disabled = false;
-        btn.textContent = 'Login';
+        btn.textContent = i18next.t('login');
       }
     });
 

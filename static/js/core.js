@@ -1,7 +1,43 @@
 // core.js — ядро мессенджера с поддержкой зашифрованного localStorage и кеша сообщений
+// Fully internationalized (i18n)
 (function() {
     if (window._coreLoaded) return;
     window._coreLoaded = true;
+
+    // Helper for safe i18n (fallback to English if i18next not ready)
+    function t(key, opts) {
+        if (typeof i18next !== 'undefined' && i18next.t) {
+            return i18next.t(key, opts);
+        }
+        // Fallback English for keys used in this file
+        const fallbacks = {
+            'unlock_wallet_title': 'Unlock wallet',
+            'unlock_wallet_desc': 'Your encrypted wallet was found. Enter password to unlock.',
+            'password': 'Password',
+            'log_out': 'Log out',
+            'unlock': 'Unlock',
+            'please_enter_password': 'Please enter password',
+            'wrong_password': 'Wrong password',
+            'public_key_not_found': 'Public key not found for {address}',
+            'public_key_mismatch': '⚠️ Public key mismatch for {address} — possible MITM!',
+            'no_mnemonic_available': 'No mnemonic available',
+            'mnemonic_not_found': 'Mnemonic not found',
+            'no_access': '🔒 No access',
+            'no_sender_pubkey': '🔒 No sender pubkey',
+            'decrypt_error': '🔒 Decrypt error',
+            'new_message_preview': '💬 New message',
+            'read_status': '✓✓ Read',
+            'delivered_status': '✓✓ Delivered',
+            'sent_status': '✓ Sent',
+            'online': 'Online',
+            'offline': 'Offline'
+        };
+        let result = fallbacks[key];
+        if (result && opts) {
+            if (opts.address) result = result.replace('{address}', opts.address);
+        }
+        return result || key;
+    }
 
     // ========== Глобальные утилиты ==========
     window.Utils = window.Utils || {};
@@ -43,8 +79,8 @@
     window.userKeys = null;
     window.pubKeyCache = new Map();
 
-    // ========== 🧠 Кеш сообщений (в памяти, на время сессии) ==========
-    window.messagesCache = new Map(); // key = chatId (string), value = массив сообщений, отсортированных по id (возрастание)
+    // ========== Кеш сообщений (в памяти, на время сессии) ==========
+    window.messagesCache = new Map();
 
     window.addMessageToCache = function(chatId, message, position = 'end') {
         if (!chatId || !message || !message.id) return;
@@ -122,15 +158,15 @@
             modal.style.zIndex = '10000';
             modal.innerHTML = `
                 <div class="modal" style="max-width:400px;">
-                    <div class="modal-header"><h3>Unlock wallet</h3></div>
+                    <div class="modal-header"><h3>${t('unlock_wallet_title')}</h3></div>
                     <div class="modal-body">
-                        <p>Your encrypted wallet was found. Enter password to unlock.</p>
-                        <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;">
+                        <p>${t('unlock_wallet_desc')}</p>
+                        <input type="password" id="unlockPassword" class="input" placeholder="${t('password')}" style="width:100%;">
                         <div id="unlockError" class="text-error" style="color:var(--danger);margin-top:8px;display:none;"></div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-ghost" id="cancelUnlock">Log out</button>
-                        <button class="btn btn-primary" id="confirmUnlock">Unlock</button>
+                        <button class="btn btn-ghost" id="cancelUnlock">${t('log_out')}</button>
+                        <button class="btn btn-primary" id="confirmUnlock">${t('unlock')}</button>
                     </div>
                 </div>
             `;
@@ -142,7 +178,7 @@
             const attemptUnlock = async () => {
                 const pwd = passwordInput.value;
                 if (!pwd) {
-                    errorDiv.textContent = 'Please enter password';
+                    errorDiv.textContent = t('please_enter_password');
                     errorDiv.style.display = 'block';
                     return;
                 }
@@ -155,10 +191,10 @@
                     State._restoringMnemonic = false;
                     resolve(true);
                 } else {
-                    errorDiv.textContent = 'Wrong password';
+                    errorDiv.textContent = t('wrong_password');
                     errorDiv.style.display = 'block';
                     confirmBtn.disabled = false;
-                    confirmBtn.textContent = 'Unlock';
+                    confirmBtn.textContent = t('unlock');
                 }
             };
             const clearAndLogout = () => {
@@ -178,14 +214,14 @@
     async function getPubKey(address) {
         if (pubKeyCache.has(address)) return pubKeyCache.get(address);
         const res = await fetch(`/get_public_key/${address}`);
-        if (!res.ok) throw new Error(`Public key not found for ${address}`);
+        if (!res.ok) throw new Error(t('public_key_not_found', { address }));
         const data = await res.json();
         const pubKeyBytes = DarkCrypto._fromBase64(data.public_key);
         const hashBuf = await crypto.subtle.digest('SHA-256', pubKeyBytes);
         const computedAddress = Array.from(new Uint8Array(hashBuf))
             .map(b => b.toString(16).padStart(2, '0')).join('');
         if (computedAddress !== address) {
-            throw new Error(`⚠️ Public key mismatch for ${address} — possible MITM!`);
+            throw new Error(t('public_key_mismatch', { address }));
         }
         pubKeyCache.set(address, data.public_key);
         return data.public_key;
@@ -220,10 +256,10 @@
         if (window.userKeys) return window.userKeys;
         if (!sessionStorage.getItem('mnemonic')) {
             const restored = await restoreMnemonic();
-            if (!restored) throw new Error('No mnemonic available');
+            if (!restored) throw new Error(t('no_mnemonic_available'));
         }
         const mnemonic = sessionStorage.getItem('mnemonic');
-        if (!mnemonic) throw new Error('Mnemonic not found');
+        if (!mnemonic) throw new Error(t('mnemonic_not_found'));
         window.userKeys = await DarkCrypto.deriveKeyPair(mnemonic);
         return window.userKeys;
     }
@@ -335,7 +371,7 @@
         } catch (err) { console.error('Failed to init WebSocket:', err); }
     }
 
-    // ========== Обработка входящих сообщений (WebSocket + расшифровка файлов) с обновлением кеша ==========
+    // ========== Обработка входящих сообщений (WebSocket + расшифровка файлов) ==========
     async function processMessageDecryption(msg) {
         if (!msg.content) return msg;
         let content = msg.content;
@@ -355,7 +391,7 @@
             if (parsed.encrypted_map) {
                 const myAddr = State.userAddress;
                 const myEnc = parsed.encrypted_map[myAddr];
-                if (!myEnc) return { ...msg, content: '🔒 No access' };
+                if (!myEnc) return { ...msg, content: t('no_access') };
                 const senderPubKeyBytes = DarkCrypto._fromBase64(myEnc.sender_pubkey);
                 const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
                 if (isMine && myEnc.self_text) {
@@ -389,7 +425,7 @@
                         fileIv = decIv;
                     }
                 }
-                const chatId = msg.recipient; // уже содержит "group:..." из БД
+                const chatId = msg.recipient;
                 return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isGroup: true, isDecrypted: true };
             }
 
@@ -405,8 +441,7 @@
                     }
                 }
                 const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-                // Для сообщений без pubkey ставим isDecrypted: false (не расшифровано)
-                return { ...msg, content: '🔒 No sender pubkey', image: null, fileUrl, fileKey, fileIv, fileType, is_mine: false, chatId, isDecrypted: false };
+                return { ...msg, content: t('no_sender_pubkey'), image: null, fileUrl, fileKey, fileIv, fileType, is_mine: false, chatId, isDecrypted: false };
             }
 
             const senderPubKeyBytes = DarkCrypto._fromBase64(senderPubKeyB64);
@@ -463,12 +498,11 @@
             }
 
             const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-            // Успешно расшифрованное личное сообщение – помечаем isDecrypted: true
             return { ...msg, content, image: null, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true };
         } catch (e) {
             console.error('Decryption error', msg.id, e);
             const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-            return { ...msg, content: '🔒 Decrypt error', image: null, chatId, isDecrypted: false };
+            return { ...msg, content: t('decrypt_error'), image: null, chatId, isDecrypted: false };
         }
     }
 
@@ -489,7 +523,6 @@
         const decrypted = await processMessageDecryption(data);
         const chatId = decrypted.chatId;
 
-        // ✅ Добавляем входящее сообщение в кеш
         if (decrypted && decrypted.id) {
             window.addMessageToCache(chatId, decrypted, 'end');
         }
@@ -511,7 +544,7 @@
         if (!isCurrent) {
             const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
             if (!existingItem) { if (window.loadConversations) window.loadConversations(); }
-            else if (window.updateConversationPreview) window.updateConversationPreview(chatId, decrypted.preview || '💬 New message');
+            else if (window.updateConversationPreview) window.updateConversationPreview(chatId, decrypted.preview || t('new_message_preview'));
         }
 
         if (isCurrent && window.onNewMessageReceived) {
@@ -573,9 +606,9 @@
                             const lastMsg = container?.querySelector('.message:last-child');
                             if (lastMsg && lastMsg.dataset.id === id) {
                                 let previewText = '';
-                                if (st === 'read') previewText = '✓✓ Read';
-                                else if (st === 'delivered') previewText = '✓✓ Delivered';
-                                else previewText = '✓ Sent';
+                                if (st === 'read') previewText = t('read_status');
+                                else if (st === 'delivered') previewText = t('delivered_status');
+                                else previewText = t('sent_status');
                                 window.updateConversationPreview(State.currentChatAddress, previewText);
                             }
                         }
@@ -602,7 +635,7 @@
             const statusSpan = el.querySelector('.status');
             if (statusSpan) {
                 statusSpan.className = `status ${status}`;
-                statusSpan.title = status === 'online' ? 'Online' : 'Offline';
+                statusSpan.title = status === 'online' ? t('online') : t('offline');
             }
         }
     }
@@ -617,49 +650,48 @@
         }
     }
 
-    // Добавь в конец core.js (перед последней строкой с экспортами, если они есть)
+    // ========== Push Notifications ==========
+    window.initPushNotifications = initPushNotifications;
+    window.urlBase64ToUint8Array = urlBase64ToUint8Array;
 
-window.initPushNotifications = initPushNotifications;
-window.urlBase64ToUint8Array = urlBase64ToUint8Array;
+    async function initPushNotifications() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-async function initPushNotifications() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        let permission = await Notification.permission;
+        if (permission !== 'granted') {
+            permission = await Notification.requestPermission();
+            if (permission !== 'granted') return;
+        }
 
-  let permission = await Notification.permission;
-  if (permission !== 'granted') {
-    permission = await Notification.requestPermission();
-    if (permission !== 'granted') return;
-  }
+        const registration = await navigator.serviceWorker.ready;
+        const publicKey = 'BPa5fghsHcpAbmlQTdXg6WzoMC_iPaDMzFY4mc2BUipmno6sLxN6KoSfaZfgUFkh9c0B34XhBvC93WXn92xKlkw';
+        const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
-  const registration = await navigator.serviceWorker.ready;
-  const publicKey = 'BPa5fghsHcpAbmlQTdXg6WzoMC_iPaDMzFY4mc2BUipmno6sLxN6KoSfaZfgUFkh9c0B34XhBvC93WXn92xKlkw'; // Замени на реальный ключ
-  const applicationServerKey = urlBase64ToUint8Array(publicKey);
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+            subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: applicationServerKey
+            });
+        }
 
-  let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: applicationServerKey
-    });
-  }
+        await fetch('/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subscription)
+        });
+    }
 
-  await fetch('/push/subscribe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(subscription)
-  });
-}
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
+    function urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+        const rawData = atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    }
 
     // Экспорт глобальных функций
     window.getPubKey = getPubKey;

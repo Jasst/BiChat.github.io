@@ -5,6 +5,7 @@
   "display": "standalone",
   "theme_color": "#0a0a0a",
   "background_color": "#0a0a0a",
+  "description": "Decentralized encrypted messenger with built-in blockchain wallet and AI assistant",
   "icons": [
     {
       "src": "/static/icon-192.png",
@@ -16,6 +17,8 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+
+
   ],
   "lang": "ru",
   "orientation": "any",

@@ -3,147 +3,165 @@
 {% block title %}Profile — Dark Messenger{% endblock %}
 
 {% block content %}
-<div class="page-container">
-  <div class="page-header">
-    <h2>Profile</h2>
-    <button class="btn-icon-oval" onclick="confirmLogout(event)" title="Log out">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-        <polyline points="16 17 21 12 16 7"/>
-        <line x1="21" y1="12" x2="9" y2="12"/>
-      </svg>
-    </button>
-  </div>
-
-  <!-- Address Card -->
-  <div class="profile-card">
-    <h3>Your Address</h3>
-    <div class="profile-row">
-      <label>Public Address</label>
-      <div class="profile-value-wrap">
-        <span class="value font-mono" id="address" style="user-select: all; word-break: break-all;">{{ address|default('', true) }}</span>
-        <button class="btn-icon-oval" onclick="copyAddressToClipboard()" title="Copy">📋</button>
-      </div>
+<div class="page-header">
+    <h2 data-i18n="profile">Profile</h2>
+    <div class="header-actions" style="display: flex; gap: 12px; align-items: center;">
+        <button id="langToggle" class="btn-oval" data-i18n="lang_toggle" style="min-width: 60px;">EN</button>
+        <button class="btn-icon-oval" onclick="confirmLogout(event)" title="Log out">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+        </button>
     </div>
+</div>
+
+<!-- Address Card -->
+<div class="profile-card">
+    <h3 data-i18n="your_address">Your Address</h3>
     <div class="profile-row">
-      <label>QR Code</label>
-      <div class="qr-container">
-        <div id="qrcode"></div>
-        <div class="qr-actions">
-          <button class="btn-oval" onclick="downloadQR()">📥 Download</button>
-          <button class="btn-oval" onclick="shareQR()">📤 Share</button>
+        <label data-i18n="public_address">Public Address</label>
+        <div class="profile-value-wrap">
+            <span class="value font-mono" id="address" style="user-select: all; word-break: break-all;">{{ address|default('', true) }}</span>
+            <button class="btn-icon-oval" onclick="copyAddressToClipboard()" title="Copy" data-i18n="copy">📋</button>
         </div>
-      </div>
     </div>
-  </div>
-
-  <!-- Recovery Phrase Card -->
-  <div class="profile-card">
-    <h3>Recovery Phrase</h3>
     <div class="profile-row">
-      <label>Mnemonic</label>
-      <div class="profile-value-wrap">
-        <input type="password" id="mnemonicDisplay" class="input input-monospace" value="••••••••••••••••••••" readonly>
-        <button class="btn-oval" id="toggleMnemonicBtn" onclick="toggleMnemonic()" disabled>Show</button>
-        <button class="btn-icon-oval" id="copyMnemonicBtn" onclick="copyMnemonicToClipboard()" disabled title="Copy">📋</button>
-      </div>
+        <label data-i18n="qr_code">QR Code</label>
+        <div class="qr-container">
+            <div id="qrcode"></div>
+            <div class="qr-actions">
+                <button class="btn-oval" onclick="downloadQR()" data-i18n="download">📥 Download</button>
+                <button class="btn-oval" onclick="shareQR()" data-i18n="share">📤 Share</button>
+            </div>
+        </div>
     </div>
-    <p class="text-muted form-hint">⚠️ Keep this phrase secret. Never share it with anyone.</p>
-    <button class="btn-primary-oval full-width" onclick="exportMnemonicSecure()">🔐 Export Mnemonic</button>
-  </div>
+</div>
 
-  <!-- Security Info Card -->
-  <div class="profile-card">
-    <h3>Security</h3>
-    <div class="profile-row"><label>Wallet Status</label><span class="status-badge status-success">● Active</span></div>
-    <div class="profile-row"><label>Network</label><span>Mainnet</span></div>
-    <div class="profile-row"><label>Mnemonic Display</label><span class="status-badge status-warning">Hidden (Secure)</span></div>
-    <div class="profile-row"><label>Session</label><span id="sessionInfo" class="font-mono">Loading…</span></div>
-  </div>
+<!-- Recovery Phrase Card -->
+<div class="profile-card">
+    <h3 data-i18n="recovery_phrase">Recovery Phrase</h3>
+    <div class="profile-row">
+        <label data-i18n="mnemonic">Mnemonic</label>
+        <div class="profile-value-wrap">
+            <input type="password" id="mnemonicDisplay" class="input input-monospace" value="••••••••••••••••••••" readonly>
+            <button class="btn-oval" id="toggleMnemonicBtn" onclick="toggleMnemonic()" disabled data-i18n="show">Show</button>
+            <button class="btn-icon-oval" id="copyMnemonicBtn" onclick="copyMnemonicToClipboard()" disabled title="Copy" data-i18n="copy">📋</button>
+        </div>
+    </div>
+    <p class="text-muted form-hint" data-i18n="warning_mnemonic">⚠️ Keep this phrase secret. Never share it with anyone.</p>
+    <button class="btn-primary-oval full-width" onclick="exportMnemonicSecure()" data-i18n="export_mnemonic">🔐 Export Mnemonic</button>
+</div>
+
+<!-- Security Info Card -->
+<div class="profile-card">
+    <h3 data-i18n="security">Security</h3>
+    <div class="profile-row">
+        <label data-i18n="wallet_status">Wallet Status</label>
+        <span class="status-badge status-success">● Active</span>
+    </div>
+    <div class="profile-row">
+        <label data-i18n="network">Network</label>
+        <span>Mainnet</span>
+    </div>
+    <div class="profile-row">
+        <label data-i18n="mnemonic_display">Mnemonic Display</label>
+        <span class="status-badge status-warning" data-i18n="hidden_secure">Hidden (Secure)</span>
+    </div>
+    <div class="profile-row">
+        <label data-i18n="session">Session</label>
+        <span id="sessionInfo" class="font-mono">
+  <span data-i18n="active_session">Active</span>
+  <span id="sessionTime"></span>
+</span>
+
+    </div>
 </div>
 
 <!-- Confirm Modal for Mnemonic Export -->
 <div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
-  <div class="modal" style="max-width: 420px;">
-    <header class="modal-header">
-      <h3>🔐 Confirm Export</h3>
-      <button class="modal-close" onclick="ModalManager.close('confirmModal')">&times;</button>
-    </header>
-    <div class="modal-body">
-      <p>To view your mnemonic phrase, please confirm:</p>
-      <input type="text" id="confirmInput" class="input" placeholder="Type: I CONFIRM" style="text-transform: uppercase; text-align: center;">
-      <p id="confirmError" class="hidden error"></p>
-      <p class="text-muted">⚠️ This ensures you intentionally want to view sensitive data.</p>
+    <div class="modal" style="max-width: 420px;">
+        <header class="modal-header">
+            <h3>🔐 Confirm Export</h3>
+            <button class="modal-close" onclick="ModalManager.close('confirmModal')">&times;</button>
+        </header>
+        <div class="modal-body">
+            <p data-i18n="confirm_export_text">To view your mnemonic phrase, please confirm:</p>
+            <input type="text" id="confirmInput" class="input" placeholder="Type: I CONFIRM" style="text-transform: uppercase; text-align: center;">
+            <p id="confirmError" class="hidden error"></p>
+            <p class="text-muted" data-i18n="confirm_warning">⚠️ This ensures you intentionally want to view sensitive data.</p>
+        </div>
+        <footer class="modal-footer">
+            <button class="btn-oval" onclick="ModalManager.close('confirmModal')" data-i18n="cancel">Cancel</button>
+            <button class="btn-primary-oval" id="confirmSubmitBtn" data-i18n="confirm">Confirm</button>
+        </footer>
     </div>
-    <footer class="modal-footer">
-      <button class="btn-oval" onclick="ModalManager.close('confirmModal')">Cancel</button>
-      <button class="btn-primary-oval" id="confirmSubmitBtn">Confirm</button>
-    </footer>
-  </div>
 </div>
 
 <!-- Mnemonic Modal -->
 <div id="mnemonicModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
-  <div class="modal">
-    <header class="modal-header">
-      <h3>Mnemonic Phrase</h3>
-      <button class="modal-close" onclick="MnemonicManager.hide()">&times;</button>
-    </header>
-    <div class="modal-body">
-      <div id="modalMnemonic" class="mnemonic-display"></div>
-      <p class="status-error" style="text-align:center;">⚠️ NEVER SHARE THIS WITH ANYONE!</p>
-      <div class="flex-row" style="justify-content:center;">
-        <button class="btn-oval" onclick="copyMnemonicToClipboard()">📋 Copy</button>
-      </div>
-      <p class="text-muted text-center">🔒 Auto-clear in <span id="clearCountdown">30</span>s</p>
+    <div class="modal">
+        <header class="modal-header">
+            <h3 data-i18n="mnemonic">Mnemonic Phrase</h3>
+            <button class="modal-close" onclick="MnemonicManager.hide()">&times;</button>
+        </header>
+        <div class="modal-body">
+            <div id="modalMnemonic" class="mnemonic-display"></div>
+            <p class="status-error" style="text-align:center;" data-i18n="never_share">⚠️ NEVER SHARE THIS WITH ANYONE!</p>
+            <div class="flex-row" style="justify-content:center;">
+                <button class="btn-oval" onclick="copyMnemonicToClipboard()" data-i18n="copy">📋 Copy</button>
+            </div>
+            <p class="text-muted text-center" data-i18n="auto_clear">🔒 Auto-clear in <span id="clearCountdown">30</span>s</p>
+        </div>
     </div>
-  </div>
 </div>
 
 <!-- Logout Confirmation Modal -->
 <div id="logoutModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
-  <div class="modal">
-    <header class="modal-header">
-      <h3>⚠️ Confirm Logout</h3>
-      <button class="modal-close" onclick="closeLogoutModal()">&times;</button>
-    </header>
-    <div class="modal-body">
-      <p>Are you sure you want to log out? Your session will be ended.</p>
-      <input type="text" id="logoutConfirmInput" class="input" placeholder="Type: LOGOUT" style="text-transform: uppercase; text-align: center;">
-      <p id="logoutError" class="hidden error"></p>
+    <div class="modal">
+        <header class="modal-header">
+            <h3 data-i18n="confirm_logout">⚠️ Confirm Logout</h3>
+            <button class="modal-close" onclick="closeLogoutModal()">&times;</button>
+        </header>
+        <div class="modal-body">
+            <p data-i18n="logout_confirm_text">Are you sure you want to log out? Your session will be ended.</p>
+            <input type="text" id="logoutConfirmInput" class="input" placeholder="Type: LOGOUT" style="text-transform: uppercase; text-align: center;">
+            <p id="logoutError" class="hidden error"></p>
+        </div>
+        <footer class="modal-footer">
+            <button class="btn-oval" onclick="closeLogoutModal()" data-i18n="cancel">Cancel</button>
+            <button class="btn-primary-oval" id="logoutConfirmBtn" data-i18n="logout">Log Out</button>
+        </footer>
     </div>
-    <footer class="modal-footer">
-      <button class="btn-oval" onclick="closeLogoutModal()">Cancel</button>
-      <button class="btn-primary-oval" id="logoutConfirmBtn">Log Out</button>
-    </footer>
-  </div>
 </div>
 
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-// Полный JS из оригинального profile.html (без изменений, кроме замены классов кнопок)
 (function() {
   if (window._profileScriptLoaded) return;
   window._profileScriptLoaded = true;
 
   let secureMnemonic = null;
 
+  function t(key, opts) { return i18next.t(key, opts); }
+
   function copyToClipboard(text, successMsg, errorMsg) {
-    if (!text) { window.NotificationManager?.showToast(errorMsg || 'Nothing to copy', 'error'); return; }
+    if (!text) { window.NotificationManager?.showToast(errorMsg || t('nothing_to_copy'), 'error'); return; }
     navigator.clipboard.writeText(text).then(() => window.NotificationManager?.showToast(successMsg, 'success'))
-      .catch(() => window.NotificationManager?.showToast(errorMsg || 'Copy failed', 'error'));
+      .catch(() => window.NotificationManager?.showToast(errorMsg || t('copy_failed'), 'error'));
   }
 
   function copyAddressToClipboard() {
     const address = document.getElementById('address')?.textContent?.trim();
-    copyToClipboard(address, '✓ Address copied', 'No address to copy');
+    copyToClipboard(address, t('copied'), t('no_address'));
   }
 
   function copyMnemonicToClipboard() {
     const text = window.MnemonicManager?._mnemonic || secureMnemonic;
-    if (!text) { window.NotificationManager?.showToast('🔐 Export mnemonic first', 'warning'); return; }
-    copyToClipboard(text, '✓ Mnemonic copied! Clear clipboard after use', 'Copy failed');
+    if (!text) { window.NotificationManager?.showToast(t('export_first'), 'warning'); return; }
+    copyToClipboard(text, t('copied'), t('copy_failed'));
   }
 
   function initQRCode() {
@@ -163,31 +181,31 @@
 
   function downloadQR() {
     const canvas = document.querySelector('#qrcode canvas');
-    if (!canvas) return window.NotificationManager?.showToast('QR not ready', 'error');
+    if (!canvas) return window.NotificationManager?.showToast(t('qr_not_ready'), 'error');
     const link = document.createElement('a');
     link.download = `address-qr-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
-    window.NotificationManager?.showToast('✓ Downloaded', 'success');
+    window.NotificationManager?.showToast(t('downloaded'), 'success');
   }
 
   async function shareQR() {
     const address = document.getElementById('address')?.textContent?.trim();
     if (!address) return;
     if (navigator.share) {
-      try { await navigator.share({ title: 'My Wallet Address', text: address }); }
+      try { await navigator.share({ title: t('your_address'), text: address }); }
       catch(e) { if (e.name !== 'AbortError') console.error(e); }
     } else { copyAddressToClipboard(); }
   }
 
   function toggleMnemonic() {
-    if (!secureMnemonic) { window.NotificationManager?.showToast('🔐 Export mnemonic first', 'warning'); return; }
+    if (!secureMnemonic) { window.NotificationManager?.showToast(t('export_first'), 'warning'); return; }
     const display = document.getElementById('mnemonicDisplay');
     const btn = document.getElementById('toggleMnemonicBtn');
     const isHidden = display.type === 'password' || display.value.includes('•••');
     display.value = isHidden ? secureMnemonic : '••••••••••••••••••••';
     display.type = isHidden ? 'text' : 'password';
-    btn.textContent = isHidden ? 'Hide' : 'Show';
+    btn.textContent = isHidden ? t('hide') : t('show');
   }
 
   function exportMnemonicSecure() {
@@ -208,14 +226,14 @@
     const error = document.getElementById('confirmError');
     const value = input?.value?.trim()?.toUpperCase();
     if (!value || !['I CONFIRM', 'CONFIRM', 'YES'].includes(value)) {
-      if (error) { error.textContent = 'Type "I CONFIRM" exactly'; error.classList.remove('hidden'); }
+      if (error) { error.textContent = t('type_i_confirm'); error.classList.remove('hidden'); }
       input?.focus();
       return;
     }
     const mnemonic = sessionStorage.getItem('mnemonic');
     if (!mnemonic || mnemonic.split(/\s+/).length < 24) {
-      error.textContent = 'Mnemonic not available. Please login again.';
-      window.NotificationManager?.showToast('Session expired, please re-login', 'error');
+      error.textContent = t('mnemonic_not_available');
+      window.NotificationManager?.showToast(t('session_expired'), 'error');
       return;
     }
     secureMnemonic = mnemonic;
@@ -224,7 +242,6 @@
     ModalManager.close('confirmModal');
   }
 
-  // Logout
   window.confirmLogout = function(event) {
     event?.preventDefault();
     ModalManager.open('logoutModal', { closeOnOverlay: false });
@@ -241,14 +258,14 @@
     const value = input?.value.trim().toUpperCase();
     if (value === 'LOGOUT' || value === 'OK') { window.executeLogout(); return true; }
     const error = document.getElementById('logoutError');
-    if (error) { error.textContent = 'Type "LOGOUT" or "OK" exactly'; error.classList.remove('hidden'); }
+    if (error) { error.textContent = t('type_logout'); error.classList.remove('hidden'); }
     input?.focus();
     return false;
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     initQRCode();
-    document.getElementById('sessionInfo').textContent = 'Active • ' + new Date().toLocaleTimeString();
+    document.getElementById('sessionTime').textContent = ' • ' + new Date().toLocaleTimeString();
     document.getElementById('confirmSubmitBtn')?.addEventListener('click', handleMnemonicConfirm);
     document.getElementById('logoutConfirmBtn')?.addEventListener('click', validateLogoutInput);
     document.getElementById('confirmInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') handleMnemonicConfirm(); });
@@ -263,5 +280,7 @@
   window.shareQR = shareQR;
 })();
 </script>
+
+
 {% endblock %}
 {% endblock %}

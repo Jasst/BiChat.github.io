@@ -1,37 +1,34 @@
 {% extends "base.html" %}
 
-{% block title %}Contacts — Dark Messenger{% endblock %}
+{% block title %}Dark Messenger{% endblock %}
 
 {% block content %}
 <div class="page-container">
   <div class="page-header">
-    <h2>Contacts</h2>
-    <button class="btn-primary-oval" onclick="openQRScanner()">📷 Scan QR</button>
+    <h2 data-i18n="contacts">Contacts</h2>
+    <button class="btn-primary-oval" onclick="openQRScanner()" data-i18n="scan_qr">📷 Scan QR</button>
   </div>
 
-  <!-- QR Scanner -->
   <div id="qrScannerContainer" class="hidden qr-scanner-container">
     <div class="text-center">
       <div class="qr-video-wrapper">
         <video id="qrVideo" class="qr-video" playsinline autoplay muted disablepictureinpicture></video>
       </div>
-      <p class="text-muted">Point camera at QR code</p>
+      <p class="text-muted" data-i18n="scan_qr">Point camera at QR code</p>
       <div id="scanResult" class="hidden scan-result"></div>
-      <button class="btn-oval" onclick="forceCloseQRScanner()">Cancel</button>
+      <button class="btn-oval" onclick="forceCloseQRScanner()" data-i18n="cancel">Cancel</button>
     </div>
   </div>
 
-  <!-- Contacts List -->
   <div class="list-container" id="contactsList">
-    <div class="loading">Loading contacts…</div>
+    <div class="loading" data-i18n="loading">Loading contacts…</div>
   </div>
 
-  <!-- Add Contact Form -->
   <div class="add-contact-form">
-    <input type="text" id="contactName" class="input" placeholder="Name" maxlength="50">
-    <input type="text" id="contactAddress" class="input input-monospace" placeholder="64-char address" maxlength="64">
-    <button class="btn-primary-oval" onclick="addContact()">Add</button>
-    <p class="text-muted form-hint">Name: 1–50 chars • Address: exactly 64 hex characters</p>
+    <input type="text" id="contactName" class="input" placeholder="Name" maxlength="50" data-i18n="name">
+    <input type="text" id="contactAddress" class="input input-monospace" placeholder="64-char address" maxlength="64" data-i18n="address">
+    <button class="btn-primary-oval" onclick="addContact()" data-i18n="add_contact">Add</button>
+    <p class="text-muted form-hint" data-i18n="form_hint">Name: 1–50 chars • Address: exactly 64 hex characters</p>
   </div>
 </div>
 
@@ -117,8 +114,8 @@
       title: title,
       bodyHtml: `<input type="text" id="prompt-input" class="input" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(defaultValue)}" style="width:100%;">`,
       buttons: [
-        { label: 'Cancel', className: 'btn-oval', action: 'cancel', value: null },
-        { label: 'Save', className: 'btn-primary-oval', action: 'save', getValue: (modal) => modal.querySelector('#prompt-input').value }
+        { label: i18next.t('cancel'), className: 'btn-oval', action: 'cancel', value: null },
+        { label: i18next.t('save'), className: 'btn-primary-oval', action: 'save', getValue: (modal) => modal.querySelector('#prompt-input').value }
       ]
     });
   }
@@ -128,8 +125,8 @@
       title: title,
       bodyHtml: `<p>${escapeHtml(message)}</p>`,
       buttons: [
-        { label: 'Cancel', className: 'btn-oval', action: 'cancel', value: false },
-        { label: 'Delete', className: 'btn-primary-oval', action: 'confirm', value: true }
+        { label: i18next.t('cancel'), className: 'btn-oval', action: 'cancel', value: false },
+        { label: i18next.t('delete'), className: 'btn-primary-oval', action: 'confirm', value: true }
       ]
     });
   }
@@ -137,7 +134,7 @@
   async function loadContacts() {
     const container = $('contactsList');
     if (!container) return;
-    container.innerHTML = '<div class="loading">Loading contacts…</div>';
+    container.innerHTML = '<div class="loading">' + i18next.t('loading') + '</div>';
     try {
       const res = await secureFetch('/get_contacts');
       if (!res) throw new Error('Network error');
@@ -145,7 +142,11 @@
       if (!res.ok || !Array.isArray(data.contacts)) throw new Error(data.error || 'Invalid response');
       allContacts = data.contacts;
       if (allContacts.length === 0) {
-        container.innerHTML = `<div class="empty-state"><div class="icon">👥</div><p>No contacts yet</p><p class="text-muted">Add contacts manually or scan QR code</p></div>`;
+        container.innerHTML = `<div class="empty-state">
+  <div class="icon">👥</div>
+  <p data-i18n="no_contacts">No contacts</p>
+  <p class="text-muted" data-i18n="add_contact_hint">Add a contact to start chatting</p>
+</div>`;
         return;
       }
       container.innerHTML = '';
@@ -153,18 +154,17 @@
         const item = document.createElement('div');
         item.className = 'list-item';
         item.dataset.address = c.address;
-        // Компактное отображение: имя в одну строку, адрес сокращён
         const shortAddress = c.address.slice(0, 10) + '…' + c.address.slice(-6);
         item.innerHTML = `
           <div class="info">
             <div class="name truncate">${escapeHtml(c.name)}</div>
-            <div class="address font-mono truncate" style="cursor:pointer; font-size: 12px;" title="Click to copy">${escapeHtml(shortAddress)}</div>
+            <div class="address font-mono truncate" style="cursor:pointer; font-size: 12px;" title="${i18next.t('copy_address')}">${escapeHtml(shortAddress)}</div>
           </div>
           <div class="actions">
-            <button class="btn-icon-oval" onclick="copyAddressFromElement('${escapeAttr(c.address)}')" title="Copy address">📋</button>
-            <button class="btn-icon-oval" onclick="startChatWithContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}')" title="Start chat">💬</button>
-            <button class="btn-icon-oval" onclick="editContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}', this)" title="Edit name">✏️</button>
-            <button class="btn-icon-oval" style="color:var(--status-error);" onclick="deleteContact('${escapeAttr(c.address)}', this)" title="Delete">✕</button>
+            <button class="btn-icon-oval" onclick="copyAddressFromElement('${escapeAttr(c.address)}')" title="${i18next.t('copy_address')}">📋</button>
+            <button class="btn-icon-oval" onclick="startChatWithContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}')" title="${i18next.t('start_chat')}">💬</button>
+            <button class="btn-icon-oval" onclick="editContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}', this)" title="${i18next.t('edit')}">✏️</button>
+            <button class="btn-icon-oval" style="color:var(--status-error);" onclick="deleteContact('${escapeAttr(c.address)}', this)" title="${i18next.t('delete')}">✕</button>
           </div>`;
         container.appendChild(item);
       });
@@ -175,17 +175,18 @@
           if (fullAddr) copyAddressToClipboard(fullAddr);
         });
       });
+      if (window.localizePage) window.localizePage();
     } catch (error) {
       console.error(error);
-      container.innerHTML = '<p class="text-muted text-center">Failed to load contacts</p>';
-      window.NotificationManager?.showToast('Failed to load contacts', 'error');
+      container.innerHTML = '<p class="text-muted text-center">' + i18next.t('error_load') + '</p>';
+      window.NotificationManager?.showToast(i18next.t('error_load'), 'error');
     }
   }
 
   function copyAddressToClipboard(text) {
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
-      window.NotificationManager?.showToast('Address copied', 'success');
+      window.NotificationManager?.showToast(i18next.t('copied'), 'success');
     }).catch(() => fallbackCopy(text));
   }
   function fallbackCopy(text) {
@@ -196,12 +197,12 @@
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    window.NotificationManager?.showToast('Address copied', 'success');
+    window.NotificationManager?.showToast(i18next.t('copied'), 'success');
   }
   function copyAddressFromElement(addr) { copyAddressToClipboard(addr); }
 
   function startChatWithContact(address, name) {
-    if (!isValidAddress(address)) { window.NotificationManager?.showToast('Invalid address', 'error'); return; }
+    if (!isValidAddress(address)) { window.NotificationManager?.showToast(i18next.t('invalid_address'), 'error'); return; }
     const params = new URLSearchParams({ start_with: address, name: name || '' });
     location.href = '/chat?' + params.toString();
   }
@@ -211,11 +212,11 @@
     const addrInput = $('contactAddress');
     const name = nameInput?.value.trim();
     const address = addrInput?.value.trim().toLowerCase();
-    if (!name || !address) { window.NotificationManager?.showToast('Fill in both fields', 'warning'); return false; }
-    if (!isValidName(name)) { window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning'); return false; }
-    if (!isValidAddress(address)) { window.NotificationManager?.showToast('Address must be 64 hex characters', 'error'); return false; }
+    if (!name || !address) { window.NotificationManager?.showToast(i18next.t('fill_both'), 'warning'); return false; }
+    if (!isValidName(name)) { window.NotificationManager?.showToast(i18next.t('invalid_name'), 'warning'); return false; }
+    if (!isValidAddress(address)) { window.NotificationManager?.showToast(i18next.t('invalid_address'), 'error'); return false; }
     const exists = allContacts.some(c => c.address.toLowerCase() === address);
-    if (exists) { window.NotificationManager?.showToast('Contact already exists', 'warning'); startChatWithContact(address, name); return true; }
+    if (exists) { window.NotificationManager?.showToast(i18next.t('contact_exists'), 'warning'); startChatWithContact(address, name); return true; }
     try {
       const res = await secureFetch('/add_contact', { method: 'POST', body: JSON.stringify({ name, address }) });
       if (!res) return false;
@@ -224,21 +225,21 @@
         nameInput.value = '';
         addrInput.value = '';
         await loadContacts();
-        window.NotificationManager?.showToast('Contact added', 'success');
+        window.NotificationManager?.showToast(i18next.t('contact_added'), 'success');
         return true;
       } else {
-        window.NotificationManager?.showToast(data.error || 'Failed to add contact', 'error');
+        window.NotificationManager?.showToast(data.error || i18next.t('error'), 'error');
         return false;
       }
     } catch (error) { console.error(error); return false; }
   }
 
   async function editContact(address, currentName, btn) {
-    if (!isValidAddress(address)) { window.NotificationManager?.showToast('Invalid contact', 'error'); return; }
-    const newName = await showPromptModal('Edit Contact Name', 'Enter new name', currentName);
+    if (!isValidAddress(address)) { window.NotificationManager?.showToast(i18next.t('invalid_contact'), 'error'); return; }
+    const newName = await showPromptModal(i18next.t('edit_contact'), i18next.t('enter_new_name'), currentName);
     if (newName === null) return;
     const trimmed = newName.trim();
-    if (!isValidName(trimmed)) { window.NotificationManager?.showToast(`Name must be 1–${MAX_NAME_LENGTH} characters`, 'warning'); return; }
+    if (!isValidName(trimmed)) { window.NotificationManager?.showToast(i18next.t('invalid_name'), 'warning'); return; }
     if (trimmed === currentName) return;
     btn.disabled = true;
     const originalText = btn.innerHTML;
@@ -253,17 +254,17 @@
         if (nameEl) nameEl.textContent = escapeHtml(trimmed);
         const idx = allContacts.findIndex(c => c.address.toLowerCase() === address.toLowerCase());
         if (idx !== -1) allContacts[idx].name = trimmed;
-        window.NotificationManager?.showToast('Name updated', 'success');
+        window.NotificationManager?.showToast(i18next.t('name_updated'), 'success');
       } else {
-        window.NotificationManager?.showToast(data.error || 'Failed to update', 'error');
+        window.NotificationManager?.showToast(data.error || i18next.t('error'), 'error');
       }
-    } catch (error) { console.error(error); window.NotificationManager?.showToast('Network error', 'error'); }
+    } catch (error) { console.error(error); window.NotificationManager?.showToast(i18next.t('network_error'), 'error'); }
     finally { btn.disabled = false; btn.innerHTML = originalText; }
   }
 
   async function deleteContact(address, btn) {
     if (!isValidAddress(address)) return;
-    const confirmed = await showConfirmModal('Delete Contact', `Delete this contact?\n\n${address}`);
+    const confirmed = await showConfirmModal(i18next.t('delete_contact'), i18next.t('confirm_delete_contact'));
     if (!confirmed) return;
     btn.disabled = true;
     btn.innerHTML = '⏳';
@@ -274,15 +275,15 @@
         const item = btn.closest('.list-item');
         item?.remove();
         allContacts = allContacts.filter(c => c.address.toLowerCase() !== address.toLowerCase());
-        window.NotificationManager?.showToast('Contact deleted', 'success');
+        window.NotificationManager?.showToast(i18next.t('contact_deleted'), 'success');
         if (allContacts.length === 0) {
-          $('contactsList').innerHTML = `<div class="empty-state"><div class="icon">👥</div><p>No contacts</p><p class="text-muted">Add a contact to get started</p></div>`;
+          $('contactsList').innerHTML = `<div class="empty-state"><div class="icon">👥</div><p>${i18next.t('no_contacts')}</p><p class="text-muted">${i18next.t('add_contact_hint')}</p></div>`;
         }
       } else {
         const data = await res.json();
-        window.NotificationManager?.showToast(data.error || 'Delete failed', 'error');
+        window.NotificationManager?.showToast(data.error || i18next.t('delete_failed'), 'error');
       }
-    } catch (error) { console.error(error); window.NotificationManager?.showToast('Network error', 'error'); }
+    } catch (error) { console.error(error); window.NotificationManager?.showToast(i18next.t('network_error'), 'error'); }
     finally { btn.disabled = false; btn.innerHTML = '✕'; }
   }
 
