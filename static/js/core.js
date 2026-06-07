@@ -156,20 +156,21 @@
             const modal = document.createElement('div');
             modal.className = 'modal-overlay';
             modal.style.zIndex = '10000';
-            modal.innerHTML = `
-                <div class="modal" style="max-width:400px;">
-                    <div class="modal-header"><h3>${t('unlock_wallet_title')}</h3></div>
-                    <div class="modal-body">
-                        <p>${t('unlock_wallet_desc')}</p>
-                        <input type="password" id="unlockPassword" class="input" placeholder="${t('password')}" style="width:100%;">
-                        <div id="unlockError" class="text-error" style="color:var(--danger);margin-top:8px;display:none;"></div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-ghost" id="cancelUnlock">${t('log_out')}</button>
-                        <button class="btn btn-primary" id="confirmUnlock">${t('unlock')}</button>
-                    </div>
-                </div>
-            `;
+modal.innerHTML = `
+    <div class="modal" style="max-width:400px;">
+        <div class="modal-header"><h3 data-i18n="unlock_wallet_title">Unlock wallet</h3></div>
+        <div class="modal-body">
+            <p data-i18n="unlock_wallet_desc">Your encrypted wallet was found. Enter password to unlock.</p>
+            <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;" data-i18n-placeholder="password">
+            <div id="unlockError" class="text-error" style="color:var(--danger);margin-top:8px;display:none;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" id="cancelUnlock" data-i18n="log_out">Log out</button>
+            <button class="btn btn-primary" id="confirmUnlock" data-i18n="unlock">Unlock</button>
+        </div>
+    </div>`;
+
+            if (window.localizePage) window.localizePage();
             document.body.appendChild(modal);
             const passwordInput = modal.querySelector('#unlockPassword');
             const errorDiv = modal.querySelector('#unlockError');
