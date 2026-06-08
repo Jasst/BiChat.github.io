@@ -80,14 +80,12 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'timestamp': time.time(),
                 'content': json.dumps({'encrypted_map': body.encrypted_map}),
                 'image': None,
+                'status': 'sent'
             }
-            # ВАЖНО: коммитим ДО отправки WS, чтобы клиент мог сразу запросить сообщение из БД
             await conn.execute('COMMIT')
-            # Рассылаем всем участникам через notifier (поддерживает оффлайн-буфер)
             from services.notifier import message_notifier
             for member in group['members']:
                 await message_notifier.add_message(member, message_obj)
-            # Отправляем push-уведомления всем участникам, кроме отправителя
             for member in group['members']:
                 if member != sender:
                     await send_push(
@@ -121,13 +119,11 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'timestamp': time.time(),
                 'content': json.dumps(body.payload),
                 'image': None,
+                'status': 'sent'
             }
-            # ВАЖНО: коммитим ДО отправки WS
             await conn.execute('COMMIT')
-            # Отправляем получателю через notifier (поддерживает оффлайн-буфер)
             from services.notifier import message_notifier
             await message_notifier.add_message(recipient, message_obj)
-            # Отправляем push-уведомление получателю
             await send_push(
                 user_address=recipient,
                 title=f"Новое сообщение от {sender[:8]}...",
@@ -143,6 +139,7 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
         await invalidate_conversations_cache(body.recipient)
 
     return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
+
 
 @router.get('/get_conversation')
 async def get_conversation(
@@ -164,7 +161,8 @@ async def get_conversation(
             groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             if not any(g['id'] == group_id and address in g['members'] for g in groups):
                 raise HTTPException(403, 'No access')
-            query = ('SELECT id, sender, recipient, content, image, timestamp, metadata '
+            # Добавлено поле status
+            query = ('SELECT id, sender, recipient, content, image, timestamp, metadata, status '
                      'FROM transactions WHERE recipient = $1')
             params = [chat_with]
             if last_message_id:
@@ -181,8 +179,9 @@ async def get_conversation(
             params.append(limit)
             rows = await conn.fetch(query, *params)
         else:
+            # Добавлено поле status
             base_query = """
-                SELECT id, sender, recipient, content, image, timestamp, metadata
+                SELECT id, sender, recipient, content, image, timestamp, metadata, status
                 FROM (
                     SELECT * FROM transactions WHERE sender = $1 AND recipient = $2
                     UNION ALL
@@ -213,6 +212,7 @@ async def get_conversation(
             'timestamp':    r[5],
             'sender_pubkey': None,
             'metadata':     r[6],
+            'status':       r[7] if len(r) > 7 else 'sent',   # добавлено
             'sender_name':  (await get_contact_name_cached(address, r[1],
                              cache_version=await get_contact_cache_version()) or r[1][:10] + '...'),
             'recipient_name': (await get_contact_name_cached(address, r[2],
@@ -323,14 +323,12 @@ async def clear_conversation(body: dict, request: Request, address: str = Depend
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         if chat_with.startswith('group:'):
-            # Групповой чат – удаляем все сообщения группы
             groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             group_id = chat_with.split(':', 1)[1]
             if not any(g['id'] == group_id and address in g['members'] for g in groups):
                 raise HTTPException(403, 'No access')
             await conn.execute('DELETE FROM transactions WHERE recipient = $1', chat_with)
         else:
-            # Личный диалог – удаляем сообщения между двумя адресами
             await conn.execute('''
                 DELETE FROM transactions
                 WHERE (sender = $1 AND recipient = $2) OR (sender = $3 AND recipient = $4)
@@ -356,7 +354,6 @@ async def delete_message(body: dict, request: Request, address: str = Depends(re
         await conn.execute('DELETE FROM transactions WHERE id = $1', msg_id)
         await invalidate_conversations_cache(address)
         if recipient.startswith('group:'):
-            # Инвалидируем кэш диалогов для всех участников группы
             groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             group_id = recipient.split(':', 1)[1]
             group = next((g for g in groups if g['id'] == group_id), None)

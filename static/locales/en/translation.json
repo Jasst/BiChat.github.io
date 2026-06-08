@@ -354,5 +354,10 @@
   "delete_failed": "Delete failed",
   "auto_clear_prefix": "🔒 Auto-clear in",
   "auto_clear_suffix": "s",
-  "mnemonic_warning_info": "Your new mnemonic will be shown next. Choose whether to encrypt and save it locally."
+  "mnemonic_warning_info": "Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.",
+   "today": "Today",
+  "yesterday": "Yesterday",
+  "read_status": "✓✓ Read",
+  "delivered_status": "✓✓ Delivered",
+  "sent_status": "✓ Sent"
 }

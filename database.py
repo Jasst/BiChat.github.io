@@ -165,24 +165,47 @@ async def _create_tables(conn: asyncpg.Connection):
 
 
 async def _apply_migrations(conn: asyncpg.Connection):
-    current_version = await conn.fetchval("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1") or 0
+    # Получаем текущую максимальную версию
+    current_version = await conn.fetchval("SELECT COALESCE(MAX(version), 0) FROM schema_version")
+
     if current_version < 1:
         await conn.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'sent'")
         await conn.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS read_at DOUBLE PRECISION")
-        await conn.execute("UPDATE schema_version SET version = 1 WHERE version = 0")
-        if await conn.fetchval("SELECT COUNT(*) FROM schema_version WHERE version = 1") == 0:
-            await conn.execute("INSERT INTO schema_version (version, applied_at) VALUES (1, extract(epoch from now()))")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (1, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
         current_version = 1
+
     if current_version < 2:
         await conn.execute("ALTER TABLE blockchain ADD COLUMN IF NOT EXISTS coin_transactions TEXT DEFAULT '[]'")
-        await conn.execute("UPDATE schema_version SET version = 2")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (2, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
+        current_version = 2
+
     if current_version < 3:
         await conn.execute("ALTER TABLE coin_transactions ADD COLUMN IF NOT EXISTS block_ref BIGINT")
         await conn.execute("ALTER TABLE coin_transactions ADD COLUMN IF NOT EXISTS note TEXT")
-        await conn.execute("UPDATE schema_version SET version = 3")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (3, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
+        current_version = 3
+
     if current_version < 4:
         await conn.execute("ALTER TABLE stakes ADD COLUMN IF NOT EXISTS reward_debt BIGINT DEFAULT 0")
-        await conn.execute("UPDATE schema_version SET version = 4")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (4, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
+        current_version = 4
+
     if current_version < 5:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -193,8 +216,21 @@ async def _apply_migrations(conn: asyncpg.Connection):
                 UNIQUE(user_address, subscription)
             )
         """)
-        await conn.execute("UPDATE schema_version SET version = 5 WHERE version = 4")
-    logger.info(f"Database schema at version {current_version}")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (5, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
+        current_version = 5
+
+    if current_version < 6:
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (6, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
+        logger.info("Migration 6 applied: created index idx_transactions_status")
 
 
 

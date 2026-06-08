@@ -1,10 +1,49 @@
-// ui.js — полностью интернационализированная версия
+// ui.js – полностью интернационализированная версия с разделителями дат и улучшенными статусами
 (function() {
     if (window._uiLoaded) return;
     window._uiLoaded = true;
 
     // Helper for i18n
     function t(key, opts) { return i18next.t(key, opts); }
+
+    // ========== ФОРМАТИРОВАНИЕ ДАТ ДЛЯ РАЗДЕЛИТЕЛЕЙ ==========
+    function formatDateDivider(timestamp) {
+        const date = new Date(timestamp * 1000);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+        if (msgDate.getTime() === today.getTime()) return t('today');
+        if (msgDate.getTime() === yesterday.getTime()) return t('yesterday');
+
+        return date.toLocaleDateString(undefined, {
+            day: 'numeric',
+            month: 'long',
+            year: (date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined)
+        });
+    }
+
+    function renderMessagesWithSeparators(container, messages) {
+        if (!container || !messages.length) return;
+        let lastDateKey = null;
+        const fragment = document.createDocumentFragment();
+        for (const msg of messages) {
+            const msgDate = new Date(msg.timestamp * 1000);
+            const dateKey = `${msgDate.getFullYear()}-${msgDate.getMonth()}-${msgDate.getDate()}`;
+            if (lastDateKey !== dateKey) {
+                const divider = document.createElement('div');
+                divider.className = 'date-divider';
+                divider.textContent = formatDateDivider(msg.timestamp);
+                fragment.appendChild(divider);
+                lastDateKey = dateKey;
+            }
+            fragment.appendChild(createMessageElement(msg));
+        }
+        container.appendChild(fragment);
+    }
 
     function isUserAtBottom(container, threshold = 50) {
         if (!container) return false;
@@ -52,7 +91,7 @@
                 if (olderMessages.length) {
                     window.addMessagesToCache(chatId, olderMessages, 'start');
                     const fragment = document.createDocumentFragment();
-                    for (const msg of olderMessages) fragment.appendChild(createMessageElement(msg));
+                    renderMessagesWithSeparators(fragment, olderMessages);
                     const firstChild = container.firstChild;
                     if (firstChild) container.insertBefore(fragment, firstChild);
                     else container.appendChild(fragment);
@@ -114,21 +153,23 @@
         const timeStr = Utils.formatTimestamp(msg.timestamp);
         const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" title="${t('delete')}">🗑</button>` : '';
 
+        let statusHtml = '';
+        if (msg.is_mine) {
+            const st = msg.status || 'sent';
+            let icon = '✓', cls = 'msg-status--sent';
+            if (st === 'delivered') { icon = '✓✓'; cls = 'msg-status--delivered'; }
+            else if (st === 'read')  { icon = '✓✓'; cls = 'msg-status--read'; }
+            statusHtml = `<span class="msg-status ${cls}">${icon}</span>`;
+        }
+
         messageDiv.innerHTML = `<div class="avatar">${Utils.escapeHtml(initials)}</div>
                                <div class="content">${senderName}<p>${Utils.escapeHtml(msg.content || '')}</p>
-                               ${mediaHtml}<div class="meta"><span>${timeStr}</span>${deleteBtn}</div></div>`;
-
-        if (msg.is_mine) {
-            const statusSpan = document.createElement('span');
-            statusSpan.className = 'message-status';
-            if (msg.status === 'read') { statusSpan.textContent = '✓✓'; statusSpan.style.color = '#4caf50'; }
-            else if (msg.status === 'delivered') { statusSpan.textContent = '✓✓'; statusSpan.style.color = '#888'; }
-            else { statusSpan.textContent = '✓'; statusSpan.style.color = '#888'; }
-            statusSpan.style.marginLeft = '8px';
-            statusSpan.style.fontSize = '12px';
-            const metaDiv = messageDiv.querySelector('.meta');
-            if (metaDiv) metaDiv.appendChild(statusSpan);
-        }
+                               ${mediaHtml}
+                               <div class="meta">
+                                 <span class="meta-time">${timeStr}</span>
+                                 ${deleteBtn}
+                                 ${statusHtml}
+                               </div></div>`;
         return messageDiv;
     }
 
@@ -160,9 +201,7 @@
             } else if (fileType.startsWith('audio/')) {
                 div.innerHTML = `<div class="voice-message-label">${t('voice_message_decrypted')}</div><audio controls src="${objectUrl}" style="width:100%;" preload="auto"></audio>`;
                 const audioEl = div.querySelector('audio');
-                if (audioEl) {
-                    audioEl.load();
-                }
+                if (audioEl) audioEl.load();
             } else {
                 div.innerHTML = `<a href="${objectUrl}" download>${t('download_file')}</a>`;
             }
@@ -174,11 +213,12 @@
     }
 
     function updateStatusIcon(msgDiv, status) {
-        const icon = msgDiv.querySelector('.message-status');
+        const icon = msgDiv.querySelector('.msg-status');
         if (!icon) return;
-        if (status === 'sent') { icon.textContent = '✓'; icon.style.color = '#888'; }
-        else if (status === 'delivered') { icon.textContent = '✓✓'; icon.style.color = '#888'; }
-        else if (status === 'read') { icon.textContent = '✓✓'; icon.style.color = '#4caf50'; }
+        icon.classList.remove('msg-status--sent', 'msg-status--delivered', 'msg-status--read');
+        if (status === 'sent')      { icon.textContent = '✓';  icon.classList.add('msg-status--sent'); }
+        else if (status === 'delivered') { icon.textContent = '✓✓'; icon.classList.add('msg-status--delivered'); }
+        else if (status === 'read') { icon.textContent = '✓✓'; icon.classList.add('msg-status--read'); }
     }
 
     async function fetchUserStatuses(addresses) {
@@ -236,6 +276,18 @@
         } catch (error) {
             console.error('Load conversations error:', error);
             container.innerHTML = `<p class="text-muted text-center">${t('failed_to_load')}</p>`;
+        }
+    }
+
+    // ========== ДИНАМИЧЕСКИЙ ОТСТУП ПОД ПОЛЕ ВВОДА ==========
+    function adjustMessagesPadding() {
+        const chatPanel = document.querySelector('.chat-panel');
+        if (!chatPanel) return;
+        const inputArea = chatPanel.querySelector('.input-area');
+        const messages = document.getElementById('messagesContainer');
+        if (inputArea && messages) {
+            const height = inputArea.offsetHeight;
+            messages.style.paddingBottom = (height + 20) + 'px';
         }
     }
 
@@ -314,33 +366,33 @@
 
         if (!isNewMessage && cached.length > 0) {
             container.innerHTML = '';
-            const fragment = document.createDocumentFragment();
+            const decryptedCache = [];
             for (const msg of cached) {
                 let displayMsg = msg;
                 if (!msg.isDecrypted) {
                     try {
                         displayMsg = await window.processMessageDecryption(msg);
                     } catch(e) {
-                        console.warn('Failed to decrypt cached message', msg.id, e);
                         displayMsg = { ...msg, content: '🔒 Decrypt error', isDecrypted: false };
                     }
                 }
-                fragment.appendChild(createMessageElement(displayMsg));
+                decryptedCache.push(displayMsg);
                 if (displayMsg.id > lastKnownId) lastKnownId = displayMsg.id;
             }
-            container.appendChild(fragment);
-
+            renderMessagesWithSeparators(container, decryptedCache);
             const wasAtBottom = isUserAtBottom(container, 30);
             if (wasAtBottom || forceScroll) {
                 container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
             } else {
                 showNewMessagesBadge();
             }
-
             State.lastKnownMessageId = lastKnownId;
             _enableChatControls();
             setupTopObserver();
-            if (cached.length) markConversationAsRead(chatWithAddress, cached[cached.length-1].id);
+            if (cached.length && (wasAtBottom || forceScroll)) {
+                markConversationAsRead(chatWithAddress, cached[cached.length-1].id);
+            }
+            adjustMessagesPadding(); // FIX: added dynamic padding
         } else if (!isNewMessage) {
             container.innerHTML = `<div class="loading">${t('loading_messages')}</div>`;
             container.classList.add('loading');
@@ -349,7 +401,6 @@
         try {
             const params = new URLSearchParams({ with: chatWithAddress });
             if (lastKnownId > 0) params.append('last_message_id', lastKnownId);
-
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
             const res = await fetch('/get_conversation?' + params.toString(), { signal: controller.signal });
@@ -367,7 +418,6 @@
                 return;
             }
             const data = await res.json();
-
             if (!res.ok) throw new Error(data.error || 'Failed to load');
 
             const rawMessages = Array.isArray(data.messages) ? data.messages : [];
@@ -377,6 +427,7 @@
                     _enableChatControls();
                 }
                 container.classList.remove('loading');
+                adjustMessagesPadding(); // FIX
                 return;
             }
 
@@ -389,31 +440,54 @@
                     newMessages.push({ ...msg, content: '🔒 Decrypt error', image: null });
                 }
             }
-
             window.addMessagesToCache(chatWithAddress, newMessages, 'end');
 
             if (container) {
-                for (const msg of newMessages) {
-                    if (document.getElementById('msg-' + msg.id)) continue;
-                    const msgEl = createMessageElement(msg);
-                    container.appendChild(msgEl);
-                    if (msg.id > State.lastKnownMessageId) State.lastKnownMessageId = msg.id;
+                const existingIds = new Set(Array.from(container.querySelectorAll('.message')).map(el => el.dataset.messageId));
+                const uniqueNew = newMessages.filter(msg => !existingIds.has(String(msg.id)));
+                if (uniqueNew.length) {
+                    renderMessagesWithSeparators(container, uniqueNew);
+                    if (uniqueNew.some(m => m.id > State.lastKnownMessageId))
+                        State.lastKnownMessageId = Math.max(State.lastKnownMessageId, ...uniqueNew.map(m => m.id));
                 }
-
                 const wasAtBottom = isUserAtBottom(container, 30);
                 const isFirstOpen = !isNewMessage && cached.length === 0;
-
                 if (wasAtBottom || isFirstOpen || forceScroll) {
                     container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-                } else if (newMessages.length && !isNewMessage) {
+                } else if (uniqueNew.length && !isNewMessage) {
                     showNewMessagesBadge();
                 }
+
+                if ((wasAtBottom || forceScroll) && newMessages.length) {
+                    markConversationAsRead(chatWithAddress, newMessages[newMessages.length-1].id);
+                }
+                adjustMessagesPadding(); // FIX
             }
 
             if (!isNewMessage && cached.length === 0 && newMessages.length) setupTopObserver();
-
             _enableChatControls();
-            if (newMessages.length) markConversationAsRead(chatWithAddress, newMessages[newMessages.length-1].id);
+
+            setTimeout(async () => {
+                const myMessages = document.querySelectorAll('.message-own');
+                const ids = Array.from(myMessages).filter(el => el.dataset.id && !el.dataset.id.startsWith('temp')).map(el => el.dataset.id);
+                if (ids.length) {
+                    try {
+                        const statusRes = await fetch('/message/statuses', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ids })
+                        });
+                        const statuses = await statusRes.json();
+                        for (const [id, st] of Object.entries(statuses)) {
+                            const msgDiv = document.querySelector(`.message-own[data-id="${id}"]`);
+                            if (msgDiv && msgDiv.dataset.status !== st) {
+                                msgDiv.dataset.status = st;
+                                updateStatusIcon(msgDiv, st);
+                            }
+                        }
+                    } catch(e) { console.warn('Status refresh error', e); }
+                }
+            }, 100);
         } catch (error) {
             console.error('Load messages error:', error);
             container.classList.remove('loading');
@@ -482,16 +556,39 @@
         const container = document.getElementById('messagesContainer');
         if (container) {
             const wasAtBottom = isUserAtBottom(container, 30);
+            if (document.getElementById('msg-' + decrypted.id)) return;
+
+            const lastMsg = container.querySelector('.message:last-of-type');
+            let lastTimestamp = null;
+            if (lastMsg) {
+                const lastMsgId = lastMsg.dataset.messageId;
+                const cachedMsgs = window.getCachedMessages(State.currentChatAddress);
+                const lastMsgObj = cachedMsgs?.find(m => m.id == lastMsgId);
+                if (lastMsgObj) lastTimestamp = lastMsgObj.timestamp;
+            }
+            const currentDate = new Date(decrypted.timestamp * 1000).toDateString();
+            const lastDate = lastTimestamp ? new Date(lastTimestamp * 1000).toDateString() : null;
+            if (currentDate !== lastDate) {
+                const divider = document.createElement('div');
+                divider.className = 'date-divider';
+                divider.textContent = formatDateDivider(decrypted.timestamp);
+                container.appendChild(divider);
+            }
+
             const msgElement = createMessageElement(decrypted);
             container.appendChild(msgElement);
+            adjustMessagesPadding(); // FIX
+
             if (wasAtBottom) {
-                setTimeout(() => {
-                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-                }, 50);
+                setTimeout(() => container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }), 50);
             } else {
                 showNewMessagesBadge();
             }
-            if (!decrypted.is_mine) fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e=>console.warn);
+
+            if (!decrypted.is_mine && wasAtBottom) {
+                fetch(`/message/${decrypted.id}/read`, { method: 'POST' }).catch(e => console.warn(e));
+                markConversationAsRead(decrypted.chatId || State.currentChatAddress, decrypted.id);
+            }
         }
     };
 
@@ -520,4 +617,17 @@
     window.fetchUserStatuses = fetchUserStatuses;
     window.openImageModal = openImageModal;
     window.closeImageModal = closeImageModal;
+    window.adjustMessagesPadding = adjustMessagesPadding; // FIX: экспорт для вызовов из actions.js
+
+    // ========== ИНИЦИАЛИЗАЦИЯ ДИНАМИЧЕСКОГО ОТСТУПА ==========
+    document.addEventListener('DOMContentLoaded', () => {
+        const inputArea = document.querySelector('.chat-panel .input-area');
+        if (inputArea && window.ResizeObserver) {
+            const resizeObserver = new ResizeObserver(() => adjustMessagesPadding());
+            resizeObserver.observe(inputArea);
+        }
+        window.addEventListener('resize', () => adjustMessagesPadding());
+        // первичный вызов через короткую задержку, чтобы DOM точно отрисовался
+        setTimeout(adjustMessagesPadding, 100);
+    });
 })();

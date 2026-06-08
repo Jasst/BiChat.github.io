@@ -1,5 +1,5 @@
 // core.js — ядро мессенджера с поддержкой зашифрованного localStorage и кеша сообщений
-// Fully internationalized (i18n)
+// Исправлено: сохранение статуса сообщений, разделители дат (вынесены в ui.js)
 (function() {
     if (window._coreLoaded) return;
     window._coreLoaded = true;
@@ -9,7 +9,6 @@
         if (typeof i18next !== 'undefined' && i18next.t) {
             return i18next.t(key, opts);
         }
-        // Fallback English for keys used in this file
         const fallbacks = {
             'unlock_wallet_title': 'Unlock wallet',
             'unlock_wallet_desc': 'Your encrypted wallet was found. Enter password to unlock.',
@@ -156,20 +155,19 @@
             const modal = document.createElement('div');
             modal.className = 'modal-overlay';
             modal.style.zIndex = '10000';
-modal.innerHTML = `
-    <div class="modal" style="max-width:400px;">
-        <div class="modal-header"><h3 data-i18n="unlock_wallet_title">Unlock wallet</h3></div>
-        <div class="modal-body">
-            <p data-i18n="unlock_wallet_desc">Your encrypted wallet was found. Enter password to unlock.</p>
-            <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;" data-i18n-placeholder="password">
-            <div id="unlockError" class="text-error" style="color:var(--danger);margin-top:8px;display:none;"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-ghost" id="cancelUnlock" data-i18n="log_out">Log out</button>
-            <button class="btn btn-primary" id="confirmUnlock" data-i18n="unlock">Unlock</button>
-        </div>
-    </div>`;
-
+            modal.innerHTML = `
+                <div class="modal" style="max-width:400px;">
+                    <div class="modal-header"><h3 data-i18n="unlock_wallet_title">Unlock wallet</h3></div>
+                    <div class="modal-body">
+                        <p data-i18n="unlock_wallet_desc">Your encrypted wallet was found. Enter password to unlock.</p>
+                        <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;" data-i18n-placeholder="password">
+                        <div id="unlockError" class="text-error" style="color:var(--danger);margin-top:8px;display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" id="cancelUnlock" data-i18n="log_out">Log out</button>
+                        <button class="btn btn-primary" id="confirmUnlock" data-i18n="unlock">Unlock</button>
+                    </div>
+                </div>`;
             if (window.localizePage) window.localizePage();
             document.body.appendChild(modal);
             const passwordInput = modal.querySelector('#unlockPassword');
@@ -368,7 +366,6 @@ modal.innerHTML = `
             });
             window.wsClient.setAuth(address, signatureHex, nonce);
             window.wsClient.connect();
-
         } catch (err) { console.error('Failed to init WebSocket:', err); }
     }
 
@@ -378,6 +375,8 @@ modal.innerHTML = `
         let content = msg.content;
         let image = msg.image;
         let fileUrl = null, fileKey = null, fileIv = null, fileType = null;
+        // Сохраняем оригинальный статус, если он есть (сервер может его не слать, но для исходящих он есть)
+        const originalStatus = msg.status || (msg.is_mine ? 'sent' : null);
 
         try {
             const parsed = JSON.parse(content);
@@ -392,7 +391,7 @@ modal.innerHTML = `
             if (parsed.encrypted_map) {
                 const myAddr = State.userAddress;
                 const myEnc = parsed.encrypted_map[myAddr];
-                if (!myEnc) return { ...msg, content: t('no_access') };
+                if (!myEnc) return { ...msg, content: t('no_access'), status: originalStatus };
                 const senderPubKeyBytes = DarkCrypto._fromBase64(myEnc.sender_pubkey);
                 const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
                 if (isMine && myEnc.self_text) {
@@ -427,7 +426,7 @@ modal.innerHTML = `
                     }
                 }
                 const chatId = msg.recipient;
-                return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isGroup: true, isDecrypted: true };
+                return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isGroup: true, isDecrypted: true, status: originalStatus };
             }
 
             // ---------- ЛИЧНЫЙ ЧАТ ----------
@@ -442,7 +441,7 @@ modal.innerHTML = `
                     }
                 }
                 const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-                return { ...msg, content: t('no_sender_pubkey'), image: null, fileUrl, fileKey, fileIv, fileType, is_mine: false, chatId, isDecrypted: false };
+                return { ...msg, content: t('no_sender_pubkey'), image: null, fileUrl, fileKey, fileIv, fileType, is_mine: false, chatId, isDecrypted: false, status: originalStatus };
             }
 
             const senderPubKeyBytes = DarkCrypto._fromBase64(senderPubKeyB64);
@@ -499,48 +498,60 @@ modal.innerHTML = `
             }
 
             const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-            return { ...msg, content, image: null, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true };
+            return { ...msg, content, image: null, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true, status: originalStatus };
         } catch (e) {
             console.error('Decryption error', msg.id, e);
             const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-            return { ...msg, content: t('decrypt_error'), image: null, chatId, isDecrypted: false };
+            return { ...msg, content: t('decrypt_error'), image: null, chatId, isDecrypted: false, status: originalStatus };
         }
     }
 
     async function handleWebSocketMessage(data) {
         if (data.error) { console.error('WS error:', data.error); return; }
+
+        // --- Статус online/offline пользователя ---
         if (data.type === 'status_update') {
             if (data.address && data.status) {
-                if (window.updateConversationStatus) {
-                    window.updateConversationStatus(data.address, data.status);
-                }
+                if (window.updateConversationStatus) window.updateConversationStatus(data.address, data.status);
             }
             return;
         }
-        if (!data.chatId && data.sender && data.recipient) data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
+
+        // --- Статус сообщения (delivered / read) приходит с сервера ---
+        if (data.type === 'message_status') {
+            const msgDiv = document.querySelector(`.message-own[data-id="${data.message_id}"]`);
+            if (msgDiv && msgDiv.dataset.status !== data.status) {
+                msgDiv.dataset.status = data.status;
+                if (window.updateStatusIcon) window.updateStatusIcon(msgDiv, data.status);
+                // Обновляем кеш
+                const chatId = State.currentChatAddress;
+                const cached = window.getCachedMessages ? window.getCachedMessages(chatId) : [];
+                const cachedMsg = cached.find(m => m.id === data.message_id);
+                if (cachedMsg) cachedMsg.status = data.status;
+            }
+            return;
+        }
+
+        if (!data.chatId && data.sender && data.recipient)
+            data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
         if (!data.chatId) return;
         if (document.getElementById('msg-' + data.id)) return;
 
         const decrypted = await processMessageDecryption(data);
         const chatId = decrypted.chatId;
 
-        if (decrypted && decrypted.id) {
-            window.addMessageToCache(chatId, decrypted, 'end');
-        }
+        if (decrypted && decrypted.id) window.addMessageToCache(chatId, decrypted, 'end');
 
+        // delivered — немедленно, только для чужих сообщений
         if (!decrypted.is_mine) {
-            fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn);
+            fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn(e));
         }
 
-        let isCurrent = false;
-        if (State.currentChatAddress === chatId) {
-            isCurrent = true;
-        } else if (!decrypted.isGroup && (
-            decrypted.sender === State.currentChatAddress ||
-            decrypted.recipient === State.currentChatAddress
-        )) {
-            isCurrent = true;
-        }
+        const isCurrent = State.currentChatAddress === chatId ||
+            (!decrypted.isGroup && (
+                decrypted.sender === State.currentChatAddress ||
+                decrypted.recipient === State.currentChatAddress
+            ));
 
         if (!isCurrent) {
             const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
@@ -548,9 +559,7 @@ modal.innerHTML = `
             else if (window.updateConversationPreview) window.updateConversationPreview(chatId, decrypted.preview || t('new_message_preview'));
         }
 
-        if (isCurrent && window.onNewMessageReceived) {
-            window.onNewMessageReceived(decrypted);
-        }
+        if (isCurrent && window.onNewMessageReceived) window.onNewMessageReceived(decrypted);
 
         if (window.NotificationManager) {
             window.NotificationManager.handleIncomingMessage?.({
@@ -588,7 +597,9 @@ modal.innerHTML = `
         if (statusPollingInterval) clearInterval(statusPollingInterval);
         statusPollingInterval = setInterval(async () => {
             const myMessages = document.querySelectorAll('.message-own');
-            const ids = Array.from(myMessages).map(el => el.dataset.id).filter(id => id && !id.startsWith('temp'));
+            const ids = Array.from(myMessages)
+                .filter(el => el.dataset.status !== 'read' && el.dataset.id && !el.dataset.id.startsWith('temp'))
+                .map(el => el.dataset.id);
             if (ids.length === 0) return;
             try {
                 const res = await fetch('/message/statuses', {
@@ -596,29 +607,23 @@ modal.innerHTML = `
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids })
                 });
+                if (!res.ok) return;
                 const statuses = await res.json();
                 for (const [id, st] of Object.entries(statuses)) {
                     const msgDiv = document.querySelector(`.message-own[data-id="${id}"]`);
                     if (msgDiv && msgDiv.dataset.status !== st) {
                         msgDiv.dataset.status = st;
                         if (window.updateStatusIcon) window.updateStatusIcon(msgDiv, st);
-                        if (window.updateConversationPreview) {
-                            const container = document.getElementById('messagesContainer');
-                            const lastMsg = container?.querySelector('.message:last-child');
-                            if (lastMsg && lastMsg.dataset.id === id) {
-                                let previewText = '';
-                                if (st === 'read') previewText = t('read_status');
-                                else if (st === 'delivered') previewText = t('delivered_status');
-                                else previewText = t('sent_status');
-                                window.updateConversationPreview(State.currentChatAddress, previewText);
-                            }
-                        }
+                        const chatId = State.currentChatAddress;
+                        const cached = window.getCachedMessages ? window.getCachedMessages(chatId) : [];
+                        const cachedMsg = cached.find(m => String(m.id) === String(id));
+                        if (cachedMsg) cachedMsg.status = st;
                     }
                 }
             } catch(e) { console.warn('Status polling error', e); }
-        }, 30000);
+        }, 8000);
     }
-    function stopStatusPolling() { if (statusPollingInterval) clearInterval(statusPollingInterval); }
+    function stopStatusPolling() { if (statusPollingInterval) { clearInterval(statusPollingInterval); statusPollingInterval = null; } }
 
     // ========== Поллинг статусов пользователей ==========
     let userStatusPollingInterval = null;
@@ -657,17 +662,14 @@ modal.innerHTML = `
 
     async function initPushNotifications() {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-
         let permission = await Notification.permission;
         if (permission !== 'granted') {
             permission = await Notification.requestPermission();
             if (permission !== 'granted') return;
         }
-
         const registration = await navigator.serviceWorker.ready;
         const publicKey = 'BPa5fghsHcpAbmlQTdXg6WzoMC_iPaDMzFY4mc2BUipmno6sLxN6KoSfaZfgUFkh9c0B34XhBvC93WXn92xKlkw';
         const applicationServerKey = urlBase64ToUint8Array(publicKey);
-
         let subscription = await registration.pushManager.getSubscription();
         if (!subscription) {
             subscription = await registration.pushManager.subscribe({
@@ -675,7 +677,6 @@ modal.innerHTML = `
                 applicationServerKey: applicationServerKey
             });
         }
-
         await fetch('/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
