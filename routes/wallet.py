@@ -11,11 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from config import (
     COIN, COIN_NAME, TRANSFER_FEE, MIN_STAKE_AMOUNT, BLOCK_REWARD, CONFIG,
-    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE,  STAKING_FEE_FROM_BLOCK_REWARD, MAX_SUPPLY, MINING_CHALLENGE_TTL
+    STAKING_FEE_POOL_ADDRESS, ENABLE_MINING, ENABLE_STAKING, MESSAGE_FEE,
+    STAKING_FEE_FROM_BLOCK_REWARD, MAX_SUPPLY, MINING_CHALLENGE_TTL,
 )
 from dependencies import require_auth, make_rate_limit_dep
 from models import TransferRequest, StakeRequest, MineRequest
-import services.wallet  # импорт модуля целиком
+import services.wallet
 from setup import general_limiter
 from routes.ws import manager
 
@@ -28,8 +29,14 @@ router = APIRouter(prefix='/wallet', tags=['wallet'])
 _CHALLENGE_TTL = MINING_CHALLENGE_TTL
 
 
+
+
 @router.get('/config')
-def wallet_config():
+async def wallet_config(request: Request):
+    blockchain = request.app.state.blockchain
+    from database import get_db_cursor
+    async with get_db_cursor() as conn:
+        ratio = await blockchain.get_staking_fee_ratio(conn)
     return {
         'enable_mining':    ENABLE_MINING,
         'enable_staking':   ENABLE_STAKING,
@@ -38,6 +45,7 @@ def wallet_config():
         'block_reward':     BLOCK_REWARD if ENABLE_MINING else 0,
         'coin_name':        COIN_NAME,
         'coin_divisor':     COIN,
+        'staking_fee_ratio': ratio,
         'pow_max_iterations': CONFIG['POW_MAX_ITERATIONS'],
         'pow_difficulty':   CONFIG['POW_DIFFICULTY'],
     }
@@ -140,13 +148,10 @@ async def unstake(request: Request, address: str = Depends(require_auth)):
         raise HTTPException(403, 'Staking is disabled')
     if services.wallet.staking_manager is None:
         raise HTTPException(503, 'Staking service not initialized')
-
     result = await services.wallet.staking_manager.unstake(address)
-
     if not result.get('success'):
         error_msg = result.get('error', 'No active stake or still locked')
         raise HTTPException(400, error_msg)
-
     coin_div = COIN
     return {
         'message': f"Unstaked {result['unstaked_count']} stake(s). Total payout: {result['total_payout'] / coin_div:.6f} {COIN_NAME}",
@@ -186,23 +191,27 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
     }
 
 
-@router.get('/last-proof')
+@router.get('/last-proof', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=10))])  # window убран
 async def last_proof(request: Request, address: str = Depends(require_auth)):
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         last = await blockchain._last_block_raw(conn)
+        difficulty = await blockchain.get_difficulty(conn)   # ✅ теперь внутри контекста
     last_index = last.get('block_index', 0)
     challenge = secrets.token_hex(16)
     with _mining_challenges_lock:
         _mining_challenges.setdefault(address, {})[challenge] = time.time() + _CHALLENGE_TTL
+        MAX_CHALLENGES_TOTAL = 1000
+        if len(_mining_challenges) > MAX_CHALLENGES_TOTAL:
+            oldest_addr = min(_mining_challenges.items(), key=lambda kv: min(kv[1].values()))[0]
+            del _mining_challenges[oldest_addr]
     return {
         'last_proof': last.get('proof', 0),
         'last_index': last_index,
-        'difficulty': CONFIG['POW_DIFFICULTY'],
+        'difficulty': difficulty,
         'challenge': challenge,
     }
-
 
 @router.post('/mine', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=3))])
 async def mine(body: MineRequest, request: Request, address: str = Depends(require_auth)):
@@ -226,19 +235,20 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         raise HTTPException(status_code, error_msg)
     logger.info(f"Block {block_index} mined by {address}, reward: {reward_amount}")
 
-    # ========== ДОБАВЛЕНО: комиссия в пул стейкинга ==========
     if ENABLE_STAKING and services.wallet.staking_manager:
-        staking_fee = int(BLOCK_REWARD * STAKING_FEE_FROM_BLOCK_REWARD)
-        if staking_fee > 0:
-            await services.wallet.staking_manager.add_to_fee_pool(staking_fee)
-            logger.info(f"Added {staking_fee} satoshi ({staking_fee / COIN:.6f} {COIN_NAME}) to staking pool from block reward")
-    # =========================================================
+        from database import get_db_cursor
+        async with get_db_cursor() as conn:
+            staking_fee_ratio = await blockchain.get_staking_fee_ratio(conn)
+            staking_fee = int(BLOCK_REWARD * staking_fee_ratio)
+            if staking_fee > 0:
+                await services.wallet.staking_manager.add_to_fee_pool(staking_fee)
+                logger.info(
+                    f"Added {staking_fee} satoshi ({staking_fee / COIN:.6f} {COIN_NAME}) to staking pool (ratio {staking_fee_ratio * 100:.1f}%)")
 
     await manager.broadcast({
         'type': 'new_block',
         'last_proof': body.proof,
         'last_index': block_index,
-        'difficulty': CONFIG['POW_DIFFICULTY'],
     })
 
     return {
@@ -248,15 +258,20 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         'coin_name': COIN_NAME,
     }
 
+
 @router.get('/global-stats')
 async def wallet_global_stats(request: Request):
     from database import get_db_cursor
+    blockchain = request.app.state.blockchain
     async with get_db_cursor() as conn:
+        ratio = await blockchain.get_staking_fee_ratio(conn)
         total_supply_raw = (await conn.fetchval('SELECT COALESCE(SUM(balance), 0) FROM wallets')) or 0
         row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', STAKING_FEE_POOL_ADDRESS)
         staking_pool_balance = row[0] if row else 0
         total_blocks = (await conn.fetchval('SELECT COUNT(*) FROM blockchain')) or 0
         total_staked_raw = (await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active = 1')) or 0
+
+        difficulty = await blockchain.get_difficulty(conn)  # FIX: динамическая сложность
 
     max_supply_sats = MAX_SUPPLY * COIN if MAX_SUPPLY else None
     if max_supply_sats is not None:
@@ -270,10 +285,13 @@ async def wallet_global_stats(request: Request):
         'block_reward': BLOCK_REWARD if ENABLE_MINING else 0,
         'total_blocks': total_blocks,
         'total_staked': total_staked_raw,
-        'difficulty': CONFIG['POW_DIFFICULTY'],
+        'difficulty': difficulty,
         'coin_name': COIN_NAME,
         'coin_divisor': COIN,
         'max_supply': MAX_SUPPLY,
+        'staking_fee_ratio': ratio,
         'remaining_supply': remaining_sats,
         'message_fee': MESSAGE_FEE,
     }
+
+

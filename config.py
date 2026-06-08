@@ -85,3 +85,14 @@ MAX_AUDIO_SIZE = int(os.getenv('MAX_AUDIO_SIZE', 2 * 1024 * 1024)) # 2 MB
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:your@email.com')
+
+# в config.py
+DIFFICULTY_ADJUSTMENT_INTERVAL = 2016   # блоков между пересчётами
+TARGET_BLOCK_TIME = 60                  # секунд
+MIN_DIFFICULTY = 5
+MAX_DIFFICULTY = 15
+
+
+STAKING_FEE_INCREASE_INTERVAL = 10000   # блоков
+STAKING_FEE_INCREASE_STEP = 0.01        # на 1% каждый раз
+MAX_STAKING_FEE = 0.9                   # максимум 90%

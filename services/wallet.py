@@ -8,7 +8,7 @@ import time
 
 from config import (
     COIN, MIN_STAKE_AMOUNT, STAKE_LOCK_BLOCKS,
-    STAKING_FEE_POOL_ADDRESS, ENABLE_STAKING, COIN_NAME
+    STAKING_FEE_POOL_ADDRESS, ENABLE_STAKING, COIN_NAME,STAKING_FEE_FROM_BLOCK_REWARD
 )
 from database import get_db_cursor
 
@@ -30,12 +30,14 @@ def init_wallet_service(blockchain):
         async def ensure_staking_state():
             async with get_db_cursor() as conn:
                 await conn.execute("""
-                    INSERT INTO staking_state (key, value)
-                    VALUES ('acc_reward_per_stake', '0')
+                    INSERT INTO staking_state (key, value) VALUES ('acc_reward_per_stake', '0')
                     ON CONFLICT (key) DO NOTHING
                 """)
-        asyncio.create_task(ensure_staking_state())
-        logger.info("Staking manager initialized")
+                # 👇 ДОБАВИТЬ ЭТО
+                await conn.execute("""
+                    INSERT INTO staking_state (key, value) VALUES ('staking_fee_ratio', $1)
+                    ON CONFLICT (key) DO NOTHING
+                """, str(STAKING_FEE_FROM_BLOCK_REWARD))
     else:
         staking_manager = None
         logger.info("Staking is DISABLED by config")

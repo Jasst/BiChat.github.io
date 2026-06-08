@@ -12,7 +12,9 @@ from typing import List, Dict, Optional
 import asyncpg
 from asyncpg.pool import Pool
 
-from config import DATABASE_URL, CONFIG, BLOCK_REWARD, ENABLE_MINING
+from config import (DATABASE_URL, CONFIG, BLOCK_REWARD,
+                    ENABLE_MINING, DIFFICULTY_ADJUSTMENT_INTERVAL,
+                    TARGET_BLOCK_TIME, MIN_DIFFICULTY, MAX_DIFFICULTY,ENABLE_STAKING)
 
 logger = logging.getLogger(__name__)
 
@@ -166,52 +168,32 @@ async def _create_tables(conn: asyncpg.Connection):
             payload       TEXT NOT NULL,
             created_at    DOUBLE PRECISION NOT NULL
         );
+        
     """)
     await conn.execute("INSERT INTO schema_version (version, applied_at) VALUES (0, extract(epoch from now())) ON CONFLICT DO NOTHING")
 
 
 async def _apply_migrations(conn: asyncpg.Connection):
-    # Получаем текущую максимальную версию
     current_version = await conn.fetchval("SELECT COALESCE(MAX(version), 0) FROM schema_version")
 
     if current_version < 1:
         await conn.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'sent'")
         await conn.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS read_at DOUBLE PRECISION")
-        await conn.execute("""
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (1, extract(epoch from now()))
-            ON CONFLICT (version) DO NOTHING
-        """)
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (1, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 1
-
     if current_version < 2:
         await conn.execute("ALTER TABLE blockchain ADD COLUMN IF NOT EXISTS coin_transactions TEXT DEFAULT '[]'")
-        await conn.execute("""
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (2, extract(epoch from now()))
-            ON CONFLICT (version) DO NOTHING
-        """)
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (2, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 2
-
     if current_version < 3:
         await conn.execute("ALTER TABLE coin_transactions ADD COLUMN IF NOT EXISTS block_ref BIGINT")
         await conn.execute("ALTER TABLE coin_transactions ADD COLUMN IF NOT EXISTS note TEXT")
-        await conn.execute("""
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (3, extract(epoch from now()))
-            ON CONFLICT (version) DO NOTHING
-        """)
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (3, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 3
-
     if current_version < 4:
         await conn.execute("ALTER TABLE stakes ADD COLUMN IF NOT EXISTS reward_debt BIGINT DEFAULT 0")
-        await conn.execute("""
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (4, extract(epoch from now()))
-            ON CONFLICT (version) DO NOTHING
-        """)
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (4, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 4
-
     if current_version < 5:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -222,21 +204,12 @@ async def _apply_migrations(conn: asyncpg.Connection):
                 UNIQUE(user_address, subscription)
             )
         """)
-        await conn.execute("""
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (5, extract(epoch from now()))
-            ON CONFLICT (version) DO NOTHING
-        """)
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (5, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 5
-
     if current_version < 6:
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)")
-        await conn.execute("""
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (6, extract(epoch from now()))
-            ON CONFLICT (version) DO NOTHING
-        """)
-        logger.info("Migration 6 applied: created index idx_transactions_status")
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (6, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
+        current_version = 6
     if current_version < 7:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS offline_messages (
@@ -247,12 +220,9 @@ async def _apply_migrations(conn: asyncpg.Connection):
             )
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_messages(user_address)")
-        await conn.execute("""
-            INSERT INTO schema_version (version, applied_at)
-            VALUES (7, extract(epoch from now()))
-            ON CONFLICT (version) DO NOTHING
-        """)
-        logger.info("Migration 7 applied: offline_messages table")
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (7, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
+        current_version = 7
+
 
 
 async def _create_indexes(conn: asyncpg.Connection):
@@ -268,6 +238,7 @@ async def _create_indexes(conn: asyncpg.Connection):
         "CREATE INDEX IF NOT EXISTS idx_coin_tx_block ON coin_transactions(block_ref)",
         "CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)",
         "CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_messages(user_address)",
+
     ]
     for sql in indexes:
         try:
@@ -292,7 +263,6 @@ class Blockchain:
     async def _new_block_raw(self, conn: asyncpg.Connection, proof: int,
                              previous_hash: Optional[str] = None,
                              miner_address: Optional[str] = None) -> int:
-        # Неподтверждённые coin_transactions
         rows = await conn.fetch("SELECT * FROM coin_transactions WHERE block_ref IS NULL")
         coin_txs = [dict(r) for r in rows]
         if ENABLE_MINING and miner_address:
@@ -311,7 +281,6 @@ class Blockchain:
             INSERT INTO blockchain (block_index, timestamp, transactions, coin_transactions, proof, previous_hash)
             VALUES ($1, $2, $3, $4, $5, $6)
         """, block_index, time.time(), '[]', json.dumps(coin_txs), proof, previous_hash)
-        # Обновляем coin_transactions
         for tx in coin_txs:
             if 'id' in tx:
                 await conn.execute("UPDATE coin_transactions SET block_ref = $1 WHERE id = $2", block_index, tx['id'])
@@ -325,6 +294,17 @@ class Blockchain:
                         INSERT INTO wallets (address, balance) VALUES ($1, $2)
                         ON CONFLICT (address) DO UPDATE SET balance = wallets.balance + $2
                     """, tx['recipient'], tx['amount'])
+        # FIX: пересчёт сложности после добавления блока
+        await self.adjust_difficulty(conn)
+        if ENABLE_STAKING:
+            from config import STAKING_FEE_INCREASE_INTERVAL, STAKING_FEE_INCREASE_STEP, MAX_STAKING_FEE
+            if block_index % STAKING_FEE_INCREASE_INTERVAL == 0:
+                current_ratio = await self.get_staking_fee_ratio(conn)
+                new_ratio = min(MAX_STAKING_FEE, current_ratio + STAKING_FEE_INCREASE_STEP)
+                if new_ratio != current_ratio:
+                    await self.set_staking_fee_ratio(conn, new_ratio)
+                    logger.info(
+                        f"Staking fee ratio increased from {current_ratio * 100:.1f}% to {new_ratio * 100:.1f}% at block {block_index}")
         return block_index
 
     def _hash_block(self, block: dict) -> str:
@@ -385,15 +365,10 @@ class Blockchain:
             return {'status': 'error', 'error': str(e)}
 
     async def get_performance_stats(self) -> dict:
-        """Возвращает статистику производительности (для эндпоинта /health/performance)."""
         try:
             async with get_db_cursor() as conn:
-                # Количество транзакций за последние 24 часа
                 day_ago = time.time() - 86400
-                tx_last_day = await conn.fetchval(
-                    "SELECT COUNT(*) FROM transactions WHERE timestamp > $1", day_ago
-                )
-                # Среднее время обработки запроса (пример)
+                tx_last_day = await conn.fetchval("SELECT COUNT(*) FROM transactions WHERE timestamp > $1", day_ago)
                 return {
                     'transactions_last_24h': tx_last_day,
                     'active_connections': _pool.get_size() if _pool else 0,
@@ -402,6 +377,7 @@ class Blockchain:
         except Exception as e:
             return {'error': str(e)}
 
+    # FIX: полный исправленный метод try_mine_block
     async def try_mine_block(self, last_proof: int, last_index: int, proof: int, challenge: str, miner_address: str):
         async with get_db_cursor() as conn:
             try:
@@ -411,7 +387,8 @@ class Blockchain:
                         return False, "No blockchain", 0, 0
                     if current.get('proof') != last_proof or current.get('block_index') != last_index:
                         return False, "Blockchain moved, try again", 0, 0
-                    if not self.valid_proof_with_challenge(last_proof, proof, challenge):
+                    # FIX: вызов с conn и await
+                    if not await self.valid_proof_with_challenge(conn, last_proof, proof, challenge):
                         return False, "Invalid proof", 0, 0
                     current_again = await self._last_block_raw(conn)
                     if current_again.get('proof') != last_proof or current_again.get('block_index') != last_index:
@@ -422,8 +399,67 @@ class Blockchain:
                 logger.error(f"try_mine_block error: {e}")
                 return False, str(e), 0, 0
 
-    def valid_proof_with_challenge(self, last_proof: int, proof: int, challenge: str) -> bool:
+    # FIX: исправленная подпись и использование conn
+    async def valid_proof_with_challenge(self, conn: asyncpg.Connection, last_proof: int, proof: int, challenge: str) -> bool:
+        difficulty = await self.get_difficulty(conn)
         guess = f"{last_proof}{challenge}{proof}".encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
-        target = '0' * CONFIG['POW_DIFFICULTY']
+        target = '0' * difficulty
         return guess_hash.startswith(target)
+
+    async def get_difficulty(self, conn: asyncpg.Connection) -> int:
+        row = await conn.fetchval("SELECT value FROM staking_state WHERE key = 'difficulty'")
+        if row:
+            return int(row)
+        return CONFIG['POW_DIFFICULTY']
+
+    async def set_difficulty(self, conn: asyncpg.Connection, difficulty: int):
+        await conn.execute("""
+            INSERT INTO staking_state (key, value) VALUES ('difficulty', $1)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, str(difficulty))
+
+    async def adjust_difficulty(self, conn: asyncpg.Connection):
+        last_block = await self._last_block_raw(conn)
+        if not last_block:
+            return
+        current_height = last_block['block_index']
+        if current_height % DIFFICULTY_ADJUSTMENT_INTERVAL != 0:
+            return
+        start_height = current_height - DIFFICULTY_ADJUSTMENT_INTERVAL + 1
+        rows = await conn.fetch("""
+            SELECT timestamp FROM blockchain 
+            WHERE block_index >= $1 AND block_index <= $2
+            ORDER BY block_index
+        """, start_height, current_height)
+        if len(rows) < 2:
+            return
+        time_span = rows[-1]['timestamp'] - rows[0]['timestamp']
+        expected_time = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME
+        current_diff = await self.get_difficulty(conn)
+        if time_span < expected_time / 2:
+            new_diff = current_diff + 1
+        elif time_span > expected_time * 2:
+            new_diff = max(MIN_DIFFICULTY, current_diff - 1)
+        else:
+            new_diff = current_diff
+        new_diff = max(MIN_DIFFICULTY, min(MAX_DIFFICULTY, new_diff))
+        if new_diff != current_diff:
+            await self.set_difficulty(conn, new_diff)
+            logger.info(f"Difficulty adjusted: {current_diff} -> {new_diff}")
+
+    async def get_staking_fee_ratio(self, conn: asyncpg.Connection) -> float:
+        """Возвращает текущую долю награды блока, идущую в стейкинг-пул."""
+        row = await conn.fetchval("SELECT value FROM staking_state WHERE key = 'staking_fee_ratio'")
+        if row is None:
+            # Если записи нет, возвращаем значение из конфига
+            from config import STAKING_FEE_FROM_BLOCK_REWARD
+            return STAKING_FEE_FROM_BLOCK_REWARD
+        return float(row)
+
+    async def set_staking_fee_ratio(self, conn: asyncpg.Connection, ratio: float):
+        """Устанавливает новую долю награды для стейкинг-пула."""
+        await conn.execute("""
+            INSERT INTO staking_state (key, value) VALUES ('staking_fee_ratio', $1)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, str(ratio))
