@@ -2,7 +2,6 @@
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
-
     let aiChatActive = false;
     let pendingImageFile = null;
     let currentStreamingMessage = null;
@@ -146,20 +145,20 @@
     }
 
     function renderMarkdown(text) {
-        if (!text) return '';
-        try {
-            let html = marked.parse(text);
-            const reasoningRegex = /💭\s*РАССУЖДЕНИЕ:\s*([\s\S]*?)\s*---/gi;
-            if (reasoningRegex.test(html)) {
-                reasoningRegex.lastIndex = 0;
-                html = html.replace(reasoningRegex, (match, content) => {
-                    return `<div class="reasoning-block"><strong>💭 Reasoning:</strong><br>${marked.parse(content)}</div>`;
-                });
-            }
-            return html;
-        } catch(e) {
-            return escapeHtml(text);
-        }
+       if (!text) return '';
+       try {
+           let html = marked.parse(text);
+           const reasoningRegex = /💭\s*РАССУЖДЕНИЕ:\s*([\s\S]*?)\s*---/gi;
+           if (reasoningRegex.test(html)) {
+               reasoningRegex.lastIndex = 0;
+               html = html.replace(reasoningRegex, (match, content) => {
+                   return `<div class="reasoning-block"><strong>💭 Reasoning:</strong><br>${marked.parse(content)}</div>`;
+               });
+           }
+           return DOMPurify.sanitize(html);
+       } catch(e) {
+          return escapeHtml(text);
+       }
     }
 
     function getStoredHistory() {

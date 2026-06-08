@@ -168,8 +168,9 @@
                         <button class="btn btn-primary" id="confirmUnlock" data-i18n="unlock">Unlock</button>
                     </div>
                 </div>`;
-            if (window.localizePage) window.localizePage();
+
             document.body.appendChild(modal);
+            if (window.localizePage) window.localizePage();
             const passwordInput = modal.querySelector('#unlockPassword');
             const errorDiv = modal.querySelector('#unlockError');
             const confirmBtn = modal.querySelector('#confirmUnlock');

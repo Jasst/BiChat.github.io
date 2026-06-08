@@ -160,6 +160,12 @@ async def _create_tables(conn: asyncpg.Connection):
               created_at    DOUBLE PRECISION DEFAULT (extract(epoch from now())),
              UNIQUE(user_address, subscription)
         );
+        CREATE TABLE IF NOT EXISTS offline_messages (
+            id            BIGSERIAL PRIMARY KEY,
+            user_address  TEXT NOT NULL,
+            payload       TEXT NOT NULL,
+            created_at    DOUBLE PRECISION NOT NULL
+        );
     """)
     await conn.execute("INSERT INTO schema_version (version, applied_at) VALUES (0, extract(epoch from now())) ON CONFLICT DO NOTHING")
 
@@ -231,7 +237,22 @@ async def _apply_migrations(conn: asyncpg.Connection):
             ON CONFLICT (version) DO NOTHING
         """)
         logger.info("Migration 6 applied: created index idx_transactions_status")
-
+    if current_version < 7:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS offline_messages (
+                id            BIGSERIAL PRIMARY KEY,
+                user_address  TEXT NOT NULL,
+                payload       TEXT NOT NULL,
+                created_at    DOUBLE PRECISION NOT NULL
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_messages(user_address)")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (7, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
+        logger.info("Migration 7 applied: offline_messages table")
 
 
 async def _create_indexes(conn: asyncpg.Connection):
@@ -246,6 +267,7 @@ async def _create_indexes(conn: asyncpg.Connection):
         "CREATE INDEX IF NOT EXISTS idx_coin_tx_sender ON coin_transactions(sender)",
         "CREATE INDEX IF NOT EXISTS idx_coin_tx_block ON coin_transactions(block_ref)",
         "CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)",
+        "CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_messages(user_address)",
     ]
     for sql in indexes:
         try:

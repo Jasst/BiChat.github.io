@@ -55,6 +55,7 @@
 
     if (type.startsWith('image/')) {
         objectUrl = URL.createObjectURL(file);
+        if (pendingFile) pendingFile._objectUrl = objectUrl;
         previewContent = `<img src="${objectUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px;">`;
     } else {
         previewContent = `<span>${type.startsWith('image') ? '🖼️' : '🎵'}</span>`;
@@ -179,6 +180,17 @@
     if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
     const fileToSend = pendingFile;
     pendingFile = null;
+    if (fileToSend && fileToSend._objectUrl) {
+        URL.revokeObjectURL(fileToSend._objectUrl);
+    }
+    const previewDiv = document.getElementById('filePreview');
+    if (previewDiv) {
+        const img = previewDiv.querySelector('img');
+        if (img && img.src.startsWith('blob:')) {
+            URL.revokeObjectURL(img.src);
+        }
+        previewDiv.remove();
+    }
     document.getElementById('filePreview')?.remove();
 
     const tempId = 'temp-' + Date.now();
@@ -568,7 +580,12 @@
                 });
                 if (res.ok) {
                     const msgDiv = document.getElementById('msg-' + msgId);
-                    if (msgDiv) msgDiv.remove();
+                    if (msgDiv) {
+                         msgDiv.querySelectorAll('[data-object-url]').forEach(el => {
+                            URL.revokeObjectURL(el.dataset.objectUrl);
+                         });
+                         msgDiv.remove();
+                    }
                     window.loadConversations();
                 } else {
                     window.NotificationManager?.showToast(t('delete_failed'), 'error');

@@ -196,6 +196,8 @@
             const blob = new Blob([decrypted], { type: fileType });
             const objectUrl = URL.createObjectURL(blob);
 
+            div.dataset.objectUrl = objectUrl;
+
             if (fileType.startsWith('image/')) {
                 div.innerHTML = `<img src="${objectUrl}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.openImageModal('${objectUrl.replace(/'/g, "\\'")}')">`;
             } else if (fileType.startsWith('audio/')) {
@@ -349,6 +351,13 @@
         State.pendingImageData = null;
         if (window.stopStatusPolling) window.stopStatusPolling();
         if (window.startStatusPolling) window.startStatusPolling();
+        // Очищаем Object URL предыдущего чата
+
+        if (container) {
+            container.querySelectorAll('[data-object-url]').forEach(el => {
+               URL.revokeObjectURL(el.dataset.objectUrl);
+            });
+        }
         await loadMessagesForConversation(address, false);
     }
 
@@ -365,6 +374,9 @@
         let lastKnownId = 0;
 
         if (!isNewMessage && cached.length > 0) {
+            container.querySelectorAll('[data-object-url]').forEach(el => {
+            URL.revokeObjectURL(el.dataset.objectUrl);
+            });
             container.innerHTML = '';
             const decryptedCache = [];
             for (const msg of cached) {
