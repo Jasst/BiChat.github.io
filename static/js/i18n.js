@@ -37,15 +37,23 @@
         });
 
     function localizePage() {
+        // Элементы с data-i18n — текстовое содержимое
         document.querySelectorAll('[data-i18n]').forEach(el => {
+            // Не перезаписываем счётчик автоочистки — им управляет MnemonicManager
+            if (el.id === 'clearCountdown') return;
             const key = el.getAttribute('data-i18n');
-            if (el.placeholder !== undefined) {
+            const isInputLike = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+            if (isInputLike) {
+                // Для полей ввода data-i18n задаёт placeholder
                 el.placeholder = i18next.t(key);
-            } else if (el.tagName === 'INPUT' && el.type !== 'text') {
-                // skip
             } else {
                 el.innerHTML = i18next.t(key);
             }
+        });
+        // Элементы с data-i18n-placeholder — только placeholder
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            const key = el.getAttribute('data-i18n-placeholder');
+            el.placeholder = i18next.t(key);
         });
         document.title = i18next.t('app_name');
         if (window.refreshUIText) window.refreshUIText();
