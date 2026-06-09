@@ -71,6 +71,33 @@ if os.path.isdir(STATIC_FOLDER):
 if os.path.isdir(UPLOAD_FOLDER):
     app.mount('/uploads', StaticFiles(directory=UPLOAD_FOLDER), name='uploads')
 
+# КРИТИЧНО: sw.js и manifest.json должны отдаваться из КОРНЯ сайта (/sw.js, /manifest.json)
+# Если отдавать из /static/sw.js — scope SW будет /static/, push не будет работать
+# для /chat, /profile и других страниц вне /static/
+from fastapi.responses import FileResponse
+
+@app.get('/sw.js', include_in_schema=False)
+async def serve_sw():
+    sw_path = os.path.join(STATIC_FOLDER, 'sw.js')
+    return FileResponse(
+        sw_path,
+        media_type='application/javascript',
+        headers={
+            # SW не должен кешироваться браузером — иначе старая версия зависает
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Service-Worker-Allowed': '/',  # разрешаем scope = /
+        }
+    )
+
+@app.get('/manifest.json', include_in_schema=False)
+async def serve_manifest():
+    manifest_path = os.path.join(STATIC_FOLDER, 'manifest.json')
+    return FileResponse(
+        manifest_path,
+        media_type='application/manifest+json',
+        headers={'Cache-Control': 'public, max-age=86400'}
+    )
+
 
 from routes.auth import router as auth_router
 from routes.messages import router as messages_router

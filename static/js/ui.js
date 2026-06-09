@@ -543,6 +543,15 @@
                 btn.title = t('add_to_contacts');
             }
         }
+        const messageInput = document.getElementById('messageContent');
+        if (messageInput && !window._pushRequested) {
+    messageInput.addEventListener('focus', async () => {
+        if (Notification.permission === 'default' && window.NotificationManager?.requestNotificationPermission) {
+            window._pushRequested = true;
+            await window.NotificationManager.requestNotificationPermission();
+        }
+    }, { once: true });
+}
     }
 
     function openImageModal(imageUrl) {
@@ -614,6 +623,18 @@
             }
         }
     };
+
+    window.moveConversationToTop = function(chatId) {
+    const container = document.querySelector('.conversations-list');
+    if (!container) return;
+    const item = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+    if (item && item.parentNode === container) {
+        container.insertBefore(item, container.firstChild);
+        // Дополнительно: обновить активный класс, если нужно
+        item.classList.add('new-message-highlight');
+        setTimeout(() => item.classList.remove('new-message-highlight'), 500);
+    }
+};
 
     window.loadConversations = loadConversations;
     window.selectConversation = selectConversation;

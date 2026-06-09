@@ -349,5 +349,6 @@
   "mnemonic_warning_info": "Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.",
   "today": "Today",
   "yesterday": "Yesterday",
-  "staking_fee_ratio": "Staking Fee Ratio"
+  "staking_fee_ratio": "Staking Fee Ratio",
+  "enable_notifications" : "Enable Notifications"
 }

@@ -159,6 +159,7 @@ async def _create_tables(conn: asyncpg.Connection):
               id            SERIAL PRIMARY KEY,
               user_address  TEXT NOT NULL,
               subscription  TEXT NOT NULL,
+              endpoint_hash TEXT,
               created_at    DOUBLE PRECISION DEFAULT (extract(epoch from now())),
              UNIQUE(user_address, subscription)
         );
@@ -222,6 +223,47 @@ async def _apply_migrations(conn: asyncpg.Connection):
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_messages(user_address)")
         await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (7, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 7
+
+    if current_version < 8:
+        # ИСПРАВЛЕНИЕ: добавляем endpoint_hash — нужен для UPSERT в routes/push.py
+        # и для корректного удаления мёртвых подписок (iOS меняет ключи, endpoint тот же)
+        await conn.execute(
+            "ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS endpoint_hash TEXT"
+        )
+        # Заполняем endpoint_hash для существующих строк
+        rows = await conn.fetch("SELECT id, subscription FROM push_subscriptions WHERE endpoint_hash IS NULL")
+        import hashlib, json as _json
+        for row in rows:
+            try:
+                sub = _json.loads(row['subscription'])
+                ep_hash = hashlib.sha256(sub.get('endpoint', '').encode()).hexdigest()
+                await conn.execute(
+                    "UPDATE push_subscriptions SET endpoint_hash = $1 WHERE id = $2",
+                    ep_hash, row['id']
+                )
+            except Exception:
+                pass
+        # Дропаем старый UNIQUE(user_address, subscription) — он не работает с большими JSON на PostgreSQL
+        # и мешает UPSERT по endpoint_hash
+        await conn.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'push_subscriptions_user_address_subscription_key'
+                ) THEN
+                    ALTER TABLE push_subscriptions DROP CONSTRAINT push_subscriptions_user_address_subscription_key;
+                END IF;
+            END $$;
+        """)
+        # Добавляем правильный уникальный индекс по (user_address, endpoint_hash)
+        await conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_push_sub_user_endpoint
+            ON push_subscriptions (user_address, endpoint_hash)
+            WHERE endpoint_hash IS NOT NULL
+        """)
+        await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (8, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
+        current_version = 8
 
 
 

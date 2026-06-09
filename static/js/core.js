@@ -176,27 +176,32 @@
             const confirmBtn = modal.querySelector('#confirmUnlock');
             const cancelBtn = modal.querySelector('#cancelUnlock');
             const attemptUnlock = async () => {
-                const pwd = passwordInput.value;
-                if (!pwd) {
-                    errorDiv.textContent = t('please_enter_password');
-                    errorDiv.style.display = 'block';
-                    return;
-                }
-                confirmBtn.disabled = true;
-                confirmBtn.textContent = '...';
-                const mnemonic = await window.StorageEncryption.decryptMnemonic(encrypted, pwd);
-                if (mnemonic) {
-                    sessionStorage.setItem('mnemonic', mnemonic);
-                    modal.remove();
-                    State._restoringMnemonic = false;
-                    resolve(true);
-                } else {
-                    errorDiv.textContent = t('wrong_password');
-                    errorDiv.style.display = 'block';
-                    confirmBtn.disabled = false;
-                    confirmBtn.textContent = t('unlock');
-                }
-            };
+    const pwd = passwordInput.value;
+    if (!pwd) {
+        errorDiv.textContent = t('please_enter_password');
+        errorDiv.style.display = 'block';
+        return;
+    }
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '...';
+    const mnemonic = await window.StorageEncryption.decryptMnemonic(encrypted, pwd);
+    if (mnemonic) {
+        sessionStorage.setItem('mnemonic', mnemonic);
+        modal.remove();
+        State._restoringMnemonic = false;
+        if (window.initPushNotifications) {
+            window.initPushNotifications().catch(e => console.warn('Push init after unlock:', e));
+        }
+        resolve(true);
+    } else {
+        errorDiv.textContent = t('wrong_password');
+        errorDiv.style.display = 'block';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = t('unlock');
+    }
+}; // ← ЗАКРЫВАЕМ ФУНКЦИЮ
+
+
             const clearAndLogout = () => {
                 localStorage.removeItem('encrypted_mnemonic');
                 sessionStorage.removeItem('mnemonic');
@@ -295,7 +300,7 @@
                 onConnect: () => {
                     console.log('✅ WebSocket connected');
                     if (window.loadConversations) window.loadConversations();
-                    if (window.initPushNotifications) window.initPushNotifications();
+
                 },
                 onDisconnect: () => console.warn('⚠️ WebSocket disconnected'),
                 onError: (err) => console.error('WebSocket error:', err)
@@ -490,20 +495,39 @@
             ));
 
         if (!isCurrent) {
-            const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
-            if (!existingItem) { if (window.loadConversations) window.loadConversations(); }
-            else if (window.updateConversationPreview) window.updateConversationPreview(chatId, decrypted.preview || t('new_message_preview'));
+    const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+    if (!existingItem) {
+        if (window.loadConversations) window.loadConversations();
+    } else {
+        if (window.updateConversationPreview) {
+            window.updateConversationPreview(chatId, decrypted.preview || t('new_message_preview'));
         }
+        // ДОБАВИТЬ: поднять чат в начало списка
+        if (window.moveConversationToTop) {
+            window.moveConversationToTop(chatId);
+        } else {
+            // fallback – перезагрузить весь список
+            if (window.loadConversations) window.loadConversations();
+        }
+    }
+}
 
         if (isCurrent && window.onNewMessageReceived) window.onNewMessageReceived(decrypted);
 
         if (window.NotificationManager) {
+            // ИСПРАВЛЕНИЕ: передаём расшифрованный content как preview
+            // decrypted.preview не существует — его не отдаёт сервер через WS
+            // isGroup берём из decrypted.isGroup (групп) или из наличия group_id
+            const previewText = (decrypted.content && !decrypted.content.startsWith('{'))
+                ? decrypted.content.slice(0, 80)
+                : (decrypted.fileUrl ? '📎 File' : '💬 New message');
             window.NotificationManager.handleIncomingMessage?.({
                 sender: decrypted.sender,
                 sender_name: decrypted.sender_name,
                 chatId: chatId,
-                isGroup: decrypted.isGroup,
-                preview: decrypted.preview || decrypted.content?.slice(0, 50),
+                isGroup: !!(decrypted.isGroup || decrypted.group_id),
+                content: previewText,
+                preview: previewText,
                 timestamp: decrypted.timestamp * 1000,
                 messageId: decrypted.id
             });
@@ -592,44 +616,173 @@
         }
     }
 
-    // ========== Push Notifications ==========
-    window.initPushNotifications = initPushNotifications;
-    window.urlBase64ToUint8Array = urlBase64ToUint8Array;
 
-    async function initPushNotifications() {
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-        let permission = await Notification.permission;
-        if (permission !== 'granted') {
-            permission = await Notification.requestPermission();
-            if (permission !== 'granted') return;
+// ========== Push Notifications ==========
+window.initPushNotifications = initPushNotifications;
+window.urlBase64ToUint8Array = urlBase64ToUint8Array;
+
+// ─────────────────────────────────────────────────────────────
+// ИСПРАВЛЕНИЕ: registerServiceWorker — регистрируем SW явно.
+// Без этого navigator.serviceWorker.ready никогда не резолвится,
+// push-подписка невозможна, уведомления в фоне не работают.
+// ─────────────────────────────────────────────────────────────
+async function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) {
+        console.warn('Push: ServiceWorker not supported');
+        return null;
+    }
+    try {
+        // Проверяем, зарегистрирован ли уже SW
+        const existing = await navigator.serviceWorker.getRegistration('/');
+        if (existing) {
+            console.log('Push: SW already registered →', existing.scope);
+            return existing;
         }
+        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        console.log('Push: SW registered ✓ scope:', reg.scope);
+        return reg;
+    } catch (e) {
+        console.error('Push: SW registration failed:', e);
+        return null;
+    }
+}
+
+// core.js — внутри IIFE или глобально
+
+async function initPushNotifications() {
+    if (!('serviceWorker' in navigator)) return;
+    if (!('PushManager' in window)) return;
+
+    // НЕ запрашиваем разрешение автоматически, если оно default
+    const permission = Notification.permission;
+    if (permission === 'denied') {
+        console.log('Push: denied by user');
+        return;
+    }
+    if (permission !== 'granted') {
+        // Разрешение ещё не дано – нельзя вызывать subscribe
+        console.log('Push: permission not granted, will request after user gesture');
+        return;
+    }
+
+    try {
+        // ИСПРАВЛЕНИЕ: сначала регистрируем SW если ещё не зарегистрирован
+        await registerServiceWorker();
+
         const registration = await navigator.serviceWorker.ready;
-        const publicKey = 'BPa5fghsHcpAbmlQTdXg6WzoMC_iPaDMzFY4mc2BUipmno6sLxN6KoSfaZfgUFkh9c0B34XhBvC93WXn92xKlkw';
+
+        // Получаем VAPID ключ динамически с сервера
+        let publicKey;
+        try {
+            const keyRes = await fetch('/push/vapid-public-key');
+            if (keyRes.ok) {
+                const keyData = await keyRes.json();
+                publicKey = keyData.publicKey;
+            }
+        } catch(e) { /* fallback к хардкоду */ }
+
+        // Fallback если /push/vapid-public-key недоступен
+        if (!publicKey) {
+            publicKey = 'BPa5fghsHcpAbmlQTdXg6WzoMC_iPaDMzFY4mc2BUipmno6sLxN6KoSfaZfgUFkh9c0B34XhBvC93WXn92xKlkw';
+        }
+
         const applicationServerKey = urlBase64ToUint8Array(publicKey);
+
         let subscription = await registration.pushManager.getSubscription();
-        if (!subscription) {
+
+        // Если подписка уже существует – обновляем её на сервере
+        // (полезно для iOS, где ключи могут измениться, а endpoint остаться тем же)
+        if (subscription) {
+            try {
+                const res = await fetch('/push/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+                if (res.ok) {
+                    console.log('Push: existing subscription refreshed on server ✓');
+                } else {
+                    console.error('Push: server rejected existing subscription', res.status);
+                    // Если сервер отверг — удаляем и создаём новую
+                    await subscription.unsubscribe();
+                    subscription = null;
+                }
+            } catch (err) {
+                console.error('Push: failed to refresh subscription', err);
+            }
+            if (subscription) return;
+        }
+
+        // Нет подписки – создаём новую
+        try {
             subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: applicationServerKey
             });
+            console.log('Push: new subscription created');
+        } catch(e) {
+            console.error('Push: subscribe failed', e.name, e.message);
+            return;
         }
-        await fetch('/push/subscribe', {
+
+        // Отправляем новую подписку на сервер
+        const res = await fetch('/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(subscription)
         });
-    }
 
-    function urlBase64ToUint8Array(base64String) {
-        const padding = '='.repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-        const rawData = atob(base64);
-        const outputArray = new Uint8Array(rawData.length);
-        for (let i = 0; i < rawData.length; ++i) {
-            outputArray[i] = rawData.charCodeAt(i);
+        if (res.ok) {
+            console.log('Push: subscription synced with server ✓');
+        } else {
+            console.error('Push: server rejected subscription', res.status);
         }
-        return outputArray;
+
+    } catch(e) {
+        console.error('Push init failed', e);
     }
+}
+
+// ИСПРАВЛЕНИЕ: регистрируем SW при загрузке страницы сразу,
+// не ждём разрешения на уведомления — SW нужен независимо от push
+if ('serviceWorker' in navigator) {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => registerServiceWorker());
+    } else {
+        registerServiceWorker();
+    }
+}
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// ИСПРАВЛЕНИЕ 5: слушаем navigate-сообщения от SW (notificationclick на iOS)
+// SW не может напрямую navigate вкладку через Safari — посылает postMessage
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data?.type === 'navigate' && event.data?.url) {
+            const target = event.data.url;
+            if (window.location.pathname !== new URL(target, location.origin).pathname) {
+                window.location.href = target;
+            } else {
+                window.focus();
+            }
+        }
+        // ✅ Отдельная ветка для pushsubscriptionchange
+        if (event.data?.type === 'pushsubscriptionchange') {
+            console.log('Re-subscribing push due to subscription change');
+            if (window.initPushNotifications) window.initPushNotifications();
+        }
+    });
+}
 
     // Экспорт глобальных функций
     window.getPubKey = getPubKey;

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="manifest" href="/static/manifest.json">
+  <link rel="manifest" href="/manifest.json">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="Decentralized encrypted messenger">
@@ -140,7 +140,7 @@
 
         if (window.State && window.State.userAddress && typeof window.initWebSocket === 'function') {
           if (!window.wsClient || !window.wsClient.isConnected) {
-            window.initWebSocket();
+            await window.initWebSocket();
           }
         }
 
@@ -152,13 +152,31 @@
           window.startStatusPolling();
           window._statusPollingStarted = true;
         }
+        if (window.startUserStatusPolling && !window._userStatusPollingStarted) {
+          window.startUserStatusPolling();
+          window._userStatusPollingStarted = true;
+        }
+
+        // Push: инициализируем если разрешение уже дано
+        // (если нет — пользователь нажимает "Enable" в профиле)
+        if (Notification.permission === 'granted' && window.initPushNotifications) {
+          window.initPushNotifications().catch(e => console.warn('[Push] init error:', e));
+        }
       });
     })();
   </script>
 
   <script>
+  // ИСПРАВЛЕНИЕ: SW должен быть зарегистрирован из КОРНЯ (/sw.js), а не из /static/sw.js
+  // Из /static/sw.js scope = /static/ — push для /chat и других страниц не работает
+  // sw.js нужно скопировать/отдавать по пути /sw.js (корень сайта)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/static/sw.js');
+    navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
+      .then(reg => {
+        console.log('[SW] Registered, scope:', reg.scope);
+        reg.update(); // проверяем обновление при каждой загрузке
+      })
+      .catch(err => console.error('[SW] Registration failed:', err));
   }
 </script>
 

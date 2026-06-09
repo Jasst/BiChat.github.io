@@ -56,6 +56,10 @@
 
 <!-- Security Info Card -->
 <div class="profile-card">
+    <div class="profile-row">
+        <label data-i18n="notifications">Push Notifications</label>
+        <button id="enableNotificationsBtn" class="btn-oval" data-i18n="enable_notifications">🔔 Enable</button>
+    </div>
     <h3 data-i18n="security">Security</h3>
     <div class="profile-row">
         <label data-i18n="wallet_status">Wallet Status</label>
@@ -72,10 +76,9 @@
     <div class="profile-row">
         <label data-i18n="session">Session</label>
         <span id="sessionInfo" class="font-mono">
-  <span data-i18n="active_session">Active</span>
-  <span id="sessionTime"></span>
-</span>
-
+            <span data-i18n="active_session">Active</span>
+            <span id="sessionTime"></span>
+        </span>
     </div>
 </div>
 
@@ -140,7 +143,6 @@
     </div>
 </div>
 
-{% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 (function() {
@@ -277,6 +279,22 @@
     document.getElementById('logoutConfirmBtn')?.addEventListener('click', validateLogoutInput);
     document.getElementById('confirmInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') handleMnemonicConfirm(); });
     document.getElementById('logoutConfirmInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') validateLogoutInput(); });
+
+    const enableNotificationsBtn = document.getElementById('enableNotificationsBtn');
+    if (enableNotificationsBtn) {
+        enableNotificationsBtn.addEventListener('click', async () => {
+            if (window.NotificationManager?.requestNotificationPermission) {
+                const granted = await window.NotificationManager.requestNotificationPermission();
+                if (granted) {
+                    window.NotificationManager?.showToast('Notifications enabled!', 'success');
+                } else {
+                    window.NotificationManager?.showToast('Permission denied or error', 'error');
+                }
+            } else {
+                console.warn('NotificationManager not ready');
+            }
+        });
+    }
   });
 
   window.copyAddressToClipboard = copyAddressToClipboard;
@@ -287,7 +305,4 @@
   window.shareQR = shareQR;
 })();
 </script>
-
-
-{% endblock %}
 {% endblock %}
