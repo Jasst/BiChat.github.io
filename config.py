@@ -84,7 +84,7 @@ MAX_AUDIO_SIZE = int(os.getenv('MAX_AUDIO_SIZE', 2 * 1024 * 1024)) # 2 MB
 # VAPID для push-уведомлений
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY')
-VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:your@email.com')
+VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:jasstme@ya.ru')
 
 # в config.py
 DIFFICULTY_ADJUSTMENT_INTERVAL = 2016   # блоков между пересчётами
