@@ -36,7 +36,12 @@ async def send_push(user_address: str, title: str, body: str, url: str = '/chat'
     if not rows:
         return
 
-    payload = json.dumps({'title': title, 'body': body, 'url': url})
+    # ❌ НЕ используем переданный body (в нём может быть текст сообщения)
+    # ✅ Вместо этого отправляем безопасную заглушку
+    safe_title = title if title else "New message"
+    safe_body = "🔒 You have a new encrypted message. Tap to open."
+
+    payload = json.dumps({'title': safe_title, 'body': safe_body, 'url': url})
     vapid_claims = {"sub": VAPID_SUBJECT}
 
     for row in rows:
@@ -45,7 +50,6 @@ async def send_push(user_address: str, title: str, body: str, url: str = '/chat'
             sub = json.loads(row['subscription'])
             endpoint_preview = sub.get('endpoint', '')[:60]
 
-            # ИСПРАВЛЕНИЕ 1: запускаем синхронный webpush в отдельном потоке
             await asyncio.to_thread(
                 _send_push_sync,
                 sub, payload,
@@ -57,9 +61,6 @@ async def send_push(user_address: str, title: str, body: str, url: str = '/chat'
             status_code = getattr(e.response, 'status_code', None) if e.response else None
             logger.error(f"Push failed [{status_code}] for {user_address[:16]}: {e}")
 
-            # ИСПРАВЛЕНИЕ 2: 410 Gone = subscription протухла (типично для iOS после перезапуска Safari)
-            # 404 = endpoint не существует
-            # Удаляем из БД чтобы не спамить мёртвые подписки
             if status_code in (404, 410):
                 logger.info(f"Removing dead subscription id={sub_id} for {user_address[:16]}")
                 async with get_db_cursor() as conn:
