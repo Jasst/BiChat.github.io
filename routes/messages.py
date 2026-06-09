@@ -35,13 +35,17 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
     async with get_db_cursor() as conn:
         await conn.execute('BEGIN')
         if MESSAGE_FEE > 0:
-            row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', sender)
+            # ✅ ИСПРАВЛЕНИЕ: добавили FOR UPDATE для блокировки строки кошелька
+            row = await conn.fetchrow(
+                'SELECT balance FROM wallets WHERE address = $1 FOR UPDATE',
+                sender
+            )
             balance = row[0] if row else 0
             if balance < MESSAGE_FEE:
                 await conn.execute('ROLLBACK')
                 raise HTTPException(402, f'Insufficient balance for fee ({MESSAGE_FEE/COIN:.6f} {COIN_NAME})')
             await conn.execute('UPDATE wallets SET balance = balance - $1 WHERE address = $2',
-                                 MESSAGE_FEE, sender)
+                               MESSAGE_FEE, sender)
             await conn.execute(
                 'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
                 'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
@@ -54,6 +58,7 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
             )
             if ENABLE_STAKING and staking_manager:
                 await staking_manager.add_to_fee_pool(MESSAGE_FEE, cursor=conn)
+
         tx_id = None
         group = None
         message_obj = None
@@ -139,7 +144,6 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
         await invalidate_conversations_cache(body.recipient)
 
     return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
-
 
 @router.get('/get_conversation')
 async def get_conversation(
