@@ -235,15 +235,6 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         raise HTTPException(status_code, error_msg)
     logger.info(f"Block {block_index} mined by {address}, reward: {reward_amount}")
 
-    if ENABLE_STAKING and services.wallet.staking_manager:
-        from database import get_db_cursor
-        async with get_db_cursor() as conn:
-            staking_fee_ratio = await blockchain.get_staking_fee_ratio(conn)
-            staking_fee = int(BLOCK_REWARD * staking_fee_ratio)
-            if staking_fee > 0:
-                await services.wallet.staking_manager.add_to_fee_pool(staking_fee)
-                logger.info(
-                    f"Added {staking_fee} satoshi ({staking_fee / COIN:.6f} {COIN_NAME}) to staking pool (ratio {staking_fee_ratio * 100:.1f}%)")
 
     await manager.broadcast({
         'type': 'new_block',

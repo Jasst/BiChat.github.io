@@ -304,25 +304,35 @@ class Blockchain:
 
     async def _new_block_raw(self, conn: asyncpg.Connection, proof: int,
                              previous_hash: Optional[str] = None,
-                             miner_address: Optional[str] = None) -> int:
+                             miner_address: Optional[str] = None,
+                             miner_reward: Optional[int] = None) -> int:
+        """
+        Создаёт новый блок.
+        miner_reward – награда майнеру (если None, то используется BLOCK_REWARD).
+        """
         rows = await conn.fetch("SELECT * FROM coin_transactions WHERE block_ref IS NULL")
         coin_txs = [dict(r) for r in rows]
+
         if ENABLE_MINING and miner_address:
+            reward_amount = miner_reward if miner_reward is not None else BLOCK_REWARD
             coin_txs.append({
                 'tx_type': 'block_reward',
                 'sender': None,
                 'recipient': miner_address,
-                'amount': BLOCK_REWARD,
+                'amount': reward_amount,
                 'timestamp': time.time(),
                 'note': 'Miner reward'
             })
+
         last = await self._last_block_raw(conn)
         block_index = last.get('block_index', 0) + 1
         previous_hash = previous_hash or self._hash_block(last)
+
         await conn.execute("""
             INSERT INTO blockchain (block_index, timestamp, transactions, coin_transactions, proof, previous_hash)
             VALUES ($1, $2, $3, $4, $5, $6)
         """, block_index, time.time(), '[]', json.dumps(coin_txs), proof, previous_hash)
+
         for tx in coin_txs:
             if 'id' in tx:
                 await conn.execute("UPDATE coin_transactions SET block_ref = $1 WHERE id = $2", block_index, tx['id'])
@@ -330,14 +340,18 @@ class Blockchain:
                 await conn.execute("""
                     INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, block_ref, note)
                     VALUES ($1, $2, $3, $4, $5, $6, $7)
-                """, tx['tx_type'], tx.get('sender'), tx['recipient'], tx['amount'], tx['timestamp'], block_index, tx.get('note'))
+                """, tx['tx_type'], tx.get('sender'), tx['recipient'], tx['amount'], tx['timestamp'], block_index,
+                                   tx.get('note'))
+
                 if tx['tx_type'] == 'block_reward':
                     await conn.execute("""
                         INSERT INTO wallets (address, balance) VALUES ($1, $2)
                         ON CONFLICT (address) DO UPDATE SET balance = wallets.balance + $2
                     """, tx['recipient'], tx['amount'])
-        # FIX: пересчёт сложности после добавления блока
+
         await self.adjust_difficulty(conn)
+
+        # Автоматическое увеличение доли стейкинга, если нужно (оставляем как было)
         if ENABLE_STAKING:
             from config import STAKING_FEE_INCREASE_INTERVAL, STAKING_FEE_INCREASE_STEP, MAX_STAKING_FEE
             if block_index % STAKING_FEE_INCREASE_INTERVAL == 0:
@@ -347,6 +361,7 @@ class Blockchain:
                     await self.set_staking_fee_ratio(conn, new_ratio)
                     logger.info(
                         f"Staking fee ratio increased from {current_ratio * 100:.1f}% to {new_ratio * 100:.1f}% at block {block_index}")
+
         return block_index
 
     def _hash_block(self, block: dict) -> str:
@@ -419,7 +434,6 @@ class Blockchain:
         except Exception as e:
             return {'error': str(e)}
 
-    # FIX: полный исправленный метод try_mine_block
     async def try_mine_block(self, last_proof: int, last_index: int, proof: int, challenge: str, miner_address: str):
         async with get_db_cursor() as conn:
             try:
@@ -429,17 +443,32 @@ class Blockchain:
                         return False, "No blockchain", 0, 0
                     if current.get('proof') != last_proof or current.get('block_index') != last_index:
                         return False, "Blockchain moved, try again", 0, 0
-                    # FIX: вызов с conn и await
                     if not await self.valid_proof_with_challenge(conn, last_proof, proof, challenge):
                         return False, "Invalid proof", 0, 0
-                    current_again = await self._last_block_raw(conn)
-                    if current_again.get('proof') != last_proof or current_again.get('block_index') != last_index:
-                        return False, "Blockchain changed during validation", 0, 0
-                    block_index = await self._new_block_raw(conn, proof, miner_address=miner_address)
-                    return True, "Success", BLOCK_REWARD, block_index
+
+                    # --- НАЧАЛО ИСПРАВЛЕНИЯ ---
+                    staking_fee = 0
+                    if ENABLE_STAKING:
+                        staking_fee_ratio = await self.get_staking_fee_ratio(conn)
+                        staking_fee = int(BLOCK_REWARD * staking_fee_ratio)
+                    miner_reward = BLOCK_REWARD - staking_fee
+                    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
+                    block_index = await self._new_block_raw(
+                        conn, proof, miner_address=miner_address, miner_reward=miner_reward
+                    )
+
+                    # --- ДОБАВЛЯЕМ КОМИССИЮ В СТЕЙКИНГ-ПУЛ ---
+                    if staking_fee > 0 and ENABLE_STAKING:
+                        from services.wallet import staking_manager
+                        if staking_manager:
+                            await staking_manager.add_to_fee_pool(staking_fee, cursor=conn)
+
+                    return True, "Success", miner_reward, block_index
             except Exception as e:
                 logger.error(f"try_mine_block error: {e}")
                 return False, str(e), 0, 0
+
 
     # FIX: исправленная подпись и использование conn
     async def valid_proof_with_challenge(self, conn: asyncpg.Connection, last_proof: int, proof: int, challenge: str) -> bool:

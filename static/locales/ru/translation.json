@@ -350,5 +350,8 @@
   "today": "Сегодня",
   "yesterday": "Вчера",
   "staking_fee_ratio": "Доля в пул стейкинга",
-  "enable_notifications" : "Разрешить увидомления"
+  "enable_notifications" : "Разрешить увидомления",
+  "enter_password": "Введите пароль",
+  "repeat_password": "Повторите пароль",
+  "notifications": "Уведомления"
 }

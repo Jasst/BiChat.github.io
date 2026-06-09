@@ -350,5 +350,8 @@
   "today": "Today",
   "yesterday": "Yesterday",
   "staking_fee_ratio": "Staking Fee Ratio",
-  "enable_notifications" : "Enable Notifications"
+  "enable_notifications" : "Enable Notifications",
+  "enter_password": "Enter password",
+  "repeat_password": "Repeat password",
+  "notifications": "Push Notifications"
 }
