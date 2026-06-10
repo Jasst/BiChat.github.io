@@ -353,5 +353,21 @@
   "enable_notifications" : "Enable Notifications",
   "enter_password": "Enter password",
   "repeat_password": "Repeat password",
-  "notifications": "Push Notifications"
+  "notifications": "Push Notifications",
+  "call_calling": "Calling...",
+  "call_connected": "Connected",
+  "call_connecting": "Connecting...",
+  "call_accept": "Accept",
+  "call_reject": "Reject",
+  "call_end": "End call",
+  "call_mute_microphone": "Mute microphone",
+  "call_unmute_microphone": "Unmute microphone",
+  "call_speaker": "Speaker",
+  "call_earpiece": "Earpiece",
+  "call_minimize": "Minimize",
+  "call_expand": "Expand",
+  "call_from": "from",
+  "incoming_call": "Incoming call",
+  "call_ended": "Call ended",
+  "call_rejected": "Call rejected"
 }

@@ -32,28 +32,29 @@
                 i18next.changeLanguage(storedLang, () => {
                     localizePage();
                     document.body.classList.add('i18n-ready');
+                    document.dispatchEvent(new CustomEvent('i18next:initialized'));
                 });
             });
         });
 
     function localizePage() {
-        // Элементы с data-i18n — текстовое содержимое
         document.querySelectorAll('[data-i18n]').forEach(el => {
-            // Не перезаписываем счётчик автоочистки — им управляет MnemonicManager
             if (el.id === 'clearCountdown') return;
             const key = el.getAttribute('data-i18n');
             const isInputLike = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
             if (isInputLike) {
-                // Для полей ввода data-i18n задаёт placeholder
                 el.placeholder = i18next.t(key);
             } else {
                 el.innerHTML = i18next.t(key);
             }
         });
-        // Элементы с data-i18n-placeholder — только placeholder
         document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
             const key = el.getAttribute('data-i18n-placeholder');
             el.placeholder = i18next.t(key);
+        });
+        document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            const key = el.getAttribute('data-i18n-title');
+            el.title = i18next.t(key);
         });
         document.title = i18next.t('app_name');
         if (window.refreshUIText) window.refreshUIText();
@@ -64,25 +65,36 @@
         }
 
         localStorage.setItem('app_lang', i18next.language);
+
+        // Обновляем тексты в CallManager (синхронно после обновления страницы)
+        if (window.CallManager && typeof window.CallManager.updateLocalizedTexts === 'function') {
+            window.CallManager.updateLocalizedTexts();
+        }
     }
 
     window.changeLanguage = (lng) => {
-    if (lng !== 'en' && lng !== 'ru') return;
-    if (i18next.language === lng) return; // уже установлен
-    localStorage.setItem('app_lang', lng);
-    i18next.loadLanguages(lng, () => {
-        i18next.changeLanguage(lng, () => {
-            localizePage();
-            // обновляем динамические компоненты
-            if (window.loadConversations) window.loadConversations();
-            if (window.loadContacts) window.loadContacts();
-            if (window.loadGroups) window.loadGroups();
-            if (window.refreshBalance) window.refreshBalance();
-            if (window.refreshNetworkStats) window.refreshNetworkStats();
-            if (window.refreshFeeDisplay) window.refreshFeeDisplay();
+        if (lng !== 'en' && lng !== 'ru') return;
+        if (i18next.language === lng) return;
+        localStorage.setItem('app_lang', lng);
+        i18next.loadLanguages(lng, () => {
+            i18next.changeLanguage(lng, () => {
+                localizePage();
+                if (window.loadConversations) window.loadConversations();
+                if (window.loadContacts) window.loadContacts();
+                if (window.loadGroups) window.loadGroups();
+                if (window.refreshBalance) window.refreshBalance();
+                if (window.refreshNetworkStats) window.refreshNetworkStats();
+                if (window.refreshFeeDisplay) window.refreshFeeDisplay();
+
+                // 🔧 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: небольшая задержка для обновления модалки звонка
+                setTimeout(() => {
+                    if (window.CallManager && typeof window.CallManager.updateLocalizedTexts === 'function') {
+                        window.CallManager.updateLocalizedTexts();
+                    }
+                }, 50);
+            });
         });
-    });
-};
+    };
 
     window.localizePage = localizePage;
 })();

@@ -353,5 +353,21 @@
   "enable_notifications" : "Разрешить увидомления",
   "enter_password": "Введите пароль",
   "repeat_password": "Повторите пароль",
-  "notifications": "Уведомления"
+  "notifications": "Уведомления",
+  "call_calling": "Вызов...",
+  "call_connected": "В разговоре",
+  "call_connecting": "Соединение...",
+  "call_accept": "Принять",
+  "call_reject": "Отклонить",
+  "call_end": "Завершить",
+  "call_mute_microphone": "Выключить микрофон",
+  "call_unmute_microphone": "Включить микрофон",
+  "call_speaker": "Громкая связь",
+  "call_earpiece": "Динамик",
+  "call_minimize": "Свернуть",
+  "call_expand": "Развернуть",
+  "call_from": "от",
+  "incoming_call": "Входящий вызов",
+  "call_ended": "Вызов завершён",
+  "call_rejected": "Вызов отклонён"
 }

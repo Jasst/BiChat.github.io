@@ -129,35 +129,31 @@
 </div>
 
 <!-- Modal for active call -->
-<div id="callModal" class="modal-overlay hidden">
-  <div class="modal" style="max-width: 500px;">
-    <div class="modal-header">
-      <h3>📞 Call</h3>
-      <button class="modal-close" onclick="window.CallManager?.endCall()">&times;</button>
+<div id="callModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal call-modal" style="max-width: 340px; text-align: center;">
+    <button class="call-minimize-btn" id="callCollapseBtn" data-i18n-title="call_minimize">—</button>
+    <div class="call-avatar" id="callAvatar">👤</div>
+    <div class="call-name" id="callPartnerName"></div>
+    <div class="call-status" id="callStatusText"></div>
+    <div class="call-actions-row">
+      <button class="call-control-btn" id="callMuteBtn" data-i18n-title="call_mute_microphone">🎤</button>
+      <button class="call-control-btn call-end-btn" id="callEndBtn" data-i18n-title="call_end">📞</button>
+      <button class="call-control-btn" id="callSpeakerBtn" data-i18n-title="call_speaker">🎧</button>
     </div>
-    <div class="modal-body" style="text-align: center;">
-      <video id="remoteVideo" autoplay playsinline style="width: 100%; border-radius: 12px; background: black;"></video>
-      <video id="localVideo" autoplay muted playsinline style="width: 100px; position: absolute; bottom: 10px; right: 10px; border-radius: 8px; background: black;"></video>
-      <div id="callStatus" class="status">Connecting...</div>
-      <div class="call-actions">
-        <button class="btn-oval" onclick="window.CallManager?.endCall()">End call</button>
-      </div>
-    </div>
+    <video id="remoteVideo" autoplay playsinline style="position: absolute; width: 1px; height: 1px; opacity: 0;"></video>
+    <video id="localVideo" autoplay muted playsinline style="position: absolute; width: 1px; height: 1px; opacity: 0;"></video>
   </div>
 </div>
 
 <!-- Modal for incoming call -->
-<div id="incomingCallModal" class="modal-overlay hidden">
-  <div class="modal" style="max-width: 400px;">
-    <div class="modal-header">
-      <h3>Incoming Call</h3>
-    </div>
-    <div class="modal-body">
-      <p>Call from <strong id="incomingCallerName"></strong></p>
-      <div class="call-actions">
-        <button class="btn-primary-oval" id="acceptCallBtn">Accept</button>
-        <button class="btn-oval" id="rejectCallBtn">Reject</button>
-      </div>
+<div id="incomingCallModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal call-modal" style="max-width: 300px; text-align: center;">
+    <div class="call-avatar">📞</div>
+    <div class="call-name" data-i18n="incoming_call">Incoming call</div>
+    <div class="call-status"><span data-i18n="call_from">from</span> <strong id="incomingCallerName"></strong></div>
+    <div class="call-actions-row">
+      <button class="call-control-btn call-reject-btn" id="rejectCallBtn" data-i18n-title="call_reject">✕</button>
+      <button class="call-control-btn call-accept-btn" id="acceptCallBtn" data-i18n-title="call_accept">✓</button>
     </div>
   </div>
 </div>
@@ -167,13 +163,14 @@
 <script src="{{ url_for('static', path='js/WebSocketClient.js') }}"></script>
 <script src="{{ url_for('static', path='js/ui.js') }}"></script>
 <script src="{{ url_for('static', path='js/actions.js') }}"></script>
+<!-- call-manager.js загружается из base.html с defer -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="{{ url_for('static', path='js/AiChat.js') }}" defer></script>
 
 <script>
-// Adaptive logic (unchanged)
+// Adaptive logic (improved)
 (function() {
   const conversationsPanel = document.getElementById('conversationsPanel');
   const chatPanel = document.getElementById('chatPanel');
@@ -223,6 +220,11 @@
         if (address === 'ai_bot' || (address && address !== '')) {
           window.showChatPanel();
         }
+      }
+      const callBtn = document.getElementById('callButton');
+      if (callBtn && !isGroup && address && address !== window.State?.userAddress && address !== 'ai_bot') {
+        const displayName = name || (address ? address.slice(0,10)+'…' : '');
+        callBtn.onclick = () => window.CallManager?.makeCall(address, false, displayName);
       }
     };
   }
@@ -282,6 +284,10 @@
         }
       };
       setTimeout(() => trySelect(), 300);
+    }
+
+    if (window.CallManager && typeof window.CallManager.init === 'function' && !window.CallManager._initialized) {
+      window.CallManager.init().then(() => { window.CallManager._initialized = true; });
     }
   });
 })();

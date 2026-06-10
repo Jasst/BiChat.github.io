@@ -1292,3 +1292,238 @@ audio::-webkit-media-controls-time-remaining-display {
     backdrop-filter: blur(4px);
     background-color: rgba(0,0,0,0.6);
 }
+
+/* Call Modal Styles */
+.call-modal {
+    background: var(--bg-secondary);
+    border-radius: 48px;
+    padding: 24px;
+    animation: fadeIn 0.2s ease;
+}
+.call-avatar {
+    width: 100px;
+    height: 100px;
+    background: var(--accent-soft);
+    border-radius: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    margin: 0 auto 16px;
+    font-weight: 600;
+    color: var(--accent);
+}
+.call-name {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.call-status {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+.call-actions-row {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+.call-control-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 60px;
+    background: var(--bg-tertiary);
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+}
+.call-control-btn:hover {
+    background: var(--bg-hover);
+    transform: scale(1.05);
+}
+.call-end-btn {
+    background: #c62828;
+    color: white;
+    transform: rotate(135deg);
+}
+.call-end-btn:hover {
+    background: #b71c1c;
+}
+.call-accept-btn {
+    background: #2e7d32;
+    color: white;
+}
+.call-reject-btn {
+    background: #c62828;
+    color: white;
+}
+.call-control-btn.active {
+    background: var(--accent);
+    color: var(--text-inverse);
+}
+.call-minimize-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 60px;
+    background: var(--bg-tertiary);
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+.call-minimize-btn:active {
+    background: var(--bg-hover);
+}
+
+/* Mini widget */
+.call-mini-widget {
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    background: var(--bg-secondary);
+    backdrop-filter: blur(20px);
+    border-radius: 60px;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border-color);
+    z-index: 1001;
+    cursor: grab;
+    user-select: none;
+    transition: transform 0.1s;
+    min-width: 260px;
+}
+.call-mini-widget:active {
+    cursor: grabbing;
+}
+.call-mini-avatar {
+    width: 48px;
+    height: 48px;
+    background: var(--accent-soft);
+    border-radius: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+.call-mini-info {
+    flex: 1;
+    min-width: 0;
+}
+.call-mini-name {
+    font-weight: 600;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.call-mini-status {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.call-mini-actions {
+    display: flex;
+    gap: 10px;
+}
+.call-mini-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 60px;
+    background: var(--bg-tertiary);
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s;
+}
+.call-mini-btn:active {
+    transform: scale(0.95);
+}
+.call-mini-end {
+    background: #c62828;
+    color: white;
+    transform: rotate(135deg);
+}
+.call-mini-end:active {
+    transform: rotate(135deg) scale(0.95);
+}
+
+@media (max-width: 768px) {
+    .call-modal {
+        padding: 16px;
+    }
+    .call-avatar {
+        width: 80px;
+        height: 80px;
+        font-size: 36px;
+    }
+    .call-name {
+        font-size: 18px;
+    }
+    .call-control-btn {
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+    }
+    .call-actions-row {
+        gap: 16px;
+    }
+    .call-mini-widget {
+        bottom: 70px;
+        right: 8px;
+        padding: 10px 14px;
+        min-width: 240px;
+    }
+    .call-mini-avatar {
+        width: 42px;
+        height: 42px;
+        font-size: 20px;
+    }
+    .call-mini-name {
+        font-size: 14px;
+    }
+    .call-mini-status {
+        font-size: 11px;
+    }
+    .call-mini-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 18px;
+    }
+}
+
+/* ── Входящий звонок: пульсация аватара ───────────────────────── */
+@keyframes call-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.5); }
+    50%       { box-shadow: 0 0 0 14px rgba(46, 125, 50, 0); }
+}
+#incomingCallModal .call-avatar {
+    animation: call-pulse 1.4s ease infinite;
+}
+
+/* ── iOS safe area для mini widget ───────────────────────────────*/
+.call-mini-widget {
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── accept/reject кнопки крупнее на мобиле ──────────────────── */
+@media (max-width: 768px) {
+    .call-accept-btn,
+    .call-reject-btn {
+        width: 64px;
+        height: 64px;
+        font-size: 26px;
+    }
+}
