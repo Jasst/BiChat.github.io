@@ -300,6 +300,16 @@
         State.currentChatIsGroup = !!isGroup;
         State.currentChatPartnerAddress = isGroup ? '' : (address === State.userAddress ? '' : address);
 
+        const callBtn = document.getElementById('callButton');
+        if (callBtn) {
+            if (!isGroup && address && address !== State.userAddress && address !== 'ai_bot') {
+                callBtn.style.display = 'inline-flex';
+                callBtn.onclick = () => window.CallManager?.makeCall(address, false);
+            } else {
+                callBtn.style.display = 'none';
+            }
+        }
+
         if (window.clearMainImagePreview) window.clearMainImagePreview();
         else { const previewDiv = document.getElementById('mainImagePreview'); if (previewDiv) previewDiv.remove(); }
 

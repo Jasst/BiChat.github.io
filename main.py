@@ -108,7 +108,9 @@ from routes.status import router as status_router
 from routes.ai_assistant import router as ai_router
 from routes.ws import router as ws_router
 from routes.push import router as push_router
+from routes.calls import router as calls_router
 
+app.include_router(calls_router)
 app.include_router(auth_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)

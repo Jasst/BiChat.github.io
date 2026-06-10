@@ -1,5 +1,6 @@
 """
 routes/ws.py — WebSocket менеджер для реального времени
+(включая сигнализацию для WebRTC голосовых/видео звонков)
 """
 import asyncio
 import logging
@@ -23,6 +24,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
         self._lock = asyncio.Lock()
+        self.calls: Dict[str, Dict] = {}  # call_id -> информация о звонке
 
     async def connect(self, user_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -48,9 +50,7 @@ class ConnectionManager:
                 await self.disconnect(user_id)
         return False
 
-    # ✅ НОВЫЙ МЕТОД: рассылка всем подключённым клиентам
     async def broadcast(self, message: dict, exclude: str = None):
-        """Отправить сообщение всем подключённым клиентам, кроме exclude (опционально)."""
         async with self._lock:
             for user_id, ws in self.active_connections.items():
                 if user_id == exclude:
@@ -66,19 +66,19 @@ class ConnectionManager:
                 'active_connections': len(self.active_connections),
                 'users': list(self.active_connections.keys())[:10]
             }
+
     async def broadcast_status_update(self, address: str, status: str):
-        """Отправить всем клиентам обновление статуса пользователя."""
         await self.broadcast({
             'type': 'status_update',
             'address': address,
             'status': status
         })
 
+
 manager = ConnectionManager()
 
 
 async def authenticate_websocket(websocket: WebSocket, address: str, signature: str, nonce: str) -> Optional[str]:
-    """Проверяет подпись и возвращает address или None (разрешены даже неверифицированные ключи)."""
     pubkey, verified = await get_cached_public_key(address)
     if not pubkey:
         return None
@@ -118,8 +118,10 @@ async def websocket_endpoint(
         while True:
             data = await websocket.receive_json()
             msg_type = data.get('type')
+
             if msg_type == 'ping':
                 await websocket.send_json({'type': 'pong'})
+
             elif msg_type == 'mark_read':
                 message_id = data.get('message_id')
                 if message_id:
@@ -128,6 +130,82 @@ async def websocket_endpoint(
                             UPDATE transactions SET status = 'read', read_at = $1
                             WHERE id = $2 AND recipient = $3
                         """, time.time(), message_id, user_id)
+
+            # ---------- Обработка звонков (WebRTC) ----------
+            elif msg_type == 'call_offer':
+                target = data.get('target')
+                call_id = data.get('call_id')
+                sdp = data.get('sdp')
+                if target and call_id:
+                    async with manager._lock:
+                        manager.calls[call_id] = {
+                            'from': user_id,
+                            'to': target,
+                            'state': 'offer_sent',
+                            'created_at': time.time()
+                        }
+                    await manager.send_personal_message(target, {
+                        'type': 'incoming_call',
+                        'call_id': call_id,
+                        'from': user_id,
+                        'sdp': sdp
+                    })
+                    logger.debug(f"Call offer {call_id} from {user_id[:8]} to {target[:8]}")
+
+            elif msg_type == 'call_answer':
+                target = data.get('target')
+                call_id = data.get('call_id')
+                sdp = data.get('sdp')
+                if target and call_id:
+                    async with manager._lock:
+                        if call_id in manager.calls:
+                            manager.calls[call_id]['state'] = 'answered'
+                    await manager.send_personal_message(target, {
+                        'type': 'call_answer',
+                        'call_id': call_id,
+                        'from': user_id,
+                        'sdp': sdp
+                    })
+                    logger.debug(f"Call answer {call_id} from {user_id[:8]} to {target[:8]}")
+
+            elif msg_type == 'call_ice':
+                target = data.get('target')
+                call_id = data.get('call_id')
+                candidate = data.get('candidate')
+                if target and call_id and candidate:
+                    await manager.send_personal_message(target, {
+                        'type': 'call_ice',
+                        'call_id': call_id,
+                        'from': user_id,
+                        'candidate': candidate
+                    })
+
+            elif msg_type == 'call_hangup':
+                target = data.get('target')
+                call_id = data.get('call_id')
+                async with manager._lock:
+                    manager.calls.pop(call_id, None)
+                if target:
+                    await manager.send_personal_message(target, {
+                        'type': 'call_hangup',
+                        'call_id': call_id,
+                        'from': user_id
+                    })
+                    logger.debug(f"Call hangup {call_id} from {user_id[:8]} to {target[:8]}")
+
+            elif msg_type == 'call_reject':
+                target = data.get('target')
+                call_id = data.get('call_id')
+                async with manager._lock:
+                    manager.calls.pop(call_id, None)
+                if target:
+                    await manager.send_personal_message(target, {
+                        'type': 'call_reject',
+                        'call_id': call_id,
+                        'from': user_id
+                    })
+                    logger.debug(f"Call reject {call_id} from {user_id[:8]} to {target[:8]}")
+
     except WebSocketDisconnect:
         await manager.disconnect(user_id)
     except Exception as e:

@@ -458,6 +458,12 @@
             return;
         }
 
+        if (data.type === 'incoming_call' || data.type === 'call_answer' ||
+            data.type === 'call_ice' || data.type === 'call_hangup' || data.type === 'call_reject') {
+            if (window.handleCallSignal) window.handleCallSignal(data);
+            return;
+        }
+
         // --- Статус сообщения (delivered / read) приходит с сервера ---
         if (data.type === 'message_status') {
             const msgDiv = document.querySelector(`.message-own[data-id="${data.message_id}"]`);

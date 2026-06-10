@@ -69,8 +69,6 @@ MAX_MESSAGE_PAYLOAD_SIZE = int(os.getenv('MAX_MESSAGE_PAYLOAD_SIZE', 65536))
 ONLINE_TIMEOUT_SECONDS = int(os.getenv('ONLINE_TIMEOUT_SECONDS', 60))
 MINING_CHALLENGE_TTL = int(os.getenv('MINING_CHALLENGE_TTL', 60))
 
-# config.py – добавить в конец файла
-
 # Easy Diffusion (локальная генерация изображений)
 EASYDIFFUSION_ENABLED = True
 EASYDIFFUSION_URL = os.getenv('EASYDIFFUSION_URL', 'http://localhost:9000')
@@ -79,20 +77,31 @@ EASYDIFFUSION_DEFAULT_STEPS = int(os.getenv('EASYDIFFUSION_STEPS', 20))
 EASYDIFFUSION_DEFAULT_WIDTH = int(os.getenv('EASYDIFFUSION_WIDTH', 512))
 EASYDIFFUSION_DEFAULT_HEIGHT = int(os.getenv('EASYDIFFUSION_HEIGHT', 512))
 
-MAX_ENCRYPTED_FILE_SIZE = int(os.getenv('MAX_ENCRYPTED_FILE_SIZE', 5 * 1024 * 1024))  # 5 MB
-MAX_AUDIO_SIZE = int(os.getenv('MAX_AUDIO_SIZE', 2 * 1024 * 1024)) # 2 MB
+MAX_ENCRYPTED_FILE_SIZE = int(os.getenv('MAX_ENCRYPTED_FILE_SIZE', 5 * 1024 * 1024))
+MAX_AUDIO_SIZE = int(os.getenv('MAX_AUDIO_SIZE', 2 * 1024 * 1024))
+
 # VAPID для push-уведомлений
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:jasstme@ya.ru')
 
-# в config.py
-DIFFICULTY_ADJUSTMENT_INTERVAL = 2016   # блоков между пересчётами
-TARGET_BLOCK_TIME = 60                  # секунд
+DIFFICULTY_ADJUSTMENT_INTERVAL = 2016
+TARGET_BLOCK_TIME = 60
 MIN_DIFFICULTY = 5
 MAX_DIFFICULTY = 15
 
+STAKING_FEE_INCREASE_INTERVAL = 10000
+STAKING_FEE_INCREASE_STEP = 0.01
+MAX_STAKING_FEE = 0.9
 
-STAKING_FEE_INCREASE_INTERVAL = 10000   # блоков
-STAKING_FEE_INCREASE_STEP = 0.01        # на 1% каждый раз
-MAX_STAKING_FEE = 0.9                   # максимум 90%
+# ------------------------------
+# WebRTC / TURN (голосовые/видео звонки)
+# ------------------------------
+TURN_ENABLED = os.getenv('TURN_ENABLED', '1') == '1'
+STUN_SERVER = os.getenv('STUN_SERVER', 'stun:stun.l.google.com:19302')
+TURN_SERVER = os.getenv('TURN_SERVER', 'turn:blockchat.ru:3478')
+TURN_STATIC_AUTH_SECRET = os.getenv('TURN_STATIC_AUTH_SECRET', '')
+TURN_USERNAME = os.getenv('TURN_USERNAME', '')
+TURN_PASSWORD = os.getenv('TURN_PASSWORD', '')
+TURN_REALM = os.getenv('TURN_REALM', 'blockchat.ru')
+TURN_CREDENTIAL_TTL = int(os.getenv('TURN_CREDENTIAL_TTL', '86400'))
