@@ -265,6 +265,24 @@ async def _apply_migrations(conn: asyncpg.Connection):
         await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (8, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 8
 
+    if current_version < 9:
+        await conn.execute("""
+            DROP INDEX IF EXISTS idx_push_sub_user_endpoint
+        """)
+
+        await conn.execute("""
+            ALTER TABLE push_subscriptions
+            ADD CONSTRAINT push_subscriptions_user_endpoint
+            UNIQUE(user_address, endpoint_hash)
+        """)
+
+        await conn.execute("""
+            INSERT INTO schema_version(version, applied_at)
+            VALUES (9, extract(epoch from now()))
+            ON CONFLICT(version) DO NOTHING
+        """)
+
+
 
 
 async def _create_indexes(conn: asyncpg.Connection):

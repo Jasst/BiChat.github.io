@@ -32,11 +32,11 @@ self.addEventListener('push', event => {
   const options = {
     body: data.body,
     icon: '/static/icon-192.png',
-    badge: '/static/icon-192.png',
+   
     data: { url: data.url },
     tag: data.tag || 'bichat-msg',
     renotify: true,
-    silent: false
+
     // vibrate: убрано — iOS игнорирует, Android PWA поддерживает но не критично
     // actions: убраны — iOS не поддерживает
   };

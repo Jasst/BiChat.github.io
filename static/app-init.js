@@ -17,7 +17,7 @@
 
         try {
             // Проверяем есть ли уже регистрация
-            const existing = await navigator.serviceWorker.getRegistration('/');
+            const existing = await navigator.serviceWorker.getRegistration();
             if (existing) {
                 // Обновляем SW если есть новая версия
                 existing.update().catch(() => {});

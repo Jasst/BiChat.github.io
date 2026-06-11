@@ -1,15 +1,11 @@
 # routes/push.py
-# ИСПРАВЛЕНИЯ:
-# 1. Добавлен столбец id SERIAL PRIMARY KEY — нужен для удаления конкретной подписки
-# 2. ON CONFLICT по хешу endpoint, а не по полному JSON — iOS меняет токены внутри,
-#    но endpoint остаётся тем же; это позволяет обновлять протухшие ключи
-# 3. /push/subscribe теперь делает UPSERT по endpoint — обновляет subscription если она изменилась
-# 4. Добавлен GET /push/vapid-public-key — фронт может получить ключ динамически
 
 import json
 import logging
 import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+
 from dependencies import require_auth
 from database import get_db_cursor
 from config import VAPID_PUBLIC_KEY
@@ -19,19 +15,20 @@ router = APIRouter(prefix='/push', tags=['push'])
 
 
 def _endpoint_hash(subscription: dict) -> str:
-    """Берём хеш endpoint — стабильный идентификатор подписки."""
+    """Хеш endpoint'а – стабильный идентификатор подписки (iOS меняет ключи, но endpoint остаётся)."""
     endpoint = subscription.get('endpoint', '')
     return hashlib.sha256(endpoint.encode()).hexdigest()
 
 
 @router.get('/vapid-public-key')
 async def get_vapid_public_key():
-    """Фронт может получить VAPID public key динамически."""
+    """Возвращает публичный VAPID-ключ для подписки на клиенте."""
     return {'publicKey': VAPID_PUBLIC_KEY}
 
 
 @router.post('/subscribe')
 async def subscribe(request: Request, address: str = Depends(require_auth)):
+    """Сохраняет или обновляет push-подписку (UPSERT по user_address + endpoint_hash)."""
     try:
         sub = await request.json()
         if not sub.get('endpoint'):
@@ -41,9 +38,6 @@ async def subscribe(request: Request, address: str = Depends(require_auth)):
         sub_json = json.dumps(sub)
 
         async with get_db_cursor() as conn:
-            # ИСПРАВЛЕНИЕ 2: UPSERT по endpoint_hash
-            # Если iOS пересоздала subscription (новые ключи, тот же endpoint) — обновляем
-            # Если совсем новая подписка — вставляем
             await conn.execute("""
                 INSERT INTO push_subscriptions (user_address, subscription, endpoint_hash, created_at)
                 VALUES ($1, $2, $3, extract(epoch from now()))
@@ -65,6 +59,7 @@ async def subscribe(request: Request, address: str = Depends(require_auth)):
 
 @router.post('/unsubscribe')
 async def unsubscribe(request: Request, address: str = Depends(require_auth)):
+    """Удаляет подписку пользователя."""
     try:
         sub = await request.json()
         endpoint_hash = _endpoint_hash(sub)

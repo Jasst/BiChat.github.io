@@ -627,31 +627,7 @@
 window.initPushNotifications = initPushNotifications;
 window.urlBase64ToUint8Array = urlBase64ToUint8Array;
 
-// ─────────────────────────────────────────────────────────────
-// ИСПРАВЛЕНИЕ: registerServiceWorker — регистрируем SW явно.
-// Без этого navigator.serviceWorker.ready никогда не резолвится,
-// push-подписка невозможна, уведомления в фоне не работают.
-// ─────────────────────────────────────────────────────────────
-async function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) {
-        console.warn('Push: ServiceWorker not supported');
-        return null;
-    }
-    try {
-        // Проверяем, зарегистрирован ли уже SW
-        const existing = await navigator.serviceWorker.getRegistration('/');
-        if (existing) {
-            console.log('Push: SW already registered →', existing.scope);
-            return existing;
-        }
-        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-        console.log('Push: SW registered ✓ scope:', reg.scope);
-        return reg;
-    } catch (e) {
-        console.error('Push: SW registration failed:', e);
-        return null;
-    }
-}
+
 
 // core.js — внутри IIFE или глобально
 
@@ -673,7 +649,7 @@ async function initPushNotifications() {
 
     try {
         // ИСПРАВЛЕНИЕ: сначала регистрируем SW если ещё не зарегистрирован
-        await registerServiceWorker();
+
 
         const registration = await navigator.serviceWorker.ready;
 
@@ -749,15 +725,7 @@ async function initPushNotifications() {
     }
 }
 
-// ИСПРАВЛЕНИЕ: регистрируем SW при загрузке страницы сразу,
-// не ждём разрешения на уведомления — SW нужен независимо от push
-if ('serviceWorker' in navigator) {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => registerServiceWorker());
-    } else {
-        registerServiceWorker();
-    }
-}
+
 
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);

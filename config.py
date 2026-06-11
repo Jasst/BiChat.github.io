@@ -81,9 +81,10 @@ MAX_ENCRYPTED_FILE_SIZE = int(os.getenv('MAX_ENCRYPTED_FILE_SIZE', 5 * 1024 * 10
 MAX_AUDIO_SIZE = int(os.getenv('MAX_AUDIO_SIZE', 2 * 1024 * 1024))
 
 # VAPID для push-уведомлений
-VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
-VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY')
-VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:jasstme@ya.ru')
+# config.py
+VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '').strip()
+VAPID_PUBLIC_KEY  = os.getenv('VAPID_PUBLIC_KEY', '').strip()
+VAPID_SUBJECT     = os.getenv('VAPID_SUBJECT', 'mailto:default@example.com').strip()
 
 DIFFICULTY_ADJUSTMENT_INTERVAL = 2016
 TARGET_BLOCK_TIME = 60

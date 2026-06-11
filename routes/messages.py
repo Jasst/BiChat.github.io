@@ -5,7 +5,7 @@ import json
 import logging
 import time
 from typing import Optional
-
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from cache import (
@@ -18,7 +18,7 @@ from models import SendMessageRequest, MarkReadRequest, MessageStatusesRequest
 from services.messaging import get_conversations_list_cached, invalidate_conversations_cache
 from services.wallet import staking_manager
 from setup import message_limiter
-from routes.ws import manager
+from services.notifier import message_notifier
 from services.push import send_push
 
 logger = logging.getLogger(__name__)
@@ -119,16 +119,20 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'status': 'sent'
             }
 
-            from services.notifier import message_notifier
+
+
             for member in group['members']:
                 await message_notifier.add_message(member, message_obj)
+
             for member in group['members']:
                 if member != sender:
-                    await send_push(
-                        user_address=member,
-                        title=f"Группа {group['name']}",
-                        body="Новое сообщение в группе",
-                        url=f"/chat?start_with=group:{body.group_id}"
+                    asyncio.create_task(
+                        send_push(
+                            user_address=member,
+                            title=f"Группа {group['name']}",
+                            body="Новое сообщение в группе",
+                            url=f"/chat?start_with=group:{body.group_id}"
+                        )
                     )
         else:
             recipient = body.recipient
@@ -158,13 +162,15 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'status': 'sent'
             }
 
-            from services.notifier import message_notifier
             await message_notifier.add_message(recipient, message_obj)
-            await send_push(
-                user_address=recipient,
-                title=f"Новое сообщение от {sender[:8]}...",
-                body="Новое сообщение",
-                url=f"/chat?start_with={sender}"
+
+            asyncio.create_task(
+                send_push(
+                    user_address=recipient,
+                    title=f"Новое сообщение от {sender[:8]}...",
+                    body="Новое сообщение",
+                    url=f"/chat?start_with={sender}"
+                )
             )
 
     await invalidate_conversations_cache(sender)
