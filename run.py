@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     cpu_count = multiprocessing.cpu_count()
     mode      = os.getenv('UVICORN_MODE', 'auto')
-    port      = int(os.getenv('PORT', 8008))
+    port      = int(os.getenv('PORT', 8000))
     host      = os.getenv('HOST', '127.0.0.1')
     is_prod   = os.getenv('FLASK_ENV') == 'production'
 
