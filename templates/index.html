@@ -7,80 +7,84 @@
   <div class="auth-card">
     <div class="auth-brand">
       <div class="auth-icon">🔐</div>
-      <h1>Dark Messenger</h1>
-      <p class="subtitle">Decentralized • End-to-end encrypted • Your keys, your messages</p>
+      <h1 data-i18n="app_name">Dark Messenger</h1>
+      <p class="subtitle" data-i18n="tagline">Decentralized • End-to-end encrypted • Your keys, your messages</p>
     </div>
 
     <div class="auth-form">
-      <button class="btn-primary-oval full-width" onclick="location.href='/login'">🔑 Login with Mnemonic</button>
-      <button class="btn-oval full-width" id="createWalletBtn" onclick="showCreateWalletModal()">✨ Create New Wallet</button>
+      <button class="btn-primary-oval full-width" onclick="location.href='/login'" data-i18n="login_mnemonic">🔑 Login with Mnemonic</button>
+      <button class="btn-oval full-width" id="createWalletBtn" onclick="showCreateWalletModal()" data-i18n="create_new_wallet">✨ Create New Wallet</button>
     </div>
 
     <div class="auth-footer">
-      <p>🔐 No central server • No data collection</p>
-      <p><a href="#" onclick="return false;">Learn more about security →</a></p>
+      <p data-i18n="footer_note">🔐 No central server • No data collection</p>
+      <p><a href="#" onclick="return false;" data-i18n="learn_more">Learn more about security →</a></p>
     </div>
   </div>
 </div>
 
-<!-- Модальное окно для пароля при создании кошелька -->
+<!-- Create Wallet Modal -->
 <div id="createWalletModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
-      <h3>🔐 Save wallet locally?</h3>
+      <h3 data-i18n="save_wallet_locally">🔐 Save wallet locally?</h3>
       <button class="modal-close" onclick="ModalManager.close('createWalletModal')">&times;</button>
     </header>
     <div class="modal-body">
-      <p>Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.</p>
+      <p data-i18n="mnemonic_warning_info">Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.</p>
       <div class="form-group">
-        <label><input type="checkbox" id="saveLocallyCheckbox" checked> Save locally (with password)</label>
-        <p class="text-muted">If saved, you won't need to re-enter mnemonic on next visit.</p>
+        <label><input type="checkbox" id="saveLocallyCheckbox" checked> <span data-i18n="save_locally">Save locally (with password)</span></label>
+        <p class="text-muted" data-i18n="save_locally_hint">If saved, you won't need to re-enter mnemonic on next visit.</p>
       </div>
       <div id="passwordGroup">
         <div class="form-group">
-          <label>Encryption password</label>
-          <input type="password" id="createPassword" class="input" placeholder="Enter password">
+          <label data-i18n="encryption_password">Encryption password</label>
+          <input type="password" id="createPassword" class="input" placeholder="Enter password" data-i18n-placeholder="enter_password">
         </div>
         <div class="form-group">
-          <label>Confirm password</label>
-          <input type="password" id="createConfirmPassword" class="input" placeholder="Repeat password">
+          <label data-i18n="confirm_password">Confirm password</label>
+          <input type="password" id="createConfirmPassword" class="input" placeholder="Repeat password" data-i18n-placeholder="repeat_password">
         </div>
       </div>
       <div id="createWalletError" class="hidden error"></div>
     </div>
     <footer class="modal-footer">
-      <button class="btn-oval" onclick="ModalManager.close('createWalletModal')">Cancel</button>
-      <button class="btn-primary-oval" id="proceedCreateBtn">Create Wallet</button>
+      <button class="btn-oval" onclick="ModalManager.close('createWalletModal')" data-i18n="cancel">Cancel</button>
+      <button class="btn-primary-oval" id="proceedCreateBtn" data-i18n="create_wallet">Create Wallet</button>
     </footer>
   </div>
 </div>
 
-<!-- Модальное окно отображения мнемоники -->
+<!-- Mnemonic Modal -->
 <div id="mnemonicModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="mnemonicTitle">
   <div class="modal animate-slide" style="max-width: 520px;">
     <header class="modal-header">
-      <h3 id="mnemonicTitle">✅ Wallet Created</h3>
+      <h3 id="mnemonicTitle" data-i18n="wallet_created">✅ Wallet Created</h3>
       <button class="modal-close" onclick="MnemonicManager.hide('mnemonicModal')">&times;</button>
     </header>
     <div class="modal-body">
-      <p class="warning-text">⚠️ Save this phrase securely. It cannot be recovered if lost!</p>
+      <p class="warning-text" data-i18n="save_phrase_warning">⚠️ Save this phrase securely. It cannot be recovered if lost!</p>
       <div id="mnemonicDisplay" class="mnemonic-display"></div>
       <div class="flex-row" style="justify-content: center;">
-        <button class="btn-oval" onclick="MnemonicManager.copy(() => NotificationManager?.showToast('✓ Copied!', 'success'))">📋 Copy</button>
-        <button class="btn-oval" onclick="MnemonicManager.download()">📥 Download</button>
+        <button class="btn-oval" onclick="MnemonicManager.copy(() => NotificationManager?.showToast(t('copied'), 'success'))" data-i18n="copy">📋 Copy</button>
+        <button class="btn-oval" onclick="MnemonicManager.download()" data-i18n="download">📥 Download</button>
       </div>
       <div class="security-tips">
-        <strong>🔒 Security tips:</strong>
+        <strong data-i18n="security_tips">🔒 Security tips:</strong>
         <ul>
-          <li>Write it down on paper</li>
-          <li>Store in a secure location</li>
-          <li>Never share or enter on suspicious sites</li>
+          <li data-i18n="tip_paper">Write it down on paper</li>
+          <li data-i18n="tip_secure">Store in a secure location</li>
+          <li data-i18n="tip_never_share">Never share or enter on suspicious sites</li>
         </ul>
       </div>
-      <p class="text-muted text-center">Auto-clear in <span id="clearCountdown" class="accent">30</span>s</p>
+      <p class="text-muted text-center">
+  <span data-i18n="auto_clear_prefix">🔒 Auto-clear in</span>
+  <span id="clearCountdown" class="accent">30</span>
+  <span data-i18n="auto_clear_suffix">s</span>
+</p>
     </div>
     <footer class="modal-footer">
-      <button class="btn-primary-oval full-width" onclick="proceedToChat()">✓ I've Saved It — Continue</button>
+      <button class="btn-primary-oval full-width" onclick="proceedToChat()" data-i18n="saved_continue">✓ I've Saved It — Continue</button>
     </footer>
   </div>
 </div>
@@ -88,6 +92,8 @@
 <script>
 let generatedMnemonic = null;
 let isCreating = false;
+
+function t(key, opts) { return i18next.t(key, opts); }
 
 function showCreateWalletModal() {
   document.getElementById('createPassword').value = '';
@@ -103,12 +109,12 @@ function validateCreateWallet() {
   const errorDiv = document.getElementById('createWalletError');
   if (saveLocally) {
     if (!pwd || pwd.length < 4) {
-      errorDiv.textContent = 'Password must be at least 4 characters';
+      errorDiv.textContent = t('password_min_length');
       errorDiv.classList.remove('hidden');
       return false;
     }
     if (pwd !== confirm) {
-      errorDiv.textContent = 'Passwords do not match';
+      errorDiv.textContent = t('passwords_do_not_match');
       errorDiv.classList.remove('hidden');
       return false;
     }
@@ -124,7 +130,7 @@ async function createWallet() {
   isCreating = true;
   const btn = document.getElementById('proceedCreateBtn');
   btn.disabled = true;
-  btn.textContent = 'Creating...';
+  btn.textContent = t('creating');
 
   try {
     const mnemonic = await DarkCrypto.generateMnemonic();
@@ -154,15 +160,15 @@ async function createWallet() {
       ModalManager.close('createWalletModal');
       MnemonicManager.showInModal(mnemonic, 'mnemonicModal', 'mnemonicDisplay');
     } else {
-      throw new Error(data.error || 'Registration failed');
+      throw new Error(data.error || t('registration_failed'));
     }
   } catch (error) {
     console.error('Create wallet error:', error);
-    window.NotificationManager?.showToast(error.message || 'Wallet creation failed', 'error');
+    window.NotificationManager?.showToast(error.message || t('wallet_creation_failed'), 'error');
   } finally {
     isCreating = false;
     btn.disabled = false;
-    btn.textContent = 'Create Wallet';
+    btn.textContent = t('create_wallet');
   }
 }
 

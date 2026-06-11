@@ -1,13 +1,13 @@
-// actions.js — полная версия с поддержкой зашифрованных файлов, аудиозаписи,
-// добавленными обработчиками AI, очистки чата, удаления сообщений и добавления контактов
-// + авто-расширение textarea и фикс позиционирования #filePreview
-// + динамическое переключение кнопок «отправить» / «запись голоса»
+// actions.js — полностью интернационализированная версия
 (function() {
     if (window._actionsLoaded) return;
     window._actionsLoaded = true;
 
+    // Helper for i18n
+    function t(key, opts) { return i18next.t(key, opts); }
+
     // ========== Глобальные переменные ==========
-    let pendingFile = null;          // { file, type }
+    let pendingFile = null;
     let mediaRecorder = null;
     let audioChunks = [];
     let isRecording = false;
@@ -39,45 +39,51 @@
     }
 
     function showFilePreview(file, type) {
-        const oldPreview = document.getElementById('filePreview');
-        if (oldPreview) oldPreview.remove();
+    const oldPreview = document.getElementById('filePreview');
+    if (oldPreview) oldPreview.remove();
 
-        const previewContainer = document.createElement('div');
-        previewContainer.id = 'filePreview';
-        previewContainer.style.cssText = `
-            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-            margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
-            border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
-        `;
+    const previewContainer = document.createElement('div');
+    previewContainer.id = 'filePreview';
+    previewContainer.style.cssText = `
+        display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+        margin: 0 16px 8px 16px; background: rgba(30,30,30,0.95);
+        border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
+    `;
 
-        let previewContent;
-        let objectUrl = null;
+    let previewContent;
+    let objectUrl = null;
 
-        if (type.startsWith('image/')) {
-            objectUrl = URL.createObjectURL(file);
-            previewContent = `<img src="${objectUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px;">`;
-        } else {
-            previewContent = `<span>${type.startsWith('image') ? '🖼️' : '🎵'}</span>`;
-        }
-
-        previewContainer.innerHTML = `
-            ${previewContent}
-            <span style="flex:1; font-size:13px;">${Utils.escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>
-            <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
-        `;
-
-        const form = document.querySelector('.chat-panel .input-area');
-        if (form) {
-            form.insertBefore(previewContainer, form.firstChild);
-        }
-
-        document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
-            pendingFile = null;
-            previewContainer.remove();
-            updateSendButtonVisibility();
-        });
+    if (type.startsWith('image/')) {
+        objectUrl = URL.createObjectURL(file);
+        if (pendingFile) pendingFile._objectUrl = objectUrl;
+        previewContent = `<img src="${objectUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px;">`;
+    } else {
+        previewContent = `<span>${type.startsWith('image') ? '🖼️' : '🎵'}</span>`;
     }
+
+    previewContainer.innerHTML = `
+        ${previewContent}
+        <span style="flex:1; font-size:13px;">${Utils.escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>
+        <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
+    `;
+
+    const form = document.querySelector('.chat-panel .input-area');
+    if (form) {
+        form.insertBefore(previewContainer, form.firstChild);
+    }
+
+    // ✅ Корректируем отступ ПОСЛЕ того, как блок реально добавился в DOM
+    if (window.adjustMessagesPadding) window.adjustMessagesPadding();
+
+    document.getElementById('cancelFileBtn')?.addEventListener('click', () => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        pendingFile = null;
+        previewContainer.remove();
+        updateSendButtonVisibility();
+        // ✅ После удаления блока тоже корректируем отступ
+        if (window.adjustMessagesPadding) window.adjustMessagesPadding();
+    });
+}
 
     // ========== Запись аудио ==========
     async function startRecording() {
@@ -90,7 +96,7 @@
             mediaRecorder.onstop = async () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 if (audioBlob.size > 2 * 1024 * 1024) {
-                    window.NotificationManager?.showToast('Audio too long (max 2 MB)', 'error');
+                    window.NotificationManager?.showToast(t('audio_too_long', { max: 2 }), 'error');
                     stream.getTracks().forEach(t => t.stop());
                     isRecording = false;
                     return;
@@ -107,12 +113,12 @@
             isRecording = true;
             const indicator = document.createElement('div');
             indicator.id = 'recordIndicator';
-            indicator.textContent = '🔴 Recording... Click again to stop';
+            indicator.textContent = t('recording_indicator');
             indicator.style.cssText = 'position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:#f44336; color:#fff; padding:8px 16px; border-radius:20px; z-index:1000; cursor:pointer;';
             indicator.onclick = () => { if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); };
             document.body.appendChild(indicator);
         } catch (err) {
-            window.NotificationManager?.showToast('Microphone access denied', 'error');
+            window.NotificationManager?.showToast(t('microphone_denied'), 'error');
         }
     }
 
@@ -122,12 +128,12 @@
         if (!file) return;
         const maxSize = type === 'image' ? 5 * 1024 * 1024 : 2 * 1024 * 1024;
         if (file.size > maxSize) {
-            window.NotificationManager?.showToast(`File too large (max ${maxSize/1024/1024} MB)`, 'error');
+            window.NotificationManager?.showToast(t('file_too_large', { size: maxSize/1024/1024 }), 'error');
             return;
         }
         const allowedTypes = type === 'image' ? ['image/jpeg','image/png','image/gif','image/webp'] : ['audio/webm','audio/mp4','audio/ogg'];
         if (!allowedTypes.includes(file.type)) {
-            window.NotificationManager?.showToast(`Unsupported ${type} type`, 'error');
+            window.NotificationManager?.showToast(t('unsupported_file_type', { type: type }), 'error');
             return;
         }
         pendingFile = { file, type: file.type };
@@ -162,7 +168,7 @@
     const contentEl = document.getElementById('messageContent');
     let content = contentEl ? contentEl.value.trim() : '';
     if (!content && !pendingFile) {
-        window.NotificationManager?.showToast('Enter message or attach file', 'warning');
+        window.NotificationManager?.showToast(t('enter_message_or_attach'), 'warning');
         return;
     }
 
@@ -174,6 +180,17 @@
     if (contentEl) { contentEl.value = ''; contentEl.style.height = 'auto'; }
     const fileToSend = pendingFile;
     pendingFile = null;
+    if (fileToSend && fileToSend._objectUrl) {
+        URL.revokeObjectURL(fileToSend._objectUrl);
+    }
+    const previewDiv = document.getElementById('filePreview');
+    if (previewDiv) {
+        const img = previewDiv.querySelector('img');
+        if (img && img.src.startsWith('blob:')) {
+            URL.revokeObjectURL(img.src);
+        }
+        previewDiv.remove();
+    }
     document.getElementById('filePreview')?.remove();
 
     const tempId = 'temp-' + Date.now();
@@ -182,13 +199,9 @@
     if (container) {
         const emptyState = container.querySelector('.empty-state');
         if (emptyState) emptyState.remove();
-        container.appendChild(window.createMessageElement(tempMsg));
-
-        // ✅ Прокрутка к последнему сообщению (временному)
-        const lastMsg = container.querySelector('.message:last-child');
-        if (lastMsg) {
-            lastMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
+        const tempElement = window.createMessageElement(tempMsg);
+        container.appendChild(tempElement);
+        tempElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
 
     try {
@@ -205,7 +218,7 @@
             const gData = await gRes.json();
             const freshGroup = gData.groups?.find(g => g.id === groupId);
             const members = freshGroup?.members || [];
-            if (!members.length) throw new Error('Group members not loaded');
+            if (!members.length) throw new Error(t('group_members_not_loaded'));
             const encryptedMap = {};
             for (const addr of members) {
                 const pubKeyB64 = await window.getPubKey(addr);
@@ -244,7 +257,7 @@
             payload = { message_type: 'group', group_id: groupId, encrypted_map: encryptedMap };
         } else {
             const pubRes = await fetch(`/get_public_key/${recipient}`);
-            if (!pubRes.ok) throw new Error('Recipient public key not found');
+            if (!pubRes.ok) throw new Error(t('recipient_pubkey_not_found'));
             const pubData = await pubRes.json();
             const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
             const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, recipientPubKeyBytes);
@@ -296,40 +309,69 @@
         });
         const data = await res.json();
         if (res.ok) {
-            const tempElem = document.getElementById('msg-' + tempId);
-            if (tempElem) tempElem.remove();
             const sentMessage = {
                 id: data.tx_id,
                 sender: State.userAddress,
-                recipient: isGroup ? recipient : recipient,
+                recipient: recipient,
                 content: content,
                 timestamp: Date.now() / 1000,
                 is_mine: true,
                 status: 'sent',
                 isDecrypted: true
             };
+
+            // ✅ ДОБАВЛЯЕМ ДАННЫЕ ПРИКРЕПЛЁННОГО ФАЙЛА (если был)
+            if (fileAttachment) {
+                sentMessage.fileUrl = fileAttachment.url;
+                sentMessage.fileKey = fileAttachment.key;
+                sentMessage.fileIv = fileAttachment.iv;
+                sentMessage.fileType = fileAttachment.type;
+            }
+
             window.addMessageToCache(recipient, sentMessage, 'end');
-            await window.loadConversations();
-            window.updateConversationPreview(recipient, '✓ Sent');
-            await window.loadMessagesForConversation(recipient, true, true); // forceScroll = true
+
+            // Заменяем временный элемент реальным
+            const tempElem = document.getElementById('msg-' + tempId);
+            const realElem = window.createMessageElement(sentMessage);
+            if (tempElem && tempElem.parentNode) {
+                tempElem.parentNode.replaceChild(realElem, tempElem);
+            } else {
+                const container = document.getElementById('messagesContainer');
+                if (container) container.appendChild(realElem);
+            }
+
+            // Обновляем превью в списке разговоров
+            window.updateConversationPreview(recipient, content.slice(0, 40) || t('sent_preview'));
+
+            // КОРРЕКТИРОВКА: принудительно обновляем отступ и прокручиваем вниз
+            if (window.adjustMessagesPadding) window.adjustMessagesPadding();
+            const msgContainer = document.getElementById('messagesContainer');
+            if (msgContainer) {
+                msgContainer.scrollTo({ top: msgContainer.scrollHeight, behavior: 'smooth' });
+            }
         } else {
             document.getElementById('msg-' + tempId)?.remove();
-            window.NotificationManager?.showToast(data.error || 'Send failed', 'error');
+            window.NotificationManager?.showToast(data.error || t('send_failed'), 'error');
+            if (window.adjustMessagesPadding) window.adjustMessagesPadding();
         }
     } catch (err) {
         console.error(err);
         document.getElementById('msg-' + tempId)?.remove();
         window.NotificationManager?.showToast(err.message, 'error');
+        if (window.adjustMessagesPadding) window.adjustMessagesPadding();
     } finally {
         window.isSending = false;
         const sendBtn = document.getElementById('sendButton');
         if (sendBtn) sendBtn.disabled = false;
         document.getElementById('messageContent')?.focus();
         updateSendButtonVisibility();
+        setTimeout(() => {
+            if (window.adjustMessagesPadding) window.adjustMessagesPadding();
+        }, 50);
     }
 }
 
-    // ========== Модальные окна нового чата (без изменений) ==========
+    // ========== Модальные окна нового чата ==========
     function openNewChatModal() {
         window.modalOpen = true;
         document.getElementById('newChatModal')?.classList.remove('hidden');
@@ -353,7 +395,7 @@
                 State.allContacts = data.contacts;
                 const select = document.getElementById('newChatSelect');
                 if (select) {
-                    select.innerHTML = '<option value="">-- Choose a contact --</option>';
+                    select.innerHTML = `<option value="">${t('choose_contact')}</option>`;
                     data.contacts.forEach(c => {
                         const option = document.createElement('option');
                         option.value = c.address;
@@ -381,17 +423,17 @@
         } else if (entered) {
             const isValid = typeof Security !== 'undefined' ? Security.isValidAddress(entered) : /^[a-f0-9]{64}$/.test(entered);
             if (!isValid) {
-                window.NotificationManager?.showToast('Invalid address format', 'error');
+                window.NotificationManager?.showToast(t('invalid_address_format'), 'error');
                 return;
             }
             if (entered === State.userAddress) {
-                window.NotificationManager?.showToast('Cannot chat with yourself', 'warning');
+                window.NotificationManager?.showToast(t('cannot_chat_self'), 'warning');
                 return;
             }
             address = entered;
             name = entered.slice(0,10)+'…';
         } else {
-            window.NotificationManager?.showToast('Select a contact or enter address', 'warning');
+            window.NotificationManager?.showToast(t('select_or_enter_address'), 'warning');
             return;
         }
         closeNewChatModal();
@@ -424,7 +466,7 @@
         const aiChatBtn = document.getElementById('aiChatBtn');
         if (aiChatBtn) {
             aiChatBtn.onclick = () => {
-                window.selectConversation('ai_bot', 'AI Assistant', false);
+                window.selectConversation('ai_bot', t('ai_assistant'), false);
             };
         }
 
@@ -432,7 +474,7 @@
         if (clearConvBtn) {
             clearConvBtn.onclick = async () => {
                 if (!State.currentChatAddress) return;
-                const confirmed = await window.showConfirmModal('Clear chat', 'Are you sure you want to delete all messages in this conversation? This cannot be undone.');
+                const confirmed = await window.showConfirmModal(t('clear_chat_title'), t('clear_chat_confirm'));
                 if (confirmed) {
                     const res = await fetch('/clear_conversation', {
                         method: 'POST',
@@ -441,14 +483,14 @@
                     });
                     if (res.ok) {
                         window.loadMessagesForConversation(State.currentChatAddress, false);
-                        window.NotificationManager?.showToast('Chat cleared', 'success');
+                        window.NotificationManager?.showToast(t('chat_cleared'), 'success');
                         const msgField = document.getElementById('messageContent');
                         if (msgField) msgField.value = '';
                         pendingFile = null;
                         document.getElementById('filePreview')?.remove();
                         updateSendButtonVisibility();
                     } else {
-                        window.NotificationManager?.showToast('Failed to clear', 'error');
+                        window.NotificationManager?.showToast(t('clear_failed'), 'error');
                     }
                 }
             };
@@ -456,49 +498,48 @@
 
         const addContactBtn = document.getElementById('addToContactsBtn');
         if (addContactBtn) {
-          addContactBtn.onclick = async () => {
-             const address = State.currentChatPartnerAddress;
-             if (!address) return;
+            addContactBtn.onclick = async () => {
+                const address = State.currentChatPartnerAddress;
+                if (!address) return;
 
-              // 1. Проверяем, не добавлен ли уже этот контакт
-             try {
-                 const res = await fetch('/get_contacts');
-                 const data = await res.json();
-                 if (res.ok && data.contacts) {
-                   const alreadyExists = data.contacts.some(c => c.address === address);
-                   if (alreadyExists) {
-                     window.NotificationManager?.showToast('This contact is already in your list', 'warning');
-                     return;
-                   }
-                 }
-             } catch (err) {
-               console.warn('Failed to check contacts', err);
-             }
+                // Check if already in contacts
+                try {
+                    const res = await fetch('/get_contacts');
+                    const data = await res.json();
+                    if (res.ok && data.contacts) {
+                        const alreadyExists = data.contacts.some(c => c.address === address);
+                        if (alreadyExists) {
+                            window.NotificationManager?.showToast(t('contact_already_exists'), 'warning');
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Failed to check contacts', err);
+                }
 
-             const name = await window.showPromptModal(
-               'Add Contact',
-               'Enter name for this contact:',
-               address.slice(0, 10) + '...'
-             );
-             if (!name) return;
+                const name = await window.showPromptModal(
+                    t('add_contact_title'),
+                    t('enter_contact_name'),
+                    address.slice(0, 10) + '...'
+                );
+                if (!name) return;
 
-             const res = await fetch('/add_contact_from_chat', {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify({ contact_address: address, contact_name: name })
-             });
-             if (res.ok) {
-                window.NotificationManager?.showToast('Contact added', 'success');
-                addContactBtn.disabled = true;
-             // Обновляем локальный список контактов, чтобы повторная проверка работала
-                const refreshRes = await fetch('/get_contacts');
-                const refreshData = await refreshRes.json();
-                if (refreshRes.ok) State.allContacts = refreshData.contacts;
-             } else {
-                const err = await res.json();
-                window.NotificationManager?.showToast(err.error || 'Failed', 'error');
-             }
-          };
+                const res = await fetch('/add_contact_from_chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contact_address: address, contact_name: name })
+                });
+                if (res.ok) {
+                    window.NotificationManager?.showToast(t('contact_added'), 'success');
+                    addContactBtn.disabled = true;
+                    const refreshRes = await fetch('/get_contacts');
+                    const refreshData = await refreshRes.json();
+                    if (refreshRes.ok) State.allContacts = refreshData.contacts;
+                } else {
+                    const err = await res.json();
+                    window.NotificationManager?.showToast(err.error || t('failed'), 'error');
+                }
+            };
         }
 
         const attachImageBtn = document.getElementById('attachImageButton');
@@ -530,7 +571,7 @@
         if (deleteBtn && deleteBtn.dataset.id) {
             e.preventDefault();
             const msgId = deleteBtn.dataset.id;
-            const confirmed = await window.showConfirmModal('Delete message', 'Delete this message?');
+            const confirmed = await window.showConfirmModal(t('delete_message_title'), t('delete_message_confirm'));
             if (confirmed) {
                 const res = await fetch('/delete_message', {
                     method: 'POST',
@@ -539,10 +580,15 @@
                 });
                 if (res.ok) {
                     const msgDiv = document.getElementById('msg-' + msgId);
-                    if (msgDiv) msgDiv.remove();
+                    if (msgDiv) {
+                         msgDiv.querySelectorAll('[data-object-url]').forEach(el => {
+                            URL.revokeObjectURL(el.dataset.objectUrl);
+                         });
+                         msgDiv.remove();
+                    }
                     window.loadConversations();
                 } else {
-                    window.NotificationManager?.showToast('Delete failed', 'error');
+                    window.NotificationManager?.showToast(t('delete_failed'), 'error');
                 }
             }
         }

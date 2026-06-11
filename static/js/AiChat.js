@@ -2,7 +2,6 @@
 (function() {
     if (window._aiChatLoaded) return;
     window._aiChatLoaded = true;
-
     let aiChatActive = false;
     let pendingImageFile = null;
     let currentStreamingMessage = null;
@@ -146,20 +145,20 @@
     }
 
     function renderMarkdown(text) {
-        if (!text) return '';
-        try {
-            let html = marked.parse(text);
-            const reasoningRegex = /💭\s*РАССУЖДЕНИЕ:\s*([\s\S]*?)\s*---/gi;
-            if (reasoningRegex.test(html)) {
-                reasoningRegex.lastIndex = 0;
-                html = html.replace(reasoningRegex, (match, content) => {
-                    return `<div class="reasoning-block"><strong>💭 Reasoning:</strong><br>${marked.parse(content)}</div>`;
-                });
-            }
-            return html;
-        } catch(e) {
-            return escapeHtml(text);
-        }
+       if (!text) return '';
+       try {
+           let html = marked.parse(text);
+           const reasoningRegex = /💭\s*РАССУЖДЕНИЕ:\s*([\s\S]*?)\s*---/gi;
+           if (reasoningRegex.test(html)) {
+               reasoningRegex.lastIndex = 0;
+               html = html.replace(reasoningRegex, (match, content) => {
+                   return `<div class="reasoning-block"><strong>💭 Reasoning:</strong><br>${marked.parse(content)}</div>`;
+               });
+           }
+           return DOMPurify.sanitize(html);
+       } catch(e) {
+          return escapeHtml(text);
+       }
     }
 
     function getStoredHistory() {
@@ -272,6 +271,50 @@
         return msgDiv;
     }
 
+    // Добавить где-нибудь в конец файла, до window.initAiChat
+    // Отображение результата исследования
+    function displayResearchResult(data) {
+    const confidencePercent = (data.confidence * 100).toFixed(0);
+    let header = `🔬 **Исследование** | Уверенность: ${confidencePercent}%`;
+    let hypoList = Array.isArray(data.hypotheses)
+        ? data.hypotheses.map(h => `- ${h}`).join('\n')
+        : '*(гипотезы не сгенерированы)*';
+    let evidenceText = '';
+    if (data.evidence && data.evidence.length) {
+        evidenceText = '\n\n**Извлечённые факты:**\n' + data.evidence.map(e => {
+            return `- ${e.extracted_facts || (e.web_evidence ? e.web_evidence.slice(0, 150) : '')}`;
+        }).join('\n');
+    }
+    const full = `${header}\n\n**Гипотезы:**\n${hypoList}\n\n**Вывод:**\n${data.answer || 'Нет ответа'}${evidenceText}`;
+    displayAiMessage(full, false, null, true);
+}
+
+    async function sendResearchQuery(messageText) {
+    showAiTypingIndicator(true, '🔬 Формулирую гипотезы и проверяю факты...');
+
+    try {
+        const response = await fetch('/ai/research', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal: messageText })
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Research API error: ${response.status} ${errText}`);
+        }
+
+        const data = await response.json();
+        showAiTypingIndicator(false);
+        displayResearchResult(data);
+
+    } catch (err) {
+        console.error('Research error:', err);
+        showAiTypingIndicator(false);
+        displayAiMessage(`❌ Ошибка исследования: ${err.message}`, false, null, true);
+    }
+}
+
     function showAiTypingIndicator(show, statusText = '') {
         if (!aiMessagesContainer) return;
         let indicator = aiMessagesContainer.querySelector('.typing-indicator-message');
@@ -322,166 +365,204 @@
     }
 
     async function sendToAi(messageText, imageFile) {
-        if (isSending) { showToast('Подождите, предыдущий запрос обрабатывается', 'warning'); return; }
-        if (!messageText.trim() && !imageFile) { showToast('Введите сообщение или выберите изображение', 'warning'); return; }
+    if (isSending) { showToast('Подождите, предыдущий запрос обрабатывается', 'warning'); return; }
+    if (!messageText.trim() && !imageFile) { showToast('Введите сообщение или выберите изображение', 'warning'); return; }
 
+    // ========== НОВЫЙ БЛОК: ОПРЕДЕЛЕНИЕ ИССЛЕДОВАТЕЛЬСКОГО ЗАПРОСА ==========
+    const researchKeywords = ['правда ли', 'докажи', 'опровергни', 'исследуй', 'проверь', 'действительно ли'];
+    const isResearch = researchKeywords.some(kw => messageText.toLowerCase().includes(kw));
+
+    if (isResearch && !imageFile) {
+        // Блокируем UI
+        aiMessageInput.disabled = true;
+        aiSendBtn.disabled = true;
+        aiAttachBtn.disabled = true;
+        if (aiImageGenBtn) aiImageGenBtn.disabled = true;
+        if (aiInternetBtn) aiInternetBtn.disabled = true;
+        if (aiReasoningBtn) aiReasoningBtn.disabled = true;
+        if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
+
+        const originalText = messageText;
+        // Очищаем поле ввода и превью изображения
+        aiMessageInput.value = '';
+        clearImagePreview();
+        // Показываем сообщение пользователя в чате
+        displayAiMessage(originalText, true, null, true);
+
+        try {
+            await sendResearchQuery(originalText);
+        } finally {
+            // Разблокируем UI
+            aiMessageInput.disabled = false;
+            aiSendBtn.disabled = false;
+            aiAttachBtn.disabled = false;
+            if (aiImageGenBtn) aiImageGenBtn.disabled = false;
+            if (aiInternetBtn) aiInternetBtn.disabled = false;
+            if (aiReasoningBtn) aiReasoningBtn.disabled = false;
+            if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
+            aiMessageInput.focus();
+            isSending = false;
+        }
+        return;
+    }
+    // ========== КОНЕЦ НОВОГО БЛОКА ==========
+
+    // Далее идёт ОРИГИНАЛЬНЫЙ КОД (без изменений)
+    if (currentStreamReader) {
+        try { currentStreamReader.cancel(); } catch(e) {}
+        currentStreamReader = null;
+    }
+    currentStreamingMessage = null;
+    currentStreamingText = '';
+    isSending = true;
+
+    const urlMatch = messageText.match(/https?:\/\/[^\s]+/);
+    const urlToFetch = urlMatch ? urlMatch[0] : null;
+
+    let imageBase64 = null;
+    let imageMime = null;
+    let compressedDataUrl = null;
+    if (imageFile) {
+        const reader = new FileReader();
+        compressedDataUrl = await new Promise((resolve) => {
+            reader.onload = async (e) => resolve(await compressImage(e.target.result));
+            reader.readAsDataURL(imageFile);
+        });
+        const parts = compressedDataUrl.split(',');
+        imageBase64 = parts[1];
+        const mimeMatch = parts[0].match(/^data:(image\/[a-zA-Z]+);?/);
+        imageMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        displayAiMessage(messageText || '📷 Изображение', true, compressedDataUrl, true);
+    } else {
+        displayAiMessage(messageText, true, null, true);
+    }
+
+    const useWebSearch = internetEnabled && !urlToFetch;
+    const isSearching = useWebSearch || !!urlToFetch;
+    showAiTypingIndicator(true, isSearching ? (urlToFetch ? `🔗 Загружаю ${urlToFetch.slice(0, 50)}…` : '🔍 Ищу в интернете и загружаю страницы…') : '');
+
+    try {
+        const response = await fetch(CONFIG.apiEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: messageText,
+                image_base64: imageBase64,
+                image_mime: imageMime,
+                stream: true,
+                reasoning: reasoningEnabled,
+                web_search: useWebSearch,
+                url_to_fetch: urlToFetch,
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || `HTTP ${response.status}`);
+        }
+
+        currentStreamingMessage = displayAiMessage('', false, null, false);
+        currentStreamingText = '';
+        const markdownBody = currentStreamingMessage.querySelector('.content .markdown-body');
+        if (!markdownBody) throw new Error('UI error');
+
+        let firstTokenReceived = false;
+        let streamFinished = false;
+        let searchResults = null;
+
+        const reader = response.body.getReader();
+        currentStreamReader = reader;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!streamFinished) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const dataStr = line.slice(6).trim();
+                if (dataStr === '[DONE]') { streamFinished = true; break; }
+
+                try {
+                    const data = JSON.parse(dataStr);
+
+                    if (data.status === 'searching') {
+                        showAiTypingIndicator(true, `🔍 Ищу: ${data.query || '…'}`);
+                        continue;
+                    }
+                    if (data.status === 'search_done') {
+                        showAiTypingIndicator(true, '📄 Загружаю содержимое страниц…');
+                        continue;
+                    }
+                    if (data.status === 'search_error') {
+                        showAiTypingIndicator(true, '⚠️ Поиск не удался, отвечаю из памяти…');
+                        continue;
+                    }
+                    if (data.status === 'fetching_pages') {
+                        showAiTypingIndicator(true, `📖 Читаю ${data.count || 'несколько'} страниц…`);
+                        continue;
+                    }
+
+                    if (data.token) {
+                        if (!firstTokenReceived) {
+                            showAiTypingIndicator(false);
+                            firstTokenReceived = true;
+                        }
+                        currentStreamingText += data.token;
+                        markdownBody.textContent = currentStreamingText;
+                        if (aiMessagesContainer) aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
+                    } else if (data.error) {
+                        markdownBody.textContent = '❌ ' + data.error;
+                        firstTokenReceived = true;
+                        streamFinished = true;
+                        break;
+                    } else if (data.sources) {
+                        searchResults = data.sources;
+                    }
+                } catch(e) {}
+            }
+        }
+
+        if (!firstTokenReceived) {
+            showAiTypingIndicator(false);
+            if (markdownBody) markdownBody.textContent = '🤖 Нет ответа от модели.';
+        } else if (currentStreamingText) {
+            const finalHtml = renderMarkdown(currentStreamingText);
+            markdownBody.innerHTML = finalHtml;
+            enhanceCodeBlocks(markdownBody);
+            addImageDownloadButtons(markdownBody);
+            saveAiMessage('assistant', currentStreamingText);
+
+            if (searchResults && searchResults.length) {
+                displaySearchSources(searchResults);
+            } else if (useWebSearch && !searchResults) {
+                _tryFetchSearchSources(messageText);
+            }
+        }
+
+    } catch (err) {
+        console.error('AI error:', err);
+        showAiTypingIndicator(false);
+        if (currentStreamingMessage?.parentNode) {
+            const errDiv = currentStreamingMessage.querySelector('.content .markdown-body');
+            if (errDiv) errDiv.textContent = '❌ Ошибка связи с AI-сервером. Проверьте, запущен ли LM Studio.';
+        } else {
+            displayAiMessage('❌ Ошибка связи с AI-сервером.', false, null, true);
+        }
+    } finally {
         if (currentStreamReader) {
-            try { currentStreamReader.cancel(); } catch(e) {}
+            try { currentStreamReader.releaseLock(); } catch(e) {}
             currentStreamReader = null;
         }
         currentStreamingMessage = null;
         currentStreamingText = '';
-        isSending = true;
-
-        const urlMatch = messageText.match(/https?:\/\/[^\s]+/);
-        const urlToFetch = urlMatch ? urlMatch[0] : null;
-
-        // Сначала сжимаем изображение, чтобы получить постоянный data URL
-        let imageBase64 = null;
-        let imageMime = null;
-        let compressedDataUrl = null;
-        if (imageFile) {
-            const reader = new FileReader();
-            compressedDataUrl = await new Promise((resolve) => {
-                reader.onload = async (e) => resolve(await compressImage(e.target.result));
-                reader.readAsDataURL(imageFile);
-            });
-            const parts = compressedDataUrl.split(',');
-            imageBase64 = parts[1];
-            const mimeMatch = parts[0].match(/^data:(image\/[a-zA-Z]+);?/);
-            imageMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-            // Показываем сообщение пользователя с изображением (base64)
-            displayAiMessage(messageText || '📷 Изображение', true, compressedDataUrl, true);
-        } else {
-            displayAiMessage(messageText, true, null, true);
-        }
-
-        const useWebSearch = internetEnabled && !urlToFetch;
-        const isSearching = useWebSearch || !!urlToFetch;
-        showAiTypingIndicator(true, isSearching ? (urlToFetch ? `🔗 Загружаю ${urlToFetch.slice(0, 50)}…` : '🔍 Ищу в интернете и загружаю страницы…') : '');
-
-        try {
-            const response = await fetch(CONFIG.apiEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: messageText,
-                    image_base64: imageBase64,
-                    image_mime: imageMime,
-                    stream: true,
-                    reasoning: reasoningEnabled,
-                    web_search: useWebSearch,
-                    url_to_fetch: urlToFetch,
-                })
-            });
-
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.detail || `HTTP ${response.status}`);
-            }
-
-            currentStreamingMessage = displayAiMessage('', false, null, false);
-            currentStreamingText = '';
-            const markdownBody = currentStreamingMessage.querySelector('.content .markdown-body');
-            if (!markdownBody) throw new Error('UI error');
-
-            let firstTokenReceived = false;
-            let streamFinished = false;
-            let searchResults = null;
-
-            const reader = response.body.getReader();
-            currentStreamReader = reader;
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (!streamFinished) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    const dataStr = line.slice(6).trim();
-                    if (dataStr === '[DONE]') { streamFinished = true; break; }
-
-                    try {
-                        const data = JSON.parse(dataStr);
-
-                        if (data.status === 'searching') {
-                            showAiTypingIndicator(true, `🔍 Ищу: ${data.query || '…'}`);
-                            continue;
-                        }
-                        if (data.status === 'search_done') {
-                            showAiTypingIndicator(true, '📄 Загружаю содержимое страниц…');
-                            continue;
-                        }
-                        if (data.status === 'search_error') {
-                            showAiTypingIndicator(true, '⚠️ Поиск не удался, отвечаю из памяти…');
-                            continue;
-                        }
-                        if (data.status === 'fetching_pages') {
-                            showAiTypingIndicator(true, `📖 Читаю ${data.count || 'несколько'} страниц…`);
-                            continue;
-                        }
-
-                        if (data.token) {
-                            if (!firstTokenReceived) {
-                                showAiTypingIndicator(false);
-                                firstTokenReceived = true;
-                            }
-                            currentStreamingText += data.token;
-                            markdownBody.textContent = currentStreamingText;
-                            if (aiMessagesContainer) aiMessagesContainer.scrollTop = aiMessagesContainer.scrollHeight;
-                        } else if (data.error) {
-                            markdownBody.textContent = '❌ ' + data.error;
-                            firstTokenReceived = true;
-                            streamFinished = true;
-                            break;
-                        } else if (data.sources) {
-                            searchResults = data.sources;
-                        }
-                    } catch(e) {}
-                }
-            }
-
-            if (!firstTokenReceived) {
-                showAiTypingIndicator(false);
-                if (markdownBody) markdownBody.textContent = '🤖 Нет ответа от модели.';
-            } else if (currentStreamingText) {
-                const finalHtml = renderMarkdown(currentStreamingText);
-                markdownBody.innerHTML = finalHtml;
-                enhanceCodeBlocks(markdownBody);
-                addImageDownloadButtons(markdownBody);
-                saveAiMessage('assistant', currentStreamingText);
-
-                if (searchResults && searchResults.length) {
-                    displaySearchSources(searchResults);
-                } else if (useWebSearch && !searchResults) {
-                    _tryFetchSearchSources(messageText);
-                }
-            }
-
-        } catch (err) {
-            console.error('AI error:', err);
-            showAiTypingIndicator(false);
-            if (currentStreamingMessage?.parentNode) {
-                const errDiv = currentStreamingMessage.querySelector('.content .markdown-body');
-                if (errDiv) errDiv.textContent = '❌ Ошибка связи с AI-сервером. Проверьте, запущен ли LM Studio.';
-            } else {
-                displayAiMessage('❌ Ошибка связи с AI-сервером.', false, null, true);
-            }
-        } finally {
-            if (currentStreamReader) {
-                try { currentStreamReader.releaseLock(); } catch(e) {}
-                currentStreamReader = null;
-            }
-            currentStreamingMessage = null;
-            currentStreamingText = '';
-            isSending = false;
-        }
+        isSending = false;
     }
+}
 
     async function _tryFetchSearchSources(query) {
         try {
@@ -542,10 +623,11 @@
 
         const form = document.querySelector('#aiChatContainer .input-area');
         if (form) {
-            form.parentNode.insertBefore(previewContainer, form);
+    // Вставляем в начало формы, как в обычном чате
+           form.insertBefore(previewContainer, form.firstChild);
         } else {
-            const container = document.getElementById('aiChatContainer');
-            if (container) container.appendChild(previewContainer);
+           const container = document.getElementById('aiChatContainer');
+           if (container) container.appendChild(previewContainer);
         }
 
         document.getElementById('clearAiImage')?.addEventListener('click', () => {
@@ -569,17 +651,199 @@
 
     // ========== Настройка UI ==========
     function setupAiUI() {
-        if (!aiSendBtn) return;
+    if (!aiSendBtn) return;
 
-        aiSendBtn.onclick = async () => {
-            const text = aiMessageInput ? aiMessageInput.value.trim() : '';
-            const image = pendingImageFile;
-            if (!text && !image) {
-                showToast('Введите сообщение или прикрепите изображение', 'warning');
+    aiSendBtn.onclick = async () => {
+        const text = aiMessageInput ? aiMessageInput.value.trim() : '';
+        const image = pendingImageFile;
+        if (!text && !image) {
+            showToast('Введите сообщение или прикрепите изображение', 'warning');
+            return;
+        }
+
+        aiMessageInput.disabled = true;
+        aiSendBtn.disabled = true;
+        aiAttachBtn.disabled = true;
+        if (aiImageGenBtn) aiImageGenBtn.disabled = true;
+        if (aiInternetBtn) aiInternetBtn.disabled = true;
+        if (aiReasoningBtn) aiReasoningBtn.disabled = true;
+        if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
+
+        const originalText = text;
+        const imageToSend = image;
+
+        if (aiMessageInput) aiMessageInput.value = '';
+        clearImagePreview();
+
+        try {
+            await sendToAi(originalText, imageToSend);
+        } finally {
+            aiMessageInput.disabled = false;
+            aiSendBtn.disabled = false;
+            aiAttachBtn.disabled = false;
+            if (aiImageGenBtn) aiImageGenBtn.disabled = false;
+            if (aiInternetBtn) aiInternetBtn.disabled = false;
+            if (aiReasoningBtn) aiReasoningBtn.disabled = false;
+            if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
+            aiMessageInput.focus();
+        }
+    };
+
+    if (aiMessageInput) {
+        aiMessageInput.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                aiSendBtn?.click();
+            }
+        };
+    }
+
+    if (aiAttachBtn && aiImageInput) {
+        aiAttachBtn.onclick = () => aiImageInput.click();
+        aiImageInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                pendingImageFile = file;
+                showImagePreview(file);
+            } else {
+                showToast('Пожалуйста, выберите изображение', 'warning');
+            }
+            aiImageInput.value = '';
+        };
+    }
+
+    if (aiReasoningBtn) {
+        reasoningEnabled = localStorage.getItem('ai_reasoning_mode') === 'true';
+        updateReasoningBtnStyle();
+        aiReasoningBtn.onclick = () => {
+            reasoningEnabled = !reasoningEnabled;
+            updateReasoningBtnStyle();
+            localStorage.setItem('ai_reasoning_mode', reasoningEnabled);
+            showToast(`Режим рассуждений ${reasoningEnabled ? 'включён 🧠' : 'выключен'}`, 'info');
+        };
+    }
+
+    if (aiInternetBtn) {
+        internetEnabled = localStorage.getItem('ai_internet') === 'true';
+        updateInternetBtnStyle();
+        aiInternetBtn.onclick = () => {
+            internetEnabled = !internetEnabled;
+            localStorage.setItem('ai_internet', internetEnabled);
+            updateInternetBtnStyle();
+            showToast(`Интернет-поиск ${internetEnabled ? 'включён 🌐 (буду загружать страницы)' : 'выключен'}`, 'info');
+        };
+    }
+
+    if (aiClearHistoryBtn) aiClearHistoryBtn.onclick = clearAiHistory;
+
+    if (closeAiChatBtn) {
+        closeAiChatBtn.onclick = () => {
+            if (window.selectConversation && window.State?.currentChatAddress === 'ai_bot') {
+                const firstConv = document.querySelector('.conversation-item');
+                if (firstConv?.dataset.address) {
+                    window.selectConversation(firstConv.dataset.address, '', firstConv.dataset.isGroup === '1');
+                } else {
+                    window.selectConversation('', '', false);
+                }
+            }
+        };
+    }
+
+    aiImageGenBtn = document.getElementById('aiImageGenBtn');
+    if (aiImageGenBtn) {
+        aiImageGenBtn.onclick = async () => {
+            const rawPrompt = aiMessageInput.value.trim();
+            if (!rawPrompt) {
+                showToast('Enter a prompt first', 'warning');
                 return;
             }
+            if (isSending) {
+                showToast('Please wait, current request in progress', 'warning');
+                return;
+            }
+            isSending = true;
+            if (aiMessageInput) aiMessageInput.value = '';
+            aiMessageInput.disabled = true;
+            aiSendBtn.disabled = true;
+            aiAttachBtn.disabled = true;
+            aiImageGenBtn.disabled = true;
+            if (aiInternetBtn) aiInternetBtn.disabled = true;
+            if (aiReasoningBtn) aiReasoningBtn.disabled = true;
+            if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
 
-            // Блокируем интерфейс
+            showAiTypingIndicator(true, '🎨 Generating image...');
+
+            try {
+                let finalPrompt = rawPrompt;
+                showAiTypingIndicator(true, '✨ Enhancing prompt with AI...');
+                try {
+                    const enhanceResp = await fetch('/ai/enhance_prompt', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: rawPrompt })
+                    });
+                    if (enhanceResp.ok) {
+                        const enhanceData = await enhanceResp.json();
+                        if (enhanceData.enhanced && enhanceData.enhanced !== rawPrompt) {
+                            finalPrompt = enhanceData.enhanced;
+                            showToast('Prompt enhanced', 'success');
+                        }
+                    }
+                } catch (enhanceErr) {
+                    console.warn('Enhance failed, using original prompt', enhanceErr);
+                }
+                showAiTypingIndicator(true, '🎨 Generating image...');
+
+                const response = await fetch('/ai/generate_image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: finalPrompt })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.image_base64) {
+                    const imageMarkdown = `![generated](${data.image_base64})`;
+                    const finalText = `🎨 *Generated image for:*\n> ${rawPrompt}\n\n${imageMarkdown}`;
+                    displayAiMessage(finalText, false, null, true);
+                } else {
+                    showToast(data.detail || data.error || 'Generation failed', 'error');
+                }
+            } catch (err) {
+                console.error('Image generation error:', err);
+                showToast('Network error or service unavailable', 'error');
+            } finally {
+                isSending = false;
+                showAiTypingIndicator(false);
+                aiMessageInput.disabled = false;
+                aiSendBtn.disabled = false;
+                aiAttachBtn.disabled = false;
+                aiImageGenBtn.disabled = false;
+                if (aiInternetBtn) aiInternetBtn.disabled = false;
+                if (aiReasoningBtn) aiReasoningBtn.disabled = false;
+                if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
+                aiMessageInput.focus();
+            }
+        };
+    }
+
+    const researchBtn = document.getElementById('aiResearchBtn');
+    if (researchBtn) {
+        researchBtn.onclick = async () => {
+            const text = aiMessageInput.value.trim();
+            if (!text) {
+                showToast('Введите вопрос для исследования', 'warning');
+                return;
+            }
+            if (isSending) {
+                showToast('Подождите, текущий запрос обрабатывается', 'warning');
+                return;
+            }
+            isSending = true;
+
+            const originalIcon = researchBtn.textContent;
+            researchBtn.textContent = '⏳';
+            researchBtn.setAttribute('data-active', 'true');
+
             aiMessageInput.disabled = true;
             aiSendBtn.disabled = true;
             aiAttachBtn.disabled = true;
@@ -589,16 +853,16 @@
             if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
 
             const originalText = text;
-            const imageToSend = image;
-
-            // Очищаем поле ввода и превью над полем (но не сообщения в чате)
-            if (aiMessageInput) aiMessageInput.value = '';
+            aiMessageInput.value = '';
             clearImagePreview();
+            displayAiMessage(originalText, true, null, true);
 
             try {
-                await sendToAi(originalText, imageToSend);
+                await sendResearchQuery(originalText);
             } finally {
-                // Разблокируем интерфейс
+                isSending = false;
+                researchBtn.textContent = originalIcon;
+                researchBtn.setAttribute('data-active', 'false');
                 aiMessageInput.disabled = false;
                 aiSendBtn.disabled = false;
                 aiAttachBtn.disabled = false;
@@ -609,145 +873,8 @@
                 aiMessageInput.focus();
             }
         };
-
-        if (aiMessageInput) {
-            aiMessageInput.onkeydown = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    aiSendBtn?.click();
-                }
-            };
-        }
-
-        if (aiAttachBtn && aiImageInput) {
-            aiAttachBtn.onclick = () => aiImageInput.click();
-            aiImageInput.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (file && file.type.startsWith('image/')) {
-                    pendingImageFile = file;
-                    showImagePreview(file);
-                } else {
-                    showToast('Пожалуйста, выберите изображение', 'warning');
-                }
-                aiImageInput.value = '';
-            };
-        }
-
-        if (aiReasoningBtn) {
-            reasoningEnabled = localStorage.getItem('ai_reasoning_mode') === 'true';
-            updateReasoningBtnStyle();
-            aiReasoningBtn.onclick = () => {
-                reasoningEnabled = !reasoningEnabled;
-                updateReasoningBtnStyle();
-                localStorage.setItem('ai_reasoning_mode', reasoningEnabled);
-                showToast(`Режим рассуждений ${reasoningEnabled ? 'включён 🧠' : 'выключен'}`, 'info');
-            };
-        }
-
-        if (aiInternetBtn) {
-            internetEnabled = localStorage.getItem('ai_internet') === 'true';
-            updateInternetBtnStyle();
-            aiInternetBtn.onclick = () => {
-                internetEnabled = !internetEnabled;
-                localStorage.setItem('ai_internet', internetEnabled);
-                updateInternetBtnStyle();
-                showToast(`Интернет-поиск ${internetEnabled ? 'включён 🌐 (буду загружать страницы)' : 'выключен'}`, 'info');
-            };
-        }
-
-        if (aiClearHistoryBtn) aiClearHistoryBtn.onclick = clearAiHistory;
-
-        if (closeAiChatBtn) {
-            closeAiChatBtn.onclick = () => {
-                if (window.selectConversation && window.State?.currentChatAddress === 'ai_bot') {
-                    const firstConv = document.querySelector('.conversation-item');
-                    if (firstConv?.dataset.address) {
-                        window.selectConversation(firstConv.dataset.address, '', firstConv.dataset.isGroup === '1');
-                    } else {
-                        window.selectConversation('', '', false);
-                    }
-                }
-            };
-        }
-
-        aiImageGenBtn = document.getElementById('aiImageGenBtn');
-        if (aiImageGenBtn) {
-            aiImageGenBtn.onclick = async () => {
-                const rawPrompt = aiMessageInput.value.trim();
-                if (!rawPrompt) {
-                    showToast('Enter a prompt first', 'warning');
-                    return;
-                }
-                if (isSending) {
-                    showToast('Please wait, current request in progress', 'warning');
-                    return;
-                }
-                isSending = true;
-                if (aiMessageInput) aiMessageInput.value = '';
-                aiMessageInput.disabled = true;
-                aiSendBtn.disabled = true;
-                aiAttachBtn.disabled = true;
-                aiImageGenBtn.disabled = true;
-                if (aiInternetBtn) aiInternetBtn.disabled = true;
-                if (aiReasoningBtn) aiReasoningBtn.disabled = true;
-                if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = true;
-
-                showAiTypingIndicator(true, '🎨 Generating image...');
-
-                try {
-                    let finalPrompt = rawPrompt;
-                    showAiTypingIndicator(true, '✨ Enhancing prompt with AI...');
-                    try {
-                        const enhanceResp = await fetch('/ai/enhance_prompt', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ prompt: rawPrompt })
-                        });
-                        if (enhanceResp.ok) {
-                            const enhanceData = await enhanceResp.json();
-                            if (enhanceData.enhanced && enhanceData.enhanced !== rawPrompt) {
-                                finalPrompt = enhanceData.enhanced;
-                                showToast('Prompt enhanced', 'success');
-                            }
-                        }
-                    } catch (enhanceErr) {
-                        console.warn('Enhance failed, using original prompt', enhanceErr);
-                    }
-                    showAiTypingIndicator(true, '🎨 Generating image...');
-
-                    const response = await fetch('/ai/generate_image', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt: finalPrompt })
-                    });
-                    const data = await response.json();
-
-                    if (response.ok && data.image_base64) {
-                        const imageMarkdown = `![generated](${data.image_base64})`;
-                        const finalText = `🎨 *Generated image for:*\n> ${rawPrompt}\n\n${imageMarkdown}`;
-                        displayAiMessage(finalText, false, null, true);
-                    } else {
-                        showToast(data.detail || data.error || 'Generation failed', 'error');
-                    }
-                } catch (err) {
-                    console.error('Image generation error:', err);
-                    showToast('Network error or service unavailable', 'error');
-                } finally {
-                    isSending = false;
-                    showAiTypingIndicator(false);
-                    aiMessageInput.disabled = false;
-                    aiSendBtn.disabled = false;
-                    aiAttachBtn.disabled = false;
-                    aiImageGenBtn.disabled = false;
-                    if (aiInternetBtn) aiInternetBtn.disabled = false;
-                    if (aiReasoningBtn) aiReasoningBtn.disabled = false;
-                    if (aiClearHistoryBtn) aiClearHistoryBtn.disabled = false;
-                    aiMessageInput.focus();
-                }
-            };
-        }
     }
-
+} // ← ЭТА СКОБКА ЗАКРЫВАЕТ setupAiUI()
     function initAiChat() {
         if (aiChatActive) return;
         aiChatActive = true;

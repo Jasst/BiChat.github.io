@@ -1,19 +1,58 @@
 /**
  * common.js — Shared utilities for Dark Messenger
+ * Fully internationalized (i18n)
  * QR Scanner, Utils, DOM helpers, Security, Forms, Modals
- * ✅ Защита от повторной загрузки + ФИКСЫ для авто-добавления после сканирования
- * ✅ Добавлены глобальные модальные окна confirm/prompt
- * ✅ ИСПРАВЛЕН QR-сканер: увеличены таймауты, добавлен сброс по времени
  */
-
-// === 🛡️ Защита от повторного объявления модулей ===
-;(function(global) {
+(function(global) {
   if (global.DarkMsgCommonLoaded) {
     console.debug('ℹ️ common.js already loaded, skipping');
     return;
   }
   global.DarkMsgCommonLoaded = true;
   window.modalOpen = false;
+
+  // Helper for safe i18n (fallback to key if i18next not ready)
+  function t(key, opts) {
+    if (typeof i18next !== 'undefined' && i18next.t) {
+      return i18next.t(key, opts);
+    }
+    // Fallback English for keys used in this file
+    const fallbacks = {
+      'just_now': 'just now',
+      'minutes_ago': '{count}m ago',
+      'address_required': 'Address is required',
+      'must_be_64_hex': 'Must be 64 hex characters',
+      'name_required': 'Name is required',
+      'min_characters': 'Min {count} characters',
+      'max_characters': 'Max {count} characters',
+      'only_letters_numbers': 'Only letters, numbers, spaces, - _ allowed',
+      'nothing_to_copy': 'Nothing to copy',
+      'copy_failed': 'Copy failed',
+      'processing': 'Processing…',
+      'submit': 'Submit',
+      'request_failed': 'Request failed',
+      'camera_not_supported': 'Camera not supported in this browser',
+      'camera_access_denied': 'Camera access denied',
+      'no_camera_found': 'No camera found',
+      'camera_busy': 'Camera is busy',
+      'camera_settings_not_supported': 'Camera settings not supported',
+      'camera_not_responding': 'Camera not responding',
+      'address_scanned': '✓ Address scanned',
+      'not_valid_address': '⚠️ Not a valid address format',
+      'scanned_adding_contact': '✓ Scanned! Adding contact...',
+      'scan_complete_manual_add': 'Scan complete. Please click "Add" manually.',
+      'address_scanned_start_chat': '✓ Address scanned! Click "Start Chat" to begin',
+      'cancel': 'Cancel',
+      'confirm': 'Confirm',
+      'ok': 'OK'
+    };
+    let result = fallbacks[key];
+    if (result && opts) {
+      if (opts.count !== undefined) result = result.replace('{count}', opts.count);
+      if (opts.size) result = result.replace('{size}', opts.size);
+    }
+    return result || key;
+  }
 
 // =============================================================================
 // === 🛡️ Security Module ===
@@ -75,7 +114,7 @@ const Utils = {
   },
 
   async copyToClipboard(text, onSuccess, onError) {
-    if (!text) { onError?.('Nothing to copy'); return false; }
+    if (!text) { onError?.(t('nothing_to_copy')); return false; }
     try {
       await navigator.clipboard.writeText(text);
       onSuccess?.();
@@ -94,7 +133,7 @@ const Utils = {
         onSuccess?.();
         return true;
       } catch (fallbackErr) {
-        onError?.(fallbackErr.message || 'Copy failed');
+        onError?.(fallbackErr.message || t('copy_failed'));
         return false;
       }
     }
@@ -105,8 +144,8 @@ const Utils = {
     const date = new Date(ts * 1000);
     const now = new Date();
     const diff = now - date;
-    if (diff < 60000) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 60000) return t('just_now');
+    if (diff < 3600000) return t('minutes_ago', { count: Math.floor(diff / 60000) });
     if (diff < 86400000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return date.toLocaleDateString();
   },
@@ -251,19 +290,19 @@ const ModalManager = {
 // =============================================================================
 const FormHelpers = {
   validateAddress(value) {
-    if (!value) return { valid: false, error: 'Address is required' };
+    if (!value) return { valid: false, error: t('address_required') };
     if (!Security.isValidAddress(value)) {
-      return { valid: false, error: 'Must be 64 hex characters' };
+      return { valid: false, error: t('must_be_64_hex') };
     }
     return { valid: true };
   },
 
   validateName(value, { minLength = 1, maxLength = 100, allowSpecial = false } = {}) {
-    if (!value?.trim()) return { valid: false, error: 'Name is required' };
-    if (value.length < minLength) return { valid: false, error: `Min ${minLength} characters` };
-    if (value.length > maxLength) return { valid: false, error: `Max ${maxLength} characters` };
+    if (!value?.trim()) return { valid: false, error: t('name_required') };
+    if (value.length < minLength) return { valid: false, error: t('min_characters', { count: minLength }) };
+    if (value.length > maxLength) return { valid: false, error: t('max_characters', { count: maxLength }) };
     if (!allowSpecial && /[^a-zA-Z0-9\s\-_]/.test(value)) {
-      return { valid: false, error: 'Only letters, numbers, spaces, - _ allowed' };
+      return { valid: false, error: t('only_letters_numbers') };
     }
     return { valid: true };
   },
@@ -298,17 +337,17 @@ const FormHelpers = {
         submitBtn.disabled = true;
         const originalText = submitBtn.textContent;
         submitBtn.dataset.originalText = originalText;
-        submitBtn.textContent = submitBtn.dataset.loadingText || 'Processing…';
+        submitBtn.textContent = submitBtn.dataset.loadingText || t('processing');
       }
       try {
         await handler(new FormData(formEl));
       } catch (err) {
         console.error('Form submit error:', err);
-        window.NotificationManager?.showToast(err.message || 'Request failed', 'error');
+        window.NotificationManager?.showToast(err.message || t('request_failed'), 'error');
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.textContent = submitBtn.dataset.originalText || 'Submit';
+          submitBtn.textContent = submitBtn.dataset.originalText || t('submit');
         }
       }
     });
@@ -316,7 +355,7 @@ const FormHelpers = {
 };
 
 // =============================================================================
-// === 📷 QR Scanner Module (✅ FULLY FIXED - improved waiting) ===
+// === 📷 QR Scanner Module ===
 // =============================================================================
 const QRScanner = {
   stream: null,
@@ -331,8 +370,8 @@ const QRScanner = {
     scanSize: 400,
     inversionAttempts: "attemptBoth",
     scanInterval: 100,
-    videoWaitTimeout: 5000,    // 5 секунд максимум на готовность видео
-    videoWaitInterval: 100     // проверка каждые 100 мс
+    videoWaitTimeout: 5000,
+    videoWaitInterval: 100
   },
 
   open(options) {
@@ -348,7 +387,7 @@ const QRScanner = {
     if (resultEl) { DOM.hide(resultEl); resultEl.textContent = ''; resultEl.style.color = ''; }
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      this._showError('Camera not supported in this browser', resultEl, onClose);
+      this._showError(t('camera_not_supported'), resultEl, onClose);
       return;
     }
 
@@ -367,7 +406,6 @@ const QRScanner = {
       return videoEl.play().catch(err => { console.error('Video play failed:', err); throw err; });
     })
     .then(() => {
-      // Ждём, пока видео получит размеры, с таймаутом
       let attempts = 0;
       const maxAttempts = this.config.videoWaitTimeout / this.config.videoWaitInterval;
       const checkVideo = () => {
@@ -379,7 +417,7 @@ const QRScanner = {
           attempts++;
           if (attempts >= maxAttempts) {
             console.warn('QRScanner: video not ready after timeout');
-            this._showError('Camera not responding', resultEl, onClose);
+            this._showError(t('camera_not_responding'), resultEl, onClose);
             this.close({ containerEl, videoEl });
             return;
           }
@@ -390,10 +428,10 @@ const QRScanner = {
     })
     .catch(err => {
       console.error('QRScanner error:', err.name, err.message);
-      let userMessage = 'Camera access denied';
-      if (err.name === 'NotFoundError') userMessage = 'No camera found';
-      if (err.name === 'NotReadableError') userMessage = 'Camera is busy';
-      if (err.name === 'OverconstrainedError') userMessage = 'Camera settings not supported';
+      let userMessage = t('camera_access_denied');
+      if (err.name === 'NotFoundError') userMessage = t('no_camera_found');
+      if (err.name === 'NotReadableError') userMessage = t('camera_busy');
+      if (err.name === 'OverconstrainedError') userMessage = t('camera_settings_not_supported');
       this._showError(userMessage, resultEl, onClose);
     });
   },
@@ -476,17 +514,17 @@ const QRScanner = {
           if (address) {
             this.close({ containerEl, videoEl, resultEl });
             if (resultEl) {
-              resultEl.textContent = '✓ Address scanned';
+              resultEl.textContent = t('address_scanned');
               resultEl.style.color = 'var(--status-success)';
               DOM.show(resultEl);
             }
             onScan?.(address);
-            window.NotificationManager?.showToast('✓ Address scanned', 'success');
+            window.NotificationManager?.showToast(t('address_scanned'), 'success');
             return;
           } else {
             console.warn('⚠️ QR data not recognized as address:', code.data);
             if (resultEl) {
-              resultEl.textContent = '⚠️ Not a valid address format';
+              resultEl.textContent = t('not_valid_address');
               resultEl.style.color = 'var(--status-warning)';
               DOM.show(resultEl);
             }
@@ -519,8 +557,8 @@ window.showConfirmModal = function(title, message) {
                         <p>${Utils.escapeHtml(message)}</p>
                     </div>
                     <footer class="modal-footer">
-                        <button class="btn btn-ghost" data-action="cancel">Cancel</button>
-                        <button class="btn btn-primary" data-action="confirm">Confirm</button>
+                        <button class="btn btn-ghost" data-action="cancel">${t('cancel')}</button>
+                        <button class="btn btn-primary" data-action="confirm">${t('confirm')}</button>
                     </footer>
                 </div>
             </div>
@@ -559,8 +597,8 @@ window.showPromptModal = function(title, placeholder, defaultValue = '') {
                                style="width: 100%;">
                     </div>
                     <footer class="modal-footer">
-                        <button class="btn btn-ghost" data-action="cancel">Cancel</button>
-                        <button class="btn btn-primary" data-action="ok">OK</button>
+                        <button class="btn btn-ghost" data-action="cancel">${t('cancel')}</button>
+                        <button class="btn btn-primary" data-action="ok">${t('ok')}</button>
                     </footer>
                 </div>
             </div>
@@ -637,7 +675,7 @@ window.openQRScannerInModal = () => QRScanner.open({
       console.log('✅ Address inserted into #newChatAddress');
       const resultEl = DOM.getById('scanResultModal');
       if (resultEl) {
-        resultEl.textContent = '✓ Address scanned! Click "Start Chat" to begin';
+        resultEl.textContent = t('address_scanned_start_chat');
         resultEl.style.color = 'var(--status-success)';
         DOM.show(resultEl);
       }
@@ -667,7 +705,7 @@ window.openQRScanner = () => QRScanner.open({
 
     const resultEl = DOM.getById('scanResult');
     if (resultEl) {
-      resultEl.textContent = '✓ Scanned! Adding contact...';
+      resultEl.textContent = t('scanned_adding_contact');
       resultEl.style.color = 'var(--status-success)';
       DOM.show(resultEl);
     }
@@ -678,7 +716,7 @@ window.openQRScanner = () => QRScanner.open({
           await window.addContact();
         } catch (e) {
           console.error('Auto-add contact failed:', e);
-          window.NotificationManager?.showToast('Scan complete. Please click "Add" manually.', 'warning');
+          window.NotificationManager?.showToast(t('scan_complete_manual_add'), 'warning');
         }
       }
     }, 400);

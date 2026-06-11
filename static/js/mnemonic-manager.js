@@ -16,27 +16,44 @@ if (typeof window.MnemonicManager !== 'undefined') {
       _autoClearSeconds: 30,
 
       showInModal(mnemonic, modalId = 'mnemonicModal', displayId = 'modalMnemonic') {
-        if (!mnemonic) return;
-        this._mnemonic = mnemonic;
-        const modal = document.getElementById(modalId);
-        const display = document.getElementById(displayId);
-        if (display) display.textContent = mnemonic;
-        if (modal) {
-          modal.classList.remove('hidden');
-          modal.setAttribute('aria-hidden', 'false');
-          // ✅ Устанавливаем глобальный флаг, чтобы Long Polling не обновлял UI
-          window.modalOpen = true;
+    if (!mnemonic) return;
+    this._mnemonic = mnemonic;
+    const modal = document.getElementById(modalId);
+    const display = document.getElementById(displayId);
+    if (display) display.textContent = mnemonic;
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+        // ✅ Устанавливаем глобальный флаг, чтобы Long Polling не обновлял UI
+        window.modalOpen = true;
+        // ✅ Локализуем только статичные data-i18n элементы внутри модалки,
+        //    не трогая #clearCountdown (он управляется таймером)
+        if (window.i18next) {
+            modal.querySelectorAll('[data-i18n]').forEach(el => {
+                if (el.id === 'clearCountdown') return;
+                const key = el.getAttribute('data-i18n');
+                const isInputLike = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+                if (isInputLike) {
+                    el.placeholder = i18next.t(key);
+                } else {
+                    el.innerHTML = i18next.t(key);
+                }
+            });
+            modal.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                el.placeholder = i18next.t(el.getAttribute('data-i18n-placeholder'));
+            });
         }
-        this._startAutoClear(modalId);
-        this._preventEscClose(modalId, true);
+    }
+    this._startAutoClear(modalId);
+    this._preventEscClose(modalId, true);
 
-        // ✅ Добавляем обработчик для крестика, чтобы корректно закрыть модалку через hide()
-        const closeBtn = modal?.querySelector('.modal-close');
-        if (closeBtn && !closeBtn._mnemonicHandler) {
-          closeBtn._mnemonicHandler = () => this.hide(modalId);
-          closeBtn.addEventListener('click', closeBtn._mnemonicHandler);
-        }
-      },
+    // ✅ Добавляем обработчик для крестика, чтобы корректно закрыть модалку через hide()
+    const closeBtn = modal?.querySelector('.modal-close');
+    if (closeBtn && !closeBtn._mnemonicHandler) {
+        closeBtn._mnemonicHandler = () => this.hide(modalId);
+        closeBtn.addEventListener('click', closeBtn._mnemonicHandler);
+    }
+},
 
       hide(modalId = 'mnemonicModal') {
         this._stopAutoClear();

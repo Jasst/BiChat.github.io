@@ -5,9 +5,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException ,Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -71,6 +72,31 @@ if os.path.isdir(STATIC_FOLDER):
 if os.path.isdir(UPLOAD_FOLDER):
     app.mount('/uploads', StaticFiles(directory=UPLOAD_FOLDER), name='uploads')
 
+# КРИТИЧНО: sw.js и manifest.json должны отдаваться из КОРНЯ сайта (/sw.js, /manifest.json)
+# Если отдавать из /static/sw.js — scope SW будет /static/, push не будет работать
+# для /chat, /profile и других страниц вне /static/
+from fastapi.responses import FileResponse
+
+@app.get('/sw.js', include_in_schema=False)
+async def serve_sw():
+    sw_path = os.path.join(STATIC_FOLDER, 'sw.js')
+    return FileResponse(
+        sw_path,
+        media_type='application/javascript',
+        headers={
+            # SW не должен кешироваться браузером — иначе старая версия зависает
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Service-Worker-Allowed': '/',  # разрешаем scope = /
+        }
+    )
+
+@app.get('/manifest.json', include_in_schema=False)
+async def serve_manifest():
+    manifest_path = os.path.join(STATIC_FOLDER, 'manifest.json')
+    if not os.path.exists(manifest_path):
+        raise HTTPException(404, 'manifest.json not found')
+    return FileResponse(manifest_path, media_type='application/manifest+json',
+                        headers={'Cache-Control': 'public, max-age=86400'})
 
 from routes.auth import router as auth_router
 from routes.messages import router as messages_router
@@ -81,7 +107,10 @@ from routes.files import router as files_router
 from routes.status import router as status_router
 from routes.ai_assistant import router as ai_router
 from routes.ws import router as ws_router
+from routes.push import router as push_router
+from routes.calls import router as calls_router
 
+app.include_router(calls_router)
 app.include_router(auth_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)
@@ -91,6 +120,7 @@ app.include_router(files_router)
 app.include_router(status_router)
 app.include_router(ai_router)
 app.include_router(ws_router)
+app.include_router(push_router)
 
 
 @app.middleware('http')

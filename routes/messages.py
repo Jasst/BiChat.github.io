@@ -5,7 +5,7 @@ import json
 import logging
 import time
 from typing import Optional
-
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from cache import (
@@ -18,7 +18,8 @@ from models import SendMessageRequest, MarkReadRequest, MessageStatusesRequest
 from services.messaging import get_conversations_list_cached, invalidate_conversations_cache
 from services.wallet import staking_manager
 from setup import message_limiter
-from routes.ws import manager
+from services.notifier import message_notifier
+from services.push import send_push
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['messages'])
@@ -32,38 +33,74 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
     msg_type = body.message_type
     from database import get_db_cursor
     async with get_db_cursor() as conn:
-        await conn.execute('BEGIN')
+
         if MESSAGE_FEE > 0:
-            row = await conn.fetchrow('SELECT balance FROM wallets WHERE address = $1', sender)
-            balance = row[0] if row else 0
-            if balance < MESSAGE_FEE:
-                await conn.execute('ROLLBACK')
-                raise HTTPException(402, f'Insufficient balance for fee ({MESSAGE_FEE/COIN:.6f} {COIN_NAME})')
-            await conn.execute('UPDATE wallets SET balance = balance - $1 WHERE address = $2',
-                                 MESSAGE_FEE, sender)
-            await conn.execute(
-                'INSERT INTO wallets (address, balance) VALUES ($1, $2) '
-                'ON CONFLICT(address) DO UPDATE SET balance = wallets.balance + $2',
-                STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE
-            )
-            await conn.execute(
-                'INSERT INTO coin_transactions (tx_type, sender, recipient, amount, timestamp, note) '
-                'VALUES ($1, $2, $3, $4, $5, $6)',
-                'message_fee', sender, STAKING_FEE_POOL_ADDRESS, MESSAGE_FEE, time.time(), 'message fee'
-            )
+
+            # Атомарное списание комиссии
+            row = await conn.fetchrow("""
+                UPDATE wallets
+                SET balance = balance - $1
+                WHERE address = $2
+                  AND balance >= $1
+                RETURNING balance
+            """, MESSAGE_FEE, sender)
+
+            if not row:
+                raise HTTPException(
+                    402,
+                    f'Insufficient balance for fee ({MESSAGE_FEE / COIN:.6f} {COIN_NAME})'
+                )
+
+            # Пополнение staking pool
+            await conn.execute("""
+                INSERT INTO wallets (address, balance)
+                VALUES ($1, $2)
+                ON CONFLICT(address)
+                DO UPDATE
+                SET balance = wallets.balance + EXCLUDED.balance
+            """,
+                               STAKING_FEE_POOL_ADDRESS,
+                               MESSAGE_FEE
+                               )
+
+            # Лог комиссии
+            await conn.execute("""
+                INSERT INTO coin_transactions
+                (
+                    tx_type,
+                    sender,
+                    recipient,
+                    amount,
+                    timestamp,
+                    note
+                )
+                VALUES ($1,$2,$3,$4,$5,$6)
+            """,
+                               'message_fee',
+                               sender,
+                               STAKING_FEE_POOL_ADDRESS,
+                               MESSAGE_FEE,
+                               time.time(),
+                               'message fee'
+                               )
+
             if ENABLE_STAKING and staking_manager:
-                await staking_manager.add_to_fee_pool(MESSAGE_FEE, cursor=conn)
+                await staking_manager.add_to_fee_pool(
+                    MESSAGE_FEE,
+                    cursor=conn
+                )
+
         tx_id = None
         group = None
         message_obj = None
         if msg_type == 'group' and body.group_id:
             if not body.encrypted_map:
-                await conn.execute('ROLLBACK')
+
                 raise HTTPException(400, 'Missing encrypted_map')
             groups = await get_user_groups_cached(sender, cache_version=await get_groups_cache_version())
             group = next((g for g in groups if g['id'] == body.group_id), None)
             if not group or sender not in group['members']:
-                await conn.execute('ROLLBACK')
+
                 raise HTTPException(403, 'Access denied')
             tx_id = await blockchain.new_transaction(
                 conn, sender, f"group:{body.group_id}",
@@ -79,24 +116,34 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'timestamp': time.time(),
                 'content': json.dumps({'encrypted_map': body.encrypted_map}),
                 'image': None,
+                'status': 'sent'
             }
-            # ВАЖНО: коммитим ДО отправки WS, чтобы клиент мог сразу запросить сообщение из БД
-            await conn.execute('COMMIT')
-            # Рассылаем всем участникам через notifier (поддерживает оффлайн-буфер)
-            from services.notifier import message_notifier
+
+
+
             for member in group['members']:
-                # Отправляем всем, включая отправителя (для синхронизации нескольких вкладок/устройств)
                 await message_notifier.add_message(member, message_obj)
+
+            for member in group['members']:
+                if member != sender:
+                    asyncio.create_task(
+                        send_push(
+                            user_address=member,
+                            title=f"Группа {group['name']}",
+                            body="Новое сообщение в группе",
+                            url=f"/chat?start_with=group:{body.group_id}"
+                        )
+                    )
         else:
             recipient = body.recipient
             if not recipient:
-                await conn.execute('ROLLBACK')
+
                 raise HTTPException(400, 'Missing recipient')
             if sender == recipient:
-                await conn.execute('ROLLBACK')
+
                 raise HTTPException(400, 'Cannot message yourself')
             if not body.payload or not isinstance(body.payload, dict):
-                await conn.execute('ROLLBACK')
+
                 raise HTTPException(400, 'Missing encrypted payload')
             tx_id = await blockchain.new_transaction(
                 conn, sender, recipient,
@@ -112,12 +159,19 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
                 'timestamp': time.time(),
                 'content': json.dumps(body.payload),
                 'image': None,
+                'status': 'sent'
             }
-            # ВАЖНО: коммитим ДО отправки WS
-            await conn.execute('COMMIT')
-            # Отправляем получателю через notifier (поддерживает оффлайн-буфер)
-            from services.notifier import message_notifier
+
             await message_notifier.add_message(recipient, message_obj)
+
+            asyncio.create_task(
+                send_push(
+                    user_address=recipient,
+                    title=f"Новое сообщение от {sender[:8]}...",
+                    body="Новое сообщение",
+                    url=f"/chat?start_with={sender}"
+                )
+            )
 
     await invalidate_conversations_cache(sender)
     if msg_type == 'group' and body.group_id and group:
@@ -127,7 +181,6 @@ async def send_message(body: SendMessageRequest, request: Request, address: str 
         await invalidate_conversations_cache(body.recipient)
 
     return {'message': 'Sent', 'tx_id': tx_id, 'type': msg_type, 'fee': MESSAGE_FEE}
-
 
 @router.get('/get_conversation')
 async def get_conversation(
@@ -149,7 +202,8 @@ async def get_conversation(
             groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             if not any(g['id'] == group_id and address in g['members'] for g in groups):
                 raise HTTPException(403, 'No access')
-            query = ('SELECT id, sender, recipient, content, image, timestamp, metadata '
+            # Добавлено поле status
+            query = ('SELECT id, sender, recipient, content, image, timestamp, metadata, status '
                      'FROM transactions WHERE recipient = $1')
             params = [chat_with]
             if last_message_id:
@@ -166,8 +220,9 @@ async def get_conversation(
             params.append(limit)
             rows = await conn.fetch(query, *params)
         else:
+            # Добавлено поле status
             base_query = """
-                SELECT id, sender, recipient, content, image, timestamp, metadata
+                SELECT id, sender, recipient, content, image, timestamp, metadata, status
                 FROM (
                     SELECT * FROM transactions WHERE sender = $1 AND recipient = $2
                     UNION ALL
@@ -198,6 +253,7 @@ async def get_conversation(
             'timestamp':    r[5],
             'sender_pubkey': None,
             'metadata':     r[6],
+            'status':       r[7] if len(r) > 7 else 'sent',   # добавлено
             'sender_name':  (await get_contact_name_cached(address, r[1],
                              cache_version=await get_contact_cache_version()) or r[1][:10] + '...'),
             'recipient_name': (await get_contact_name_cached(address, r[2],
@@ -308,14 +364,12 @@ async def clear_conversation(body: dict, request: Request, address: str = Depend
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         if chat_with.startswith('group:'):
-            # Групповой чат – удаляем все сообщения группы
             groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             group_id = chat_with.split(':', 1)[1]
             if not any(g['id'] == group_id and address in g['members'] for g in groups):
                 raise HTTPException(403, 'No access')
             await conn.execute('DELETE FROM transactions WHERE recipient = $1', chat_with)
         else:
-            # Личный диалог – удаляем сообщения между двумя адресами
             await conn.execute('''
                 DELETE FROM transactions
                 WHERE (sender = $1 AND recipient = $2) OR (sender = $3 AND recipient = $4)
@@ -341,7 +395,6 @@ async def delete_message(body: dict, request: Request, address: str = Depends(re
         await conn.execute('DELETE FROM transactions WHERE id = $1', msg_id)
         await invalidate_conversations_cache(address)
         if recipient.startswith('group:'):
-            # Инвалидируем кэш диалогов для всех участников группы
             groups = await get_user_groups_cached(address, cache_version=await get_groups_cache_version())
             group_id = recipient.split(':', 1)[1]
             group = next((g for g in groups if g['id'] == group_id), None)

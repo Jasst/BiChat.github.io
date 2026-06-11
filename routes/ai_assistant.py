@@ -25,6 +25,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import aiohttp
 from ddgs import DDGS
+import sys
+from pathlib import Path
 
 from config import (
     EASYDIFFUSION_ENABLED,
@@ -35,14 +37,18 @@ from config import (
     EASYDIFFUSION_DEFAULT_HEIGHT,
 )
 
+
 try:
     from dependencies import require_auth
 except ImportError:
     async def require_auth():
         return "anonymous"
 
-logger = logging.getLogger(__name__)
 
+
+
+logger = logging.getLogger(__name__)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # ==================================================================
 # 🔧 Конфигурация
 # ==================================================================
@@ -85,7 +91,7 @@ SEARCH_CACHE_TTL = 300
 _search_cache: Dict[str, Tuple[str, float]] = {}
 
 # Количество страниц для загрузки из результатов поиска
-MAX_PAGES_TO_FETCH = 6
+MAX_PAGES_TO_FETCH = 7
 PAGE_CONTENT_MAX_CHARS = 6000
 
 # ==================================================================
@@ -1425,6 +1431,14 @@ class SelfImprovingAssistant:
         self.image_generation_cache: Dict[str, Tuple[str, float]] = {}
         self.image_gen_cache_path = self.user_dir / 'image_gen_cache.pkl.gz'
         self._load_image_gen_cache()
+        self._agent = None  # lazy init
+
+    @property
+    def agent(self):
+        if self._agent is None :
+            from agent_core import AutonomousAgent
+            self._agent = AutonomousAgent(self)
+        return self._agent
 
     def _load(self):
         if self.neural_path.exists():
@@ -1878,6 +1892,18 @@ class SelfImprovingAssistant:
 
         yield "data: [DONE]\n\n"
 
+    @property
+    def research_agent(self):
+        if not hasattr(self, '_research_agent'):
+            try:
+                from agent_core import ResearchAgent
+                self._research_agent = ResearchAgent(self)
+            except Exception as e:
+                logger.error(f"Failed to create ResearchAgent: {e}", exc_info=True)
+                return None
+        return self._research_agent
+
+
     def _load_image_gen_cache(self):
         if self.image_gen_cache_path.exists():
             try:
@@ -1894,6 +1920,8 @@ class SelfImprovingAssistant:
                 pickle.dump(self.image_generation_cache, f)
         except Exception as e:
             logger.error(f"Failed to save image gen cache: {e}")
+
+
 # ==================================================================
 # 🌐 FastAPI роутер
 # ==================================================================
@@ -2159,6 +2187,178 @@ async def apply_global_to_me(address: str = Depends(require_auth)):
         "global_vocab":    len(gkb._global_embeddings),
         "has_neural":      gkb._global_W1 is not None,
     }
+
+
+# ── Агентные endpoints ─────────────────────────────────────────
+
+class AgentRequest(BaseModel):
+    goal: str = Field(..., description="Цель для автономного агента")
+
+
+@router.post("/agent/run")
+async def agent_run_goal(body: AgentRequest, address: str = Depends(require_auth)):
+    """
+    Запускает автономную агентную петлю для достижения цели.
+    Использует ReAct (Reason + Act): планирует шаги, вызывает инструменты,
+    синтезирует ответ.
+    """
+    assistant = await get_assistant(address)
+    if not assistant.agent:
+        raise HTTPException(501, "Агентный режим недоступен")
+    result = await assistant.agent.run_goal(body.goal)
+    return {"result": result, "agent_stats": assistant.agent.stats()}
+
+@router.post("/research")
+async def research_goal(body: AgentRequest, address: str = Depends(require_auth)):
+    assistant = await get_assistant(address)
+    if assistant.research_agent is None:      # ← БЕЗ СКОБОК, проверка на None
+        raise HTTPException(501, "Research agent unavailable")
+    result = await assistant.research_agent.research(body.goal)
+    return result
+
+@router.post("/agent/chat")
+async def agent_chat(body: AIRequest, address: str = Depends(require_auth)):
+    """
+    Чат с агентным режимом.
+    Простые запросы → стандартный ответ (без overhead).
+    Сложные задачи → агентная петля с инструментами.
+    """
+    assistant = await get_assistant(address)
+    if not assistant.agent:
+        # Fallback на стандартный чат
+        return await chat_with_ai(body, address)
+
+    if body.stream:
+        return StreamingResponse(
+            assistant.agent.stream_with_agent(
+                message=body.message,
+                image_base64=body.image_base64,
+                image_mime=body.image_mime,
+                reasoning=body.reasoning,
+                web_search=body.web_search,
+                url_to_fetch=body.url_to_fetch,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache,no-store,must-revalidate",
+                "X-Accel-Buffering": "no",
+                "Content-Encoding": "identity",
+            }
+        )
+
+    response, meta = await assistant.agent.chat(
+        message=body.message,
+        image_base64=body.image_base64,
+        image_mime=body.image_mime,
+        reasoning=body.reasoning,
+        web_search=body.web_search,
+        url_to_fetch=body.url_to_fetch,
+    )
+    return {"reply": response, "meta": meta}
+
+
+@router.get("/agent/stats")
+async def agent_stats(address: str = Depends(require_auth)):
+    """Статистика агента: инструменты, цели, рефлексия, память."""
+    assistant = await get_assistant(address)
+    if not assistant.agent:
+        return {"error": "Агентный режим недоступен"}
+    return assistant.agent.stats()
+
+
+@router.get("/agent/goals")
+async def agent_goals(address: str = Depends(require_auth)):
+    """Список авто-целей агента (сгенерированных из паттернов разговоров)."""
+    assistant = await get_assistant(address)
+    if not assistant.agent:
+        return {"goals": []}
+    pending = assistant.agent.goals.get_pending(10)
+    return {
+        "pending": [
+            {
+                "id": g.goal_id,
+                "description": g.description,
+                "priority": round(g.priority, 2),
+                "source": g.source,
+            }
+            for g in pending
+        ],
+        "topic_stats": assistant.agent.goals.stats()["top_topics"],
+    }
+
+
+@router.post("/agent/goals/run_pending")
+async def agent_run_pending_goals(address: str = Depends(require_auth)):
+    """
+    Запускает одну ожидающую авто-цель (наивысший приоритет).
+    Можно вызывать периодически (cron / celery beat).
+    """
+    assistant = await get_assistant(address)
+    if not assistant.agent:
+        return {"status": "agent unavailable"}
+    pending = assistant.agent.goals.get_pending(1)
+    if not pending:
+        return {"status": "no pending goals"}
+    goal = pending[0]
+    result = await assistant.agent.run_goal(goal.description)
+    return {"goal": goal.description, "result": result[:500]}
+
+
+@router.post("/agent/reflect")
+async def agent_force_reflect(address: str = Depends(require_auth)):
+    """Запускает немедленную рефлексию (анализ качества последних ответов)."""
+    assistant = await get_assistant(address)
+    if not assistant.agent:
+        return {"error": "Агентный режим недоступен"}
+    entry = await assistant.agent.reflect.reflect(
+        assistant.total_interactions,
+        assistant.agent._call_llm_direct,
+    )
+    if not entry:
+        return {"status": "недостаточно данных для рефлексии"}
+    return {
+        "summary": entry.summary,
+        "weak_points": entry.weak_points,
+        "improvements": entry.improvements,
+        "quality": entry.quality_score,
+    }
+
+
+@router.post("/agent/tools/register")
+async def register_custom_tool(body: dict, address: str = Depends(require_auth)):
+    """
+    Регистрирует кастомный инструмент через URL-callback.
+    body: {"name": "my_tool", "url": "https://...", "description": "..."}
+
+    Агент будет POST-ить на этот URL с {"input": "..."} и ожидать {"output": "..."}.
+    """
+    assistant = await get_assistant(address)
+    if not assistant.agent:
+        return {"error": "Агентный режим недоступен"}
+
+    name = body.get("name", "").strip()
+    url = body.get("url", "").strip()
+    desc = body.get("description", name)
+
+    if not name or not url:
+        raise HTTPException(400, "name и url обязательны")
+
+    import aiohttp
+
+    async def remote_tool(tool_input: str) -> str:
+        async with aiohttp.ClientSession() as s:
+            async with s.post(
+                    url,
+                    json={"input": tool_input},
+                    timeout=aiohttp.ClientTimeout(total=20),
+            ) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    return str(data.get("output", ""))
+                return f"[Remote tool error: HTTP {r.status}]"
+
+    assistant.agent.tools.register(name, remote_tool, desc)
+    return {"status": "registered", "tool": name}
 
 
 def _shutdown_all():

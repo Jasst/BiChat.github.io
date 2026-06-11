@@ -1,7 +1,42 @@
 // core.js — ядро мессенджера с поддержкой зашифрованного localStorage и кеша сообщений
+// Исправлено: сохранение статуса сообщений, разделители дат (вынесены в ui.js)
 (function() {
     if (window._coreLoaded) return;
     window._coreLoaded = true;
+
+    // Helper for safe i18n (fallback to English if i18next not ready)
+    function t(key, opts) {
+        if (typeof i18next !== 'undefined' && i18next.t) {
+            return i18next.t(key, opts);
+        }
+        const fallbacks = {
+            'unlock_wallet_title': 'Unlock wallet',
+            'unlock_wallet_desc': 'Your encrypted wallet was found. Enter password to unlock.',
+            'password': 'Password',
+            'log_out': 'Log out',
+            'unlock': 'Unlock',
+            'please_enter_password': 'Please enter password',
+            'wrong_password': 'Wrong password',
+            'public_key_not_found': 'Public key not found for {address}',
+            'public_key_mismatch': '⚠️ Public key mismatch for {address} — possible MITM!',
+            'no_mnemonic_available': 'No mnemonic available',
+            'mnemonic_not_found': 'Mnemonic not found',
+            'no_access': '🔒 No access',
+            'no_sender_pubkey': '🔒 No sender pubkey',
+            'decrypt_error': '🔒 Decrypt error',
+            'new_message_preview': '💬 New message',
+            'read_status': '✓✓ Read',
+            'delivered_status': '✓✓ Delivered',
+            'sent_status': '✓ Sent',
+            'online': 'Online',
+            'offline': 'Offline'
+        };
+        let result = fallbacks[key];
+        if (result && opts) {
+            if (opts.address) result = result.replace('{address}', opts.address);
+        }
+        return result || key;
+    }
 
     // ========== Глобальные утилиты ==========
     window.Utils = window.Utils || {};
@@ -43,8 +78,51 @@
     window.userKeys = null;
     window.pubKeyCache = new Map();
 
-    // ========== 🧠 Кеш сообщений (в памяти, на время сессии) ==========
-    window.messagesCache = new Map(); // key = chatId (string), value = массив сообщений, отсортированных по id (возрастание)
+    // ========== Кеш сообщений (в памяти, на время сессии) ==========
+    window.messagesCache = new Map();
+
+    // Флаг, чтобы не обрабатывать звонок дважды
+window._pendingCallHandled = false;
+
+
+window.handlePendingCall = function() {
+    if (window._pendingCallHandled) return;
+
+    let callId = null;
+    // Сначала проверяем sessionStorage (сохраняется при разблокировке)
+    if (sessionStorage.getItem('pending_call_id')) {
+        callId = sessionStorage.getItem('pending_call_id');
+    } else {
+        const urlParams = new URLSearchParams(window.location.search);
+        callId = urlParams.get('call_id');
+    }
+
+    if (!callId) return;
+
+    // Сохраняем в sessionStorage, чтобы не потерять после разблокировки
+    sessionStorage.setItem('pending_call_id', callId);
+    // Удаляем параметр из URL, чтобы при обновлении страницы не повторять
+    const newUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, newUrl);
+
+    // Используем wsClient.isConnected (кастомный WebSocketClient), а не .readyState
+    const wsReady = window.wsClient && (
+        window.wsClient.isConnected === true ||
+        (window.wsClient.ws && window.wsClient.ws.readyState === WebSocket.OPEN)
+    );
+
+    if (wsReady) {
+        console.log('[App] Sending get_call for', callId);
+        window.wsClient.send({ type: 'get_call', call_id: callId });
+        window._pendingCallHandled = true;
+        sessionStorage.removeItem('pending_call_id');
+    } else {
+        // Не помечаем как обработанный, дождёмся onConnect
+        console.log('[App] WebSocket not ready, will retry on connect');
+    }
+};
+
+
 
     window.addMessageToCache = function(chatId, message, position = 'end') {
         if (!chatId || !message || !message.id) return;
@@ -122,45 +200,73 @@
             modal.style.zIndex = '10000';
             modal.innerHTML = `
                 <div class="modal" style="max-width:400px;">
-                    <div class="modal-header"><h3>Unlock wallet</h3></div>
+                    <div class="modal-header"><h3 data-i18n="unlock_wallet_title">Unlock wallet</h3></div>
                     <div class="modal-body">
-                        <p>Your encrypted wallet was found. Enter password to unlock.</p>
-                        <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;">
+                        <p data-i18n="unlock_wallet_desc">Your encrypted wallet was found. Enter password to unlock.</p>
+                        <input type="password" id="unlockPassword" class="input" placeholder="Password" style="width:100%;" data-i18n-placeholder="password">
                         <div id="unlockError" class="text-error" style="color:var(--danger);margin-top:8px;display:none;"></div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-ghost" id="cancelUnlock">Log out</button>
-                        <button class="btn btn-primary" id="confirmUnlock">Unlock</button>
+                        <button class="btn btn-ghost" id="cancelUnlock" data-i18n="log_out">Log out</button>
+                        <button class="btn btn-primary" id="confirmUnlock" data-i18n="unlock">Unlock</button>
                     </div>
-                </div>
-            `;
+                </div>`;
+
             document.body.appendChild(modal);
+            if (window.localizePage) window.localizePage();
             const passwordInput = modal.querySelector('#unlockPassword');
             const errorDiv = modal.querySelector('#unlockError');
             const confirmBtn = modal.querySelector('#confirmUnlock');
             const cancelBtn = modal.querySelector('#cancelUnlock');
+            // В файле core.js, внутри функции attemptUnlock:
+            // В файле core.js, внутри функции restoreMnemonic, замените attemptUnlock на:
+
             const attemptUnlock = async () => {
-                const pwd = passwordInput.value;
-                if (!pwd) {
-                    errorDiv.textContent = 'Please enter password';
-                    errorDiv.style.display = 'block';
-                    return;
-                }
-                confirmBtn.disabled = true;
-                confirmBtn.textContent = '...';
-                const mnemonic = await window.StorageEncryption.decryptMnemonic(encrypted, pwd);
-                if (mnemonic) {
-                    sessionStorage.setItem('mnemonic', mnemonic);
-                    modal.remove();
-                    State._restoringMnemonic = false;
-                    resolve(true);
-                } else {
-                    errorDiv.textContent = 'Wrong password';
-                    errorDiv.style.display = 'block';
-                    confirmBtn.disabled = false;
-                    confirmBtn.textContent = 'Unlock';
-                }
-            };
+    const pwd = passwordInput.value;
+    if (!pwd) {
+        errorDiv.textContent = t('please_enter_password');
+        errorDiv.style.display = 'block';
+        return;
+    }
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '...';
+
+    try {
+        const mnemonic = await window.StorageEncryption.decryptMnemonic(encrypted, pwd);
+        if (mnemonic) {
+            sessionStorage.setItem('mnemonic', mnemonic);
+            modal.remove();
+            State._restoringMnemonic = false;
+
+            // 1. Инициализируем Push (если разрешение уже дано)
+            if (window.initPushNotifications) {
+                window.initPushNotifications().catch(e => console.warn('Push init after unlock:', e));
+            }
+
+            // 2. ГЛАВНОЕ ИСПРАВЛЕНИЕ: Инициализируем WebSocket сразу после получения ключа
+            // Это позволит отправить запрос get_call для пропущенного звонка
+            if (typeof window.initWebSocket === 'function') {
+                console.log('[App] Initializing WebSocket after successful unlock...');
+                await window.initWebSocket();
+            }
+
+            resolve(true);
+        } else {
+            errorDiv.textContent = t('wrong_password');
+            errorDiv.style.display = 'block';
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = t('unlock');
+        }
+    } catch (err) {
+        console.error('Unlock error:', err);
+        errorDiv.textContent = 'Error unlocking wallet';
+        errorDiv.style.display = 'block';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = t('unlock');
+    }
+};
+
+
             const clearAndLogout = () => {
                 localStorage.removeItem('encrypted_mnemonic');
                 sessionStorage.removeItem('mnemonic');
@@ -178,14 +284,14 @@
     async function getPubKey(address) {
         if (pubKeyCache.has(address)) return pubKeyCache.get(address);
         const res = await fetch(`/get_public_key/${address}`);
-        if (!res.ok) throw new Error(`Public key not found for ${address}`);
+        if (!res.ok) throw new Error(t('public_key_not_found', { address }));
         const data = await res.json();
         const pubKeyBytes = DarkCrypto._fromBase64(data.public_key);
         const hashBuf = await crypto.subtle.digest('SHA-256', pubKeyBytes);
         const computedAddress = Array.from(new Uint8Array(hashBuf))
             .map(b => b.toString(16).padStart(2, '0')).join('');
         if (computedAddress !== address) {
-            throw new Error(`⚠️ Public key mismatch for ${address} — possible MITM!`);
+            throw new Error(t('public_key_mismatch', { address }));
         }
         pubKeyCache.set(address, data.public_key);
         return data.public_key;
@@ -220,10 +326,10 @@
         if (window.userKeys) return window.userKeys;
         if (!sessionStorage.getItem('mnemonic')) {
             const restored = await restoreMnemonic();
-            if (!restored) throw new Error('No mnemonic available');
+            if (!restored) throw new Error(t('no_mnemonic_available'));
         }
         const mnemonic = sessionStorage.getItem('mnemonic');
-        if (!mnemonic) throw new Error('Mnemonic not found');
+        if (!mnemonic) throw new Error(t('mnemonic_not_found'));
         window.userKeys = await DarkCrypto.deriveKeyPair(mnemonic);
         return window.userKeys;
     }
@@ -232,72 +338,7 @@
     let wsClient = null;
     let wsReconnectTimer = null;
 
-    class WebSocketClient {
-        constructor(options = {}) {
-            this.url = options.url || null;
-            this.onMessage = options.onMessage || (() => {});
-            this.onError = options.onError || (() => {});
-            this.onConnect = options.onConnect || (() => {});
-            this.onDisconnect = options.onDisconnect || (() => {});
-            this.debug = options.debug || false;
-            this.ws = null;
-            this.isConnected = false;
-            this.reconnectDelay = options.reconnectDelay || 3000;
-            this.maxReconnectDelay = 30000;
-            this.reconnectTimer = null;
-            this.shouldReconnect = true;
-            this.address = null;
-            this.signature = null;
-            this.nonce = null;
-        }
-        setAuth(address, signature, nonce) {
-            this.address = address;
-            this.signature = signature;
-            this.nonce = nonce;
-        }
-        async connect() {
-            if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
-            if (!this.url) {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                this.url = `${protocol}//${window.location.host}/ws`;
-            }
-            let finalUrl = this.url;
-            if (this.address && this.signature && this.nonce) {
-                finalUrl += `?address=${encodeURIComponent(this.address)}&signature=${encodeURIComponent(this.signature)}&nonce=${encodeURIComponent(this.nonce)}`;
-            }
-            this.ws = new WebSocket(finalUrl);
-            this.ws.onopen = () => this._onOpen();
-            this.ws.onmessage = (event) => this._onMessage(event);
-            this.ws.onerror = (error) => this._onError(error);
-            this.ws.onclose = (event) => this._onClose(event);
-        }
-        disconnect() {
-            this.shouldReconnect = false;
-            if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-            if (this.ws) { this.ws.close(); this.ws = null; }
-            this.isConnected = false;
-        }
-        _onOpen() { this.isConnected = true; this.onConnect(); }
-        _onMessage(event) {
-            try { this.onMessage(JSON.parse(event.data)); }
-            catch (e) { console.debug('Invalid JSON'); }
-        }
-        _onError(error) { this.onError(error); }
-        _onClose(event) {
-            this.isConnected = false;
-            this.onDisconnect();
-            if (this.shouldReconnect && event.code !== 1008) this._scheduleReconnect();
-        }
-        _scheduleReconnect() {
-            if (this.reconnectTimer) return;
-            this.reconnectTimer = setTimeout(() => {
-                this.reconnectTimer = null;
-                this.connect();
-                this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
-            }, this.reconnectDelay);
-        }
-        log(...args) { if (this.debug) console.log('[WebSocket]', ...args); }
-    }
+
 
     async function initWebSocket() {
         if (!sessionStorage.getItem('mnemonic')) {
@@ -319,11 +360,13 @@
             const nonce = crypto.randomUUID();
             const signatureArray = await DarkCrypto.signData(keys.signPrivateKey, nonce);
             const signatureHex = Array.from(new Uint8Array(signatureArray)).map(b => b.toString(16).padStart(2, '0')).join('');
-            window.wsClient = new WebSocketClient({
+            window.wsClient = new window.WebSocketClient({
                 onMessage: window.handleWebSocketMessage,
                 onConnect: () => {
                     console.log('✅ WebSocket connected');
                     if (window.loadConversations) window.loadConversations();
+                     window.handlePendingCall();   // ← ДОБАВИТЬ ЭТУ СТРОКУ
+
                 },
                 onDisconnect: () => console.warn('⚠️ WebSocket disconnected'),
                 onError: (err) => console.error('WebSocket error:', err)
@@ -333,12 +376,14 @@
         } catch (err) { console.error('Failed to init WebSocket:', err); }
     }
 
-    // ========== Обработка входящих сообщений (WebSocket + расшифровка файлов) с обновлением кеша ==========
+    // ========== Обработка входящих сообщений (WebSocket + расшифровка файлов) ==========
     async function processMessageDecryption(msg) {
         if (!msg.content) return msg;
         let content = msg.content;
         let image = msg.image;
         let fileUrl = null, fileKey = null, fileIv = null, fileType = null;
+        // Сохраняем оригинальный статус, если он есть (сервер может его не слать, но для исходящих он есть)
+        const originalStatus = msg.status || (msg.is_mine ? 'sent' : null);
 
         try {
             const parsed = JSON.parse(content);
@@ -353,7 +398,7 @@
             if (parsed.encrypted_map) {
                 const myAddr = State.userAddress;
                 const myEnc = parsed.encrypted_map[myAddr];
-                if (!myEnc) return { ...msg, content: '🔒 No access' };
+                if (!myEnc) return { ...msg, content: t('no_access'), status: originalStatus };
                 const senderPubKeyBytes = DarkCrypto._fromBase64(myEnc.sender_pubkey);
                 const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
                 if (isMine && myEnc.self_text) {
@@ -387,8 +432,8 @@
                         fileIv = decIv;
                     }
                 }
-                const chatId = msg.recipient; // уже содержит "group:..." из БД
-                return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isGroup: true, isDecrypted: true };
+                const chatId = msg.recipient;
+                return { ...msg, content, image, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isGroup: true, isDecrypted: true, status: originalStatus };
             }
 
             // ---------- ЛИЧНЫЙ ЧАТ ----------
@@ -403,8 +448,7 @@
                     }
                 }
                 const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-                // Для сообщений без pubkey ставим isDecrypted: false (не расшифровано)
-                return { ...msg, content: '🔒 No sender pubkey', image: null, fileUrl, fileKey, fileIv, fileType, is_mine: false, chatId, isDecrypted: false };
+                return { ...msg, content: t('no_sender_pubkey'), image: null, fileUrl, fileKey, fileIv, fileType, is_mine: false, chatId, isDecrypted: false, status: originalStatus };
             }
 
             const senderPubKeyBytes = DarkCrypto._fromBase64(senderPubKeyB64);
@@ -461,73 +505,151 @@
             }
 
             const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-            // Успешно расшифрованное личное сообщение – помечаем isDecrypted: true
-            return { ...msg, content, image: null, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true };
+            return { ...msg, content, image: null, fileUrl, fileKey, fileIv, fileType, is_mine: isMine, chatId, isDecrypted: true, status: originalStatus };
         } catch (e) {
             console.error('Decryption error', msg.id, e);
             const chatId = msg.sender === State.userAddress ? msg.recipient : msg.sender;
-            return { ...msg, content: '🔒 Decrypt error', image: null, chatId, isDecrypted: false };
+            return { ...msg, content: t('decrypt_error'), image: null, chatId, isDecrypted: false, status: originalStatus };
         }
     }
 
     async function handleWebSocketMessage(data) {
-        if (data.error) { console.error('WS error:', data.error); return; }
-        if (data.type === 'status_update') {
-            if (data.address && data.status) {
-                if (window.updateConversationStatus) {
-                    window.updateConversationStatus(data.address, data.status);
-                }
-            }
-            return;
-        }
-        if (!data.chatId && data.sender && data.recipient) data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
-        if (!data.chatId) return;
-        if (document.getElementById('msg-' + data.id)) return;
+    if (data.error) {
+        console.error('WS error:', data.error);
+        return;
+    }
 
+    // 1. Обработка "call_not_found" – всегда в первую очередь
+    if (data.type === 'call_not_found') {
+        console.warn('[WS] Call not found:', data.call_id);
+        sessionStorage.removeItem('pending_call_id');
+        return;
+    }
+
+    // 2. Обработка сигналов звонка (incoming_call, call_answer и т.д.)
+    if (
+        data.type === 'incoming_call' ||
+        data.type === 'call_answer' ||
+        data.type === 'call_ice' ||
+        data.type === 'call_hangup' ||
+        data.type === 'call_reject'
+    ) {
+        const tryCall = () => {
+            if (window.handleCallSignal) {
+                window.handleCallSignal(data);
+            } else {
+                console.warn('[WS] handleCallSignal not ready, retrying...');
+                setTimeout(tryCall, 100);
+            }
+        };
+        tryCall();
+        return;
+    }
+
+    // 3. Обычные сообщения
+    if (data.type === 'message') {
         const decrypted = await processMessageDecryption(data);
         const chatId = decrypted.chatId;
 
-        // ✅ Добавляем входящее сообщение в кеш
-        if (decrypted && decrypted.id) {
+        if (decrypted?.id) {
             window.addMessageToCache(chatId, decrypted, 'end');
         }
 
         if (!decrypted.is_mine) {
-            fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn);
+            fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(() => {});
         }
 
-        let isCurrent = false;
-        if (State.currentChatAddress === chatId) {
-            isCurrent = true;
-        } else if (!decrypted.isGroup && (
-            decrypted.sender === State.currentChatAddress ||
-            decrypted.recipient === State.currentChatAddress
-        )) {
-            isCurrent = true;
-        }
-
-        if (!isCurrent) {
-            const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
-            if (!existingItem) { if (window.loadConversations) window.loadConversations(); }
-            else if (window.updateConversationPreview) window.updateConversationPreview(chatId, decrypted.preview || '💬 New message');
-        }
-
-        if (isCurrent && window.onNewMessageReceived) {
+        if (window.onNewMessageReceived) {
             window.onNewMessageReceived(decrypted);
         }
+        return;
+    }
 
-        if (window.NotificationManager) {
-            window.NotificationManager.handleIncomingMessage?.({
-                sender: decrypted.sender,
-                sender_name: decrypted.sender_name,
-                chatId: chatId,
-                isGroup: decrypted.isGroup,
-                preview: decrypted.preview || decrypted.content?.slice(0, 50),
-                timestamp: decrypted.timestamp * 1000,
-                messageId: decrypted.id
-            });
+    // 4. Статус online/offline
+    if (data.type === 'status_update') {
+        if (data.address && data.status) {
+            if (window.updateConversationStatus) {
+                window.updateConversationStatus(data.address, data.status);
+            }
+        }
+        return;
+    }
+
+    // 5. Анти-дублирование push vs websocket
+    if (data._from_push === true) {
+        return;
+    }
+
+    // 6. Статус сообщения (delivered / read)
+    if (data.type === 'message_status') {
+        const msgDiv = document.querySelector(`.message-own[data-id="${data.message_id}"]`);
+        if (msgDiv && msgDiv.dataset.status !== data.status) {
+            msgDiv.dataset.status = data.status;
+            if (window.updateStatusIcon) window.updateStatusIcon(msgDiv, data.status);
+            const chatId = State.currentChatAddress;
+            const cached = window.getCachedMessages ? window.getCachedMessages(chatId) : [];
+            const cachedMsg = cached.find(m => m.id === data.message_id);
+            if (cachedMsg) cachedMsg.status = data.status;
+        }
+        return;
+    }
+
+    // 7. Старые сообщения (без chatId, без типа) – обратная совместимость
+    if (!data.chatId && data.sender && data.recipient) {
+        data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
+    }
+    if (!data.chatId) return;
+    if (document.getElementById('msg-' + data.id)) return;
+
+    const decrypted = await processMessageDecryption(data);
+    const chatId = decrypted.chatId;
+
+    if (decrypted && decrypted.id) window.addMessageToCache(chatId, decrypted, 'end');
+
+    if (!decrypted.is_mine) {
+        fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn(e));
+    }
+
+    const isCurrent = State.currentChatAddress === chatId ||
+        (!decrypted.isGroup && (
+            decrypted.sender === State.currentChatAddress ||
+            decrypted.recipient === State.currentChatAddress
+        ));
+
+    if (!isCurrent) {
+        const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+        if (!existingItem) {
+            if (window.loadConversations) window.loadConversations();
+        } else {
+            if (window.updateConversationPreview) {
+                window.updateConversationPreview(chatId, decrypted.preview || t('new_message_preview'));
+            }
+            if (window.moveConversationToTop) {
+                window.moveConversationToTop(chatId);
+            } else {
+                if (window.loadConversations) window.loadConversations();
+            }
         }
     }
+
+    if (isCurrent && window.onNewMessageReceived) window.onNewMessageReceived(decrypted);
+
+    if (window.NotificationManager) {
+        const previewText = (decrypted.content && !decrypted.content.startsWith('{'))
+            ? decrypted.content.slice(0, 80)
+            : (decrypted.fileUrl ? '📎 File' : '💬 New message');
+        window.NotificationManager.handleIncomingMessage?.({
+            sender: decrypted.sender,
+            sender_name: decrypted.sender_name,
+            chatId: chatId,
+            isGroup: !!(decrypted.isGroup || decrypted.group_id),
+            content: previewText,
+            preview: previewText,
+            timestamp: decrypted.timestamp * 1000,
+            messageId: decrypted.id
+        });
+    }
+}
 
     // ========== Heartbeat ==========
     let heartbeatInterval = null;
@@ -552,7 +674,9 @@
         if (statusPollingInterval) clearInterval(statusPollingInterval);
         statusPollingInterval = setInterval(async () => {
             const myMessages = document.querySelectorAll('.message-own');
-            const ids = Array.from(myMessages).map(el => el.dataset.id).filter(id => id && !id.startsWith('temp'));
+            const ids = Array.from(myMessages)
+                .filter(el => el.dataset.status !== 'read' && el.dataset.id && !el.dataset.id.startsWith('temp'))
+                .map(el => el.dataset.id);
             if (ids.length === 0) return;
             try {
                 const res = await fetch('/message/statuses', {
@@ -560,29 +684,23 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids })
                 });
+                if (!res.ok) return;
                 const statuses = await res.json();
                 for (const [id, st] of Object.entries(statuses)) {
                     const msgDiv = document.querySelector(`.message-own[data-id="${id}"]`);
                     if (msgDiv && msgDiv.dataset.status !== st) {
                         msgDiv.dataset.status = st;
                         if (window.updateStatusIcon) window.updateStatusIcon(msgDiv, st);
-                        if (window.updateConversationPreview) {
-                            const container = document.getElementById('messagesContainer');
-                            const lastMsg = container?.querySelector('.message:last-child');
-                            if (lastMsg && lastMsg.dataset.id === id) {
-                                let previewText = '';
-                                if (st === 'read') previewText = '✓✓ Read';
-                                else if (st === 'delivered') previewText = '✓✓ Delivered';
-                                else previewText = '✓ Sent';
-                                window.updateConversationPreview(State.currentChatAddress, previewText);
-                            }
-                        }
+                        const chatId = State.currentChatAddress;
+                        const cached = window.getCachedMessages ? window.getCachedMessages(chatId) : [];
+                        const cachedMsg = cached.find(m => String(m.id) === String(id));
+                        if (cachedMsg) cachedMsg.status = st;
                     }
                 }
             } catch(e) { console.warn('Status polling error', e); }
-        }, 30000);
+        }, 8000);
     }
-    function stopStatusPolling() { if (statusPollingInterval) clearInterval(statusPollingInterval); }
+    function stopStatusPolling() { if (statusPollingInterval) { clearInterval(statusPollingInterval); statusPollingInterval = null; } }
 
     // ========== Поллинг статусов пользователей ==========
     let userStatusPollingInterval = null;
@@ -600,7 +718,7 @@
             const statusSpan = el.querySelector('.status');
             if (statusSpan) {
                 statusSpan.className = `status ${status}`;
-                statusSpan.title = status === 'online' ? 'Online' : 'Offline';
+                statusSpan.title = status === 'online' ? t('online') : t('offline');
             }
         }
     }
@@ -614,6 +732,167 @@
             userStatusPollingInterval = null;
         }
     }
+
+
+// ========== Push Notifications ==========
+window.initPushNotifications = initPushNotifications;
+window.urlBase64ToUint8Array = urlBase64ToUint8Array;
+
+
+
+// core.js — внутри IIFE или глобально
+
+async function initPushNotifications() {
+    if (!('serviceWorker' in navigator)) return;
+    if (!('PushManager' in window)) return;
+
+    // НЕ запрашиваем разрешение автоматически, если оно default
+    const permission = Notification.permission;
+    if (permission === 'denied') {
+        console.log('Push: denied by user');
+        return;
+    }
+    if (permission !== 'granted') {
+        // Разрешение ещё не дано – нельзя вызывать subscribe
+        console.log('Push: permission not granted, will request after user gesture');
+        return;
+    }
+
+    try {
+        // ИСПРАВЛЕНИЕ: сначала регистрируем SW если ещё не зарегистрирован
+
+
+        const registration = await navigator.serviceWorker.ready;
+
+        // Получаем VAPID ключ динамически с сервера
+        let publicKey;
+        try {
+            const keyRes = await fetch('/push/vapid-public-key');
+            if (keyRes.ok) {
+                const keyData = await keyRes.json();
+                publicKey = keyData.publicKey;
+            }
+        } catch(e) { /* fallback к хардкоду */ }
+
+        // Fallback если /push/vapid-public-key недоступен
+        if (!publicKey) {
+            publicKey = 'BPa5fghsHcpAbmlQTdXg6WzoMC_iPaDMzFY4mc2BUipmno6sLxN6KoSfaZfgUFkh9c0B34XhBvC93WXn92xKlkw';
+        }
+
+        const applicationServerKey = urlBase64ToUint8Array(publicKey);
+
+        let subscription = await registration.pushManager.getSubscription();
+
+        // Если подписка уже существует – обновляем её на сервере
+        // (полезно для iOS, где ключи могут измениться, а endpoint остаться тем же)
+        if (subscription) {
+            try {
+                const res = await fetch('/push/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+                if (res.ok) {
+                    console.log('Push: existing subscription refreshed on server ✓');
+                } else {
+                    console.error('Push: server rejected existing subscription', res.status);
+                    // Если сервер отверг — удаляем и создаём новую
+                    await subscription.unsubscribe();
+                    subscription = null;
+                }
+            } catch (err) {
+                console.error('Push: failed to refresh subscription', err);
+            }
+            if (subscription) return;
+        }
+
+        // Нет подписки – создаём новую
+        try {
+            subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: applicationServerKey
+            });
+            console.log('Push: new subscription created');
+        } catch(e) {
+            console.error('Push: subscribe failed', e.name, e.message);
+            return;
+        }
+
+        // Отправляем новую подписку на сервер
+        const res = await fetch('/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subscription)
+        });
+
+        if (res.ok) {
+            console.log('Push: subscription synced with server ✓');
+        } else {
+            console.error('Push: server rejected subscription', res.status);
+        }
+
+    } catch(e) {
+        console.error('Push init failed', e);
+    }
+}
+
+
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// ИСПРАВЛЕНИЕ 5: слушаем navigate-сообщения от SW (notificationclick на iOS)
+// SW не может напрямую navigate вкладку через Safari — посылает postMessage
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+
+        if (event.data?.type === 'navigate' && event.data?.url) {
+            const target = event.data.url;
+            if (window.location.pathname !== new URL(target, location.origin).pathname) {
+                window.location.href = target;
+            } else {
+                window.focus();
+            }
+        }
+
+        if (event.data?.type === 'pushsubscriptionchange') {
+            console.log('Re-subscribing push due to subscription change');
+            if (window.initPushNotifications) window.initPushNotifications();
+        }
+
+        // open_call из SW: вызываем handleCallSignal когда он будет готов,
+        // а если страница была заблокирована — сохраняем call_id для handlePendingCall
+        if (event.data?.type === 'open_call') {
+            const callId = event.data.call_id;
+            // Сохраняем как pending — будет обработан после разблокировки через WS
+            if (callId && !sessionStorage.getItem('pending_call_id')) {
+                sessionStorage.setItem('pending_call_id', callId);
+                window._pendingCallHandled = false;
+            }
+            const trySignal = (attempt = 0) => {
+                if (window.handleCallSignal && window.CallManager) {
+                    window.handleCallSignal({
+                        type: 'incoming_call',
+                        call_id: callId
+                    });
+                } else if (attempt < 30) {
+                    setTimeout(() => trySignal(attempt + 1), 200);
+                } else {
+                    console.warn('[SW open_call] handleCallSignal not available after retries, will use pending_call_id');
+                }
+            };
+            trySignal();
+        }
+    });
+}
 
     // Экспорт глобальных функций
     window.getPubKey = getPubKey;

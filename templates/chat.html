@@ -6,75 +6,74 @@
 <div id="app" data-user-address="{{ address }}"></div>
 
 <div class="chat-layout">
-  <!-- Левая панель: список чатов -->
   <div class="conversations-panel" id="conversationsPanel">
     <div class="conversations-header">
-      <h3>Chats</h3>
+      <h3 data-i18n="chats">Chats</h3>
       <div class="header-actions">
         <button id="aiChatBtn" class="btn-icon-oval" title="AI Assistant">🤖</button>
-        <button id="newChatBtn" class="btn-icon-oval" title="New chat">＋</button>
+        <button id="newChatBtn" class="btn-icon-oval" data-i18n="new_chat" title="New chat">＋</button>
       </div>
     </div>
     <div class="conversations-list" id="conversationsList">
-      <div class="empty-state"><div class="icon">💬</div><p>Select or start a conversation</p></div>
+      <div class="empty-state"><div class="icon">💬</div><p data-i18n="select_conversation">Select or start a conversation</p></div>
     </div>
   </div>
 
-  <!-- Правая панель: сообщения -->
   <div class="chat-panel" id="chatPanel">
     <div class="chat-panel-header">
       <button class="back-button" id="backToConversationsBtn" aria-label="Back">←</button>
       <div class="title">
-        <span id="currentChatName">Select a conversation</span>
+        <span id="currentChatName" data-i18n="select_conversation">Select a conversation</span>
         <span class="subtitle" id="chatSubtitle"></span>
       </div>
       <div class="actions">
-        <button id="addToContactsBtn" class="btn-icon-oval" disabled title="Add to contacts">＋</button>
-        <button id="clearConversationBtn" class="btn-icon-oval" disabled title="Clear messages">🗑</button>
+        <button id="addToContactsBtn" class="btn-icon-oval" disabled title="Add to contacts" data-i18n="add_to_contacts">＋</button>
+        <button id="clearConversationBtn" class="btn-icon-oval" disabled title="Clear messages" data-i18n="clear_messages">🗑</button>
+        <button id="callButton" class="btn-icon-oval" title="Voice/Video call" style="display: none;">📞</button>
       </div>
     </div>
 
     <div class="messages" id="messagesContainer" role="log" aria-live="polite">
-      <div class="empty-state" id="emptyState"><div class="icon">👋</div><p>Select a conversation to start chatting</p></div>
+      <div class="empty-state" id="emptyState"><div class="icon">👋</div><p data-i18n="select_conversation">Select a conversation to start chatting</p></div>
     </div>
 
     <form class="input-area" onsubmit="sendMessage(); return false;">
       <div class="input-wrapper">
-        <textarea id="messageContent" placeholder="Type a message…" rows="1" disabled aria-label="Message input"></textarea>
+        <textarea id="messageContent" placeholder="Type a message…" rows="1" disabled aria-label="Message input" data-i18n="type_message"></textarea>
         <div class="input-actions">
           <input type="file" id="imageInput" accept="image/*" class="sr-only">
-          <button type="button" class="btn-icon-oval" id="attachImageButton" disabled title="Attach image">📎</button>
-          <button type="button" class="btn-icon-oval" id="recordAudioButton" disabled title="Record voice message">🎤</button>
-          <button type="submit" class="btn-primary-oval" id="sendButton" disabled style="display: none;">➤</button>
+          <button type="button" class="btn-icon-oval" id="attachImageButton" disabled title="Attach image" data-i18n="attach_image">📎</button>
+          <button type="button" class="btn-icon-oval" id="recordAudioButton" disabled title="Record voice message" data-i18n="record_voice">🎤</button>
+          <button type="submit" class="btn-primary-oval" id="sendButton" disabled style="display: none;" data-i18n="send">➤</button>
         </div>
       </div>
     </form>
 
-    <!-- AI CHAT CONTAINER -->
     <div id="aiChatContainer" class="hidden">
       <div class="chat-panel-header">
         <button class="back-button" id="closeAiFromChatBtn">←</button>
         <div class="title">
-          <span>🤖 AI Assistant</span>
-          <span class="subtitle" id="aiStatusSubtitle">Internet · Streaming</span>
+          <span data-i18n="ai_assistant">🤖 AI Assistant</span>
+          <span class="subtitle" id="aiStatusSubtitle" data-i18n="ai_status">Internet · Streaming</span>
         </div>
         <div class="actions">
-          <button type="button" id="aiClearHistoryBtn" class="btn-icon-oval" title="Clear history">🗑</button>
+          <button type="button" id="aiClearHistoryBtn" class="btn-icon-oval" title="Clear history" data-i18n="clear_messages">🗑</button>
         </div>
       </div>
       <div id="aiMessagesContainer" class="messages"></div>
       <form class="input-area" onsubmit="return false;">
         <div class="input-wrapper">
-          <textarea id="aiMessageInput" placeholder="Ask AI… (paste a link to read)" rows="1"></textarea>
+          <textarea id="aiMessageInput" placeholder="Ask AI… (paste a link to read)" rows="1" data-i18n="type_message"></textarea>
           <div class="input-actions-left">
             <button type="button" id="aiImageGenBtn" class="ai-tool-btn" data-tooltip="Generate image" style="display: none;">🎨</button>
             <button type="button" id="aiInternetBtn" class="ai-tool-btn" data-tooltip="Web search on/off" data-active="false">🌐</button>
             <button type="button" id="aiReasoningBtn" class="ai-tool-btn" data-tooltip="Reasoning on/off" data-active="false">🧠</button>
+            <button type="button" id="aiResearchBtn" class="ai-tool-btn" data-tooltip="Research mode (hypotheses & verification)">🔬</button>
           </div>
           <div class="input-actions-right">
             <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
-            <button type="button" id="aiAttachBtn" class="btn-icon-oval" title="Attach image">📎</button>
-            <button type="submit" id="aiSendBtn" class="btn-primary-oval">➤</button>
+            <button type="button" id="aiAttachBtn" class="btn-icon-oval" title="Attach image" data-i18n="attach_image">📎</button>
+            <button type="submit" id="aiSendBtn" class="btn-primary-oval" data-i18n="send">➤</button>
           </div>
         </div>
       </form>
@@ -82,38 +81,38 @@
   </div>
 </div>
 
-<!-- New chat modal (без изменений) -->
+<!-- New chat modal -->
 <div id="newChatModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
-      <h3>Start New Chat</h3>
+      <h3 data-i18n="start_new_chat">Start New Chat</h3>
       <button class="modal-close" onclick="closeNewChatModal()">&times;</button>
     </header>
     <div class="modal-body">
       <div class="text-center">
-        <button class="btn-oval" onclick="openQRScannerInModal()">📷 Scan QR Code</button>
+        <button class="btn-oval" onclick="openQRScannerInModal()" data-i18n="scan_qr">📷 Scan QR Code</button>
         <div id="qrScannerContainerModal" class="hidden">
           <div style="position:relative;display:inline-block;">
             <video id="qrVideoModal" style="width:200px;height:200px;border-radius:var(--radius-md);background:#000;"></video>
             <div style="position:absolute;inset:0;border:2px solid var(--accent);border-radius:var(--radius-md);pointer-events:none;"></div>
           </div>
-          <p class="text-muted">Point camera at QR code</p>
-          <button class="btn-oval" onclick="forceCloseQRScannerInModal()">Cancel</button>
+          <p class="text-muted" data-i18n="scan_qr">Point camera at QR code</p>
+          <button class="btn-oval" onclick="forceCloseQRScannerInModal()" data-i18n="cancel">Cancel</button>
         </div>
         <div id="scanResultModal" class="hidden scan-result"></div>
       </div>
       <div class="form-group">
-        <label class="text-secondary">Select from contacts</label>
+        <label class="text-secondary" data-i18n="select_from_contacts">Select from contacts</label>
         <select id="newChatSelect" class="input"><option value="">-- Choose a contact --</option></select>
       </div>
       <div class="form-group">
-        <label class="text-secondary">Or enter address</label>
+        <label class="text-secondary" data-i18n="or_enter_address">Or enter address</label>
         <input type="text" id="newChatAddress" class="input input-monospace" placeholder="64-character hex address" maxlength="64">
       </div>
     </div>
     <footer class="modal-footer">
-      <button class="btn-oval" onclick="closeNewChatModal()">Cancel</button>
-      <button class="btn-primary-oval" id="startNewChatBtn" onclick="startNewChat()">Start Chat</button>
+      <button class="btn-oval" onclick="closeNewChatModal()" data-i18n="cancel">Cancel</button>
+      <button class="btn-primary-oval" id="startNewChatBtn" onclick="startNewChat()" data-i18n="start_chat">Start Chat</button>
     </footer>
   </div>
 </div>
@@ -124,7 +123,38 @@
     <button class="modal-close" onclick="closeImageModal()" style="position:absolute;top:16px;right:16px;color:var(--text-primary);z-index:1;">&times;</button>
     <img id="modalImage" src="" alt="Full size" style="max-width:100%;max-height:90vh;border-radius:var(--radius-md);">
     <div class="text-center" style="margin-top:16px;">
-      <button class="btn-primary-oval" id="downloadImageBtn">Download</button>
+      <button class="btn-primary-oval" id="downloadImageBtn" data-i18n="download">Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal for active call -->
+<div id="callModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal call-modal" style="max-width: 340px; text-align: center;">
+    <button class="call-minimize-btn" id="callCollapseBtn" data-i18n-title="call_minimize">—</button>
+    <div class="call-avatar" id="callAvatar">👤</div>
+    <div class="call-name" id="callPartnerName"></div>
+    <div class="call-status" id="callStatusText"></div>
+    <div class="call-actions-row">
+      <button class="call-control-btn" id="callMuteBtn" data-i18n-title="call_mute_microphone">🎤</button>
+      <button class="call-control-btn call-end-btn" id="callEndBtn" data-i18n-title="call_end">📞</button>
+      <button class="call-control-btn" id="callSpeakerBtn" data-i18n-title="call_speaker">🎧</button>
+    </div>
+    <video id="remoteVideo" autoplay playsinline style="position: absolute; width: 1px; height: 1px; opacity: 0;"></video>
+    <video id="localVideo" autoplay muted playsinline style="position: absolute; width: 1px; height: 1px; opacity: 0;"></video>
+  </div>
+</div>
+
+<!-- Modal for incoming call -->
+<div id="incomingCallModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal call-modal" style="max-width: 300px; text-align: center;">
+    <div class="call-avatar">📞</div>
+    <div class="call-name" data-i18n="incoming_call">Incoming call</div>
+    <div class="call-status"><span data-i18n="call_from">from</span> <strong id="incomingCallerName"></strong></div>
+    <div class="call-actions-row">
+      <button class="call-control-btn call-reject-btn" id="rejectCallBtn" data-i18n-title="call_reject">✕</button>
+
+      <button class="call-control-btn call-accept-btn" id="acceptCallBtn" data-i18n-title="call_accept">✓</button>
     </div>
   </div>
 </div>
@@ -134,13 +164,14 @@
 <script src="{{ url_for('static', path='js/WebSocketClient.js') }}"></script>
 <script src="{{ url_for('static', path='js/ui.js') }}"></script>
 <script src="{{ url_for('static', path='js/actions.js') }}"></script>
+<!-- call-manager.js загружается из base.html с defer -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="{{ url_for('static', path='js/AiChat.js') }}" defer></script>
 
 <script>
-// Адаптивная логика (без изменений)
+// Adaptive logic (improved)
 (function() {
   const conversationsPanel = document.getElementById('conversationsPanel');
   const chatPanel = document.getElementById('chatPanel');
@@ -190,6 +221,11 @@
         if (address === 'ai_bot' || (address && address !== '')) {
           window.showChatPanel();
         }
+      }
+      const callBtn = document.getElementById('callButton');
+      if (callBtn && !isGroup && address && address !== window.State?.userAddress && address !== 'ai_bot') {
+        const displayName = name || (address ? address.slice(0,10)+'…' : '');
+        callBtn.onclick = () => window.CallManager?.makeCall(address, false, displayName);
       }
     };
   }
@@ -249,6 +285,10 @@
         }
       };
       setTimeout(() => trySelect(), 300);
+    }
+
+    if (window.CallManager && typeof window.CallManager.init === 'function' && !window.CallManager._initialized) {
+      window.CallManager.init().then(() => { window.CallManager._initialized = true; });
     }
   });
 })();

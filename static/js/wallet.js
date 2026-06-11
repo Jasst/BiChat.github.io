@@ -1,8 +1,75 @@
+// wallet.js — полностью интернационализированная версия с поддержкой Web Worker, ETA и авто-майнинга
 (function() {
   if (window._walletScriptLoaded) return;
   window._walletScriptLoaded = true;
 
-  // Получаем адрес пользователя из мета-тега (устанавливается в base.html)
+  // Helper for i18n
+  function t(key, opts) {
+    if (typeof i18next !== 'undefined' && i18next.t) {
+      return i18next.t(key, opts);
+    }
+    // Fallback English for keys used in this file
+    const fallbacks = {
+      'mining_getting_proof': 'Mining... getting current proof',
+      'mining_difficulty': 'Mining... difficulty={difficulty}, max tries={tries}M',
+      'hashing_progress': 'Hashing... {current}k / {total}k | {elapsed}s',
+      'block_found': '🎉 BLOCK FOUND!',
+      'block_mined': 'Block mined! +{reward} BlockCoin',
+      'block_mined_toast': '⛏ Block mined! +{reward} BlockCoin',
+      'mining_failed': 'Mining failed',
+      'network_error_submit': 'Network error during submit',
+      'network_error': 'Network error',
+      'mining_error': 'Mining error: {message}',
+      'mining_stopped': 'Stopped',
+      'amount_empty': 'Amount field is empty',
+      'invalid_amount': 'Enter a valid positive number',
+      'staked_success': 'Staked! Unlocks at block {block}',
+      'unstaked_success': 'Unstaked!',
+      'no_active_stakes': 'No active stakes',
+      'balance_updated': 'Balance updated',
+      'network_stats_updated': 'Network stats updated',
+      'no_transactions': 'No transactions yet',
+      'failed_to_load': 'Failed to load',
+      'lottery_reward': '🎁 Lottery Reward',
+      'fee': '💸 Fee',
+      'sent': '📤 Sent',
+      'received': '📥 Received',
+      'block_reward': '⛏ Block Reward',
+      'stake_label': '🔒 Stake',
+      'unstake_label': '🔓 Unstake',
+      'airdrop': '🪂 Airdrop',
+      'message_fee': '💬 Message Fee',
+      'staking_reward': '💸 Staking Reward',
+      'invalid_address': 'Enter a valid 64-character hex address.',
+      'positive_amount': 'Enter a positive amount.',
+      'sent_success': '✓ Sent!',
+      'send_error': 'Error: {error}',
+      'hide_qr': '📱 Hide QR Code',
+      'show_qr': '📱 Show QR Code',
+      'qr_error': 'QR error',
+      'address_copied': 'Address copied',
+      'nothing_to_copy': 'Nothing to copy',
+      'qr_not_ready': 'QR not ready',
+      'camera_error': 'Camera error: {error}',
+      'address_scanned': '✓ Address scanned',
+      'not_valid_wallet_qr': '⚠️ Not a valid wallet QR',
+      'fee_label': 'Fee: {fee} BlockCoin',
+      'pending_income': 'Pending income: {amount} BlockCoin',
+      'apr_label': 'APR: {apr}%',
+      'unlock_in': 'unlock in ~{time}',
+      'min': 'min',
+      'h': 'h',
+      'm': 'm'
+    };
+    let result = fallbacks[key];
+    if (result && opts) {
+      for (const [k, v] of Object.entries(opts)) {
+        result = result.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+      }
+    }
+    return result || key;
+  }
+
   const MY_ADDRESS = (() => {
     const meta = document.querySelector('meta[name="user-address"]');
     return meta ? meta.content : '';
@@ -12,6 +79,7 @@
   var qrGenerated = false;
   var miningActive = false;
   var POW_MAX_ITERATIONS = 5000000;
+  var AUTO_MINING_KEY = 'autoMining'; // ключ для localStorage
 
   // ================== Майнинг ==================
   async function sha256(text) {
@@ -22,9 +90,13 @@
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  let miningWorker = null;
+
   async function startMining() {
     if (miningActive) return;
     miningActive = true;
+    // Сохраняем состояние
+    localStorage.setItem(AUTO_MINING_KEY, 'true');
 
     document.getElementById('startMiningBtn').classList.add('hidden');
     document.getElementById('stopMiningBtn').classList.remove('hidden');
@@ -32,115 +104,85 @@
     const progressBar = document.getElementById('miningProgress');
     const fillEl = progressBar.querySelector('.mining-progress-bar-fill');
     progressBar.classList.remove('hidden');
-    statusEl.textContent = 'Mining... getting current proof';
 
     try {
       const proofResp = await fetch('/wallet/last-proof');
       const chainData = await proofResp.json();
       let { last_proof, last_index, difficulty, challenge } = chainData;
-      const target = '0'.repeat(difficulty);
       const maxIter = POW_MAX_ITERATIONS;
 
-      let startTime = Date.now();
-      statusEl.textContent = `Mining... difficulty=${difficulty}, max tries=${Math.floor(maxIter/1000000)}M`;
+      const runWorker = () => {
+        if (!miningActive) return;
+        if (miningWorker) miningWorker.terminate();
+        miningWorker = new Worker('/static/js/mining-worker.js');
+        const startTime = Date.now();
 
-      while (miningActive) {
-        let found = false;
-        let proof = 0;
-        fillEl.style.width = '0%';
+        miningWorker.postMessage({ last_proof, challenge, difficulty, maxIter, startTime });
 
-        for (proof = 0; proof < maxIter; proof++) {
-          if (!miningActive) break;
-          const hash = await sha256(`${last_proof}${challenge}${proof}`);
-          if (hash.startsWith(target)) {
-            found = true;
-            break;
-          }
-          if (proof % 5000 === 0) {
-            const pct = Math.min(100, Math.floor((proof / maxIter) * 100));
+        miningWorker.onmessage = async (e) => {
+          const data = e.data;
+          if (data.progress !== undefined) {
+            // Обновление прогресса, хешрейта и ETA
+            const pct = Math.min(100, Math.floor((data.progress / maxIter) * 100));
             fillEl.style.width = pct + '%';
-            if (proof % 50000 === 0) {
-              const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-              statusEl.textContent = `Hashing... ${(proof/1000).toFixed(0)}k / ${(maxIter/1000).toFixed(0)}k | ${elapsed}s`;
-            }
-            await new Promise(r => setTimeout(r, 0));
+            const hashrate = data.hashrate || (data.progress / ((Date.now() - startTime) / 1000));
+            const etaMin = (data.eta / 60).toFixed(1);
+            statusEl.textContent = `Hashing... ${Math.floor(data.progress/1000)}k / ${Math.floor(maxIter/1000)}k | ${Math.floor(hashrate)} h/s | ETA ${etaMin} min`;
+            return;
           }
-        }
-
-        if (found) {
-          progressBar.classList.add('hidden');
-          statusEl.innerHTML = '<span class="block-found">🎉 BLOCK FOUND!</span>';
-          statusEl.classList.add('block-found-animation');
-          setTimeout(() => statusEl.classList.remove('block-found-animation'), 3000);
-
-          try {
+          if (data.found) {
             const res = await fetch('/wallet/mine', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ proof, challenge, last_proof, last_index })
+              body: JSON.stringify({ proof: data.proof, challenge, last_proof, last_index })
             });
             const result = await res.json();
-
             if (res.ok) {
-              const reward = (result.reward / BLOCKCOIN_SATS).toFixed(6);
-              statusEl.textContent = `Block mined! +${reward} BlockCoin`;
-              window.NotificationManager?.showToast(`⛏ Block mined! +${reward} BlockCoin`, 'success');
               refreshBalance();
               refreshNetworkStats();
               loadTx();
               stopMining();
               setTimeout(() => startMining(), 2000);
-              return;
             } else if (res.status === 409) {
-              const freshResp = await fetch('/wallet/last-proof');
-              const freshData = await freshResp.json();
+              const fresh = await fetch('/wallet/last-proof');
+              const freshData = await fresh.json();
               last_proof = freshData.last_proof;
               last_index = freshData.last_index;
               challenge = freshData.challenge;
               difficulty = freshData.difficulty;
-              startTime = Date.now();
-              fillEl.style.width = '0%';
-              progressBar.classList.remove('hidden');
-              continue;
+              runWorker();
             } else {
-              statusEl.textContent = 'Error: ' + (result.error || 'Unknown');
-              window.NotificationManager?.showToast('Mining failed', 'error');
               stopMining();
-              return;
             }
-          } catch (err) {
-            console.error('Mining POST error:', err);
-            statusEl.textContent = 'Network error during submit';
-            window.NotificationManager?.showToast('Network error', 'error');
-            stopMining();
-            return;
+          } else {
+            const fresh = await fetch('/wallet/last-proof');
+            const freshData = await fresh.json();
+            last_proof = freshData.last_proof;
+            last_index = freshData.last_index;
+            challenge = freshData.challenge;
+            difficulty = freshData.difficulty;
+            runWorker();
           }
-        } else {
-          statusEl.textContent = 'No block found this round, restarting search...';
-          await new Promise(r => setTimeout(r, 500));
-          const fresh = await fetch('/wallet/last-proof');
-          const freshData = await fresh.json();
-          last_proof = freshData.last_proof;
-          last_index = freshData.last_index;
-          challenge = freshData.challenge;
-          difficulty = freshData.difficulty;
-          startTime = Date.now();
-        }
-      }
+        };
+      };
+      runWorker();
     } catch (err) {
-      console.error('Mining error:', err);
-      statusEl.textContent = 'Mining error: ' + err.message;
-      window.NotificationManager?.showToast('Mining error', 'error');
+      console.error(err);
       stopMining();
     }
   }
 
   function stopMining() {
     miningActive = false;
+    localStorage.setItem(AUTO_MINING_KEY, 'false');
+    if (miningWorker) {
+      miningWorker.terminate();
+      miningWorker = null;
+    }
     document.getElementById('startMiningBtn').classList.remove('hidden');
     document.getElementById('stopMiningBtn').classList.add('hidden');
     document.getElementById('miningProgress').classList.add('hidden');
-    document.getElementById('miningStatus').textContent = 'Stopped';
+    document.getElementById('miningStatus').textContent = t('mining_stopped');
   }
 
   // ================== Стейкинг ==================
@@ -148,11 +190,11 @@
     const amountEl = document.getElementById('stakeAmount');
     const rawAmount = parseFloat(amountEl.value);
     if (!amountEl.value.trim()) {
-      window.NotificationManager?.showToast('Amount field is empty', 'warning');
+      window.NotificationManager?.showToast(t('amount_empty'), 'warning');
       return;
     }
     if (isNaN(rawAmount) || rawAmount <= 0) {
-      window.NotificationManager?.showToast('Enter a valid positive number', 'warning');
+      window.NotificationManager?.showToast(t('invalid_amount'), 'warning');
       return;
     }
     const amount = Math.floor(rawAmount * BLOCKCOIN_SATS);
@@ -165,13 +207,13 @@
     const el = document.getElementById('stakeResult');
     el.classList.remove('hidden');
     if (res.ok) {
-      el.textContent = `Staked! Unlocks at block ${data.unlock_block}`;
+      el.textContent = t('staked_success', { block: data.unlock_block });
       el.style.color = 'var(--status-success)';
       amountEl.value = '';
       refreshBalance();
       loadStakingInfo();
     } else {
-      el.textContent = 'Error: ' + (data.error || 'Unknown');
+      el.textContent = t('error') + ': ' + (data.error || t('unknown'));
       el.style.color = 'var(--status-error)';
     }
   }
@@ -182,12 +224,12 @@
     const el = document.getElementById('stakeResult');
     el.classList.remove('hidden');
     if (res.ok) {
-      el.textContent = 'Unstaked!';
+      el.textContent = t('unstaked_success');
       el.style.color = 'var(--status-success)';
       refreshBalance();
       loadStakingInfo();
     } else {
-      el.textContent = 'Error: ' + (data.error || 'No active stake or still locked');
+      el.textContent = t('error') + ': ' + (data.error || t('unstake_locked'));
       el.style.color = 'var(--status-error)';
     }
   }
@@ -196,10 +238,10 @@
     const blocksLeft = unlockBlock - currentBlock;
     const avgBlockTimeSeconds = 60;
     const totalMinutes = Math.max(0, Math.floor((blocksLeft * avgBlockTimeSeconds) / 60));
-    if (totalMinutes < 60) return `${totalMinutes} min`;
+    if (totalMinutes < 60) return `${totalMinutes} ${t('min')}`;
     const hours = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;
-    return `${hours}h ${mins}m`;
+    return `${hours}${t('h')} ${mins}${t('m')}`;
   }
 
   async function loadStakingInfo() {
@@ -226,18 +268,18 @@
       data.stakes.forEach(s => {
         const amount = (s.amount / BLOCKCOIN_SATS).toFixed(6);
         const timeEst = estimateTimeFromBlock(s.unlock_block, currentBlock);
-        html += `${amount} BlockCoin (unlock in ~${timeEst})<br>`;
+        html += `${amount} BlockCoin (${t('unlock_in', { time: timeEst })})<br>`;
       });
 
       if (data.expected_income) {
-        html += `<span style="color: var(--status-success)">Pending income: ${(data.expected_income / BLOCKCOIN_SATS).toFixed(6)} BlockCoin</span><br>`;
+        html += `<span style="color: var(--status-success)">${t('pending_income', { amount: (data.expected_income / BLOCKCOIN_SATS).toFixed(6) })}</span><br>`;
       }
       if (totalStaked > 0 && years > 0) {
-        html += `<span style="color: var(--accent)">APR: ${apr.toFixed(2)}%</span>`;
+        html += `<span style="color: var(--accent)">${t('apr_label', { apr: apr.toFixed(2) })}</span>`;
       }
       infoEl.innerHTML = html;
     } else {
-      infoEl.textContent = 'No active stakes';
+      infoEl.textContent = t('no_active_stakes');
     }
   }
 
@@ -247,7 +289,7 @@
     if (!res.ok) return;
     const data = await res.json();
     document.getElementById('balanceDisplay').textContent = (data.balance / BLOCKCOIN_SATS).toFixed(6) + ' BlockCoin';
-    window.NotificationManager?.showToast('Balance updated', 'success');
+    window.NotificationManager?.showToast(t('balance_updated'), 'success');
     if (data.staked) {
       document.getElementById('stakedInfo').style.display = 'flex';
       document.getElementById('stakedDisplay').textContent = (data.staked / BLOCKCOIN_SATS).toFixed(6) + ' BlockCoin';
@@ -277,7 +319,8 @@
       document.getElementById('totalBlocks').textContent = data.total_blocks;
       document.getElementById('totalStaked').textContent = (data.total_staked / divisor).toFixed(6) + ' ' + data.coin_name;
       document.getElementById('difficulty').textContent = data.difficulty;
-      window.NotificationManager?.showToast('Network stats updated', 'success');
+      document.getElementById('stakingFeeRatio').textContent = (data.staking_fee_ratio * 100).toFixed(1) + '%';
+      window.NotificationManager?.showToast(t('network_stats_updated'), 'success');
     } catch (err) {
       console.error('Failed to load network stats:', err);
     }
@@ -286,15 +329,15 @@
   // ================== Транзакции ==================
   async function loadTx() {
     const list = document.getElementById('txList');
-    list.innerHTML = '<div class="loading">Loading…</div>';
+    list.innerHTML = '<div class="loading">' + t('loading') + '</div>';
     const res = await fetch('/wallet/transactions');
     if (!res.ok) {
-      list.innerHTML = '<p class="text-muted text-center">Failed to load</p>';
+      list.innerHTML = '<p class="text-muted text-center">' + t('failed_to_load') + '</p>';
       return;
     }
     const data = await res.json();
     if (!data.transactions.length) {
-      list.innerHTML = `<div class="empty-state"><div class="icon">💳</div><p>No transactions yet</p></div>`;
+      list.innerHTML = `<div class="empty-state"><div class="icon">💳</div><p>${t('no_transactions')}</p></div>`;
       return;
     }
     while (list.firstChild) list.removeChild(list.firstChild);
@@ -306,36 +349,36 @@
       let typeLabel = '';
       let sign = '-';
       if (tx.type === 'reward') {
-        typeLabel = '🎁 Lottery Reward';
+        typeLabel = t('lottery_reward');
         sign = '+';
       } else if (tx.type === 'fee') {
-        typeLabel = '💸 Fee';
+        typeLabel = t('fee');
         sign = '-';
       } else if (tx.type === 'transfer') {
         if (tx.sender === MY_ADDRESS) {
-          typeLabel = '📤 Sent';
+          typeLabel = t('sent');
           sign = '-';
         } else {
-          typeLabel = '📥 Received';
+          typeLabel = t('received');
           sign = '+';
         }
       } else if (tx.type === 'block_reward') {
-        typeLabel = '⛏ Block Reward';
+        typeLabel = t('block_reward');
         sign = '+';
       } else if (tx.type === 'stake') {
-        typeLabel = '🔒 Stake';
+        typeLabel = t('stake_label');
         sign = '-';
       } else if (tx.type === 'unstake') {
-        typeLabel = '🔓 Unstake';
+        typeLabel = t('unstake_label');
         sign = '+';
       } else if (tx.type === 'airdrop') {
-        typeLabel = '🪂 Airdrop';
+        typeLabel = t('airdrop');
         sign = '+';
       } else if (tx.type === 'message_fee') {
-        typeLabel = '💬 Message Fee';
+        typeLabel = t('message_fee');
         sign = '-';
       } else if (tx.type === 'staking_reward') {
-        typeLabel = '💰 Staking Reward';
+        typeLabel = t('staking_reward');
         sign = '+';
       }
 
@@ -368,54 +411,55 @@
     });
   }
 
-   async function sendCoins() {
+  async function sendCoins() {
     const addr = document.getElementById('sendAddress').value.trim().toLowerCase();
     const rawAmount = Number(document.getElementById('sendAmount').value);
     if (!addr || addr.length !== 64 || !/^[a-f0-9]{64}$/.test(addr)) {
-        window.NotificationManager?.showToast('Enter a valid 64-character hex address.', 'warning');
-        return;
+      window.NotificationManager?.showToast(t('invalid_address'), 'warning');
+      return;
     }
     if (isNaN(rawAmount) || rawAmount <= 0) {
-        window.NotificationManager?.showToast('Enter a positive amount.', 'warning');
-        return;
+      window.NotificationManager?.showToast(t('positive_amount'), 'warning');
+      return;
     }
     const amount = Math.floor(rawAmount * BLOCKCOIN_SATS);
     const res = await fetch('/wallet/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipient: addr, amount })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient: addr, amount })
     });
     const result = await res.json();
     const el = document.getElementById('sendResult');
     el.classList.remove('hidden');
     if (res.ok) {
-        el.textContent = '✓ Sent!';
-        el.style.color = 'var(--status-success)';
-        document.getElementById('sendAmount').value = '';
-        document.getElementById('sendAddress').value = '';
-        refreshBalance();
-        loadTx();
+      el.textContent = t('sent_success');
+      el.style.color = 'var(--status-success)';
+      document.getElementById('sendAmount').value = '';
+      document.getElementById('sendAddress').value = '';
+      refreshBalance();
+      loadTx();
     } else {
-        el.textContent = 'Error: ' + result.error;
-        el.style.color = 'var(--status-error)';
+      el.textContent = t('send_error', { error: result.error });
+      el.style.color = 'var(--status-error)';
     }
-}
+  }
+
   // ================== QR-код и сканер ==================
-   function toggleReceiveQR() {
+  function toggleReceiveQR() {
     const block = document.getElementById('qrBlock');
     const btn = document.getElementById('toggleQRBtn');
     if (!block || !btn) return;
 
     const isHidden = block.classList.contains('hidden');
     if (isHidden) {
-        block.classList.remove('hidden');
-        if (!qrGenerated) generateQR();   // глобальная переменная
-        btn.innerHTML = '📱 Hide QR Code';
+      block.classList.remove('hidden');
+      if (!qrGenerated) generateQR();
+      btn.innerHTML = t('hide_qr');
     } else {
-        block.classList.add('hidden');
-        btn.innerHTML = '📱 Show QR Code';
+      block.classList.add('hidden');
+      btn.innerHTML = t('show_qr');
     }
-}
+  }
 
   function generateQR() {
     const address = MY_ADDRESS;
@@ -432,18 +476,18 @@
       });
       qrGenerated = true;
     } catch (e) {
-      qrDiv.innerHTML = '<span class="text-muted">QR error</span>';
+      qrDiv.innerHTML = '<span class="text-muted">' + t('qr_error') + '</span>';
     }
   }
 
   function copyAddressToClipboard() {
     const addr = document.getElementById('receiveAddress')?.textContent?.trim();
-    copyToClipboard(addr, 'Address copied', 'Nothing to copy');
+    copyToClipboard(addr, t('address_copied'), t('nothing_to_copy'));
   }
 
   function downloadQR() {
     const canvas = document.querySelector('#qrcode canvas');
-    if (!canvas) return window.NotificationManager?.showToast('QR not ready', 'error');
+    if (!canvas) return window.NotificationManager?.showToast(t('qr_not_ready'), 'error');
     const link = document.createElement('a');
     link.download = `wallet-qr-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
@@ -455,7 +499,7 @@
     if (!address) return;
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'My Wallet Address', text: address });
+        await navigator.share({ title: t('my_wallet_address'), text: address });
       } catch (e) { if (e.name !== 'AbortError') console.error(e); }
     } else {
       copyAddressToClipboard();
@@ -526,7 +570,7 @@
         };
         wait();
       }).catch(err => {
-        this._showError('Camera error: ' + (err.message || err.name), resultEl);
+        this._showError(t('camera_error', { error: err.message || err.name }), resultEl);
       });
     },
     close() {
@@ -578,11 +622,11 @@
             const addr = parseQRData(code.data);
             if (addr) {
               document.getElementById('sendAddress').value = addr;
-              if (resultEl) { resultEl.textContent = '✓ Address scanned'; resultEl.style.color = 'var(--status-success)'; resultEl.classList.remove('hidden'); }
+              if (resultEl) { resultEl.textContent = t('address_scanned'); resultEl.style.color = 'var(--status-success)'; resultEl.classList.remove('hidden'); }
               this.close();
               return;
             } else {
-              if (resultEl) { resultEl.textContent = '⚠️ Not a valid wallet QR'; resultEl.style.color = 'var(--status-warning)'; resultEl.classList.remove('hidden'); }
+              if (resultEl) { resultEl.textContent = t('not_valid_wallet_qr'); resultEl.style.color = 'var(--status-warning)'; resultEl.classList.remove('hidden'); }
             }
           }
         } catch (e) { /* ignore */ }
@@ -623,10 +667,8 @@
       const originalOnMessage = window.wsClient.onMessage;
       window.wsClient.onMessage = (data) => {
         if (originalOnMessage) originalOnMessage(data);
-        // ✅ Обрабатываем событие new_block
         if (data.type === 'new_block' && miningActive) {
           console.log('🔔 New block mined, restarting mining...');
-          // ✅ Обновляем глобальную статистику и баланс
           refreshNetworkStats();
           refreshBalance();
           const wasActive = miningActive;
@@ -648,8 +690,11 @@
         POW_MAX_ITERATIONS = cfg.pow_max_iterations || 5000000;
         if (!cfg.enable_mining) document.getElementById('miningCard')?.remove();
         if (!cfg.enable_staking) document.getElementById('stakingCard')?.remove();
-        const feeDisplay = document.getElementById('sendFeeDisplay');
-        if (feeDisplay) feeDisplay.textContent = `Fee: ${(cfg.transfer_fee / BLOCKCOIN_SATS).toFixed(6)} BlockCoin`;
+        window.refreshFeeDisplay();
+        // Авто-майнинг
+        if (localStorage.getItem(AUTO_MINING_KEY) === 'true') {
+          startMining();
+        }
       })
       .catch(e => console.error('Error fetching wallet config:', e));
 
@@ -657,8 +702,26 @@
     loadTx();
     loadStakingInfo();
     refreshNetworkStats();
-    initMiningNotifications();   // ✅ подключаем уведомления
+    initMiningNotifications();
   });
+
+  // ================== Обновление отображения комиссии ==================
+  window.refreshFeeDisplay = async function() {
+    try {
+      const res = await fetch('/wallet/config');
+      if (!res.ok) throw new Error('Config not loaded');
+      const cfg = await res.json();
+      const feeDisplay = document.getElementById('sendFeeDisplay');
+      if (feeDisplay) {
+        const fee = (cfg.transfer_fee / BLOCKCOIN_SATS).toFixed(6);
+        feeDisplay.textContent = t('fee_label', { fee });
+      }
+    } catch(e) {
+      console.warn('Failed to refresh fee display', e);
+      const feeDisplay = document.getElementById('sendFeeDisplay');
+      if (feeDisplay) feeDisplay.textContent = t('fee_label', { fee: '0.010000' });
+    }
+  };
 
   window.startMining = startMining;
   window.stopMining = stopMining;
