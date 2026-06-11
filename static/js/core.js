@@ -81,6 +81,49 @@
     // ========== Кеш сообщений (в памяти, на время сессии) ==========
     window.messagesCache = new Map();
 
+    // Флаг, чтобы не обрабатывать звонок дважды
+window._pendingCallHandled = false;
+
+
+window.handlePendingCall = function() {
+    if (window._pendingCallHandled) return;
+
+    let callId = null;
+    // Сначала проверяем sessionStorage (сохраняется при разблокировке)
+    if (sessionStorage.getItem('pending_call_id')) {
+        callId = sessionStorage.getItem('pending_call_id');
+    } else {
+        const urlParams = new URLSearchParams(window.location.search);
+        callId = urlParams.get('call_id');
+    }
+
+    if (!callId) return;
+
+    // Сохраняем в sessionStorage, чтобы не потерять после разблокировки
+    sessionStorage.setItem('pending_call_id', callId);
+    // Удаляем параметр из URL, чтобы при обновлении страницы не повторять
+    const newUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, newUrl);
+
+    // Используем wsClient.isConnected (кастомный WebSocketClient), а не .readyState
+    const wsReady = window.wsClient && (
+        window.wsClient.isConnected === true ||
+        (window.wsClient.ws && window.wsClient.ws.readyState === WebSocket.OPEN)
+    );
+
+    if (wsReady) {
+        console.log('[App] Sending get_call for', callId);
+        window.wsClient.send({ type: 'get_call', call_id: callId });
+        window._pendingCallHandled = true;
+        sessionStorage.removeItem('pending_call_id');
+    } else {
+        // Не помечаем как обработанный, дождёмся onConnect
+        console.log('[App] WebSocket not ready, will retry on connect');
+    }
+};
+
+
+
     window.addMessageToCache = function(chatId, message, position = 'end') {
         if (!chatId || !message || !message.id) return;
         let messages = window.messagesCache.get(chatId);
@@ -175,6 +218,9 @@
             const errorDiv = modal.querySelector('#unlockError');
             const confirmBtn = modal.querySelector('#confirmUnlock');
             const cancelBtn = modal.querySelector('#cancelUnlock');
+            // В файле core.js, внутри функции attemptUnlock:
+            // В файле core.js, внутри функции restoreMnemonic, замените attemptUnlock на:
+
             const attemptUnlock = async () => {
     const pwd = passwordInput.value;
     if (!pwd) {
@@ -184,22 +230,41 @@
     }
     confirmBtn.disabled = true;
     confirmBtn.textContent = '...';
-    const mnemonic = await window.StorageEncryption.decryptMnemonic(encrypted, pwd);
-    if (mnemonic) {
-        sessionStorage.setItem('mnemonic', mnemonic);
-        modal.remove();
-        State._restoringMnemonic = false;
-        if (window.initPushNotifications) {
-            window.initPushNotifications().catch(e => console.warn('Push init after unlock:', e));
+
+    try {
+        const mnemonic = await window.StorageEncryption.decryptMnemonic(encrypted, pwd);
+        if (mnemonic) {
+            sessionStorage.setItem('mnemonic', mnemonic);
+            modal.remove();
+            State._restoringMnemonic = false;
+
+            // 1. Инициализируем Push (если разрешение уже дано)
+            if (window.initPushNotifications) {
+                window.initPushNotifications().catch(e => console.warn('Push init after unlock:', e));
+            }
+
+            // 2. ГЛАВНОЕ ИСПРАВЛЕНИЕ: Инициализируем WebSocket сразу после получения ключа
+            // Это позволит отправить запрос get_call для пропущенного звонка
+            if (typeof window.initWebSocket === 'function') {
+                console.log('[App] Initializing WebSocket after successful unlock...');
+                await window.initWebSocket();
+            }
+
+            resolve(true);
+        } else {
+            errorDiv.textContent = t('wrong_password');
+            errorDiv.style.display = 'block';
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = t('unlock');
         }
-        resolve(true);
-    } else {
-        errorDiv.textContent = t('wrong_password');
+    } catch (err) {
+        console.error('Unlock error:', err);
+        errorDiv.textContent = 'Error unlocking wallet';
         errorDiv.style.display = 'block';
         confirmBtn.disabled = false;
         confirmBtn.textContent = t('unlock');
     }
-}; // ← ЗАКРЫВАЕМ ФУНКЦИЮ
+};
 
 
             const clearAndLogout = () => {
@@ -300,6 +365,7 @@
                 onConnect: () => {
                     console.log('✅ WebSocket connected');
                     if (window.loadConversations) window.loadConversations();
+                     window.handlePendingCall();   // ← ДОБАВИТЬ ЭТУ СТРОКУ
 
                 },
                 onDisconnect: () => console.warn('⚠️ WebSocket disconnected'),
@@ -448,97 +514,142 @@
     }
 
     async function handleWebSocketMessage(data) {
-        if (data.error) { console.error('WS error:', data.error); return; }
+    if (data.error) {
+        console.error('WS error:', data.error);
+        return;
+    }
 
-        // --- Статус online/offline пользователя ---
-        if (data.type === 'status_update') {
-            if (data.address && data.status) {
-                if (window.updateConversationStatus) window.updateConversationStatus(data.address, data.status);
+    // 1. Обработка "call_not_found" – всегда в первую очередь
+    if (data.type === 'call_not_found') {
+        console.warn('[WS] Call not found:', data.call_id);
+        sessionStorage.removeItem('pending_call_id');
+        return;
+    }
+
+    // 2. Обработка сигналов звонка (incoming_call, call_answer и т.д.)
+    if (
+        data.type === 'incoming_call' ||
+        data.type === 'call_answer' ||
+        data.type === 'call_ice' ||
+        data.type === 'call_hangup' ||
+        data.type === 'call_reject'
+    ) {
+        const tryCall = () => {
+            if (window.handleCallSignal) {
+                window.handleCallSignal(data);
+            } else {
+                console.warn('[WS] handleCallSignal not ready, retrying...');
+                setTimeout(tryCall, 100);
             }
-            return;
-        }
+        };
+        tryCall();
+        return;
+    }
 
-        if (data.type === 'incoming_call' || data.type === 'call_answer' ||
-            data.type === 'call_ice' || data.type === 'call_hangup' || data.type === 'call_reject') {
-            if (window.handleCallSignal) window.handleCallSignal(data);
-            return;
-        }
-
-        // --- Статус сообщения (delivered / read) приходит с сервера ---
-        if (data.type === 'message_status') {
-            const msgDiv = document.querySelector(`.message-own[data-id="${data.message_id}"]`);
-            if (msgDiv && msgDiv.dataset.status !== data.status) {
-                msgDiv.dataset.status = data.status;
-                if (window.updateStatusIcon) window.updateStatusIcon(msgDiv, data.status);
-                // Обновляем кеш
-                const chatId = State.currentChatAddress;
-                const cached = window.getCachedMessages ? window.getCachedMessages(chatId) : [];
-                const cachedMsg = cached.find(m => m.id === data.message_id);
-                if (cachedMsg) cachedMsg.status = data.status;
-            }
-            return;
-        }
-
-        if (!data.chatId && data.sender && data.recipient)
-            data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
-        if (!data.chatId) return;
-        if (document.getElementById('msg-' + data.id)) return;
-
+    // 3. Обычные сообщения
+    if (data.type === 'message') {
         const decrypted = await processMessageDecryption(data);
         const chatId = decrypted.chatId;
 
-        if (decrypted && decrypted.id) window.addMessageToCache(chatId, decrypted, 'end');
+        if (decrypted?.id) {
+            window.addMessageToCache(chatId, decrypted, 'end');
+        }
 
-        // delivered — немедленно, только для чужих сообщений
         if (!decrypted.is_mine) {
-            fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn(e));
+            fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(() => {});
         }
 
-        const isCurrent = State.currentChatAddress === chatId ||
-            (!decrypted.isGroup && (
-                decrypted.sender === State.currentChatAddress ||
-                decrypted.recipient === State.currentChatAddress
-            ));
-
-        if (!isCurrent) {
-    const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
-    if (!existingItem) {
-        if (window.loadConversations) window.loadConversations();
-    } else {
-        if (window.updateConversationPreview) {
-            window.updateConversationPreview(chatId, decrypted.preview || t('new_message_preview'));
+        if (window.onNewMessageReceived) {
+            window.onNewMessageReceived(decrypted);
         }
-        // ДОБАВИТЬ: поднять чат в начало списка
-        if (window.moveConversationToTop) {
-            window.moveConversationToTop(chatId);
-        } else {
-            // fallback – перезагрузить весь список
+        return;
+    }
+
+    // 4. Статус online/offline
+    if (data.type === 'status_update') {
+        if (data.address && data.status) {
+            if (window.updateConversationStatus) {
+                window.updateConversationStatus(data.address, data.status);
+            }
+        }
+        return;
+    }
+
+    // 5. Анти-дублирование push vs websocket
+    if (data._from_push === true) {
+        return;
+    }
+
+    // 6. Статус сообщения (delivered / read)
+    if (data.type === 'message_status') {
+        const msgDiv = document.querySelector(`.message-own[data-id="${data.message_id}"]`);
+        if (msgDiv && msgDiv.dataset.status !== data.status) {
+            msgDiv.dataset.status = data.status;
+            if (window.updateStatusIcon) window.updateStatusIcon(msgDiv, data.status);
+            const chatId = State.currentChatAddress;
+            const cached = window.getCachedMessages ? window.getCachedMessages(chatId) : [];
+            const cachedMsg = cached.find(m => m.id === data.message_id);
+            if (cachedMsg) cachedMsg.status = data.status;
+        }
+        return;
+    }
+
+    // 7. Старые сообщения (без chatId, без типа) – обратная совместимость
+    if (!data.chatId && data.sender && data.recipient) {
+        data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;
+    }
+    if (!data.chatId) return;
+    if (document.getElementById('msg-' + data.id)) return;
+
+    const decrypted = await processMessageDecryption(data);
+    const chatId = decrypted.chatId;
+
+    if (decrypted && decrypted.id) window.addMessageToCache(chatId, decrypted, 'end');
+
+    if (!decrypted.is_mine) {
+        fetch(`/message/${decrypted.id}/delivered`, { method: 'POST' }).catch(e => console.warn(e));
+    }
+
+    const isCurrent = State.currentChatAddress === chatId ||
+        (!decrypted.isGroup && (
+            decrypted.sender === State.currentChatAddress ||
+            decrypted.recipient === State.currentChatAddress
+        ));
+
+    if (!isCurrent) {
+        const existingItem = document.querySelector(`.conversation-item[data-address="${chatId}"]`);
+        if (!existingItem) {
             if (window.loadConversations) window.loadConversations();
+        } else {
+            if (window.updateConversationPreview) {
+                window.updateConversationPreview(chatId, decrypted.preview || t('new_message_preview'));
+            }
+            if (window.moveConversationToTop) {
+                window.moveConversationToTop(chatId);
+            } else {
+                if (window.loadConversations) window.loadConversations();
+            }
         }
+    }
+
+    if (isCurrent && window.onNewMessageReceived) window.onNewMessageReceived(decrypted);
+
+    if (window.NotificationManager) {
+        const previewText = (decrypted.content && !decrypted.content.startsWith('{'))
+            ? decrypted.content.slice(0, 80)
+            : (decrypted.fileUrl ? '📎 File' : '💬 New message');
+        window.NotificationManager.handleIncomingMessage?.({
+            sender: decrypted.sender,
+            sender_name: decrypted.sender_name,
+            chatId: chatId,
+            isGroup: !!(decrypted.isGroup || decrypted.group_id),
+            content: previewText,
+            preview: previewText,
+            timestamp: decrypted.timestamp * 1000,
+            messageId: decrypted.id
+        });
     }
 }
-
-        if (isCurrent && window.onNewMessageReceived) window.onNewMessageReceived(decrypted);
-
-        if (window.NotificationManager) {
-            // ИСПРАВЛЕНИЕ: передаём расшифрованный content как preview
-            // decrypted.preview не существует — его не отдаёт сервер через WS
-            // isGroup берём из decrypted.isGroup (групп) или из наличия group_id
-            const previewText = (decrypted.content && !decrypted.content.startsWith('{'))
-                ? decrypted.content.slice(0, 80)
-                : (decrypted.fileUrl ? '📎 File' : '💬 New message');
-            window.NotificationManager.handleIncomingMessage?.({
-                sender: decrypted.sender,
-                sender_name: decrypted.sender_name,
-                chatId: chatId,
-                isGroup: !!(decrypted.isGroup || decrypted.group_id),
-                content: previewText,
-                preview: previewText,
-                timestamp: decrypted.timestamp * 1000,
-                messageId: decrypted.id
-            });
-        }
-    }
 
     // ========== Heartbeat ==========
     let heartbeatInterval = null;
@@ -742,6 +853,7 @@ function urlBase64ToUint8Array(base64String) {
 // SW не может напрямую navigate вкладку через Safari — посылает postMessage
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
+
         if (event.data?.type === 'navigate' && event.data?.url) {
             const target = event.data.url;
             if (window.location.pathname !== new URL(target, location.origin).pathname) {
@@ -750,10 +862,34 @@ if ('serviceWorker' in navigator) {
                 window.focus();
             }
         }
-        // ✅ Отдельная ветка для pushsubscriptionchange
+
         if (event.data?.type === 'pushsubscriptionchange') {
             console.log('Re-subscribing push due to subscription change');
             if (window.initPushNotifications) window.initPushNotifications();
+        }
+
+        // open_call из SW: вызываем handleCallSignal когда он будет готов,
+        // а если страница была заблокирована — сохраняем call_id для handlePendingCall
+        if (event.data?.type === 'open_call') {
+            const callId = event.data.call_id;
+            // Сохраняем как pending — будет обработан после разблокировки через WS
+            if (callId && !sessionStorage.getItem('pending_call_id')) {
+                sessionStorage.setItem('pending_call_id', callId);
+                window._pendingCallHandled = false;
+            }
+            const trySignal = (attempt = 0) => {
+                if (window.handleCallSignal && window.CallManager) {
+                    window.handleCallSignal({
+                        type: 'incoming_call',
+                        call_id: callId
+                    });
+                } else if (attempt < 30) {
+                    setTimeout(() => trySignal(attempt + 1), 200);
+                } else {
+                    console.warn('[SW open_call] handleCallSignal not available after retries, will use pending_call_id');
+                }
+            };
+            trySignal();
         }
     });
 }

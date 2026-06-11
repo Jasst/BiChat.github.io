@@ -1,87 +1,89 @@
-// sw.js — Service Worker для push-уведомлений
-// ИСПРАВЛЕНИЯ v3:
-// 1. activate + clients.claim() — SW берёт контроль немедленно
-// 2. notificationclick — фокусируем открытую вкладку вместо новой (iOS/Android)
-// 3. push: убраны опции несовместимые с iOS (actions, requireInteraction)
-// 4. iOS Safari не поддерживает vibrate, actions, image в уведомлениях — убраны
-
 self.addEventListener('install', event => {
-  self.skipWaiting();
+    self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(clients.claim());
+    event.waitUntil(clients.claim());
 });
 
 self.addEventListener('push', event => {
-  let data = { title: 'BiChat', body: 'Новое сообщение', url: '/chat' };
+    let data = {
+        type: 'message',
+        title: 'BiChat',
+        body: 'New message',
+        url: '/chat'
+    };
 
-  if (event.data) {
-    try {
-      data = { ...data, ...event.data.json() };
-    } catch(e) {
-      data.body = event.data.text() || '';
+    if (event.data) {
+        try {
+            const parsed = event.data.json();
+            data = { ...data, ...parsed };
+        } catch (e) {
+            data.body = event.data.text() || '';
+        }
     }
-  }
 
-  if (!data.url || typeof data.url !== 'string') data.url = '/chat';
+    const isCall = data.type === 'incoming_call';
+    const tag = isCall ? `call-${data.call_id}` : 'bichat-msg';
 
-  // ИСПРАВЛЕНИЕ: минимальный набор опций совместимых с iOS Safari 16.4+
-  // iOS не поддерживает: actions, image, vibrate (игнорирует, но иногда ломает)
-  // requireInteraction: убран — на iOS уведомление не показывается вообще если он есть
-  const options = {
-    body: data.body,
-    icon: '/static/icon-192.png',
-   
-    data: { url: data.url },
-    tag: data.tag || 'bichat-msg',
-    renotify: true,
+    const options = {
+        body: data.body,
+        icon: '/static/icon-192.png',
+        badge: '/static/badge-72.png',
+        data: {
+            url: data.url,
+            type: data.type,
+            call_id: data.call_id || null,
+            from: data.from || null,
+            from_name: data.from_name || null
+        },
+        tag: tag,
+        renotify: true,
+        vibrate: isCall ? [200, 100, 200] : undefined,
+        silent: false
+    };
 
-    // vibrate: убрано — iOS игнорирует, Android PWA поддерживает но не критично
-    // actions: убраны — iOS не поддерживает
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
+    event.waitUntil(
+        self.registration.showNotification(
+            isCall ? `📞 ${data.from_name || 'Incoming call'}` : data.title,
+            options
+        )
+    );
 });
 
 self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  const url = event.notification.data?.url || '/chat';
+    event.notification.close();
+    const data = event.notification.data || {};
+    const url = data.url || '/chat';
+    const type = data.type;
+    const callId = data.call_id;
 
-  // ИСПРАВЛЕНИЕ 3: сначала ищем уже открытую вкладку с нашим origin
-  // и фокусируем её, вместо открытия новой — это ключевой фикс для iOS и Android
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // Ищем вкладку с нашим origin
-      for (const client of windowClients) {
-        const clientUrl = new URL(client.url);
-        const targetUrl = new URL(url, self.location.origin);
-
-        if (clientUrl.origin === self.location.origin) {
-          // Вкладка нашего сайта уже открыта — фокусируем и навигируем
-          return client.focus().then(focused => {
-            if (focused.navigate) {
-              return focused.navigate(url);
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            for (const client of windowClients) {
+                if (client.url.startsWith(self.location.origin)) {
+                    client.focus();
+                    // Отправляем сообщение в приложение
+                    client.postMessage({
+                        type: type === 'incoming_call' ? 'open_call' : 'navigate',
+                        url: url,
+                        call_id: callId,
+                        from: data.from,
+                        from_name: data.from_name
+                    });
+                    return;
+                }
             }
-            // navigate не всегда доступен (Safari) — постим сообщение
-            focused.postMessage({ type: 'navigate', url });
-            return focused;
-          });
-        }
-      }
-      // Открытой вкладки нет — открываем новую
-      return clients.openWindow(url);
-    })
-  );
+            return clients.openWindow(url);
+        })
+    );
 });
 
-self.addEventListener('pushsubscriptionchange', function(event) {
-    console.log('Push subscription change event (iOS)');
+self.addEventListener('pushsubscriptionchange', event => {
+    console.log('Push subscription expired/changed');
     event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
-            for (const client of clients) {
+        clients.matchAll({ type: 'window' }).then(clientsArr => {
+            for (const client of clientsArr) {
                 client.postMessage({ type: 'pushsubscriptionchange' });
             }
         })

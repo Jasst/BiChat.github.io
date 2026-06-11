@@ -369,5 +369,6 @@
   "call_from": "от",
   "incoming_call": "Входящий вызов",
   "call_ended": "Вызов завершён",
-  "call_rejected": "Вызов отклонён"
+  "call_rejected": "Вызов отклонён",
+  "call_reconnect": "Переподключить"
 }

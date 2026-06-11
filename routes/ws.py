@@ -16,6 +16,9 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
+# ДОБАВЛЕНО: импорт функции отправки push
+from services.push import send_push
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['websocket'])
 
@@ -136,21 +139,50 @@ async def websocket_endpoint(
                 target = data.get('target')
                 call_id = data.get('call_id')
                 sdp = data.get('sdp')
+                from_name = data.get('from_name') or user_id[:10]
                 if target and call_id:
                     async with manager._lock:
                         manager.calls[call_id] = {
                             'from': user_id,
                             'to': target,
                             'state': 'offer_sent',
-                            'created_at': time.time()
+                            'created_at': time.time(),
+                            'offer_sdp': sdp,
+                            'from_name': from_name
                         }
+                    # 1. Пытаемся отправить через WebSocket (если пользователь онлайн)
                     await manager.send_personal_message(target, {
                         'type': 'incoming_call',
                         'call_id': call_id,
                         'from': user_id,
-                        'sdp': sdp
+                        'sdp': sdp,
+                        'from_name': from_name
                     })
-                    logger.debug(f"Call offer {call_id} from {user_id[:8]} to {target[:8]}")
+                    # 2. Отправляем push-уведомление
+                    await send_push(
+                        user_address=target,
+                        title="Входящий звонок",
+                        body=f"{from_name} звонит вам",
+                        push_type="incoming_call",
+                        call_id=call_id,
+                        from_name=from_name
+                    )
+                    logger.info(f"Call offer {call_id}: push sent to {target[:16]} from {user_id[:16]}")
+
+            elif msg_type == 'get_call':
+                call_id = data.get('call_id')
+                async with manager._lock:
+                    call_info = manager.calls.get(call_id)
+                if call_info and call_info.get('offer_sdp'):
+                    await websocket.send_json({
+                        'type': 'incoming_call',
+                        'call_id': call_id,
+                        'from': call_info['from'],
+                        'sdp': call_info['offer_sdp'],
+                        'from_name': call_info.get('from_name', call_info['from'][:10])
+                    })
+                else:
+                    await websocket.send_json({'type': 'call_not_found', 'call_id': call_id})
 
             elif msg_type == 'call_answer':
                 target = data.get('target')

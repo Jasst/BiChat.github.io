@@ -369,5 +369,6 @@
   "call_from": "from",
   "incoming_call": "Incoming call",
   "call_ended": "Call ended",
-  "call_rejected": "Call rejected"
+  "call_rejected": "Call rejected",
+  "call_reconnect": "Reconnect"
 }
