@@ -107,6 +107,10 @@
                 const data = await res.json();
                 this.iceServers = data.iceServers;
                 console.log('ICE servers loaded', this.iceServers);
+                if ("Notification" in window && Notification.permission === "default") {
+                     await Notification.requestPermission();
+                }
+
             } catch(e) {
                 console.warn('Failed to load TURN config, fallback to STUN only', e);
                 this.iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -179,6 +183,36 @@
                 return Promise.resolve();
             }
         }
+
+        playIncomingSound() {
+    try {
+        if (this._incomingAudio) return; // чтобы не запускать 2 раза
+
+        const audio = new Audio("/sounds/incoming.mp3");
+        audio.loop = true;
+        audio.volume = 0.8;
+
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(err => {
+                console.warn("[CallManager] sound blocked:", err);
+            });
+        }
+
+        this._incomingAudio = audio;
+
+    } catch (e) {
+        console.warn("incoming sound error", e);
+    }
+}
+
+        stopIncomingSound() {
+    if (this._incomingAudio) {
+        this._incomingAudio.pause();
+        this._incomingAudio.currentTime = 0;
+        this._incomingAudio = null;
+    }
+}
 
         reattachRemoteStream() {
             if (!this.remoteAudio || !window._remoteStream) return;
@@ -471,6 +505,7 @@
         }
 
         async answerCall(callId, fromAddress, offerSdp, partnerName = '') {
+            this.stopIncomingSound();
             await this.unlockAudioContext();
 
             this.currentCallId = callId;
@@ -565,6 +600,7 @@
         }
 
         endCall() {
+            this.stopIncomingSound();
             this.removeOutsideClickListener();
             this.stopCallTimer();
             if (this.pc) {
@@ -712,6 +748,7 @@
         }
 
         showIncomingCallModal(callId, from, offerSdp, fromName = '') {
+            this.playIncomingSound();
             const modal = document.getElementById('incomingCallModal');
             if (!modal) return;
             modal.classList.remove('hidden');
@@ -754,6 +791,30 @@
 
             this.updateLocalizedTexts();
         }
+
+        showIncomingNotification(name, from) {
+            if (!("Notification" in window)) return;
+
+           const title = "📞 Incoming call";
+           const options = {
+              body: name || from,
+              tag: "incoming-call",
+              renotify: true,
+              silent: false
+           };
+
+           if (Notification.permission === "granted") {
+               const n = new Notification(title, options);
+
+               n.onclick = () => {
+                   window.focus();
+                   this.showIncomingCallModal?.(); // опционально можно открыть UI
+               };
+           }
+           else if (Notification.permission !== "denied") {
+              Notification.requestPermission();
+           }
+       }
 
         hideIncomingModal() {
             const modal = document.getElementById('incomingCallModal');
@@ -814,7 +875,10 @@
 
     window.handleCallSignal = (data) => {
         const { type, call_id, from, sdp, candidate, from_name } = data;
-        if      (type === 'incoming_call') window.CallManager.showIncomingCallModal(call_id, from, sdp, from_name);
+        if (type === 'incoming_call') {window.CallManager.showIncomingCallModal(call_id, from, sdp, from_name);
+         // 🔔 ДОБАВЬ ВОТ ЭТО
+        window.CallManager.showIncomingNotification(from_name, from);
+        }
         else if (type === 'call_answer')   window.CallManager.handleRemoteAnswer(sdp);
         else if (type === 'call_ice')      window.CallManager.handleRemoteIce(candidate);
         else if (type === 'call_hangup')   window.CallManager.endCall();
