@@ -92,7 +92,7 @@ async def serve_sw():
 
 @app.get('/manifest.json', include_in_schema=False)
 async def serve_manifest():
-    manifest_path = os.path.join(os.path.dirname(__file__), 'manifest.json')
+    manifest_path = os.path.join(STATIC_FOLDER, 'manifest.json')
     if not os.path.exists(manifest_path):
         raise HTTPException(404, 'manifest.json not found')
     return FileResponse(manifest_path, media_type='application/manifest+json',
