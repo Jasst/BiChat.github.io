@@ -10,7 +10,7 @@ self.onmessage = async function(e) {
             return;
         }
         // Отправляем прогресс с хешрейтом и ETA каждые 10k итераций
-        if (proof % 10000 === 0) {
+        if (proof % 100000 === 0) {
             const elapsedSec = (Date.now() - startTime) / 1000;
             const hashrate = proof / elapsedSec;
             const remaining = maxIter - proof;
