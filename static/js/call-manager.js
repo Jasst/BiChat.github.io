@@ -24,6 +24,8 @@
             this.outsideClickListener = null;
             this.audioCtx = null;
             this._visibilityHandler = null;
+            // FIX: буфер для ICE candidates (проблема №5)
+            this.pendingCandidates = [];
 
             // Таймер разговора
             this.callStartTime = null;
@@ -34,7 +36,6 @@
             if (typeof i18next !== 'undefined' && i18next.isInitialized && i18next.exists(key)) {
                 return i18next.t(key);
             }
-            // fallback для английского (чтобы не показывать ключи)
             const fallback = {
                 'call_calling': 'Calling...',
                 'call_connected': 'Connected',
@@ -119,13 +120,33 @@
             this.remoteAudio.style.visibility = 'hidden';
             document.body.appendChild(this.remoteAudio);
 
+            // FIX: iOS autoplay разблокировка по жесту (проблема №2)
+            if (this.isIOS) {
+                const unlockGesture = async () => {
+                    if (this.remoteAudio) {
+                        await this.remoteAudio.play().catch(() => {});
+                        await this.unlockAudioContext();
+                    }
+                    document.removeEventListener('touchstart', unlockGesture);
+                    document.removeEventListener('click', unlockGesture);
+                };
+                document.addEventListener('touchstart', unlockGesture, { once: true });
+                document.addEventListener('click', unlockGesture, { once: true });
+            }
+
             this._visibilityHandler = () => {
                 if (document.visibilityState === 'visible' && this.pc) {
                     console.log('[CallManager] Returned from background, reattaching stream...');
                     this.reattachRemoteStream();
                     const state = this.pc.iceConnectionState;
                     if (state === 'failed' || state === 'disconnected') {
-                        this.restartIce();
+                        // FIX: на iOS не делаем ICE restart (проблема №3)
+                        if (this.isIOS) {
+                            console.warn('[CallManager] ICE failed on iOS, ending call');
+                            this.endCall();
+                        } else {
+                            this.restartIce();
+                        }
                     }
                 }
             };
@@ -166,8 +187,25 @@
             this.remoteAudio.play().catch(e => console.warn('[iOS] play() after reattach failed:', e));
         }
 
+        // FIX: буферизация кандидатов (проблема №5)
+        flushPendingCandidates() {
+            if (!this.pc) return;
+            for (const candidate of this.pendingCandidates) {
+                this.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(err =>
+                    console.warn('Failed to add buffered candidate:', err)
+                );
+            }
+            this.pendingCandidates = [];
+        }
+
         async restartIce() {
             if (!this.pc || !this.currentPartner) return;
+            // FIX: на iOS не используем ICE restart (проблема №3)
+            if (this.isIOS) {
+                console.warn('[CallManager] ICE restart disabled on iOS');
+                this.endCall();
+                return;
+            }
             try {
                 const offer = await this.pc.createOffer({ iceRestart: true });
                 offer.sdp = this.preferOpusCodec(offer.sdp);
@@ -186,7 +224,9 @@
             }
         }
 
+        // FIX: не изменяем SDP на iOS (проблема №4)
         preferOpusCodec(sdp) {
+            if (this.isIOS) return sdp;
             if (!sdp) return sdp;
             const lines = sdp.split('\r\n');
             const mIdx = lines.findIndex(l => l.startsWith('m=audio'));
@@ -272,6 +312,7 @@
                 onDragStart(e, t.clientX, t.clientY);
             }, { passive: false });
             document.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
                 const t = e.touches[0];
                 onDragMove(t.clientX, t.clientY);
                 e.preventDefault();
@@ -378,12 +419,20 @@
             };
 
             this.pc.ontrack = (event) => {
-                window._remoteStream = event.streams[0];
-                if (this.remoteAudio) {
-                    this.remoteAudio.srcObject = event.streams[0];
-                    this.remoteAudio.play().catch(e => console.warn('Audio play failed:', e));
+                // FIX: не перезаписываем существующий remote stream (проблема №7)
+                if (!window._remoteStream) {
+                    window._remoteStream = event.streams[0];
                 }
-                this.attachRemoteStream(event.streams[0]);
+                if (this.remoteAudio) {
+                    // FIX: iOS mute/unmute trick (проблема №6)
+                    this.remoteAudio.muted = true;
+                    this.remoteAudio.srcObject = window._remoteStream;
+                    this.remoteAudio.play().catch(e => console.warn('Audio play failed:', e));
+                    setTimeout(() => {
+                        if (this.remoteAudio) this.remoteAudio.muted = false;
+                    }, 300);
+                }
+                this.attachRemoteStream(window._remoteStream);
                 this.updateCallStatus('connected');
             };
 
@@ -402,7 +451,13 @@
                 const s = this.pc.iceConnectionState;
                 console.log('[CallManager] ICE state:', s);
                 if (s === 'failed') {
-                    this.restartIce();
+                    // FIX: на iOS не рестартим ICE (проблема №3)
+                    if (this.isIOS) {
+                        console.warn('[CallManager] ICE failed on iOS, ending call');
+                        this.endCall();
+                    } else {
+                        this.restartIce();
+                    }
                 }
             };
         }
@@ -428,6 +483,9 @@
                 this.createPeerConnection();
                 stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
                 await this.pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
+                // FIX: после установки remote description применяем буферизованные кандидаты
+                this.flushPendingCandidates();
+
                 const answer = await this.pc.createAnswer();
                 answer.sdp = this.preferOpusCodec(answer.sdp);
                 await this.pc.setLocalDescription(answer);
@@ -446,13 +504,18 @@
         }
 
         handleRemoteAnswer(answerSdp) {
-            this.pc?.setRemoteDescription(new RTCSessionDescription(answerSdp)).catch(console.error);
+            this.pc?.setRemoteDescription(new RTCSessionDescription(answerSdp))
+                .then(() => this.flushPendingCandidates())
+                .catch(console.error);
         }
 
         handleRemoteIce(candidate) {
-            if (this.pc) {
-                this.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
+            // FIX: буферизация кандидатов, если remote description ещё не установлен (проблема №5)
+            if (!this.pc || !this.pc.remoteDescription) {
+                this.pendingCandidates.push(candidate);
+                return;
             }
+            this.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
         }
 
         toggleMute() {
@@ -509,6 +572,8 @@
                 this.pc = null;
             }
             this.closeMedia();
+            // Очищаем буфер кандидатов
+            this.pendingCandidates = [];
             if (this.currentPartner && this.currentCallId) {
                 window.wsClient?.send({ type: 'call_hangup', target: this.currentPartner, call_id: this.currentCallId });
             }
@@ -697,7 +762,6 @@
         }
 
         updateLocalizedTexts() {
-            // --- Мини-виджет ---
             const miniStatus = document.getElementById('miniStatus');
             if (miniStatus) miniStatus.textContent = this.t('call_connected');
             const miniExpand = document.getElementById('miniExpandBtn');
@@ -705,7 +769,6 @@
             const miniEnd = document.getElementById('miniEndBtn');
             if (miniEnd) miniEnd.title = this.t('call_end');
 
-            // --- Модалка активного вызова ---
             const callModal = document.getElementById('callModal');
             if (callModal && !callModal.classList.contains('hidden')) {
                 const statusEl = document.getElementById('callStatusText');
@@ -725,7 +788,6 @@
                 if (collapseBtn) collapseBtn.title = this.t('call_minimize');
             }
 
-            // --- Модалка входящего вызова ---
             const incomingModal = document.getElementById('incomingCallModal');
             if (incomingModal && !incomingModal.classList.contains('hidden')) {
                 const fromLabel = incomingModal.querySelector('.call-status');
@@ -740,7 +802,6 @@
                 if (rejectBtn) rejectBtn.title = this.t('call_reject');
             }
 
-            // Обновляем все data-i18n-title внутри модалок
             document.querySelectorAll('#callModal [data-i18n-title], #incomingCallModal [data-i18n-title], #callMiniWidget [data-i18n-title]').forEach(el => {
                 const key = el.getAttribute('data-i18n-title');
                 if (key) el.title = this.t(key);
