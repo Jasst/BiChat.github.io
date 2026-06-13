@@ -8,7 +8,7 @@ import asyncpg
 import os
 
 SQLITE_DB_PATH = "data/blockchain.db"
-POSTGRES_DSN = "postgresql://postgres:zXCV123zXCV@localhost:5432/bichat_db"
+POSTGRES_DSN = "postgresql://:@localhost:5432/bichat_db"
 
 TABLES = [
     "blockchain", "transactions", "contacts", "groups", "pubkey_cache",
