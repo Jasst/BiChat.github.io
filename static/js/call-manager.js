@@ -439,54 +439,57 @@
         }
 
         async makeCall(partnerAddress, isVideo = false, partnerName = '') {
-    // Проверка: если уже есть активный звонок
-    if (this.currentCallId) {
-        const confirmEnd = confirm(this.t('call_active_message', 'You are already in a call. End it to start a new one?'));
-        if (!confirmEnd) {
-            window.NotificationManager?.showToast(this.t('call_in_progress', 'Call already in progress'), 'warning');
-            return;
+            // Проверка: если уже есть активный звонок
+            if (this.currentCallId) {
+                const confirmEnd = confirm(this.t('call_active_message', 'You are already in a call. End it to start a new one?'));
+                if (!confirmEnd) {
+                    window.NotificationManager?.showToast(this.t('call_in_progress', 'Call already in progress'), 'warning');
+                    return;
+                }
+                this.endCall();
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            await this.unlockAudioContext();
+
+            this.isEstablishing = true;
+            try {
+                this.isAudioOnly = !isVideo;
+                this.currentPartner = partnerAddress;
+                this.currentPartnerName = partnerName || partnerAddress.slice(0,10) + '…';
+                this.isInitiator = true;
+                this.currentCallId = `call_${Date.now()}_${Math.random().toString(36)}`;
+
+                const stream = await this.getUserMedia();
+                this.createPeerConnection();
+                stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
+
+                const offer = await this.pc.createOffer();
+                offer.sdp = this.preferOpusCodec(offer.sdp);
+                await this.pc.setLocalDescription(offer);
+                this.flushPendingAnswer();
+
+                // Отправляем offer через WebSocket
+                window.wsClient?.send({
+                    type: 'call_offer',
+                    target: partnerAddress,
+                    call_id: this.currentCallId,
+                    sdp: offer
+                    // ИСПРАВЛЕНИЕ: УБРАН from_name!
+                    // Раньше тут было from_name: this.currentPartnerName,
+                    // что отправляло имя того, КОМУ мы звоним (Боба).
+                    // Теперь сервер сам подставит правильное имя звонящего (Алисы).
+                });
+
+                this.showCallModal('outgoing', this.t('call_calling'));
+            } catch(err) {
+                console.error(err);
+                this.endCall();
+                window.NotificationManager?.showToast('Cannot start call: ' + err.message, 'error');
+            } finally {
+                setTimeout(() => { if (this.isEstablishing) this.isEstablishing = false; }, 5000);
+            }
         }
-        this.endCall();
-        await new Promise(r => setTimeout(r, 500));
-    }
-
-    await this.unlockAudioContext();
-
-    this.isEstablishing = true;
-    try {
-        this.isAudioOnly = !isVideo;
-        this.currentPartner = partnerAddress;
-        this.currentPartnerName = partnerName || partnerAddress.slice(0,10) + '…';
-        this.isInitiator = true;
-        this.currentCallId = `call_${Date.now()}_${Math.random().toString(36)}`;
-
-        const stream = await this.getUserMedia();
-        this.createPeerConnection();
-        stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
-
-        const offer = await this.pc.createOffer();
-        offer.sdp = this.preferOpusCodec(offer.sdp);
-        await this.pc.setLocalDescription(offer);
-        this.flushPendingAnswer();
-
-        // Отправляем offer через WebSocket
-        window.wsClient?.send({
-            type: 'call_offer',
-            target: partnerAddress,
-            call_id: this.currentCallId,
-            sdp: offer,
-            from_name: this.currentPartnerName   // ← важно для корректного отображения
-        });
-
-        this.showCallModal('outgoing', this.t('call_calling'));
-    } catch(err) {
-        console.error(err);
-        this.endCall();
-        window.NotificationManager?.showToast('Cannot start call: ' + err.message, 'error');
-    } finally {
-        setTimeout(() => { if (this.isEstablishing) this.isEstablishing = false; }, 5000);
-    }
-}
 
         createPeerConnection() {
             if (this.pc) {
@@ -990,6 +993,9 @@
                     this._incomingModalObserver.observe(modal, { attributes: true });
                 }
             }, 50);
+
+
+
         }
 
         showIncomingNotification(name, from) {

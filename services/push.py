@@ -32,44 +32,53 @@ def _send_push_sync(sub: dict, payload: str, vapid_private_key: str, vapid_claim
     )
 
 
-async def _send_single_push(sub_id: int, sub: dict, payload: str, user_address: str):
-    try:
-        await asyncio.to_thread(
-            _send_push_sync,
-            sub,
-            payload,
-            VAPID_PRIVATE_KEY,
-            {"sub": VAPID_SUBJECT}
-        )
-        logger.debug(f"Push sent → {user_address[:16]} {sub.get('endpoint','')[:50]}")
-    except WebPushException as e:
-        status_code = getattr(e.response, "status_code", None) if e.response else None
-        logger.warning(f"Push failed [{status_code}] for {user_address[:16]}: {e}")
+async def _send_single_push(sub_id: int, sub: dict, payload: str, user_address: str, retries: int = 1):
+    """Отправка одного push с ретраем при 5xx ошибках."""
+    for attempt in range(retries + 1):
+        try:
+            await asyncio.to_thread(
+                _send_push_sync,
+                sub,
+                payload,
+                VAPID_PRIVATE_KEY,
+                {"sub": VAPID_SUBJECT}
+            )
+            logger.debug(f"Push sent → {user_address[:16]} {sub.get('endpoint', '')[:50]}")
+            return
+        except WebPushException as e:
+            status_code = getattr(e.response, "status_code", None) if e.response else None
 
-        # 410 Gone, 404 Not Found, 403 Forbidden — подписка больше недействительна
-        if status_code in (403, 404, 410):
-            async with get_db_cursor() as conn:
-                await conn.execute(
-                    "DELETE FROM push_subscriptions WHERE id = $1",
-                    sub_id
-                )
-    except Exception as e:
-        logger.exception(f"Push error for {user_address[:16]}: {e}")
+            # 410 Gone, 404 Not Found, 403 Forbidden — подписка мертва
+            if status_code in (403, 404, 410):
+                logger.warning(f"Push dead [{status_code}] for {user_address[:16]}, removing")
+                async with get_db_cursor() as conn:
+                    await conn.execute("DELETE FROM push_subscriptions WHERE id = $1", sub_id)
+                return
+
+            # 5xx — временная ошибка сервера, пробуем ещё раз
+            if status_code and status_code >= 500 and attempt < retries:
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+
+            logger.warning(f"Push failed [{status_code}] for {user_address[:16]}: {e}")
+            return
+        except Exception as e:
+            logger.exception(f"Push error for {user_address[:16]}: {e}")
+            return
 
 
 async def send_push(
-    user_address: str,
-    title: str,
-    body: str,
-    url: str = "/chat",
-    push_type: str = "message",
-    call_id: str | None = None,
-    from_name: str | None = None
+        user_address: str,
+        title: str,
+        body: str,
+        url: str = "/chat",
+        push_type: str = "message",
+        call_id: str | None = None,
+        from_name: str | None = None,
+        from_address: str | None = None  # ДОБАВЛЕН: адрес звонящего
 ):
     """
-    Универсальная отправка push-уведомления:
-    - message (обычное сообщение)
-    - incoming_call (входящий звонок)
+    Универсальная отправка push-уведомления.
     """
     if not VAPID_PRIVATE_KEY or not VAPID_SUBJECT:
         logger.warning("Push skipped: VAPID keys not configured")
@@ -77,11 +86,7 @@ async def send_push(
 
     async with get_db_cursor() as conn:
         rows = await conn.fetch(
-            """
-            SELECT id, subscription
-            FROM push_subscriptions
-            WHERE user_address = $1
-            """,
+            "SELECT id, subscription FROM push_subscriptions WHERE user_address = $1",
             user_address
         )
 
@@ -99,9 +104,9 @@ async def send_push(
     if push_type == "incoming_call":
         payload_data.update({
             "call_id": call_id,
-            "from": user_address,
-            "from_name": from_name or user_address[:10],
-            "url": f"/chat?call_id={call_id}"   # переопределяем URL для звонка
+            "from": from_address or "",  # ИСПРАВЛЕНО: раньше тут был user_address (адрес получателя)
+            "from_name": from_name or (from_address[:10] if from_address else "Unknown"),
+            "url": f"/chat?call_id={call_id}"
         })
 
     payload = json.dumps(payload_data, ensure_ascii=False)

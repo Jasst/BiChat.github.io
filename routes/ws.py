@@ -26,25 +26,32 @@ router = APIRouter(tags=['websocket'])
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        self._lock = asyncio.Lock()
-        self.calls: Dict[str, Dict] = {}  # call_id -> информация о звонке
-        asyncio.create_task(self._cleanup_old_calls())
+        self._conn_lock = asyncio.Lock()   # Лок только для соединений
+        self._calls_lock = asyncio.Lock()  # Лок только для звонков
+        self.calls: Dict[str, Dict] = {}   # call_id -> информация о звонке
+        self._cleanup_task = None
+
+    async def start_cleanup(self):
+        """Безопасный запуск фоновой задачи (вызывать из lifespan в main.py)."""
+        if self._cleanup_task is None:
+            self._cleanup_task = asyncio.create_task(self._cleanup_old_calls())
 
     async def connect(self, user_id: str, websocket: WebSocket):
         await websocket.accept()
-        async with self._lock:
+        async with self._conn_lock:
             self.active_connections[user_id] = websocket
         logger.info(f"User {user_id[:16]} connected via WebSocket")
 
     async def disconnect(self, user_id: str):
-        async with self._lock:
+        async with self._conn_lock:
             self.active_connections.pop(user_id, None)
         await self.broadcast_status_update(user_id, 'offline')
         logger.info(f"User {user_id[:16]} disconnected")
 
     async def send_personal_message(self, user_id: str, message: dict) -> bool:
-        async with self._lock:
+        async with self._conn_lock:
             ws = self.active_connections.get(user_id)
+        # Отправка сообщения происходит ВНЕ лока, чтобы не блокировать других
         if ws:
             try:
                 await ws.send_json(message)
@@ -55,17 +62,20 @@ class ConnectionManager:
         return False
 
     async def broadcast(self, message: dict, exclude: str = None):
-        async with self._lock:
-            for user_id, ws in self.active_connections.items():
-                if user_id == exclude:
-                    continue
-                try:
-                    await ws.send_json(message)
-                except Exception as e:
-                    logger.error(f"Broadcast to {user_id} failed: {e}")
+        # Копируем список соединений внутри лока, чтобы освободить его быстрее
+        async with self._conn_lock:
+            connections = list(self.active_connections.items())
+
+        for user_id, ws in connections:
+            if user_id == exclude:
+                continue
+            try:
+                await ws.send_json(message)
+            except Exception as e:
+                logger.error(f"Broadcast to {user_id} failed: {e}")
 
     async def get_stats(self):
-        async with self._lock:
+        async with self._conn_lock:
             return {
                 'active_connections': len(self.active_connections),
                 'users': list(self.active_connections.keys())[:10]
@@ -76,7 +86,7 @@ class ConnectionManager:
             await asyncio.sleep(30)  # каждые 30 секунд
             now = time.time()
             expired = []
-            async with self._lock:
+            async with self._calls_lock:
                 for call_id, info in self.calls.items():
                     if now - info.get('created_at', 0) > 60:  # 60 секунд таймаут
                         expired.append(call_id)
@@ -116,8 +126,6 @@ async def authenticate_websocket(websocket: WebSocket, address: str, signature: 
         return None
 
 
-
-
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -155,9 +163,25 @@ async def websocket_endpoint(
                 target = data.get('target')
                 call_id = data.get('call_id')
                 sdp = data.get('sdp')
-                from_name = data.get('from_name') or user_id[:10]
+
+                # ИСПРАВЛЕНО: Сервер сам определяет имя звонящего
+                from_name = data.get('from_name')
+                if not from_name:
+                    try:
+                        async with get_db_cursor() as conn:
+                            row = await conn.fetchrow(
+                                "SELECT contact_name FROM contacts WHERE user_address = $1 AND contact_address = $2",
+                                target, user_id  # Ищем имя user_id в контактах target
+                            )
+                            if row and row['contact_name']:
+                                from_name = row['contact_name']
+                    except Exception:
+                        pass
+                if not from_name:
+                    from_name = user_id[:10]
+
                 if target and call_id:
-                    async with manager._lock:
+                    async with manager._calls_lock:
                         manager.calls[call_id] = {
                             'from': user_id,
                             'to': target,
@@ -174,20 +198,21 @@ async def websocket_endpoint(
                         'sdp': sdp,
                         'from_name': from_name
                     })
-                    # 2. Отправляем push-уведомление
+                    # 2. Отправляем push-уведомление (ПЕРЕДАЁМ from_address=user_id)
                     await send_push(
                         user_address=target,
                         title="Входящий звонок",
                         body=f"{from_name} звонит вам",
                         push_type="incoming_call",
                         call_id=call_id,
-                        from_name=from_name
+                        from_name=from_name,
+                        from_address=user_id  # ИСПРАВЛЕНИЕ: передаём адрес звонящего
                     )
                     logger.info(f"Call offer {call_id}: push sent to {target[:16]} from {user_id[:16]}")
 
             elif msg_type == 'get_call':
                 call_id = data.get('call_id')
-                async with manager._lock:
+                async with manager._calls_lock:
                     call_info = manager.calls.get(call_id)
                 if call_info and call_info.get('offer_sdp'):
                     await websocket.send_json({
@@ -205,7 +230,7 @@ async def websocket_endpoint(
                 call_id = data.get('call_id')
                 sdp = data.get('sdp')
                 if target and call_id:
-                    async with manager._lock:
+                    async with manager._calls_lock:
                         if call_id in manager.calls:
                             manager.calls[call_id]['state'] = 'answered'
                     await manager.send_personal_message(target, {
@@ -231,7 +256,7 @@ async def websocket_endpoint(
             elif msg_type == 'call_hangup':
                 target = data.get('target')
                 call_id = data.get('call_id')
-                async with manager._lock:
+                async with manager._calls_lock:
                     manager.calls.pop(call_id, None)
                 if target:
                     await manager.send_personal_message(target, {
@@ -244,7 +269,7 @@ async def websocket_endpoint(
             elif msg_type == 'call_reject':
                 target = data.get('target')
                 call_id = data.get('call_id')
-                async with manager._lock:
+                async with manager._calls_lock:
                     manager.calls.pop(call_id, None)
                 if target:
                     await manager.send_personal_message(target, {
