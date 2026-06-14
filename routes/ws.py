@@ -16,7 +16,6 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
-# ДОБАВЛЕНО: импорт функции отправки push
 from services.push import send_push
 
 logger = logging.getLogger(__name__)
@@ -26,13 +25,12 @@ router = APIRouter(tags=['websocket'])
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        self._conn_lock = asyncio.Lock()   # Лок только для соединений
-        self._calls_lock = asyncio.Lock()  # Лок только для звонков
-        self.calls: Dict[str, Dict] = {}   # call_id -> информация о звонке
+        self._conn_lock = asyncio.Lock()
+        self._calls_lock = asyncio.Lock()
+        self.calls: Dict[str, Dict] = {}
         self._cleanup_task = None
 
     async def start_cleanup(self):
-        """Безопасный запуск фоновой задачи (вызывать из lifespan в main.py)."""
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.create_task(self._cleanup_old_calls())
 
@@ -51,7 +49,6 @@ class ConnectionManager:
     async def send_personal_message(self, user_id: str, message: dict) -> bool:
         async with self._conn_lock:
             ws = self.active_connections.get(user_id)
-        # Отправка сообщения происходит ВНЕ лока, чтобы не блокировать других
         if ws:
             try:
                 await ws.send_json(message)
@@ -62,7 +59,6 @@ class ConnectionManager:
         return False
 
     async def broadcast(self, message: dict, exclude: str = None):
-        # Копируем список соединений внутри лока, чтобы освободить его быстрее
         async with self._conn_lock:
             connections = list(self.active_connections.items())
 
@@ -83,12 +79,12 @@ class ConnectionManager:
 
     async def _cleanup_old_calls(self):
         while True:
-            await asyncio.sleep(30)  # каждые 30 секунд
+            await asyncio.sleep(30)
             now = time.time()
             expired = []
             async with self._calls_lock:
                 for call_id, info in self.calls.items():
-                    if now - info.get('created_at', 0) > 60:  # 60 секунд таймаут
+                    if now - info.get('created_at', 0) > 60:
                         expired.append(call_id)
                 for call_id in expired:
                     del self.calls[call_id]
@@ -164,14 +160,13 @@ async def websocket_endpoint(
                 call_id = data.get('call_id')
                 sdp = data.get('sdp')
 
-                # ИСПРАВЛЕНО: Сервер сам определяет имя звонящего
                 from_name = data.get('from_name')
                 if not from_name:
                     try:
                         async with get_db_cursor() as conn:
                             row = await conn.fetchrow(
                                 "SELECT contact_name FROM contacts WHERE user_address = $1 AND contact_address = $2",
-                                target, user_id  # Ищем имя user_id в контактах target
+                                target, user_id
                             )
                             if row and row['contact_name']:
                                 from_name = row['contact_name']
@@ -188,9 +183,9 @@ async def websocket_endpoint(
                             'state': 'offer_sent',
                             'created_at': time.time(),
                             'offer_sdp': sdp,
-                            'from_name': from_name
+                            'from_name': from_name,
+                            'ice_candidates': []  # ИСПРАВЛЕНИЕ: Буфер для кандидатов
                         }
-                    # 1. Пытаемся отправить через WebSocket (если пользователь онлайн)
                     await manager.send_personal_message(target, {
                         'type': 'incoming_call',
                         'call_id': call_id,
@@ -198,7 +193,6 @@ async def websocket_endpoint(
                         'sdp': sdp,
                         'from_name': from_name
                     })
-                    # 2. Отправляем push-уведомление (ПЕРЕДАЁМ from_address=user_id)
                     await send_push(
                         user_address=target,
                         title="Входящий звонок",
@@ -206,7 +200,7 @@ async def websocket_endpoint(
                         push_type="incoming_call",
                         call_id=call_id,
                         from_name=from_name,
-                        from_address=user_id  # ИСПРАВЛЕНИЕ: передаём адрес звонящего
+                        from_address=user_id
                     )
                     logger.info(f"Call offer {call_id}: push sent to {target[:16]} from {user_id[:16]}")
 
@@ -215,12 +209,14 @@ async def websocket_endpoint(
                 async with manager._calls_lock:
                     call_info = manager.calls.get(call_id)
                 if call_info and call_info.get('offer_sdp'):
+                    # ИСПРАВЛЕНИЕ: Отправляем сохранённые ICE-кандидаты вместе с оффером
                     await websocket.send_json({
                         'type': 'incoming_call',
                         'call_id': call_id,
                         'from': call_info['from'],
                         'sdp': call_info['offer_sdp'],
-                        'from_name': call_info.get('from_name', call_info['from'][:10])
+                        'from_name': call_info.get('from_name', call_info['from'][:10]),
+                        'candidates': call_info.get('ice_candidates', [])
                     })
                 else:
                     await websocket.send_json({'type': 'call_not_found', 'call_id': call_id})
@@ -246,6 +242,13 @@ async def websocket_endpoint(
                 call_id = data.get('call_id')
                 candidate = data.get('candidate')
                 if target and call_id and candidate:
+                    # ИСПРАВЛЕНИЕ: Буферизуем кандидата на сервере на случай, если target оффлайн
+                    async with manager._calls_lock:
+                        call_info = manager.calls.get(call_id)
+                        if call_info:
+                            call_info.setdefault('ice_candidates', []).append(candidate)
+
+                    # Пытаемся отправить онлайн
                     await manager.send_personal_message(target, {
                         'type': 'call_ice',
                         'call_id': call_id,

@@ -414,12 +414,20 @@
                 }
             }
             if (this.localStream) return this.localStream;
+
+            // ИСПРАВЛЕНИЕ: Добавлен таймаут 10 секунд. На iOS/PWA при выходе из фона
+            // getUserMedia может зависнуть навсегда, из-за чего звонок зависает на "Connecting"
+            const mediaPromise = navigator.mediaDevices.getUserMedia({ audio: true, video: !this.isAudioOnly });
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Microphone access timeout (10s)')), 10000)
+            );
+
             try {
-                this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: !this.isAudioOnly });
+                this.localStream = await Promise.race([mediaPromise, timeoutPromise]);
                 return this.localStream;
             } catch(e) {
-                console.error('Media access denied', e);
-                throw new Error('Cannot access microphone/camera');
+                console.error('Media access denied or timed out', e);
+                throw new Error('Cannot access microphone. Please check permissions.');
             }
         }
 
@@ -500,7 +508,7 @@
                 this.pc.close();
                 this.stopCallTimer();
             }
-            this.pendingCandidates = [];
+            //this.pendingCandidates = [];
             this.pendingAnswer = null;
             window._remoteStream = null;
             if (window._pendingCallHandled) window._pendingCallHandled = false;
@@ -634,13 +642,21 @@
                 }
 
                 const stream = await this.getUserMedia();
+
+                // Создаем PeerConnection.
+                // ВАЖНО: внутри createPeerConnection НЕ должно быть this.pendingCandidates = []
                 this.createPeerConnection();
+
                 stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
                 this.showCallModal('active', this.t('call_connecting'));
 
+                // 1. Устанавливаем удаленное описание (SDP звонящего)
                 await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+                // 2. Применяем буферизованные ICE-кандидаты (полученные с сервера, пока экран был заблокирован)
                 this.flushPendingCandidates();
 
+                // 3. Создаем ответ и отправляем звонящему
                 const answer = await this.pc.createAnswer();
                 answer.sdp = this.preferOpusCodec(answer.sdp);
                 await this.pc.setLocalDescription(answer);
@@ -921,7 +937,7 @@
             if (rv?.srcObject) rv.srcObject = null;
         }
 
-        showIncomingCallModal(callId, from, offerSdp, fromName = '') {
+        showIncomingCallModal(callId, from, offerSdp, fromName = '', bufferedCandidates = []) {
             this.playIncomingSound();
             const modal = document.getElementById('incomingCallModal');
             if (!modal) return;
@@ -935,6 +951,10 @@
             modal.dataset.from = from;
             modal.dataset.offerSdp = JSON.stringify(offerSdp);
             this.currentPartnerName = fromName || from.slice(0,16) + '…';
+
+            // ИСПРАВЛЕНИЕ: сохраняем кандидатов, полученные с сервера при get_call
+            this.pendingCandidates = bufferedCandidates || [];
+            console.log('[CallManager] Buffered candidates from server:', this.pendingCandidates.length);
 
             const nameSpan = document.getElementById('incomingCallerName');
             if (nameSpan) nameSpan.textContent = this.currentPartnerName;
@@ -993,9 +1013,6 @@
                     this._incomingModalObserver.observe(modal, { attributes: true });
                 }
             }, 50);
-
-
-
         }
 
         showIncomingNotification(name, from) {
@@ -1080,54 +1097,36 @@
     window.CallManager.init();
 
     window.handleCallSignal = (data) => {
-    const { type, call_id, from, sdp, candidate, from_name } = data;
+        const { type, call_id, from, sdp, candidate, from_name, candidates } = data;
 
-    // Защита от старых сигналов (если call_id отличается от текущего)
-    if (call_id && window.CallManager.currentCallId && call_id !== window.CallManager.currentCallId) {
-        console.warn('[CallManager] stale signal ignored. current:', window.CallManager.currentCallId, 'received:', call_id);
-        return;
-    }
-
-    if (type === 'incoming_call') {
-        // Если уже есть активный звонок — автоматически отклоняем новый
-        if (window.CallManager.currentCallId) {
-            console.log('[CallManager] Busy, rejecting incoming call', call_id);
-            window.wsClient?.send({ type: 'call_reject', target: from, call_id: call_id });
-            window.NotificationManager?.showToast(
-                window.CallManager.t('call_busy', 'User is busy'),
-                'info'
-            );
+        // Защита от старых сигналов (если call_id отличается от текущего)
+        if (call_id && window.CallManager.currentCallId && call_id !== window.CallManager.currentCallId) {
+            console.warn('[CallManager] stale signal ignored. current:', window.CallManager.currentCallId, 'received:', call_id);
             return;
         }
 
-        const callFrom = from || data.caller || data.sender || '';
-        const callSdp  = sdp || data.offer || data.sdp_offer || null;
-        const callName = from_name || data.caller_name || '';
-
-        // Если это звонок из pending (после разблокировки) – очищаем sessionStorage
-        const isPending = sessionStorage.getItem('pending_call_id') === call_id;
-        if (isPending) {
-            console.log('[handleCallSignal] Pending call – showing modal, waiting for user action');
-            sessionStorage.removeItem('pending_call_id');
+        if (type === 'incoming_call') {
+            // Если уже есть активный звонок — отклоняем новый
+            if (window.CallManager.currentCallId) {
+                console.warn('[CallManager] Already in call, rejecting incoming');
+                window.wsClient?.send({ type: 'call_reject', target: from, call_id: call_id });
+                return;
+            }
+            // ИСПРАВЛЕНИЕ: передаем candidates (буферизованные ICE с сервера)
+            window.CallManager.showIncomingCallModal(call_id, from, sdp, from_name, candidates || []);
         }
-
-        // Показываем модальное окно входящего звонка
-        window.CallManager.showIncomingCallModal(call_id, callFrom, callSdp, callName);
-        // Комментируем дублирующее нативное уведомление (push уже есть)
-
-        return;
-    }
-    else if (type === 'call_answer') {
-        if (!sdp) console.error('[handleCallSignal] call_answer has NO sdp!');
-        window.CallManager.handleRemoteAnswer(sdp);
-    }
-    else if (type === 'call_ice') {
-        if (!candidate) console.warn('[handleCallSignal] call_ice has NO candidate');
-        window.CallManager.handleRemoteIce(candidate);
-    }
-    else if (type === 'call_hangup' || type === 'call_reject') {
-        window.CallManager.endCall();
-    }
-};
+        else if (type === 'call_answer') {
+            window.CallManager.handleRemoteAnswer(sdp);
+        }
+        else if (type === 'call_ice') {
+            window.CallManager.handleRemoteIce(candidate);
+        }
+        else if (type === 'call_hangup') {
+            window.CallManager.endCall();
+        }
+        else if (type === 'call_reject') {
+            window.CallManager.endCall();
+        }
+    };
 
 })();
