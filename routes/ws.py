@@ -28,6 +28,7 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         self._lock = asyncio.Lock()
         self.calls: Dict[str, Dict] = {}  # call_id -> информация о звонке
+        asyncio.create_task(self._cleanup_old_calls())
 
     async def connect(self, user_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -70,6 +71,19 @@ class ConnectionManager:
                 'users': list(self.active_connections.keys())[:10]
             }
 
+    async def _cleanup_old_calls(self):
+        while True:
+            await asyncio.sleep(30)  # каждые 30 секунд
+            now = time.time()
+            expired = []
+            async with self._lock:
+                for call_id, info in self.calls.items():
+                    if now - info.get('created_at', 0) > 60:  # 60 секунд таймаут
+                        expired.append(call_id)
+                for call_id in expired:
+                    del self.calls[call_id]
+                    logger.info(f"Removed expired call {call_id}")
+
     async def broadcast_status_update(self, address: str, status: str):
         await self.broadcast({
             'type': 'status_update',
@@ -100,6 +114,8 @@ async def authenticate_websocket(websocket: WebSocket, address: str, signature: 
     except Exception as e:
         logger.error(f"WebSocket auth failed: {e}")
         return None
+
+
 
 
 @router.websocket("/ws")

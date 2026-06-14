@@ -101,6 +101,38 @@
     {% endif %}
   </div>
 
+  <!-- Modal for active call -->
+<div id="callModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal call-modal" style="max-width: 340px; text-align: center;">
+    <button class="call-minimize-btn" id="callCollapseBtn" data-i18n-title="call_minimize">—</button>
+    <div class="call-avatar" id="callAvatar">👤</div>
+    <div class="call-name" id="callPartnerName"></div>
+    <div class="call-status" id="callStatusText"></div>
+    <div class="call-actions-row">
+      <button class="call-control-btn" id="callMuteBtn" data-i18n-title="call_mute_microphone">🎤</button>
+      <button class="call-control-btn call-end-btn" id="callEndBtn" data-i18n-title="call_end">📞</button>
+      <button class="call-control-btn" id="callSpeakerBtn" data-i18n-title="call_speaker">🎧</button>
+    </div>
+    <video id="remoteVideo" autoplay playsinline style="position: absolute; width: 1px; height: 1px; opacity: 0;"></video>
+    <video id="localVideo" autoplay muted playsinline style="position: absolute; width: 1px; height: 1px; opacity: 0;"></video>
+  </div>
+</div>
+
+<!-- Modal for incoming call -->
+<div id="incomingCallModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal call-modal" style="max-width: 300px; text-align: center;">
+    <div class="call-avatar">📞</div>
+    <div class="call-name" data-i18n="incoming_call">Incoming call</div>
+    <div class="call-status"><span data-i18n="call_from">from</span> <strong id="incomingCallerName"></strong></div>
+    <div class="call-actions-row">
+      <button class="call-control-btn call-reject-btn" id="rejectCallBtn" data-i18n-title="call_reject">✕</button>
+      <button class="call-control-btn call-accept-btn" id="acceptCallBtn" data-i18n-title="call_accept">✓</button>
+    </div>
+  </div>
+</div>
+
+
+
   <div id="notification-container" aria-live="polite" aria-atomic="true"></div>
   <script src="{{ url_for('static', path='js/WebSocketClient.js') }}" defer></script>  <script src="{{ url_for('static', path='js/common.js') }}" defer></script>
   <script src="{{ url_for('static', path='js/crypto-client.js') }}" defer></script>

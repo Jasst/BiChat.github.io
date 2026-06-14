@@ -88,36 +88,25 @@ window._pendingCallHandled = false;
 window.handlePendingCall = function() {
     if (window._pendingCallHandled) return;
 
-    let callId = null;
-    // Сначала проверяем sessionStorage (сохраняется при разблокировке)
-    if (sessionStorage.getItem('pending_call_id')) {
-        callId = sessionStorage.getItem('pending_call_id');
-    } else {
+    let callId = sessionStorage.getItem('pending_call_id');
+    if (!callId) {
         const urlParams = new URLSearchParams(window.location.search);
         callId = urlParams.get('call_id');
     }
-
     if (!callId) return;
 
-    // Сохраняем в sessionStorage, чтобы не потерять после разблокировки
     sessionStorage.setItem('pending_call_id', callId);
-    // Удаляем параметр из URL, чтобы при обновлении страницы не повторять
+    // Удаляем параметр из URL
     const newUrl = window.location.pathname;
     window.history.replaceState({}, document.title, newUrl);
 
-    // Используем wsClient.isConnected (кастомный WebSocketClient), а не .readyState
-    const wsReady = window.wsClient && (
-        window.wsClient.isConnected === true ||
-        (window.wsClient.ws && window.wsClient.ws.readyState === WebSocket.OPEN)
-    );
-
+    const wsReady = window.wsClient && window.wsClient.isConnected === true;
     if (wsReady) {
         console.log('[App] Sending get_call for', callId);
         window.wsClient.send({ type: 'get_call', call_id: callId });
         window._pendingCallHandled = true;
         sessionStorage.removeItem('pending_call_id');
     } else {
-        // Не помечаем как обработанный, дождёмся onConnect
         console.log('[App] WebSocket not ready, will retry on connect');
     }
 };
@@ -851,9 +840,10 @@ function urlBase64ToUint8Array(base64String) {
 
 // ИСПРАВЛЕНИЕ 5: слушаем navigate-сообщения от SW (notificationclick на iOS)
 // SW не может напрямую navigate вкладку через Safari — посылает postMessage
+// Обработка сообщений от Service Worker (клик по push-уведомлению)
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', event => {
-
+        // Обычная навигация (не звонок)
         if (event.data?.type === 'navigate' && event.data?.url) {
             const target = event.data.url;
             if (window.location.pathname !== new URL(target, location.origin).pathname) {
@@ -863,33 +853,28 @@ if ('serviceWorker' in navigator) {
             }
         }
 
+        // Изменение push-подписки
         if (event.data?.type === 'pushsubscriptionchange') {
             console.log('Re-subscribing push due to subscription change');
             if (window.initPushNotifications) window.initPushNotifications();
         }
 
-        // open_call из SW: вызываем handleCallSignal когда он будет готов,
-        // а если страница была заблокирована — сохраняем call_id для handlePendingCall
+        // Входящий звонок через push
         if (event.data?.type === 'open_call') {
             const callId = event.data.call_id;
-            // Сохраняем как pending — будет обработан после разблокировки через WS
             if (callId && !sessionStorage.getItem('pending_call_id')) {
                 sessionStorage.setItem('pending_call_id', callId);
                 window._pendingCallHandled = false;
             }
-            const trySignal = (attempt = 0) => {
-                if (window.handleCallSignal && window.CallManager) {
-                    window.handleCallSignal({
-                        type: 'incoming_call',
-                        call_id: callId
-                    });
-                } else if (attempt < 30) {
-                    setTimeout(() => trySignal(attempt + 1), 200);
-                } else {
-                    console.warn('[SW open_call] handleCallSignal not available after retries, will use pending_call_id');
-                }
-            };
-            trySignal();
+
+            // Если WebSocket уже готов — запрашиваем данные звонка
+            if (window.wsClient && window.wsClient.isConnected) {
+                console.log('[App] Requesting call details for', callId);
+                window.wsClient.send({ type: 'get_call', call_id: callId });
+            } else {
+                console.log('[App] WebSocket not ready, pending call stored');
+                // Дождёмся handlePendingCall после подключения
+            }
         }
     });
 }

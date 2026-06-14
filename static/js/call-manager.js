@@ -200,20 +200,23 @@
         }
 
         playIncomingSound() {
-            try {
-                if (this._incomingAudio) return;
-                const audio = new Audio("/sounds/incoming.mp3");
-                audio.loop = true;
-                audio.volume = 0.8;
-                const playPromise = audio.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(err => console.warn("[CallManager] sound blocked:", err));
-                }
-                this._incomingAudio = audio;
-            } catch (e) {
-                console.warn("incoming sound error", e);
+    if (this._incomingAudio) return;
+    // Сначала пробуем разблокировать аудиоконтекст (если ещё не был)
+    this.unlockAudioContext().then(() => {
+        try {
+            const audio = new Audio("/sounds/incoming.mp3");
+            audio.loop = true;
+            audio.volume = 0.8;
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => console.warn("[CallManager] sound blocked:", err));
             }
+            this._incomingAudio = audio;
+        } catch (e) {
+            console.warn("incoming sound error", e);
         }
+    }).catch(() => {});
+}
 
         stopIncomingSound() {
             if (this._incomingAudio) {
@@ -436,37 +439,54 @@
         }
 
         async makeCall(partnerAddress, isVideo = false, partnerName = '') {
-            await this.unlockAudioContext();
-
-            this.isEstablishing = true;
-            try {
-                this.isAudioOnly = !isVideo;
-                this.currentPartner = partnerAddress;
-                this.currentPartnerName = partnerName || partnerAddress.slice(0,10) + '…';
-                this.isInitiator = true;
-                this.currentCallId = `call_${Date.now()}_${Math.random().toString(36)}`;
-                const stream = await this.getUserMedia();
-                this.createPeerConnection();
-                stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
-                const offer = await this.pc.createOffer();
-                offer.sdp = this.preferOpusCodec(offer.sdp);
-                await this.pc.setLocalDescription(offer);
-                this.flushPendingAnswer();
-                window.wsClient?.send({
-                    type: 'call_offer',
-                    target: partnerAddress,
-                    call_id: this.currentCallId,
-                    sdp: offer
-                });
-                this.showCallModal('outgoing', this.t('call_calling'));
-            } catch(err) {
-                console.error(err);
-                this.endCall();
-                window.NotificationManager?.showToast('Cannot start call: ' + err.message, 'error');
-            } finally {
-                setTimeout(() => { if (this.isEstablishing) this.isEstablishing = false; }, 5000);
-            }
+    // Проверка: если уже есть активный звонок
+    if (this.currentCallId) {
+        const confirmEnd = confirm(this.t('call_active_message', 'You are already in a call. End it to start a new one?'));
+        if (!confirmEnd) {
+            window.NotificationManager?.showToast(this.t('call_in_progress', 'Call already in progress'), 'warning');
+            return;
         }
+        this.endCall();
+        await new Promise(r => setTimeout(r, 500));
+    }
+
+    await this.unlockAudioContext();
+
+    this.isEstablishing = true;
+    try {
+        this.isAudioOnly = !isVideo;
+        this.currentPartner = partnerAddress;
+        this.currentPartnerName = partnerName || partnerAddress.slice(0,10) + '…';
+        this.isInitiator = true;
+        this.currentCallId = `call_${Date.now()}_${Math.random().toString(36)}`;
+
+        const stream = await this.getUserMedia();
+        this.createPeerConnection();
+        stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
+
+        const offer = await this.pc.createOffer();
+        offer.sdp = this.preferOpusCodec(offer.sdp);
+        await this.pc.setLocalDescription(offer);
+        this.flushPendingAnswer();
+
+        // Отправляем offer через WebSocket
+        window.wsClient?.send({
+            type: 'call_offer',
+            target: partnerAddress,
+            call_id: this.currentCallId,
+            sdp: offer,
+            from_name: this.currentPartnerName   // ← важно для корректного отображения
+        });
+
+        this.showCallModal('outgoing', this.t('call_calling'));
+    } catch(err) {
+        console.error(err);
+        this.endCall();
+        window.NotificationManager?.showToast('Cannot start call: ' + err.message, 'error');
+    } finally {
+        setTimeout(() => { if (this.isEstablishing) this.isEstablishing = false; }, 5000);
+    }
+}
 
         createPeerConnection() {
             if (this.pc) {
@@ -1056,28 +1076,40 @@
     window.handleCallSignal = (data) => {
     const { type, call_id, from, sdp, candidate, from_name } = data;
 
-    // Защита от старых сигналов
+    // Защита от старых сигналов (если call_id отличается от текущего)
     if (call_id && window.CallManager.currentCallId && call_id !== window.CallManager.currentCallId) {
         console.warn('[CallManager] stale signal ignored. current:', window.CallManager.currentCallId, 'received:', call_id);
         return;
     }
 
     if (type === 'incoming_call') {
+        // Если уже есть активный звонок — автоматически отклоняем новый
+        if (window.CallManager.currentCallId) {
+            console.log('[CallManager] Busy, rejecting incoming call', call_id);
+            window.wsClient?.send({ type: 'call_reject', target: from, call_id: call_id });
+            window.NotificationManager?.showToast(
+                window.CallManager.t('call_busy', 'User is busy'),
+                'info'
+            );
+            return;
+        }
+
         const callFrom = from || data.caller || data.sender || '';
         const callSdp  = sdp || data.offer || data.sdp_offer || null;
         const callName = from_name || data.caller_name || '';
 
-        // Проверяем, был ли это звонок из pending (после разблокировки)
+        // Если это звонок из pending (после разблокировки) – очищаем sessionStorage
         const isPending = sessionStorage.getItem('pending_call_id') === call_id;
         if (isPending) {
             console.log('[handleCallSignal] Pending call – showing modal, waiting for user action');
             sessionStorage.removeItem('pending_call_id');
         }
 
-        // ВСЕГДА показываем модальное окно – пользователь сам нажмёт «Принять»
+        // Показываем модальное окно входящего звонка
         window.CallManager.showIncomingCallModal(call_id, callFrom, callSdp, callName);
-        window.CallManager.showIncomingNotification(callName, callFrom);
-        return;  // ← добавить
+        // Комментируем дублирующее нативное уведомление (push уже есть)
+
+        return;
     }
     else if (type === 'call_answer') {
         if (!sdp) console.error('[handleCallSignal] call_answer has NO sdp!');
@@ -1091,4 +1123,5 @@
         window.CallManager.endCall();
     }
 };
+
 })();
