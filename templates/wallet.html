@@ -39,7 +39,7 @@
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
-    border-radius: 20px;
+    border-radius: 24px;
     padding: 24px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -64,57 +64,99 @@
   .mining-card { position: relative; overflow: hidden; }
   .mining-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
   .mining-title { font-size: 18px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
-  .mining-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; background: rgba(255,255,255,0.1); color: var(--text-muted); display: flex; align-items: center; gap: 6px; transition: all 0.3s; }
+  .mining-badge { padding: 4px 12px; border-radius: 50px; font-size: 12px; font-weight: 600; background: rgba(255,255,255,0.1); color: var(--text-muted); display: flex; align-items: center; gap: 6px; transition: all 0.3s; }
   .mining-badge.active { background: rgba(0, 184, 148, 0.2); color: var(--success-color); }
   .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
   .mining-badge.active .pulse-dot { background: var(--success-color); animation: pulse 1.5s infinite; }
 
   .mining-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-  .stat-box { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; text-align: center; }
+  .stat-box { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 16px; text-align: center; }
   .stat-label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
   .stat-value { display: block; font-size: 18px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
 
   /* Прогресс бар майнинга */
-  .mining-progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-bottom: 15px; overflow: hidden; }
-  .mining-progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-color), #a29bfe); border-radius: 3px; transition: width 0.3s ease; box-shadow: 0 0 10px var(--accent-glow); }
+  .mining-progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 50px; margin-bottom: 15px; overflow: hidden; }
+  .mining-progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-color), #a29bfe); border-radius: 50px; transition: width 0.3s ease; box-shadow: 0 0 10px var(--accent-glow); }
 
-  /* Кнопки майнинга */
+  /* Кнопки майнинга (Прямоугольный овал) */
   .mining-actions { display: flex; gap: 10px; }
-  .btn-mine { flex: 1; padding: 14px; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.3s; position: relative; overflow: hidden; }
+  .btn-mine { flex: 1; padding: 14px 20px; border: none; border-radius: 50px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.3s; position: relative; overflow: hidden; }
   .btn-mine.start { background: linear-gradient(135deg, var(--accent-color), #6c5ce7); color: white; box-shadow: 0 4px 15px var(--accent-glow); }
   .btn-mine.start:hover { transform: scale(1.02); box-shadow: 0 6px 20px var(--accent-glow); }
   .btn-mine.stop { background: rgba(214, 48, 49, 0.2); color: var(--danger-color); border: 1px solid var(--danger-color); }
   .btn-mine.stop:hover { background: rgba(214, 48, 49, 0.4); }
 
-  /* Вкладки */
-  .tabs-nav { display: flex; gap: 5px; margin-bottom: 20px; background: var(--glass-bg); padding: 5px; border-radius: 15px; border: 1px solid var(--glass-border); }
-  .tab-btn { flex: 1; padding: 12px; text-align: center; border-radius: 12px; cursor: pointer; font-weight: 600; color: var(--text-muted); transition: all 0.3s; border: none; background: transparent; font-size: 14px; }
+  /* Вкладки (Прямоугольный овал) */
+  .tabs-nav { display: flex; gap: 5px; margin-bottom: 20px; background: var(--glass-bg); padding: 5px; border-radius: 50px; border: 1px solid var(--glass-border); }
+  .tab-btn { flex: 1; padding: 12px; text-align: center; border-radius: 50px; cursor: pointer; font-weight: 600; color: var(--text-muted); transition: all 0.3s; border: none; background: transparent; font-size: 14px; }
   .tab-btn.active { background: var(--accent-color); color: white; box-shadow: 0 4px 10px var(--accent-glow); }
   .tab-btn:hover:not(.active) { color: var(--text-main); background: rgba(255,255,255,0.05); }
 
   .tab-content { display: none; animation: fadeIn 0.4s ease; }
   .tab-content.active { display: block; }
 
-  /* Формы внутри вкладок */
-  .form-row { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; }
-  .input { background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 10px; padding: 12px; color: var(--text-main); font-size: 14px; flex: 1; outline: none; transition: border 0.3s; }
+  /* Формы внутри вкладок (Прямоугольный овал) */
+  .form-row { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
+  .input { background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 50px; padding: 12px 20px; color: var(--text-main); font-size: 14px; flex: 1; min-width: 0; outline: none; transition: border 0.3s; }
   .input:focus { border-color: var(--accent-color); }
-  .btn-action { padding: 12px 20px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; background: var(--accent-color); color: white; white-space: nowrap; }
+
+  /* Кнопки действий (Прямоугольный овал) */
+  .btn-action { padding: 12px 24px; border-radius: 50px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; background: var(--accent-color); color: white; white-space: nowrap; }
   .btn-action:hover { opacity: 0.9; transform: translateY(-1px); }
   .btn-action.outline { background: transparent; border: 1px solid var(--accent-color); color: var(--accent-color); }
   .btn-action.danger { background: var(--danger-color); }
 
-  /* Списки и статистика */
-  .list-container { max-height: 400px; overflow-y: auto; padding-right: 5px; }
+    /* Списки и статистика */
+  .list-container {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0 4px; /* Добавили 5px отступ слева и справа для скроллбара и текста */
+  }
   .list-container::-webkit-scrollbar { width: 4px; }
-  .list-container::-webkit-scrollbar-thumb { background: var(--accent-color); border-radius: 4px; }
+  .list-container::-webkit-scrollbar-thumb { background: var(--accent-color); border-radius: 50px; }
 
-  .profile-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--glass-border); font-size: 14px; }
+  /* ИСПРАВЛЕНИЕ ВЫЛЕЗАЮЩЕГО ТЕКСТА В ИСТОРИИ */
+  .list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 10px; /* Было 14px 0, добавили 4px отступа по бокам самого элемента */
+    border-bottom: 1px solid var(--glass-border);
+    gap: 15px;
+  }
+  .list-item:last-child {
+    border-bottom: none;
+  }
+
+  .list-item .info {
+    flex: 1;
+    min-width: 0; /* ВАЖНО: Позволяет flex-элементу сжиматься меньше размера контента, чтобы ellipsis работал */
+    overflow: hidden;
+  }
+
+  /* ИСПРАВЛЕНИЕ ВЫЛЕЗАЮЩЕГО ТЕКСТА В ПРОФИЛЕ/СЕТИ */
+  .profile-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--glass-border); font-size: 14px; gap: 15px; }
   .profile-row:last-child { border-bottom: none; }
-  .profile-row label { color: var(--text-muted); }
-  .profile-row .value { color: var(--text-main); font-weight: 600; font-family: monospace; }
+  .profile-row label { color: var(--text-muted); white-space: nowrap; }
+  .profile-row .value { color: var(--text-main); font-weight: 600; font-family: monospace; text-align: right; word-break: break-all; overflow-wrap: break-word; margin-left: auto; }
 
-  .qr-container { text-align: center; margin-top: 20px; padding: 20px; background: white; border-radius: 12px; }
+  /* ИСПРАВЛЕНИЕ АДРЕСА ВО ВКЛАДКЕ ПОЛУЧЕНИЯ */
+  .receive-address-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0; /* Позволяет сжиматься */
+  }
+  #receiveAddress {
+    word-break: break-all; /* Перенос длинного адреса */
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-main);
+    user-select: all; /* Удобно копировать */
+  }
+
+  .qr-container { text-align: center; margin-top: 20px; padding: 20px; background: white; border-radius: 16px; }
   .qr-actions { margin-top: 15px; display: flex; gap: 10px; justify-content: center; }
 
   /* Анимации */

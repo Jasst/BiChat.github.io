@@ -434,18 +434,47 @@
 
       const infoDiv = document.createElement('div');
       infoDiv.className = 'info';
+      infoDiv.style.flex = '1';
+      infoDiv.style.overflow = 'hidden';
+
       const nameDiv = document.createElement('div');
       nameDiv.className = 'name';
+      nameDiv.style.fontWeight = '600';
+      nameDiv.style.marginBottom = '4px';
       nameDiv.textContent = typeLabel;
+
+      // === НОВОЕ: Добавляем адрес отправителя или получателя ===
+      const addressDiv = document.createElement('div');
+      addressDiv.className = 'font-mono text-muted';
+      addressDiv.style.fontSize = '11px';
+      addressDiv.style.whiteSpace = 'nowrap';
+      addressDiv.style.overflow = 'hidden';
+      addressDiv.style.textOverflow = 'ellipsis';
+
+      if (tx.type === 'transfer') {
+        if (tx.sender === MY_ADDRESS) {
+          addressDiv.textContent = '→ ' + tx.recipient; // Если отправили мы, показываем получателя
+        } else {
+          addressDiv.textContent = '← ' + tx.sender; // Если нам, показываем отправителя
+        }
+      }
+      // =========================================================
+
       const timeDiv = document.createElement('div');
-      timeDiv.className = 'address font-mono text-muted';
+      timeDiv.className = 'text-muted';
       timeDiv.style.fontSize = '10px';
+      timeDiv.style.marginTop = '2px';
       timeDiv.textContent = timestamp;
+
       infoDiv.appendChild(nameDiv);
+      if (addressDiv.textContent) infoDiv.appendChild(addressDiv); // Добавляем адрес
       infoDiv.appendChild(timeDiv);
 
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'actions';
+      actionsDiv.style.marginLeft = '15px';
+      actionsDiv.style.textAlign = 'right';
+
       const amountSpan = document.createElement('span');
       amountSpan.style.fontWeight = '600';
       amountSpan.style.color = sign === '+' ? 'var(--status-success)' : 'var(--status-warning)';
