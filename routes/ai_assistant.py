@@ -493,205 +493,779 @@ class GlobalKnowledgeBase:
         }
 
 # ==================================================================
-# 🌐 НОВЫЙ ИНТЕЛЛЕКТУАЛЬНЫЙ ВЕБ-ПОИСК (автономный, итеративный)
+# 🌐 УЛУЧШЕННЫЙ ИНТЕЛЛЕКТУАЛЬНЫЙ ВЕБ-ПОИСК (v2.0)
+#    - Ключевая эвристика should_search (без LLM для простых случаев)
+#    - Мультиисточники: DDG + Wikipedia API
+#    - BeautifulSoup для парсинга HTML (fallback на regex)
+#    - Гибридная оценка релевантности (ключевые слова + эмбеддинги)
+#    - Перекрывающиеся чанки с уважением к предложениям
+#    - Rate limiting для DDG
+#    - Fallback на сниппеты при ошибке загрузки страниц
 # ==================================================================
+
+# Обновлённые константы поиска
+MAX_SEARCH_ITERATIONS = 3
+SEARCH_CACHE_TTL = 300
+PAGE_CONTENT_MAX_CHARS = 6000
+MAX_PAGES_TO_FETCH = 5
+MIN_RELEVANCE_THRESHOLD = 0.30      # снижен: гибридный скор строже
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 150                 # НОВОЕ: перекрытие чанков
+PARALLEL_FETCH_LIMIT = 3
+DDG_MIN_INTERVAL = 1.5              # НОВОЕ: rate-limit DDG (секунды)
+SEARCH_CACHE_MAX_SIZE = 100         # НОВОЕ: макс элементов в кэше
+
+_search_cache: Dict[str, Tuple[str, float]] = {}
+_sufficiency_cache: Dict[str, Tuple[bool, float]] = {}
+
+
 class RelevantChunk:
-    def __init__(self, text: str, source_url: str, title: str, score: float):
+    """Релевантный фрагмент текста из интернета."""
+    __slots__ = ('text', 'source_url', 'title', 'score', 'engine')
+
+    def __init__(self, text: str, source_url: str, title: str,
+                 score: float, engine: str = "web"):
         self.text = text
         self.source_url = source_url
         self.title = title
         self.score = score
+        self.engine = engine          # "web" | "wikipedia" | "snippet"
+
+    def to_dict(self) -> Dict:
+        return {
+            'text': self.text,
+            'source_url': self.source_url,
+            'title': self.title,
+            'score': self.score,
+            'engine': self.engine,
+        }
+
 
 class AdaptiveWebSearch:
-    """Полностью автономный поиск: LLM решает, что искать, когда остановиться и как уточнить запрос."""
+    """
+    Улучшенный автономный поиск:
+    • Быстрая эвристика should_search (без LLM для очевидных случаев)
+    • Мультиисточники: DuckDuckGo + Wikipedia API + сниппеты-фоллбэк
+    • BeautifulSoup (с fallback на regex)
+    • Гибридная релевантность: keyword overlap + embedding similarity
+    • Перекрывающиеся чанки, уважающие границы предложений
+    • Rate limiting для DDG
+    """
+
+    # Ключевые слова-триггеры (без LLM-вызова)
+    SEARCH_TRIGGER_WORDS = {
+        'ru': {
+            'сколько', 'когда', 'где', 'кто такой', 'что такое',
+            'курс', 'цена', 'стоимость', 'погода', 'новости',
+            'последние', 'актуальн', 'сегодня', 'сейчас', 'в этом году',
+            'рейтинг', 'топ', 'лучший', 'сравн', 'обзор', 'отзыв',
+            'статистика', 'данные', 'расписание', 'результат', 'победитель',
+            'версия', 'релиз', 'обновлён', 'обновлен', 'выйти', 'вышла',
+            'найди', 'поищи', 'поиск', 'загугли', 'интернет', 'в сети',
+            'онлайн', 'проверь', 'правда ли', 'действительно', 'подтверди',
+            'узнай', 'сколько стоит', 'какой сейчас', 'что нового',
+            'последн', 'текущ', 'свеж',
+        },
+        'en': {
+            'latest', 'recent', 'current', 'today', 'now', 'price', 'cost',
+            'rate', 'news', 'weather', 'score', 'result', 'ranking', 'best',
+            'top', 'compare', 'review', 'find', 'search', 'look up', 'online',
+            'update', 'release', 'version', 'who is', 'what is the',
+            'how much', 'how many', 'check', 'verify', 'confirm', 'true',
+            'fact', '2024', '2025',
+        },
+    }
+
+    # Домены, которые не отдают полезный текст — используем только сниппет
+    SKIP_DOMAINS = {
+        'youtube.com', 'twitter.com', 'x.com', 'instagram.com',
+        'facebook.com', 'tiktok.com', 'reddit.com', 'pinterest.com',
+        'linkedin.com', 'apps.apple.com', 'play.google.com',
+        'vimeo.com', 't.me', 'telegram.org',
+    }
 
     def __init__(self, assistant: 'SelfImprovingAssistant'):
         self.assistant = assistant
         self.session: Optional[aiohttp.ClientSession] = None
-        self._user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
+        self._user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        )
+        self._last_ddg_call = 0.0
+        self._ddg_min_interval = DDG_MIN_INTERVAL
+
+        # BeautifulSoup (опционально)
+        self._bs4_available = False
+        try:
+            from bs4 import BeautifulSoup as _BS
+            self._bs4_available = True
+            self._BS = _BS
+        except ImportError:
+            logger.debug("beautifulsoup4 не установлен — используется regex-парсинг")
+
+    # ──────────────────────── Сессия ────────────────────────
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession(headers={"User-Agent": self._user_agent})
+            timeout = aiohttp.ClientTimeout(total=15, connect=5, sock_read=10)
+            self.session = aiohttp.ClientSession(
+                headers={"User-Agent": self._user_agent},
+                timeout=timeout,
+            )
         return self.session
 
     async def close(self):
         if self.session and not self.session.closed:
             await self.session.close()
 
-    async def should_search(self, question: str, memory_context: str) -> bool:
-        """LLM принимает решение: нужен ли интернет для ответа."""
-        prompt = f"""Ты — AI-ассистент. Оцени, ТРЕБУЕТСЯ ли для ответа на вопрос пользователя актуальная информация из интернета (курсы валют, новости, последние события, технические данные, документация, факты, которых нет в твоей памяти). Если вопрос касается общих знаний, истории, логики, твоего мнения — интернет НЕ нужен. Ответь только "ДА" или "НЕТ".
+    # ──────────────────────── should_search ────────────────────────
 
-Вопрос пользователя: {question}
-Контекст из памяти: {memory_context[:500]}
-"""
-        response = await self.assistant._call_llm([{"role": "user", "content": prompt}])
-        return "да" in response.lower().strip()
+    def should_search_fast(self, question: str, memory_context: str = "") -> bool:
+        """Быстрая эвристика без LLM-вызова."""
+        q_lower = question.lower()
 
-    async def generate_search_query(self, original_question: str, previous_attempts: List[str] = None) -> str:
-        """Сгенерировать оптимальный поисковый запрос (короткий, содержательный)."""
+        # 1. Прямые триггерные слова
+        for lang_words in self.SEARCH_TRIGGER_WORDS.values():
+            for word in lang_words:
+                if word in q_lower:
+                    return True
+
+        # 2. Год в вопросе → нужны актуальные данные
+        if re.search(r'\b(20[2-3]\d)\b', question):
+            return True
+
+        # 3. Вопросительное слово + достаточная длина
+        question_starters = {
+            'кто', 'что', 'где', 'когда', 'сколько', 'какой', 'какая',
+            'какие', 'чей', 'which', 'who', 'what', 'where', 'when',
+            'how', 'whose',
+        }
+        first_word = q_lower.split()[0] if q_lower.split() else ""
+        if first_word in question_starters and len(question.split()) >= 4:
+            # Если в памяти есть ответ — возможно, поиск не нужен
+            if memory_context and len(memory_context) > 200:
+                q_words = set(q_lower.split()) - {
+                    'и', 'в', 'на', 'с', 'по', 'из', 'для', 'что', 'как', 'это'
+                }
+                m_words = set(memory_context.lower().split())
+                if len(q_words & m_words) >= 3:
+                    return False
+            return True
+
+        return False
+
+    async def should_search(self, question: str, memory_context: str = "") -> bool:
+        """Решение о поиске: сначала быстрая эвристика, потом LLM для сложных случаев."""
+        if self.should_search_fast(question, memory_context):
+            return True
+
+        # Для длинных неочевидных запросов — спрашиваем LLM
+        if len(question.split()) >= 8:
+            prompt = (
+                "Нужна ли актуальная информация из интернета для ответа? "
+                "Если про текущие события, курсы, новости, технические данные — ДА. "
+                "Если про общие знания, логику, мнение — НЕТ. "
+                "Ответь только ДА или НЕТ.\n"
+                f"Вопрос: {question}"
+            )
+            try:
+                response = await self.assistant._call_llm(
+                    [{"role": "user", "content": prompt}]
+                )
+                return "да" in response.lower().strip()[:10]
+            except Exception:
+                return False
+
+        return False
+
+    # ──────────────────────── Генерация запроса ────────────────────────
+
+    async def generate_search_query(
+        self,
+        original_question: str,
+        previous_attempts: Optional[List[str]] = None,
+    ) -> str:
+        """Сгенерировать оптимальный поисковый запрос."""
+        words = original_question.split()
+        # Короткий запрос — очищаем и используем как есть
+        if len(words) <= 6 and not previous_attempts:
+            stop = {
+                'ли', 'же', 'ну', 'а', 'и', 'в', 'на', 'с', 'по', 'из',
+                'для', 'что', 'как', 'это', 'не', 'то', 'все', 'так',
+                'is', 'the', 'a', 'an', 'do', 'does', 'did', 'will',
+                'can', 'could', 'please',
+            }
+            clean = " ".join(w for w in words if w.lower() not in stop)
+            if len(clean.split()) >= 2:
+                return clean
+
         context = ""
         if previous_attempts:
-            context = f"\nПредыдущие неудачные запросы: {', '.join(previous_attempts)}. Сформулируй новый, более точный запрос."
-        prompt = f"""Сформулируй краткий поисковый запрос (на русском или английском, до 12 слов) для поисковой системы DuckDuckGo, который наилучшим образом найдёт информацию, необходимую для ответа на вопрос пользователя. Выведи ТОЛЬКО запрос, без пояснений.
-Вопрос: {original_question}{context}
-Запрос:"""
-        query = await self.assistant._call_llm([{"role": "user", "content": prompt}])
-        return query.strip() or original_question
+            context = (
+                f"\nПредыдущие неудачные запросы: "
+                f"{', '.join(previous_attempts[-3:])}. "
+                f"Сформулируй новый, более точный запрос."
+            )
+        prompt = (
+            "Сформулируй краткий поисковый запрос (до 8 слов, на русском или "
+            "английском) для DuckDuckGo. Убери вопросительные слова, оставь суть. "
+            "Выведи ТОЛЬКО запрос.\n"
+            f"Вопрос: {original_question}{context}\nЗапрос:"
+        )
+        query = await self.assistant._call_llm(
+            [{"role": "user", "content": prompt}]
+        )
+        query = query.strip().strip('"').strip("'")
+        if len(query) > 100:
+            query = " ".join(query.split()[:8])
+        return query or original_question
 
-    async def _ddg_search(self, query: str, max_results: int = 10) -> List[Dict]:
-        """Низкоуровневый поиск через DDGS."""
+    # ──────────────────────── DuckDuckGo ────────────────────────
+
+    async def _ddg_search(
+        self, query: str, max_results: int = 10
+    ) -> List[Dict]:
+        """Поиск через DDGS с rate limiting."""
+        now = time.time()
+        elapsed = now - self._last_ddg_call
+        if elapsed < self._ddg_min_interval:
+            await asyncio.sleep(self._ddg_min_interval - elapsed)
+        self._last_ddg_call = time.time()
+
         results = []
         try:
             def sync_search():
                 with DDGS() as ddgs:
-                    return list(ddgs.text(query, max_results=max_results, safesearch='moderate'))
+                    return list(
+                        ddgs.text(
+                            query,
+                            max_results=max_results,
+                            safesearch="moderate",
+                            region="ru-ru",
+                        )
+                    )
+
             search_results = await asyncio.to_thread(sync_search)
             for r in search_results:
-                results.append({
-                    'title': r.get('title', '')[:200],
-                    'url': r.get('href', ''),
-                    'snippet': r.get('body', '')[:800]
-                })
+                url = r.get("href", "")
+                domain = self._extract_domain(url)
+                # Пропускаем проблемные домены (сниппет сохраним позже)
+                results.append(
+                    {
+                        "title": r.get("title", "")[:200],
+                        "url": url,
+                        "snippet": r.get("body", "")[:800],
+                        "skip_fetch": domain in self.SKIP_DOMAINS,
+                    }
+                )
         except Exception as e:
             logger.warning(f"DDGS search error: {e}")
         return results
 
-    async def _fetch_page_text(self, url: str, timeout: int = 12) -> Tuple[str, str]:
-        """Загрузить и очистить HTML до текста."""
-        if not url.startswith(('http://', 'https://')):
-            return "", "Invalid URL"
+    # ──────────────────────── Wikipedia API ────────────────────────
+
+    async def _wikipedia_search(
+        self, query: str, lang: str = "ru"
+    ) -> List[Dict]:
+        """Поиск через Wikipedia API — отлично для фактических вопросов."""
+        results = []
         try:
             session = await self._get_session()
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout), allow_redirects=True, ssl=False) as resp:
+            base_url = f"https://{lang}.wikipedia.org/w/api.php"
+
+            # Шаг 1: поиск статей
+            search_params = {
+                "action": "query",
+                "list": "search",
+                "srsearch": query,
+                "srlimit": 3,
+                "format": "json",
+            }
+            async with session.get(
+                base_url,
+                params=search_params,
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                hits = data.get("query", {}).get("search", [])
+
+            # Шаг 2: получаем extract (текст) для каждой статьи
+            for hit in hits:
+                page_id = hit.get("pageid")
+                title = hit.get("title", "")
+                if not page_id:
+                    continue
+                extract_params = {
+                    "action": "query",
+                    "pageids": page_id,
+                    "prop": "extracts",
+                    "exintro": 1,
+                    "explaintext": 1,
+                    "format": "json",
+                }
+                try:
+                    async with session.get(
+                        base_url,
+                        params=extract_params,
+                        timeout=aiohttp.ClientTimeout(total=8),
+                    ) as ext_resp:
+                        if ext_resp.status != 200:
+                            continue
+                        ext_data = await ext_resp.json()
+                        pages = ext_data.get("query", {}).get("pages", {})
+                        for pid, page in pages.items():
+                            extract = page.get("extract", "")
+                            if extract and len(extract) > 100:
+                                results.append(
+                                    {
+                                        "title": title,
+                                        "url": (
+                                            f"https://{lang}.wikipedia.org/wiki/"
+                                            f"{urllib.parse.quote(title)}"
+                                        ),
+                                        "snippet": extract[:800],
+                                        "full_text": extract[
+                                            :PAGE_CONTENT_MAX_CHARS
+                                        ],
+                                    }
+                                )
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f"Wikipedia search error: {e}")
+        return results
+
+    # ──────────────────────── Загрузка и парсинг страниц ────────────────────────
+
+    async def _fetch_page_text(
+        self, url: str, timeout: int = 12
+    ) -> Tuple[str, str]:
+        """Загрузить и очистить HTML до текста (BeautifulSoup → regex fallback)."""
+        if not url.startswith(("http://", "https://")):
+            return "", "Invalid URL"
+
+        domain = self._extract_domain(url)
+        if domain in self.SKIP_DOMAINS:
+            return "", f"Skipped domain: {domain}"
+
+        try:
+            session = await self._get_session()
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=timeout),
+                allow_redirects=True,
+                ssl=False,
+            ) as resp:
                 if resp.status != 200:
                     return "", f"HTTP {resp.status}"
                 content_type = resp.headers.get("Content-Type", "")
                 if "text" not in content_type and "json" not in content_type:
                     return "", f"Binary: {content_type}"
                 html = await resp.text(errors="replace")
-                # Простая очистка HTML
-                text = re.sub(r'<[^>]+>', ' ', html)
-                text = re.sub(r'\s+', ' ', text).strip()
+
+                if self._bs4_available:
+                    text = self._parse_with_bs4(html)
+                else:
+                    text = self._parse_with_regex(html)
                 return text, ""
+
         except asyncio.TimeoutError:
             return "", "Timeout"
         except Exception as e:
-            return "", str(e)
+            return "", str(e)[:200]
 
-    async def _extract_relevant_chunks(self, text: str, question: str, url: str, title: str) -> List[RelevantChunk]:
-        """Разбить текст на чанки, оценить релевантность по эмбеддингам, вернуть лучшие."""
+    def _parse_with_bs4(self, html: str) -> str:
+        """Парсинг через BeautifulSoup — удаляет шум, ищет основной контент."""
+        try:
+            soup = self._BS(html, "html.parser")
+
+            # Удаляем нежелательные теги
+            for tag in soup.find_all(
+                [
+                    "script", "style", "nav", "footer", "header",
+                    "aside", "iframe", "noscript", "form",
+                    "svg", "button", "input",
+                ]
+            ):
+                tag.decompose()
+
+            # Ищем основной контент
+            main_content = None
+            for selector in [
+                "article", "main", '[role="main"]',
+                ".content", ".post-content", ".article-content",
+                ".entry-content", "#content", "#main",
+                ".post-body", ".story-body",
+            ]:
+                main_content = soup.select_one(selector)
+                if main_content:
+                    break
+
+            content = (
+                main_content
+                if main_content
+                else soup.body
+                if soup.body
+                else soup
+            )
+
+            text = content.get_text(separator=" ", strip=True)
+            text = re.sub(r"\s+", " ", text).strip()
+            return text
+        except Exception:
+            return self._parse_with_regex(html)
+
+    @staticmethod
+    def _parse_with_regex(html: str) -> str:
+        """Fallback: парсинг HTML через regex."""
+        html = re.sub(
+            r"<script[^>]*>.*?</script>",
+            "",
+            html,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        html = re.sub(
+            r"<style[^>]*>.*?</style>",
+            "",
+            html,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        html = re.sub(
+            r"<nav[^>]*>.*?</nav>",
+            "",
+            html,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        text = re.sub(r"<[^>]+>", " ", html)
+        text = (
+            text.replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", '"')
+        )
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    # ──────────────────────── Улучшенный чанкинг ────────────────────────
+
+    @staticmethod
+    def _chunk_text(
+        text: str,
+        chunk_size: int = CHUNK_SIZE,
+        overlap: int = CHUNK_OVERLAP,
+    ) -> List[str]:
+        """Разбивка текста на перекрывающиеся чанки с уважением к предложениям."""
         if not text or len(text) < 100:
             return []
-        question_emb = self.assistant.vocab.encode(question)
-        # Разбивка на предложения и группировка в чанки
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        chunks = []
-        current = ""
-        for sent in sentences:
-            if len(current) + len(sent) < CHUNK_SIZE:
-                current += " " + sent
-            else:
-                if current:
-                    chunks.append(current.strip())
-                current = sent
-        if current:
-            chunks.append(current.strip())
 
-        scored = []
-        for chunk in chunks:
-            if len(chunk) < 50:
+        # Разбиваем на абзацы
+        paragraphs = re.split(r"\n\s*\n|\r\n\s*\r\n", text)
+
+        # Если абзацев мало — по предложениям
+        if len(paragraphs) <= 2 and len(text) > chunk_size:
+            sentences = re.split(r"(?<=[.!?。])\s+", text)
+            paragraphs = []
+            current = ""
+            for sent in sentences:
+                if len(current) + len(sent) < chunk_size * 0.8:
+                    current += (" " + sent if current else sent)
+                else:
+                    if current:
+                        paragraphs.append(current.strip())
+                    current = sent
+            if current:
+                paragraphs.append(current.strip())
+
+        # Собираем чанки
+        chunks: List[str] = []
+        current_chunk = ""
+
+        for para in paragraphs:
+            para = para.strip()
+            if not para or len(para) < 30:
                 continue
-            chunk_emb = self.assistant.vocab.encode(chunk)
-            if np.linalg.norm(question_emb) == 0 or np.linalg.norm(chunk_emb) == 0:
-                sim = 0.0
+
+            if len(current_chunk) + len(para) + 1 <= chunk_size:
+                current_chunk += ("\n" if current_chunk else "") + para
             else:
-                sim = np.dot(question_emb, chunk_emb) / (np.linalg.norm(question_emb) * np.linalg.norm(chunk_emb))
-            if sim >= MIN_RELEVANCE_THRESHOLD:
-                scored.append((sim, chunk))
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                    # Перекрытие: берём конец предыдущего чанка
+                    if overlap > 0 and len(current_chunk) > overlap:
+                        current_chunk = current_chunk[-overlap:] + " " + para
+                    else:
+                        current_chunk = para
+                else:
+                    current_chunk = para
+
+                # Если один абзац слишком длинный
+                if len(current_chunk) > chunk_size * 1.5:
+                    words = current_chunk.split()
+                    sub = ""
+                    for word in words:
+                        if len(sub) + len(word) + 1 <= chunk_size:
+                            sub += (" " if sub else "") + word
+                        else:
+                            if sub:
+                                chunks.append(sub.strip())
+                            sub = word
+                    current_chunk = sub if sub else ""
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return [c for c in chunks if len(c) >= 50]
+
+    # ──────────────────────── Гибридная оценка релевантности ────────────────────────
+
+    @staticmethod
+    def _compute_relevance(
+        chunk: str,
+        question: str,
+        question_emb: np.ndarray,
+        chunk_emb: np.ndarray,
+    ) -> float:
+        """Гибридная оценка: keyword overlap (0.5) + embedding similarity (0.5)."""
+        # 1. Embedding similarity
+        emb_sim = 0.0
+        q_norm = np.linalg.norm(question_emb)
+        c_norm = np.linalg.norm(chunk_emb)
+        if q_norm > 1e-8 and c_norm > 1e-8:
+            emb_sim = float(np.dot(question_emb, chunk_emb) / (q_norm * c_norm))
+
+        # 2. Keyword overlap (BM25-inspired)
+        stop = {
+            "и", "в", "на", "с", "по", "из", "для", "что", "как", "это",
+            "но", "или", "не", "то", "все", "так", "бы", "ли", "же",
+            "the", "and", "for", "are", "but", "not", "you", "all",
+            "can", "had", "her", "was", "one", "our", "has", "have",
+        }
+        q_words = set(re.findall(r"\b\w{3,}\b", question.lower())) - stop
+        c_words = set(re.findall(r"\b\w{3,}\b", chunk.lower())) - stop
+
+        keyword_score = 0.0
+        if q_words and c_words:
+            overlap = q_words & c_words
+            keyword_score = len(overlap) / len(q_words)
+
+        return 0.5 * emb_sim + 0.5 * keyword_score
+
+    # ──────────────────────── Извлечение релевантных чанков ────────────────────────
+
+    async def _extract_relevant_chunks(
+        self, text: str, question: str, url: str, title: str,
+        engine: str = "web",
+    ) -> List[RelevantChunk]:
+        """Разбить текст на чанки, оценить релевантность, вернуть лучшие."""
+        if not text or len(text) < 100:
+            return []
+
+        question_emb = self.assistant.vocab.encode(question)
+        chunks = self._chunk_text(text)
+        if not chunks:
+            return []
+
+        scored: List[Tuple[float, str]] = []
+        for chunk in chunks:
+            chunk_emb = self.assistant.vocab.encode(chunk)
+            score = self._compute_relevance(
+                chunk, question, question_emb, chunk_emb
+            )
+            if score >= MIN_RELEVANCE_THRESHOLD:
+                scored.append((score, chunk))
+
         scored.sort(reverse=True, key=lambda x: x[0])
-        # Берём топ-3 уникальных чанка с разных частей текста
-        selected = []
-        for sim, chunk in scored[:5]:
-            if len(selected) >= 3:
+
+        # Топ-N, с дедупликацией по Jaccard
+        selected: List[RelevantChunk] = []
+        for sim, chunk in scored[:8]:
+            if len(selected) >= 4:
                 break
-            if not any(abs(len(chunk) - len(s)) < 200 for s in selected):  # избегаем почти одинаковых
-                selected.append(RelevantChunk(chunk, url, title, sim))
+            is_dup = False
+            chunk_words = set(chunk.lower().split())
+            for existing in selected:
+                existing_words = set(existing.text.lower().split())
+                if chunk_words and existing_words:
+                    jaccard = len(chunk_words & existing_words) / len(
+                        chunk_words | existing_words
+                    )
+                    if jaccard > 0.7:
+                        is_dup = True
+                        break
+            if not is_dup:
+                selected.append(
+                    RelevantChunk(chunk, url, title, sim, engine=engine)
+                )
         return selected
 
-    async def _fetch_and_filter_pages(self, search_results: List[Dict], question: str) -> List[RelevantChunk]:
-        """Параллельно загрузить страницы, извлечь релевантные фрагменты."""
+    # ──────────────────────── Параллельная загрузка страниц ────────────────────────
+
+    async def _fetch_and_filter_pages(
+        self, search_results: List[Dict], question: str
+    ) -> List[RelevantChunk]:
+        """Загрузить страницы параллельно, извлечь релевантные фрагменты.
+        Сниппеты DDG — fallback при ошибке загрузки."""
         if not search_results:
             return []
-        # Ограничиваем количество загружаемых страниц
-        urls_to_fetch = [(r['title'], r['url']) for r in search_results if r.get('url')][:MAX_PAGES_TO_FETCH]
+
+        all_chunks: List[RelevantChunk] = []
+
+        # Разделяем: полная загрузка vs только сниппет
+        fetch_list = []
+        snippet_only = []
+
+        for r in search_results:
+            if r.get("skip_fetch") or not r.get("url"):
+                if r.get("snippet") and len(r["snippet"]) > 50:
+                    snippet_only.append(r)
+            else:
+                fetch_list.append(r)
+
+        fetch_list = fetch_list[:MAX_PAGES_TO_FETCH]
         semaphore = asyncio.Semaphore(PARALLEL_FETCH_LIMIT)
 
-        async def fetch_one(title, url):
+        async def fetch_one(r_item: Dict) -> List[RelevantChunk]:
             async with semaphore:
-                text, err = await self._fetch_page_text(url)
+                text, err = await self._fetch_page_text(r_item["url"])
                 if err or len(text) < 200:
+                    # Fallback: используем сниппет
+                    snippet = r_item.get("snippet", "")
+                    if snippet and len(snippet) > 50:
+                        q_emb = self.assistant.vocab.encode(question)
+                        s_emb = self.assistant.vocab.encode(snippet)
+                        score = self._compute_relevance(
+                            snippet, question, q_emb, s_emb
+                        )
+                        if score >= MIN_RELEVANCE_THRESHOLD * 0.7:
+                            return [
+                                RelevantChunk(
+                                    snippet,
+                                    r_item["url"],
+                                    r_item.get("title", ""),
+                                    score,
+                                    engine="snippet",
+                                )
+                            ]
                     return []
-                chunks = await self._extract_relevant_chunks(text, question, url, title)
-                return chunks
+                return await self._extract_relevant_chunks(
+                    text, question, r_item["url"], r_item.get("title", ""),
+                    engine="web",
+                )
 
-        tasks = [fetch_one(title, url) for title, url in urls_to_fetch]
+        tasks = [fetch_one(r) for r in fetch_list]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        all_chunks = []
         for res in results:
             if isinstance(res, list):
                 all_chunks.extend(res)
-        # Сортируем по релевантности
+
+        # Сниппеты для пропущенных доменов
+        q_emb = self.assistant.vocab.encode(question)
+        for r in snippet_only:
+            snippet = r.get("snippet", "")
+            if not snippet or len(snippet) <= 50:
+                continue
+            s_emb = self.assistant.vocab.encode(snippet)
+            score = self._compute_relevance(snippet, question, q_emb, s_emb)
+            if score >= MIN_RELEVANCE_THRESHOLD * 0.7:
+                all_chunks.append(
+                    RelevantChunk(
+                        snippet,
+                        r.get("url", ""),
+                        r.get("title", ""),
+                        score,
+                        engine="snippet",
+                    )
+                )
+
         all_chunks.sort(key=lambda x: x.score, reverse=True)
-        return all_chunks[:10]  # максимум 10 фрагментов на итерацию
+        return all_chunks[:12]
 
-    async def is_information_sufficient(self, question: str, collected_chunks: List[RelevantChunk]) -> Tuple[bool, Optional[str]]:
-        """LLM оценивает, хватает ли собранной информации для полного ответа. Если нет — предлагает новый запрос."""
+    # ──────────────────────── Оценка достаточности ────────────────────────
+
+    async def is_information_sufficient(
+        self, question: str, collected_chunks: List[RelevantChunk]
+    ) -> Tuple[bool, Optional[str]]:
+        """LLM оценивает, хватает ли собранной информации для полного ответа."""
         if not collected_chunks:
-            return False, "информация не найдена, попробуй общий запрос"
+            return False, None
 
-        chunks_text = "\n\n---\n\n".join([f"Источник: {c.source_url}\n{c.text[:1000]}" for c in collected_chunks[:5]])
-        prompt = f"""Ты — исследователь. Изучи фрагменты из интернета, полученные по запросу пользователя.
-Вопрос: {question}
-
-Фрагменты:
-{chunks_text}
-
-Достаточно ли этой информации, чтобы дать полный, точный и актуальный ответ пользователю?
-Если ДА — ответь только "ДОСТАТОЧНО".
-Если НЕТ — сформулируй новый поисковый запрос (одной короткой фразой), который поможет найти недостающую информацию, и выведи его после слова "ЗАПРОС:".
-Ответ должен быть строго в формате:
-[ДОСТАТОЧНО или ЗАПРОС: <текст запроса>]
-"""
-        response = await self.assistant._call_llm([{"role": "user", "content": prompt}])
-        response = response.strip().upper()
-        if response.startswith("ДОСТАТОЧНО"):
+        # Быстрая эвристика: высокорелевантных чанков много → достаточно
+        high_score = sum(1 for c in collected_chunks if c.score > 0.55)
+        total_text = sum(len(c.text) for c in collected_chunks)
+        if high_score >= 3 and total_text > 2000:
             return True, None
-        if "ЗАПРОС:" in response:
-            new_query = response.split("ЗАПРОС:")[-1].strip().strip('"')
-            return False, new_query
-        return False, None  # по умолчанию недостаточно
 
-    async def iterative_search(self, question: str, max_iterations: int = MAX_SEARCH_ITERATIONS) -> Tuple[str, List[RelevantChunk], Dict]:
-        """Главный метод: итеративный поиск с самоуправлением."""
+        # LLM-оценка
+        chunks_text = "\n\n---\n\n".join(
+            f"[{c.engine}] Источник: {c.source_url}\n{c.text[:800]}"
+            for c in collected_chunks[:6]
+        )
+        prompt = (
+            f"Изучи фрагменты из интернета по запросу пользователя.\n"
+            f"Вопрос: {question}\n\n"
+            f"Фрагменты:\n{chunks_text}\n\n"
+            f"Достаточно ли этой информации для полного и точного ответа?\n"
+            f"Если ДА — ответь: ДОСТАТОЧНО\n"
+            f"Если НЕТ — напиши новый поисковый запрос после слова ЗАПРОС:\n"
+            f"Формат: [ДОСТАТОЧНО или ЗАПРОС: <запрос>]"
+        )
+        response = await self.assistant._call_llm(
+            [{"role": "user", "content": prompt}]
+        )
+        response_upper = response.strip().upper()
+        if response_upper.startswith("ДОСТАТОЧНО"):
+            return True, None
+        if "ЗАПРОС:" in response_upper:
+            new_query = (
+                response.split("ЗАПРОС:")[-1]
+                .split("запрос:")[-1]
+                .strip()
+                .strip("\"'")
+            )
+            if new_query and len(new_query) > 2:
+                return False, new_query
+        return False, None
+
+    # ──────────────────────── Итеративный поиск (главный метод) ────────────────────────
+
+    async def iterative_search(
+        self,
+        question: str,
+        max_iterations: int = MAX_SEARCH_ITERATIONS,
+    ) -> Tuple[str, List[RelevantChunk], Dict]:
+        """Главный метод: итеративный поиск с мультиисточниками."""
         start_time = time.time()
         all_chunks: List[RelevantChunk] = []
-        search_history = []
-        meta = {"iterations": 0, "queries": [], "total_chunks": 0, "sufficient_at_iteration": None}
+        meta: Dict[str, Any] = {
+            "iterations": 0,
+            "queries": [],
+            "total_chunks": 0,
+            "sufficient_at_iteration": None,
+            "sources_used": [],
+            "elapsed_s": 0,
+        }
 
-        # Сначала проверяем кэш
+        # Проверяем кэш
         cache_key = hashlib.md5(question.encode()).hexdigest()
-        if cache_key in _search_cache and _search_cache[cache_key][1] > time.time() - SEARCH_CACHE_TTL:
-            cached_data = _search_cache[cache_key][0]
-            # Кэш хранит (chunks_json, queries)
+        if (
+            cache_key in _search_cache
+            and _search_cache[cache_key][1] > time.time() - SEARCH_CACHE_TTL
+        ):
             try:
-                data = json.loads(cached_data)
-                all_chunks = [RelevantChunk(**c) for c in data['chunks']]
-                meta = data['meta']
-                logger.info(f"Использован кэш поиска для вопроса: {question[:50]}")
-                return self._format_search_context(all_chunks), all_chunks, meta
-            except:
+                data = json.loads(_search_cache[cache_key][0])
+                all_chunks = [RelevantChunk(**c) for c in data["chunks"]]
+                meta = data["meta"]
+                logger.info(f"📦 Кэш поиска: {question[:50]}")
+                return (
+                    self._format_search_context(all_chunks),
+                    all_chunks,
+                    meta,
+                )
+            except Exception:
                 pass
 
         current_query = await self.generate_search_query(question)
@@ -699,77 +1273,173 @@ class AdaptiveWebSearch:
 
         for iteration in range(max_iterations):
             meta["iterations"] = iteration + 1
-            logger.info(f"Поиск итерация {iteration+1}: запрос '{current_query}'")
+            logger.info(f"🔍 Итерация {iteration + 1}: '{current_query}'")
 
-            # Поиск в DDG
-            search_results = await self._ddg_search(current_query, max_results=8)
-            if not search_results:
-                logger.warning(f"Нет результатов по запросу: {current_query}")
-                if iteration == max_iterations - 1:
-                    break
-                # Генерируем новый запрос на основе отсутствия результатов
-                current_query = await self.generate_search_query(question, previous_attempts=meta["queries"])
-                meta["queries"].append(current_query)
-                continue
+            # ── DDG поиск ──
+            ddg_results = await self._ddg_search(current_query, max_results=8)
+            if ddg_results and "duckduckgo" not in meta["sources_used"]:
+                meta["sources_used"].append("duckduckgo")
 
-            # Загрузка и фильтрация страниц
-            new_chunks = await self._fetch_and_filter_pages(search_results, question)
-            if new_chunks:
-                # Избегаем дубликатов по URL+тексту
+            # ── Wikipedia (только на первой итерации) ──
+            wiki_results = []
+            if iteration == 0:
+                wiki_results = await self._wikipedia_search(
+                    current_query, lang="ru"
+                )
+                if not wiki_results:
+                    wiki_results = await self._wikipedia_search(
+                        current_query, lang="en"
+                    )
+                if wiki_results and "wikipedia" not in meta["sources_used"]:
+                    meta["sources_used"].append("wikipedia")
+
+            # ── Обработка Wikipedia (текст уже есть) ──
+            for wr in wiki_results:
+                full_text = wr.get("full_text", "")
+                if not full_text:
+                    continue
+                chunks = self._chunk_text(full_text)
+                question_emb = self.assistant.vocab.encode(question)
+                for chunk in chunks[:4]:
+                    chunk_emb = self.assistant.vocab.encode(chunk)
+                    score = self._compute_relevance(
+                        chunk, question, question_emb, chunk_emb
+                    )
+                    if score >= MIN_RELEVANCE_THRESHOLD * 0.8:
+                        all_chunks.append(
+                            RelevantChunk(
+                                chunk,
+                                wr["url"],
+                                wr["title"],
+                                score,
+                                engine="wikipedia",
+                            )
+                        )
+
+            # ── Обработка DDG (загрузка страниц) ──
+            if ddg_results:
+                new_chunks = await self._fetch_and_filter_pages(
+                    ddg_results, question
+                )
                 existing_urls = {c.source_url for c in all_chunks}
                 for chunk in new_chunks:
-                    if chunk.source_url not in existing_urls:
+                    if (
+                        chunk.source_url not in existing_urls
+                        or chunk.engine == "snippet"
+                    ):
                         all_chunks.append(chunk)
-                meta["total_chunks"] = len(all_chunks)
 
-            # Оценка достаточности
-            sufficient, new_query = await self.is_information_sufficient(question, all_chunks)
+            meta["total_chunks"] = len(all_chunks)
+
+            if not ddg_results and not wiki_results:
+                logger.warning(f"Нет результатов: '{current_query}'")
+                if iteration < max_iterations - 1:
+                    current_query = await self.generate_search_query(
+                        question, previous_attempts=meta["queries"]
+                    )
+                    meta["queries"].append(current_query)
+                    continue
+                break
+
+            # ── Оценка достаточности ──
+            sufficient, new_query = await self.is_information_sufficient(
+                question, all_chunks
+            )
             if sufficient:
                 meta["sufficient_at_iteration"] = iteration + 1
-                logger.info(f"Информации достаточно после итерации {iteration+1}")
+                logger.info(
+                    f"✅ Достаточно информации после итерации {iteration + 1}"
+                )
                 break
             if new_query and iteration + 1 < max_iterations:
                 current_query = new_query
                 meta["queries"].append(current_query)
             else:
                 break
-            await asyncio.sleep(0.5)  # небольшая задержка между итерациями
 
-        # Кэшируем результат
+            await asyncio.sleep(0.3)
+
+        # ── Кэширование результата ──
+        meta["elapsed_s"] = round(time.time() - start_time, 2)
         cache_data = {
-            'chunks': [{'text': c.text, 'source_url': c.source_url, 'title': c.title, 'score': c.score} for c in all_chunks],
-            'meta': meta
+            "chunks": [c.to_dict() for c in all_chunks],
+            "meta": meta,
         }
-        _search_cache[cache_key] = (json.dumps(cache_data, ensure_ascii=False), time.time())
-        # Очистка старого кэша
+        _search_cache[cache_key] = (
+            json.dumps(cache_data, ensure_ascii=False),
+            time.time(),
+        )
+
+        # Очистка старого/лишнего кэша
         now = time.time()
-        for k in list(_search_cache.keys()):
-            if now - _search_cache[k][1] > SEARCH_CACHE_TTL:
+        expired = [
+            k
+            for k, (_, ts) in _search_cache.items()
+            if now - ts > SEARCH_CACHE_TTL
+        ]
+        for k in expired:
+            del _search_cache[k]
+        if len(_search_cache) > SEARCH_CACHE_MAX_SIZE:
+            sorted_keys = sorted(
+                _search_cache.keys(), key=lambda k: _search_cache[k][1]
+            )
+            for k in sorted_keys[: len(_search_cache) - SEARCH_CACHE_MAX_SIZE // 2]:
                 del _search_cache[k]
 
         context = self._format_search_context(all_chunks)
         return context, all_chunks, meta
+
+    # ──────────────────────── Форматирование контекста ────────────────────────
 
     def _format_search_context(self, chunks: List[RelevantChunk]) -> str:
         """Форматирует собранные фрагменты для передачи в LLM."""
         if not chunks:
             return "⚠️ Поиск в интернете не дал релевантных результатов."
 
+        engine_label = {
+            "wikipedia": "📖 Wiki",
+            "snippet": "📝 Сниппет",
+            "web": "🌐 Веб",
+        }
         parts = ["=== РЕЗУЛЬТАТЫ ИНТЕЛЛЕКТУАЛЬНОГО ПОИСКА ===\n"]
         for i, chunk in enumerate(chunks[:8], 1):
-            parts.append(f"[{i}] Источник: {chunk.source_url} (релевантность: {chunk.score:.2f})")
-            parts.append(f"    {chunk.text[:1200]}\n")
+            label = engine_label.get(chunk.engine, "🌐")
+            parts.append(
+                f"[{i}] {label} | {chunk.title[:80]}"
+            )
+            parts.append(
+                f"    Источник: {chunk.source_url} "
+                f"(релевантность: {chunk.score:.2f})"
+            )
+            parts.append(f"    {chunk.text[:1500]}\n")
         parts.append("=== КОНЕЦ ДАННЫХ ===")
         return "\n".join(parts)
 
-    async def fetch_single_url(self, url: str, question: str) -> Tuple[str, List[RelevantChunk]]:
-        """Для ручного режима url_to_fetch: загружаем одну страницу и извлекаем релевантные фрагменты."""
+    # ──────────────────────── Ручная загрузка URL ────────────────────────
+
+    async def fetch_single_url(
+        self, url: str, question: str
+    ) -> Tuple[str, List[RelevantChunk]]:
+        """Загрузка одной страницы по URL (для url_to_fetch)."""
         text, err = await self._fetch_page_text(url, timeout=20)
         if err or not text:
             return f"Ошибка загрузки {url}: {err}", []
-        chunks = await self._extract_relevant_chunks(text, question, url, "Загруженная страница")
+        chunks = await self._extract_relevant_chunks(
+            text, question, url, "Загруженная страница", engine="web"
+        )
         context = self._format_search_context(chunks)
         return context, chunks
+
+    # ──────────────────────── Вспомогательные ────────────────────────
+
+    @staticmethod
+    def _extract_domain(url: str) -> str:
+        """Извлечь домен из URL."""
+        try:
+            from urllib.parse import urlparse
+            return urlparse(url).netloc.replace("www.", "")
+        except Exception:
+            return ""
 
 # ==================================================================
 # 🔤 Адаптивный словарь (без изменений)
@@ -1109,18 +1779,12 @@ class SelfImprovingAssistant:
             has_web = True
             search_meta = {"type": "single_url", "url": url_to_fetch, "chunks_count": len(chunks)}
         # Если web_search == True, запускаем интеллектуальный итеративный поиск
+        # Если web_search == True — пользователь ЯВНО нажал кнопку, ищем в любом случае!
         elif web_search:
-            # Сначала подсознание может решить, нужен ли поиск (для экономии)
-            mem_ctx = self.memory.get_context(message)
-            if await self.web_searcher.should_search(message, mem_ctx):
-                web_ctx, chunks, meta = await self.web_searcher.iterative_search(message)
-                has_web = True
-                search_meta = meta
-                logger.info(f"Поиск завершён: {meta}")
-            else:
-                web_ctx = None
-                has_web = False
-                search_meta = {"skipped": "ai_decision"}
+            web_ctx, chunks, meta = await self.web_searcher.iterative_search(message)
+            has_web = True
+            search_meta = meta
+            logger.info(f"Принудительный поиск (по кнопке): {meta}")
 
         # Проверка кэша (без учёта поиска)
         ck = self._cache_key(message, image_base64)
@@ -1218,16 +1882,12 @@ class SelfImprovingAssistant:
             web_ctx, chunks = await self.web_searcher.fetch_single_url(url_to_fetch, message)
             has_web = True
             search_meta = {"type": "single_url", "url": url_to_fetch, "chunks_count": len(chunks)}
+            # Если web_search == True — пользователь ЯВНО нажал кнопку, ищем в любом случае!
         elif web_search:
-            mem_ctx = self.memory.get_context(message)
-            if await self.web_searcher.should_search(message, mem_ctx):
-                web_ctx, chunks, meta = await self.web_searcher.iterative_search(message)
-                has_web = True
-                search_meta = meta
-            else:
-                web_ctx = None
-                has_web = False
-                search_meta = {"skipped": "ai_decision"}
+            web_ctx, chunks, meta = await self.web_searcher.iterative_search(message)
+            has_web = True
+            search_meta = meta
+            logger.info(f"Принудительный поиск (стрим, по кнопке): {meta}")
 
         # Получение контекста памяти
         mem_ctx = self.memory.get_context(message)

@@ -28,15 +28,14 @@ try:
         GLOBAL_BLEND_ALPHA,
         EMBEDDING_DIM,
         GlobalKnowledgeBase,
-        WebSearchTool,
+        AdaptiveWebSearch,      # ← БЫЛО WebSearchTool (не существует!)
     )
 except ImportError:
-    # Fallback на случай, если ai_assistant ещё не загружен
-    MAX_PAGES_TO_FETCH = 7
+    MAX_PAGES_TO_FETCH = 5
     GLOBAL_BLEND_ALPHA = 0.3
     EMBEDDING_DIM = 128
     GlobalKnowledgeBase = None
-    WebSearchTool = None
+    AdaptiveWebSearch = None
 
 # Конфигурация агента (остаётся локальной)
 MAX_AGENT_STEPS = 8
@@ -538,27 +537,33 @@ class AutonomousAgent:
                             "Возвращает текущее латентное состояние подсознания и статистику")
 
     async def _tool_web_search(self, query: str) -> str:
-        if WebSearchTool is None:
-            return "[web_search недоступен: требуется ai_assistant]"
-        try:
-            if GlobalKnowledgeBase is not None:
-                gkb = GlobalKnowledgeBase.get_instance()
-                query_emb = self._a.vocab.encode(query)
-                # global_ctx можно использовать для рерайтинга, но пока просто логируем
-        except Exception:
-            pass
+        """Поиск в интернете через AdaptiveWebSearch ассистента."""
+        web_searcher = getattr(self._a, 'web_searcher', None)
+        if web_searcher is None:
+            return "[web_search недоступен: web_searcher не инициализирован]"
 
-        optimized_query = await self._tool_rewrite_query(query) if ENABLE_QUERY_REWRITE else query
+        # Оптимизация запроса
+        optimized_query = (
+            await self._tool_rewrite_query(query)
+            if ENABLE_QUERY_REWRITE
+            else query
+        )
+
         try:
-            qt, _ = WebSearchTool.classify_query(optimized_query)
-            results, special = await WebSearchTool.search(optimized_query, qt)
-            pages = ""
-            if results:
-                pages = await WebSearchTool.fetch_multiple_pages(results, limit=MAX_PAGES_TO_FETCH)
-            web_ctx = WebSearchTool.format_for_prompt(results, special, pages, optimized_query)
-            if AUTO_LEARN_FROM_WEB and web_ctx and len(web_ctx) > 500:
-                asyncio.create_task(self._learn_from_search_result(web_ctx))
-            return web_ctx
+            # Используем итеративный поиск с мультиисточниками
+            context, chunks, meta = await web_searcher.iterative_search(
+                optimized_query
+            )
+
+            # Автообучение из результатов
+            if AUTO_LEARN_FROM_WEB and context and len(context) > 500:
+                asyncio.create_task(self._learn_from_search_result(context))
+
+            logger.info(
+                f"🔍 web_search: {meta.get('iterations', 0)} итераций, "
+                f"{len(chunks)} чанков, источники: {meta.get('sources_used', [])}"
+            )
+            return context
         except Exception as e:
             logger.warning(f"Web search error: {e}")
             return f"[Ошибка поиска: {e}]"
