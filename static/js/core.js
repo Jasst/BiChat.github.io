@@ -87,30 +87,49 @@
     window._pendingCallHandled = false;
 
     window.handlePendingCall = function() {
-        if (window._pendingCallHandled) return;
+    if (window._pendingCallHandled) return;
 
-        let callId = sessionStorage.getItem('pending_call_id');
-        if (!callId) {
-            const urlParams = new URLSearchParams(window.location.search);
-            callId = urlParams.get('call_id');
-        }
-        if (!callId) return;
+    let callId = sessionStorage.getItem('pending_call_id');
+    if (!callId) {
+        const urlParams = new URLSearchParams(window.location.search);
+        callId = urlParams.get('call_id');
+    }
+    if (!callId) return;
 
-        sessionStorage.setItem('pending_call_id', callId);
-        // Удаляем параметр из URL
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
+    sessionStorage.setItem('pending_call_id', callId);
 
-        const wsReady = window.wsClient && window.wsClient.isConnected === true;
-        if (wsReady) {
+    // Удаляем параметр из URL чтобы не было повторной обработки
+    const newUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, newUrl);
+
+    const trySendGetCall = () => {
+        if (window.wsClient && window.wsClient.isConnected === true) {
             console.log('[App] Sending get_call for', callId);
             window.wsClient.send({ type: 'get_call', call_id: callId });
             window._pendingCallHandled = true;
             sessionStorage.removeItem('pending_call_id');
-        } else {
-            console.log('[App] WebSocket not ready, will retry on connect');
+            return true;
         }
+        return false;
     };
+
+    // Пытаемся отправить сразу
+    if (trySendGetCall()) return;
+
+    // ✅ ИСПРАВЛЕНИЕ: Если WS не готов — ждём с повторными попытками
+    // Это критично для звонков — приложение только что открылось из push-уведомления
+    let retries = 0;
+    const maxRetries = 20; // 10 секунд максимум
+    const retryInterval = setInterval(() => {
+        retries++;
+        if (trySendGetCall() || retries >= maxRetries) {
+            clearInterval(retryInterval);
+            if (retries >= maxRetries) {
+                console.warn('[App] Failed to send get_call — WS not ready after 10s');
+            }
+        }
+    }, 500);
+};
 
     window.addMessageToCache = function(chatId, message, position = 'end') {
         if (!chatId || !message || !message.id) return;

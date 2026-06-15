@@ -75,3 +75,56 @@ async def unsubscribe(request: Request, address: str = Depends(require_auth)):
     except Exception as e:
         logger.error(f"Unsubscribe error: {e}")
         raise HTTPException(500, 'Failed')
+
+
+@router.post('/renew')
+async def renew_subscription(request: Request):
+    """
+    Обновление push-подписки из Service Worker (без require_auth,
+    т.к. сессия может быть истекшей). Авторизация через старый endpoint.
+    """
+    try:
+        body = await request.json()
+        old_endpoint = body.get('old_endpoint')
+        new_subscription = body.get('subscription')
+
+        if not old_endpoint or not new_subscription or not new_subscription.get('endpoint'):
+            raise HTTPException(400, 'Missing old_endpoint or subscription')
+
+        old_hash = hashlib.sha256(old_endpoint.encode()).hexdigest()
+
+        async with get_db_cursor() as conn:
+            # Находим пользователя по старому endpoint
+            row = await conn.fetchrow(
+                "SELECT user_address FROM push_subscriptions WHERE endpoint_hash = $1",
+                old_hash
+            )
+
+            if not row:
+                logger.warning(f"Push renew: old endpoint not found")
+                raise HTTPException(404, 'Old subscription not found')
+
+            user_address = row['user_address']
+            new_hash = _endpoint_hash(new_subscription)
+            sub_json = json.dumps(new_subscription)
+
+            # Удаляем старую, вставляем новую
+            await conn.execute(
+                "DELETE FROM push_subscriptions WHERE endpoint_hash = $1",
+                old_hash
+            )
+            await conn.execute("""
+                INSERT INTO push_subscriptions (user_address, subscription, endpoint_hash, created_at)
+                VALUES ($1, $2, $3, extract(epoch from now()))
+                ON CONFLICT (user_address, endpoint_hash)
+                DO UPDATE SET subscription = EXCLUDED.subscription, created_at = EXCLUDED.created_at
+            """, user_address, sub_json, new_hash)
+
+        logger.info(f"Push subscription renewed for {user_address[:16]}")
+        return {'status': 'ok'}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Renew error: {e}")
+        raise HTTPException(500, 'Failed')

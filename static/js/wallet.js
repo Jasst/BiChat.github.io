@@ -80,18 +80,9 @@
   var miningActive = false;
   var POW_MAX_ITERATIONS = 5000000;
   var AUTO_MINING_KEY = 'autoMining'; // ключ для localStorage
-
-  // ================== Майнинг ==================
-  async function sha256(text) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(text);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
   let miningWorker = null;
-
+  // ================== Майнинг ==================
+  // ================== Майнинг ==================
   async function startMining() {
     if (miningActive) return;
     miningActive = true;
@@ -117,24 +108,32 @@
         miningWorker = new Worker('/static/js/mining-worker.js');
         const startTime = Date.now();
 
-        miningWorker.postMessage({ last_proof, challenge, difficulty, maxIter, startTime });
+        // ВАЖНО: Отправляем данные в формате, который ждет новый класс воркера
+        miningWorker.postMessage({
+          command: 'start',
+          payload: { last_proof, last_index, challenge, difficulty, maxIter, startTime }
+        });
 
         miningWorker.onmessage = async (e) => {
           const data = e.data;
-          if (data.progress !== undefined) {
-            // Обновление прогресса, хешрейта и ETA
+
+          // Обработка прогресса (используем type из нового воркера)
+          if (data.type === 'progress') {
             const pct = Math.min(100, Math.floor((data.progress / maxIter) * 100));
             fillEl.style.width = pct + '%';
             const hashrate = data.hashrate || (data.progress / ((Date.now() - startTime) / 1000));
-            const etaMin = (data.eta / 60).toFixed(1);
+            const etaMin = data.eta && data.eta !== Infinity ? (data.eta / 60).toFixed(1) : '∞';
             statusEl.textContent = `Hashing... ${Math.floor(data.progress/1000)}k / ${Math.floor(maxIter/1000)}k | ${Math.floor(hashrate)} h/s | ETA ${etaMin} min`;
             return;
           }
-          if (data.found) {
+
+          // Блок найден
+          if (data.type === 'found') {
             const res = await fetch('/wallet/mine', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ proof: data.proof, challenge, last_proof, last_index })
+              // Обязательно добавляем last_index из ответа воркера
+              body: JSON.stringify({ proof: data.proof, challenge, last_proof, last_index: data.last_index })
             });
             const result = await res.json();
             if (res.ok) {
@@ -154,7 +153,10 @@
             } else {
               stopMining();
             }
-          } else {
+          }
+
+          // Решение не найдено (исчерпаны итерации)
+          if (data.type === 'not_found') {
             const fresh = await fetch('/wallet/last-proof');
             const freshData = await fresh.json();
             last_proof = freshData.last_proof;
@@ -176,6 +178,8 @@
     miningActive = false;
     localStorage.setItem(AUTO_MINING_KEY, 'false');
     if (miningWorker) {
+      // Отправляем команду на мягкую остановку перед уничтожением потока
+      miningWorker.postMessage({ command: 'stop' });
       miningWorker.terminate();
       miningWorker = null;
     }
@@ -183,6 +187,49 @@
     document.getElementById('stopMiningBtn').classList.add('hidden');
     document.getElementById('miningProgress').classList.add('hidden');
     document.getElementById('miningStatus').textContent = t('mining_stopped');
+  }
+
+    // ================== Уведомления о новых блоках через WebSocket ==================
+  function initMiningNotifications() {
+    if (!window.wsClient) {
+      console.warn('WebSocket client not ready, mining notifications disabled');
+      const checkInterval = setInterval(() => {
+        if (window.wsClient) {
+          clearInterval(checkInterval);
+          attachListener();
+        }
+      }, 500);
+      setTimeout(() => clearInterval(checkInterval), 10000);
+      return;
+    }
+    attachListener();
+
+    function attachListener() {
+      if (!window.wsClient) return;
+      const originalOnMessage = window.wsClient.onMessage;
+      window.wsClient.onMessage = (data) => {
+        if (originalOnMessage) originalOnMessage(data);
+        if (data.type === 'new_block' && miningActive) {
+          console.log('🔔 New block mined by network, restarting mining...');
+          refreshNetworkStats();
+          refreshBalance();
+          const wasActive = miningActive;
+          stopMining();
+          if (wasActive) {
+            setTimeout(() => startMining(), 500);
+          }
+        }
+      };
+      console.log('Mining notifications enabled');
+    }
+  }
+
+  async function sha256(text) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   // ================== Стейкинг ==================
@@ -288,7 +335,7 @@
     const res = await fetch('/wallet/balance');
     if (!res.ok) return;
     const data = await res.json();
-    document.getElementById('balanceDisplay').textContent = (data.balance / BLOCKCOIN_SATS).toFixed(6) + ' BlockCoin';
+    document.getElementById('balanceDisplay').textContent = (data.balance / BLOCKCOIN_SATS).toFixed(6) + ' ';
     window.NotificationManager?.showToast(t('balance_updated'), 'success');
     if (data.staked) {
       document.getElementById('stakedInfo').style.display = 'flex';
@@ -643,44 +690,8 @@
     if (match?.[1]) return match[1].toLowerCase();
     return null;
   }
-
   function openWalletQRScanner() { walletQR.open(); }
   function forceCloseWalletQRScanner() { walletQR.close(); }
-
-  // ================== Уведомления о новых блоках через WebSocket ==================
-  function initMiningNotifications() {
-    if (!window.wsClient) {
-      console.warn('WebSocket client not ready, mining notifications disabled');
-      const checkInterval = setInterval(() => {
-        if (window.wsClient) {
-          clearInterval(checkInterval);
-          attachListener();
-        }
-      }, 500);
-      setTimeout(() => clearInterval(checkInterval), 10000);
-      return;
-    }
-    attachListener();
-
-    function attachListener() {
-      if (!window.wsClient) return;
-      const originalOnMessage = window.wsClient.onMessage;
-      window.wsClient.onMessage = (data) => {
-        if (originalOnMessage) originalOnMessage(data);
-        if (data.type === 'new_block' && miningActive) {
-          console.log('🔔 New block mined, restarting mining...');
-          refreshNetworkStats();
-          refreshBalance();
-          const wasActive = miningActive;
-          stopMining();
-          if (wasActive) {
-            setTimeout(() => startMining(), 500);
-          }
-        }
-      };
-      console.log('Mining notifications enabled');
-    }
-  }
 
   // ================== Инициализация ==================
   document.addEventListener('DOMContentLoaded', function() {
@@ -691,7 +702,6 @@
         if (!cfg.enable_mining) document.getElementById('miningCard')?.remove();
         if (!cfg.enable_staking) document.getElementById('stakingCard')?.remove();
         window.refreshFeeDisplay();
-        // Авто-майнинг
         if (localStorage.getItem(AUTO_MINING_KEY) === 'true') {
           startMining();
         }
