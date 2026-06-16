@@ -612,9 +612,9 @@
     config: {
       videoWidth: 1280,
       videoHeight: 720,
-      scanSize: 400,
+      scanSize: 280,
       inversionAttempts: "attemptBoth",
-      scanInterval: 100
+      scanInterval: 80
     },
     open() {
       if (this.active) return;
@@ -685,7 +685,7 @@
         }
         try {
           const vw = video.videoWidth, vh = video.videoHeight;
-          const size = Math.min(vw, vh) * 0.8;
+          const size = Math.min(vw, vh) * 0.5;
           const sx = (vw - size) / 2, sy = (vh - size) / 2;
           const ctx = this.ctx;
           const canvas = this.canvas;

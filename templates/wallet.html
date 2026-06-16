@@ -245,13 +245,16 @@
       </div>
 
       <div id="qrScannerContainer" class="hidden qr-scanner-container" style="margin-bottom: 20px; border-radius: 12px; overflow: hidden;">
-        <div class="text-center" style="background: #000; padding: 10px;">
-          <video id="qrVideo" style="width: 100%; max-width: 400px; border-radius: 8px;" playsinline autoplay muted disablepictureinpicture></video>
-          <p class="text-muted" style="margin: 10px 0;">Наведите камеру на QR-код</p>
-          <div id="scanResult" class="hidden scan-result" style="font-weight: bold; margin-bottom: 10px;"></div>
-          <button class="btn-action danger" onclick="forceCloseWalletQRScanner()">Закрыть сканер</button>
-        </div>
-      </div>
+  <div class="text-center" style="background: #000; padding: 10px; position: relative;">   <!-- добавили relative -->
+    <div style="position:relative; display:inline-block;">   <!-- новый контейнер -->
+      <video id="qrVideo" style="width: 100%; max-width: 400px; border-radius: 8px;" playsinline autoplay muted disablepictureinpicture></video>
+      <div style="position:absolute; inset:25%; border:2px dashed var(--accent); border-radius:12px; pointer-events:none;"></div>
+    </div>
+    <p class="text-muted" style="margin: 10px 0;">Наведите камеру на QR-код</p>
+    <div id="scanResult" class="hidden scan-result" style="font-weight: bold; margin-bottom: 10px;"></div>
+    <button class="btn-action danger" onclick="forceCloseWalletQRScanner()">Закрыть сканер</button>
+  </div>
+</div>
 
       <div class="form-row">
         <input type="number" id="sendAmount" class="input" placeholder="Сумма" min="0.000001" step="0.000001" data-i18n-placeholder="send_amount">

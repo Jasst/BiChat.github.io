@@ -11,9 +11,11 @@
 
   <div id="qrScannerContainer" class="hidden qr-scanner-container">
     <div class="text-center">
-      <div class="qr-video-wrapper">
-        <video id="qrVideo" class="qr-video" playsinline autoplay muted disablepictureinpicture></video>
-      </div>
+      <div class="qr-video-wrapper" style="position:relative;display:inline-block;">
+  <video id="qrVideo" class="qr-video" playsinline autoplay muted disablepictureinpicture></video>
+  <!-- Рамка, показывающая область сканирования (50% от размера видео) -->
+  <div style="position:absolute;inset:25%;border:2px dashed var(--accent, #6c5ce7);border-radius:12px;pointer-events:none;box-shadow:0 0 20px rgba(108,92,231,0.3);"></div>
+</div>
       <p class="text-muted" data-i18n="scan_qr">Point camera at QR code</p>
       <div id="scanResult" class="hidden scan-result"></div>
       <button class="btn-oval" onclick="forceCloseQRScanner()" data-i18n="cancel">Cancel</button>
