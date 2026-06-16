@@ -124,23 +124,85 @@
 
     // ========== Выбор файла ==========
     function handleFileSelection(event, type) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const maxSize = type === 'image' ? 5 * 1024 * 1024 : 2 * 1024 * 1024;
-        if (file.size > maxSize) {
-            window.NotificationManager?.showToast(t('file_too_large', { size: maxSize/1024/1024 }), 'error');
-            return;
-        }
-        const allowedTypes = type === 'image' ? ['image/jpeg','image/png','image/gif','image/webp'] : ['audio/webm','audio/mp4','audio/ogg'];
-        if (!allowedTypes.includes(file.type)) {
-            window.NotificationManager?.showToast(t('unsupported_file_type', { type: type }), 'error');
-            return;
-        }
-        pendingFile = { file, type: file.type };
-        showFilePreview(file, file.type);
-        updateSendButtonVisibility();
-        event.target.value = '';
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // ── Проверка размера ──
+    const maxSize = type === 'image' ? 10 * 1024 * 1024 : 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+        window.NotificationManager?.showToast(
+            t('file_too_large', { size: maxSize / 1024 / 1024 }),
+            'error'
+        );
+        return;
     }
+
+    // ── Проверка типа ──
+    const allowedTypes = type === 'image'
+        ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        : ['audio/webm', 'audio/mp4', 'audio/ogg'];
+    if (!allowedTypes.includes(file.type)) {
+        window.NotificationManager?.showToast(
+            t('unsupported_file_type', { type: type }),
+            'error'
+        );
+        return;
+    }
+
+    // ── Сжатие для изображений ──
+    if (type === 'image' && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                // 1. Сжимаем изображение (maxWidth = 800-1200, quality = 0.7-0.90)
+                const compressedDataUrl = await window.compressImage(
+                    e.target.result,
+                   1200,   // максимальная ширина/высота
+                    0.85    // качество JPEG (0–1)
+                );
+
+                // 2. Преобразуем DataURL в Blob
+                const res = await fetch(compressedDataUrl);
+                const blob = await res.blob();
+
+                // 3. Создаём новый File с правильным типом (JPEG)
+                const compressedFile = new File(
+                    [blob],
+                    file.name.replace(/\.[^.]+$/, '.jpg'), // меняем расширение
+                    { type: 'image/jpeg' }
+                );
+
+                // 4. Сохраняем сжатый файл как pendingFile
+                pendingFile = { file: compressedFile, type: 'image/jpeg' };
+
+                // 5. Показываем превью (уже сжатое)
+                showFilePreview(compressedFile, 'image/jpeg');
+
+                // 6. Обновляем кнопки
+                updateSendButtonVisibility();
+            } catch (err) {
+                console.error('Compression error:', err);
+                // Если сжатие не удалось – используем оригинал
+                pendingFile = { file, type: file.type };
+                showFilePreview(file, file.type);
+                updateSendButtonVisibility();
+                window.NotificationManager?.showToast(
+                    t('compression_failed'),
+                    'warning'
+                );
+            }
+        };
+        reader.readAsDataURL(file);
+        // Важно: выходим, чтобы не выполнять код для несжатых файлов
+        return;
+    }
+
+    // ── Для аудио и прочих файлов сжатие не применяем ──
+    pendingFile = { file, type: file.type };
+    showFilePreview(file, file.type);
+    updateSendButtonVisibility();
+    event.target.value = '';
+}
 
     // ========== Функция управления видимостью кнопок ==========
     function updateSendButtonVisibility() {
