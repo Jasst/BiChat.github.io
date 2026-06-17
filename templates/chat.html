@@ -648,6 +648,7 @@
         <button id="addToContactsBtn" class="btn-icon-oval" disabled title="Add to contacts" data-i18n="add_to_contacts">＋</button>
         <button id="clearConversationBtn" class="btn-icon-oval" disabled title="Clear messages" data-i18n="clear_messages">🗑</button>
         <button id="callButton" class="btn-icon-oval" title="Voice/Video call" style="display: none;">📞</button>
+        <button id="videoCallButton" class="btn-icon-oval" title="Video call" style="display: none;">📹</button>
       </div>
     </div>
 
@@ -810,10 +811,17 @@
         }
       }
       const callBtn = document.getElementById('callButton');
-      if (callBtn && !isGroup && address && address !== window.State?.userAddress && address !== 'ai_bot') {
-        const displayName = name || (address ? address.slice(0,10)+'…' : '');
-        callBtn.onclick = () => window.CallManager?.makeCall(address, false, displayName);
-      }
+const videoBtn = document.getElementById('videoCallButton');
+if (!isGroup && address && address !== window.State?.userAddress && address !== 'ai_bot') {
+    const displayName = name || (address ? address.slice(0, 10) + '…' : '');
+    callBtn.style.display = 'inline-flex';
+    callBtn.onclick = () => window.CallManager?.makeCall(address, false, displayName);
+    videoBtn.style.display = 'inline-flex';
+    videoBtn.onclick = () => window.CallManager?.makeCall(address, true, displayName);
+} else {
+    callBtn.style.display = 'none';
+    videoBtn.style.display = 'none';
+}
     };
   }
 
