@@ -3,6 +3,346 @@
 {% block title %}Welcome — Dark Messenger{% endblock %}
 
 {% block content %}
+<style>
+  /* === Единая тема из wallet.html === */
+  :root {
+    --glass-bg: rgba(20, 20, 30, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --accent-color: #6c5ce7;
+    --accent-glow: rgba(108, 92, 231, 0.4);
+    --success-color: #00b894;
+    --danger-color: #d63031;
+    --text-main: #f5f6fa;
+    --text-muted: #a4b0be;
+    --bg-primary: #0a0a0f;
+  }
+
+  /* Анимация */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+    padding: 20px;
+    animation: fadeInUp 0.6s ease-out;
+  }
+
+  /* Стеклянная карточка — как .glass-card */
+  .auth-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 32px 28px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .auth-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .auth-brand {
+    margin-bottom: 32px;
+  }
+
+  .auth-icon {
+    font-size: 56px;
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .auth-card h1 {
+    color: var(--text-main);
+    font-weight: 700;
+    font-size: 28px;
+    margin: 0 0 8px 0;
+  }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0;
+  }
+
+  /* Кнопки — как в wallet */
+  .btn-primary-oval {
+    padding: 14px 24px;
+    border-radius: 50px;
+    border: none;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: linear-gradient(135deg, var(--accent-color), #6c5ce7);
+    color: white;
+    font-size: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-shadow: 0 4px 15px var(--accent-glow);
+    width: 100%;
+    margin-bottom: 12px;
+  }
+
+  .btn-primary-oval:hover {
+    opacity: 0.9;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--accent-glow);
+  }
+
+  .btn-oval {
+    padding: 14px 24px;
+    border-radius: 50px;
+    border: 1px solid var(--glass-border);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .btn-oval:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--text-muted);
+  }
+
+  .full-width {
+    width: 100%;
+  }
+
+  /* Форма в модалке */
+  .form-group {
+    margin-bottom: 18px;
+    text-align: left;
+  }
+
+  .form-group label {
+    color: var(--text-muted);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .form-group label input[type="checkbox"] {
+    accent-color: var(--accent-color);
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
+
+  .input {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px;
+    padding: 12px 20px;
+    color: var(--text-main);
+    font-size: 14px;
+    outline: none;
+    transition: border 0.3s;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .input:focus {
+    border-color: var(--accent-color);
+  }
+
+  .text-muted {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .error {
+    color: var(--danger-color);
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .hidden {
+    display: none !important;
+  }
+
+  /* Подвал */
+  .auth-footer {
+    margin-top: 28px;
+    border-top: 1px solid var(--glass-border);
+    padding-top: 20px;
+  }
+
+  .auth-footer p {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 6px 0;
+  }
+
+  .auth-footer a {
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .auth-footer a:hover {
+    color: var(--text-main);
+    text-decoration: underline;
+  }
+
+  /* Модальные окна — стеклянные */
+  .modal-overlay {
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+  }
+
+  .modal {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    color: var(--text-main);
+    max-width: 500px;
+    width: 90%;
+    margin: 0 auto;
+  }
+
+  .modal-header {
+    border-bottom: 1px solid var(--glass-border);
+    padding: 18px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-header h3 {
+    margin: 0;
+    font-weight: 700;
+    font-size: 20px;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 28px;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .modal-body {
+    padding: 24px;
+    text-align: left;
+  }
+
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--glass-border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .modal-footer .full-width {
+    width: 100%;
+  }
+
+  .mnemonic-display {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 20px;
+    border-radius: 16px;
+    font-family: monospace;
+    font-size: 16px;
+    line-height: 1.8;
+    color: var(--text-main);
+    word-break: break-word;
+    border: 1px solid var(--glass-border);
+    margin: 15px 0;
+  }
+
+  .warning-text {
+    color: var(--danger-color);
+    font-weight: 600;
+  }
+
+  .security-tips {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 12px 16px;
+    border-radius: 16px;
+    margin: 15px 0;
+  }
+
+  .security-tips strong {
+    color: var(--text-main);
+  }
+
+  .security-tips ul {
+    margin: 8px 0 0 0;
+    padding-left: 20px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .security-tips ul li {
+    margin-bottom: 4px;
+  }
+
+  .flex-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .flex-row .btn-oval {
+    width: auto;
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  .accent {
+    color: var(--accent-color);
+    font-weight: 700;
+  }
+  .text-center {
+    text-align: center;
+  }
+
+  /* Адаптив */
+  @media (max-width: 500px) {
+    .auth-card {
+      padding: 24px 18px;
+    }
+    .auth-card h1 {
+      font-size: 24px;
+    }
+    .modal {
+      width: 95%;
+    }
+    .modal-body {
+      padding: 16px;
+    }
+  }
+</style>
+
 <div class="auth-container">
   <div class="auth-card">
     <div class="auth-brand">
@@ -12,8 +352,8 @@
     </div>
 
     <div class="auth-form">
-      <button class="btn-primary-oval full-width" onclick="location.href='/login'" data-i18n="login_mnemonic">🔑 Login with Mnemonic</button>
-      <button class="btn-oval full-width" id="createWalletBtn" onclick="showCreateWalletModal()" data-i18n="create_new_wallet">✨ Create New Wallet</button>
+      <button class="btn-primary-oval" onclick="location.href='/login'" data-i18n="login_mnemonic">🔑 Login with Mnemonic</button>
+      <button class="btn-oval" id="createWalletBtn" onclick="showCreateWalletModal()" data-i18n="create_new_wallet">✨ Create New Wallet</button>
     </div>
 
     <div class="auth-footer">
@@ -33,7 +373,10 @@
     <div class="modal-body">
       <p data-i18n="mnemonic_warning_info">Your new mnemonic will be shown next. Choose whether to encrypt and save it locally.</p>
       <div class="form-group">
-        <label><input type="checkbox" id="saveLocallyCheckbox" checked> <span data-i18n="save_locally">Save locally (with password)</span></label>
+        <label>
+          <input type="checkbox" id="saveLocallyCheckbox" checked>
+          <span data-i18n="save_locally">Save locally (with password)</span>
+        </label>
         <p class="text-muted" data-i18n="save_locally_hint">If saved, you won't need to re-enter mnemonic on next visit.</p>
       </div>
       <div id="passwordGroup">
@@ -65,7 +408,7 @@
     <div class="modal-body">
       <p class="warning-text" data-i18n="save_phrase_warning">⚠️ Save this phrase securely. It cannot be recovered if lost!</p>
       <div id="mnemonicDisplay" class="mnemonic-display"></div>
-      <div class="flex-row" style="justify-content: center;">
+      <div class="flex-row">
         <button class="btn-oval" onclick="MnemonicManager.copy(() => NotificationManager?.showToast(t('copied'), 'success'))" data-i18n="copy">📋 Copy</button>
         <button class="btn-oval" onclick="MnemonicManager.download()" data-i18n="download">📥 Download</button>
       </div>
@@ -78,10 +421,10 @@
         </ul>
       </div>
       <p class="text-muted text-center">
-  <span data-i18n="auto_clear_prefix">🔒 Auto-clear in</span>
-  <span id="clearCountdown" class="accent">30</span>
-  <span data-i18n="auto_clear_suffix">s</span>
-</p>
+        <span data-i18n="auto_clear_prefix">🔒 Auto-clear in</span>
+        <span id="clearCountdown" class="accent">30</span>
+        <span data-i18n="auto_clear_suffix">s</span>
+      </p>
     </div>
     <footer class="modal-footer">
       <button class="btn-primary-oval full-width" onclick="proceedToChat()" data-i18n="saved_continue">✓ I've Saved It — Continue</button>
