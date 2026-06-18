@@ -64,7 +64,7 @@
     previewContainer.innerHTML = `
         ${previewContent}
         <span style="flex:1; font-size:13px;">${Utils.escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</span>
-        <button id="cancelFileBtn" class="btn-icon-oval">✕</button>
+        <button id="cancelFileBtn" class="btn-icon-oval"><img src="/static/icons/Remove.png" width="20" height="20" alt="Remove" style="filter: invert(1);"></button>
     `;
 
     const form = document.querySelector('.chat-panel .input-area');

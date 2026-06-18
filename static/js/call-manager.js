@@ -402,7 +402,9 @@ reattachVideoStreams() {
                 </div>
                 <div class="call-mini-actions">
                     <button class="call-mini-btn" id="miniExpandBtn">⤢</button>
-                    <button class="call-mini-btn call-mini-end" id="miniEndBtn">📞</button>
+                    <button class="call-mini-btn call-mini-end" id="miniEndBtn">
+    <img src="/static/icons/EndCall.png" width="20" height="20" alt="End call" style="filter: invert(1);">
+</button>
                 </div>
             `;
             document.body.appendChild(widget);
@@ -570,22 +572,26 @@ reattachVideoStreams() {
 
         // ========== Включить/выключить локальную камеру ==========
         toggleVideo() {
-            if (!this.localStream) return;
-            const videoTracks = this.localStream.getVideoTracks();
-            if (videoTracks.length === 0) {
-                window.NotificationManager?.showToast('No video track available', 'error');
-                return;
-            }
-            const enabled = videoTracks[0].enabled;
-            videoTracks.forEach(t => t.enabled = !enabled);
-            this.isVideoEnabled = !enabled;
-            const videoBtn = document.getElementById('callVideoToggleBtn');
-            if (videoBtn) {
-                videoBtn.textContent = this.isVideoEnabled ? '📹' : '🚫';
-                videoBtn.classList.toggle('active', this.isVideoEnabled);
-                videoBtn.title = this.isVideoEnabled ? 'Turn off camera' : 'Turn on camera';
-            }
+    if (!this.localStream) return;
+    const videoTracks = this.localStream.getVideoTracks();
+    if (videoTracks.length === 0) {
+        window.NotificationManager?.showToast('No video track available', 'error');
+        return;
+    }
+    const enabled = videoTracks[0].enabled;
+    videoTracks.forEach(t => t.enabled = !enabled);
+    this.isVideoEnabled = !enabled;
+    const videoBtn = document.getElementById('callVideoToggleBtn');
+    if (videoBtn) {
+        // Меняем иконку
+        const videoIcon = document.getElementById('videoIcon');
+        if (videoIcon) {
+            videoIcon.src = this.isVideoEnabled ? '/static/icons/Video.png' : '/static/icons/NoVideo.png';
         }
+        videoBtn.classList.toggle('active', this.isVideoEnabled);
+        videoBtn.title = this.isVideoEnabled ? 'Turn off camera' : 'Turn on camera';
+    }
+}
 
         // ========== Перезапрос локального видео и замена треков ==========
         async refreshLocalVideo() {
@@ -937,17 +943,21 @@ reattachVideoStreams() {
         }
 
         // ========== Управление микрофоном ==========
-        toggleMute() {
-            if (!this.localStream) return;
-            this.isMuted = !this.isMuted;
-            this.localStream.getAudioTracks().forEach(track => track.enabled = !this.isMuted);
-            const muteBtn = document.getElementById('callMuteBtn');
-            if (muteBtn) {
-                muteBtn.innerHTML = this.isMuted ? '🔇' : '🎤';
-                muteBtn.classList.toggle('active', this.isMuted);
-                muteBtn.title = this.t(this.isMuted ? 'call_unmute_microphone' : 'call_mute_microphone');
-            }
+       toggleMute() {
+    if (!this.localStream) return;
+    this.isMuted = !this.isMuted;
+    this.localStream.getAudioTracks().forEach(track => track.enabled = !this.isMuted);
+    const muteBtn = document.getElementById('callMuteBtn');
+    if (muteBtn) {
+        // Заменяем иконку на изображение
+        const muteIcon = document.getElementById('muteIcon');
+        if (muteIcon) {
+            muteIcon.src = this.isMuted ? '/static/icons/Mic-off.png' : '/static/icons/Mic.png';
         }
+        muteBtn.classList.toggle('active', this.isMuted);
+        muteBtn.title = this.t(this.isMuted ? 'call_unmute_microphone' : 'call_mute_microphone');
+    }
+}
 
         // ========== Переключение динамика ==========
         async toggleSpeaker() {
@@ -1079,11 +1089,11 @@ reattachVideoStreams() {
     const videoToggleBtn = document.getElementById('callVideoToggleBtn');
 
     if (muteBtn) {
-        muteBtn.innerHTML = '🎤';
-        muteBtn.classList.remove('active');
-        muteBtn.onclick = () => this.toggleMute();
-        muteBtn.title = this.t('call_mute_microphone');
-    }
+    muteBtn.innerHTML = '<img src="/static/icons/Mic.png" width="28" height="28" alt="Mute" id="muteIcon" style="filter: invert(1);">';
+    muteBtn.classList.remove('active');
+    muteBtn.onclick = () => this.toggleMute();
+    muteBtn.title = this.t('call_mute_microphone');
+}
     if (speakerBtn) {
         if (this.isIOS) {
             speakerBtn.style.display = 'none';
@@ -1096,26 +1106,27 @@ reattachVideoStreams() {
         }
     }
     if (endBtn) {
-        endBtn.innerHTML = '📞';
-        endBtn.onclick = () => this.endCall();
-        endBtn.title = this.t('call_end');
-    }
+    endBtn.innerHTML = '<img src="/static/icons/EndCall.png" width="28" height="28" alt="Call" style="filter: invert(1);">';
+    endBtn.onclick = () => this.endCall();
+    endBtn.title = this.t('call_end');
+}
     if (collapseBtn) {
         collapseBtn.onclick = () => this.collapseToMini();
         collapseBtn.title = this.t('call_minimize');
     }
 
     if (videoToggleBtn) {
-        if (this.isAudioOnly) {
-            videoToggleBtn.style.display = 'none';
-        } else {
-            videoToggleBtn.style.display = '';
-            videoToggleBtn.innerHTML = '📹';
-            videoToggleBtn.classList.remove('active');
-            videoToggleBtn.onclick = () => this.toggleVideo();
-            videoToggleBtn.title = 'Turn off camera';
-        }
+    if (this.isAudioOnly) {
+        videoToggleBtn.style.display = 'none';
+    } else {
+        videoToggleBtn.style.display = '';
+        // Устанавливаем начальную иконку Video.png
+        videoToggleBtn.innerHTML = '<img src="/static/icons/Video.png" width="24" height="24" alt="Video" id="videoIcon" style="filter: invert(1);">';
+        videoToggleBtn.classList.remove('active');
+        videoToggleBtn.onclick = () => this.toggleVideo();
+        videoToggleBtn.title = 'Turn off camera';
     }
+}
 
     this.isMuted = false;
     this.isSpeakerEnabled = false;
@@ -1226,33 +1237,33 @@ reattachVideoStreams() {
             const acceptBtn = document.getElementById('acceptCallBtn');
             const rejectBtn = document.getElementById('rejectCallBtn');
 
-            if (acceptBtn) {
-                acceptBtn.innerHTML = '✓';
-                acceptBtn.title = this.t('call_accept');
-                acceptBtn.onclick = async () => {
-                    await this.unlockAudioContext();
-                    let actualOffer = offerSdp;
-                    if (!actualOffer || (typeof actualOffer === 'object' && !actualOffer?.sdp)) {
-                        const raw = modal.dataset.offerSdp;
-                        if (raw) {
-                            try { actualOffer = JSON.parse(raw); } catch(e) { actualOffer = null; }
-                        }
-                    }
-                    const actualCallId   = modal.dataset.callId   || callId;
-                    const actualFrom     = modal.dataset.from      || from;
-                    const videoFlag = modal.dataset.video === 'true';
-                    this.hideIncomingModal();
-                    this.answerCall(actualCallId, actualFrom, actualOffer, fromName, videoFlag);
-                };
+           if (acceptBtn) {
+    acceptBtn.innerHTML = '<img src="/static/icons/AddCall.png" width="28" height="28" alt="Accept" style="filter: invert(1);">';
+    acceptBtn.title = this.t('call_accept');
+    acceptBtn.onclick = async () => {
+        await this.unlockAudioContext();
+        let actualOffer = offerSdp;
+        if (!actualOffer || (typeof actualOffer === 'object' && !actualOffer?.sdp)) {
+            const raw = modal.dataset.offerSdp;
+            if (raw) {
+                try { actualOffer = JSON.parse(raw); } catch(e) { actualOffer = null; }
             }
-            if (rejectBtn) {
-                rejectBtn.innerHTML = '✕';
-                rejectBtn.title = this.t('call_reject');
-                rejectBtn.onclick = () => {
-                    this.rejectCall(callId, from);
-                    this.hideIncomingModal();
-                };
-            }
+        }
+        const actualCallId   = modal.dataset.callId   || callId;
+        const actualFrom     = modal.dataset.from      || from;
+        const videoFlag = modal.dataset.video === 'true';
+        this.hideIncomingModal();
+        this.answerCall(actualCallId, actualFrom, actualOffer, fromName, videoFlag);
+    };
+}
+if (rejectBtn) {
+    rejectBtn.innerHTML = '<img src="/static/icons/EndCall.png" width="28" height="28" alt="Reject" style="filter: invert(1);">';
+    rejectBtn.title = this.t('call_reject');
+    rejectBtn.onclick = () => {
+        this.rejectCall(callId, from);
+        this.hideIncomingModal();
+    };
+}
 
             const fromLabel = modal.querySelector('.call-status');
             if (fromLabel) {

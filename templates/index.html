@@ -409,8 +409,12 @@
       <p class="warning-text" data-i18n="save_phrase_warning">⚠️ Save this phrase securely. It cannot be recovered if lost!</p>
       <div id="mnemonicDisplay" class="mnemonic-display"></div>
       <div class="flex-row">
-        <button class="btn-oval" onclick="MnemonicManager.copy(() => NotificationManager?.showToast(t('copied'), 'success'))" data-i18n="copy">📋 Copy</button>
-        <button class="btn-oval" onclick="MnemonicManager.download()" data-i18n="download">📥 Download</button>
+        <button class="btn-oval" onclick="MnemonicManager.copy(() => NotificationManager?.showToast(t('copied'), 'success'))" >
+    <img src="/static/icons/Copy.png" width="20" height="20" alt="Copy" style="filter: invert(1);"> Copy
+</button>
+        <button class="btn-oval" onclick="MnemonicManager.download()" >
+    <img src="/static/icons/Download.png" width="20" height="20" alt="Download" style="filter: invert(1);"> Download
+</button>
       </div>
       <div class="security-tips">
         <strong data-i18n="security_tips">🔒 Security tips:</strong>

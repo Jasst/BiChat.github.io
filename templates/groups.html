@@ -730,7 +730,10 @@ container.innerHTML = `<div class="empty-state">
           <div class="actions">
             <button class="btn-primary-oval" onclick="openGroupChatById('group:${escapeAttr(g.id)}', '${escapeAttr(g.name)}')">💬 ${t('chat')}</button>
             <button class="btn-oval" onclick="openDetail('${escapeAttr(JSON.stringify(g))}')">${t('info')}</button>
-            ${isCreator ? `<button class="btn-icon-oval" style="color:var(--danger-color);" onclick="deleteGroup('${escapeAttr(g.id)}', '${escapeAttr(g.name)}')" title="${t('delete')}">🗑</button>` : ''}
+            ${isCreator ? `// Вместо 🗑
+<button class="btn-icon-oval" style="color:var(--danger-color);" onclick="deleteGroup('${escapeAttr(g.id)}', '${escapeAttr(g.name)}')" title="${t('delete')}">
+    <img src="/static/icons/Remove.png" width="20" height="20" alt="Remove" style="filter: invert(1);">
+</button>` : ''}
           </div>`;
         container.appendChild(card);
       });
@@ -808,7 +811,7 @@ container.innerHTML = `<div class="empty-state">
     Object.entries(selectedMembers).forEach(([addr, name]) => {
       const tag = document.createElement('span');
       tag.className = 'selected-tag';
-      tag.innerHTML = `${escapeHtml(name)} <button onclick="removeMember('${escapeAttr(addr)}')">&times;</button>`;
+      tag.innerHTML = `${escapeHtml(name)} <button onclick="removeMember('${escapeAttr(addr)}')"><img src="/static/icons/Remove.png" width="16" height="16" alt="Remove" style="filter: invert(1);"></button>`;
       listDiv.appendChild(tag);
     });
   }
@@ -896,7 +899,10 @@ container.innerHTML = `<div class="empty-state">
                        <div class="member-info"><div>${escapeHtml(label)}</div><div class="text-muted font-mono">${addr}</div></div>
                        ${isMe ? `<span class="member-badge">${t('me')}</span>` : ''}
                        ${addr === currentGroup?.creator ? `<span class="member-badge">${t('owner')}</span>` : ''}
-                       ${withRemove && !isMe && addr !== currentGroup?.creator ? `<button class="btn-icon-oval" onclick="submitRemoveMember('${escapeAttr(addr)}')" title="${t('remove')}">✕</button>` : ''}`;
+                       ${withRemove && !isMe && addr !== currentGroup?.creator ? `// Вместо ✕
+<button class="btn-icon-oval" onclick="submitRemoveMember('${escapeAttr(addr)}')" title="${t('remove')}">
+    <img src="/static/icons/Remove.png" width="20" height="20" alt="Remove" style="filter: invert(1);">
+</button>` : ''}`;
       container.appendChild(row);
     });
   }

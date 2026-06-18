@@ -645,10 +645,18 @@
         <span class="subtitle" id="chatSubtitle"></span>
       </div>
       <div class="actions">
-        <button id="addToContactsBtn" class="btn-icon-oval" disabled title="Add to contacts" data-i18n="add_to_contacts">＋</button>
-        <button id="clearConversationBtn" class="btn-icon-oval" disabled title="Clear messages" data-i18n="clear_messages">🗑</button>
-        <button id="callButton" class="btn-icon-oval" title="Voice/Video call" style="display: none;">📞</button>
-        <button id="videoCallButton" class="btn-icon-oval" title="Video call" style="display: none;">📹</button>
+        <button id="addToContactsBtn" class="btn-icon-oval" disabled title="Add to contacts">
+    <img src="/static/icons/Contact.png" width="20" height="20" alt="Add contact" style="filter: invert(1);">
+</button>
+        <button id="clearConversationBtn" class="btn-icon-oval" disabled title="Clear messages" >
+    <img src="/static/icons/Remove.png" width="20" height="20" alt="Clear" style="filter: invert(1);">
+</button>
+        <button id="callButton" class="btn-icon-oval" title="Voice/Video call" style="display: none;">
+    <img src="/static/icons/Call.png" width="24" height="24" alt="Voice call" style="filter: invert(1);">
+</button>
+        <button id="videoCallButton" class="btn-icon-oval" title="Video call" style="display: none;">
+           <img src="/static/icons/Video.png" width="24" height="24" alt="Video call" style="filter: invert(1);">
+        </button>
       </div>
     </div>
 
@@ -661,9 +669,10 @@
         <textarea id="messageContent" placeholder="Type a message…" rows="1" disabled aria-label="Message input" data-i18n="type_message"></textarea>
         <div class="input-actions">
           <input type="file" id="imageInput" accept="image/*" class="sr-only">
-          <button type="button" class="btn-icon-oval" id="attachImageButton" disabled title="Attach image" data-i18n="attach_image">📎</button>
-          <button type="button" class="btn-icon-oval" id="recordAudioButton" disabled title="Record voice message" data-i18n="record_voice">🎤</button>
-          <button type="submit" class="btn-primary-oval" id="sendButton" disabled style="display: none;" data-i18n="send">➤</button>
+          <button type="button" class="btn-icon-oval" id="attachImageButton" disabled title="Attach image" >
+    <img src="/static/icons/Attach.png" width="20" height="20" alt="Attach" style="filter: invert(1);">
+</button>
+          <button type="button" class="btn-icon-oval" id="recordAudioButton" disabled title="Record voice message"><img src="/static/icons/Mic.png" width="20" height="20" alt="Record" style="filter: invert(1);"></button>          <button type="submit" class="btn-primary-oval" id="sendButton" disabled style="display: none;" data-i18n="send">➤</button>
         </div>
       </div>
     </form>
@@ -676,7 +685,7 @@
           <span class="subtitle" id="aiStatusSubtitle" data-i18n="ai_status">Internet · Streaming</span>
         </div>
         <div class="actions">
-          <button type="button" id="aiClearHistoryBtn" class="btn-icon-oval" title="Clear history" data-i18n="clear_messages">🗑</button>
+          <button type="button" id="aiClearHistoryBtn" class="btn-icon-oval" title="Clear history" ><img src="/static/icons/Remove.png" width="20" height="20" alt="Clear" style="filter: invert(1);"></button>
         </div>
       </div>
       <div id="aiMessagesContainer" class="messages"></div>
@@ -691,7 +700,9 @@
           </div>
           <div class="input-actions-right">
             <input type="file" id="aiImageInput" accept="image/*" class="sr-only">
-            <button type="button" id="aiAttachBtn" class="btn-icon-oval" title="Attach image" data-i18n="attach_image">📎</button>
+            <button type="button" id="aiAttachBtn" class="btn-icon-oval" title="Attach image">
+    <img src="/static/icons/Attach.png" width="20" height="20" alt="Attach" style="filter: invert(1);">
+</button>
             <button type="submit" id="aiSendBtn" class="btn-primary-oval" data-i18n="send">➤</button>
           </div>
         </div>
@@ -709,7 +720,9 @@
     </header>
     <div class="modal-body">
       <div class="text-center">
-        <button class="btn-oval" onclick="openQRScannerInModal()" data-i18n="scan_qr">📷 Scan QR Code</button>
+        <button class="btn-oval" onclick="openQRScannerInModal()" >
+    <img src="/static/icons/Cam.png" width="20" height="20" alt="Scan QR" style="filter: invert(1);"> Scan QR Code
+</button>
         <div id="qrScannerContainerModal" class="hidden">
           <div style="position:relative;display:inline-block;">
             <video id="qrVideoModal" style="width:200px;height:200px;border-radius:var(--radius-md);background:#000;"></video>

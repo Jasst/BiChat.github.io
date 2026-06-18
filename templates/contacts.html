@@ -401,7 +401,9 @@
 <div class="page-container">
   <div class="page-header">
     <h2 data-i18n="contacts">Contacts</h2>
-    <button class="btn-primary-oval" onclick="openQRScanner()" data-i18n="scan_qr">📷 Scan QR</button>
+    <button class="btn-primary-oval" onclick="openQRScanner()" >
+    <img src="/static/icons/Cam.png" width="24" height="24" alt="Scan QR" style="filter: invert(1);"> Scan QR
+</button>
   </div>
 
   <div id="qrScannerContainer" class="hidden qr-scanner-container">
@@ -557,10 +559,17 @@
             <div class="address font-mono truncate" style="cursor:pointer; font-size: 12px;" title="${i18next.t('copy_address')}">${escapeHtml(shortAddress)}</div>
           </div>
           <div class="actions">
-            <button class="btn-icon-oval" onclick="copyAddressFromElement('${escapeAttr(c.address)}')" title="${i18next.t('copy_address')}">📋</button>
+            <button class="btn-icon-oval" onclick="copyAddressFromElement('${escapeAttr(c.address)}')" title="${i18next.t('copy_address')}">
+    <img src="/static/icons/Copy.png" width="20" height="20" alt="Copy" style="filter: invert(1);">
+</button>
+
             <button class="btn-icon-oval" onclick="startChatWithContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}')" title="${i18next.t('start_chat')}">💬</button>
-            <button class="btn-icon-oval" onclick="editContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}', this)" title="${i18next.t('edit')}">✏️</button>
-            <button class="btn-icon-oval" style="color:var(--status-error);" onclick="deleteContact('${escapeAttr(c.address)}', this)" title="${i18next.t('delete')}">✕</button>
+           <button class="btn-icon-oval" onclick="editContact('${escapeAttr(c.address)}', '${escapeAttr(c.name)}', this)" title="${i18next.t('edit')}">
+    <img src="/static/icons/Edit.png" width="20" height="20" alt="Edit" style="filter: invert(1);">
+</button>
+            <button class="btn-icon-oval" style="color:var(--status-error);" onclick="deleteContact('${escapeAttr(c.address)}', this)" title="${i18next.t('delete')}">
+    <img src="/static/icons/Remove.png" width="20" height="20" alt="Remove" style="filter: invert(1);">
+</button>
           </div>`;
         container.appendChild(item);
       });

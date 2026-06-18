@@ -231,7 +231,9 @@
       <h3 style="margin-top:0;" data-i18n="send_coins_title">📤 Send BlockCoin</h3>
       <div class="form-row">
         <input type="text" id="sendAddress" class="input" placeholder="Recipient address (64 hex)" maxlength="64" data-i18n-placeholder="recipient_address">
-        <button class="btn-action outline" onclick="openWalletQRScanner()" title="Scanner" data-i18n="scanner_btn">📷</button>
+        <button class="btn-action outline" onclick="openWalletQRScanner()" title="Scanner" >
+    <img src="/static/icons/Cam.png" width="24" height="24" alt="Scanner" style="filter: invert(1);">
+</button>
       </div>
 
       <div id="qrScannerContainer" class="hidden qr-scanner-container" style="margin-bottom: 20px; border-radius: 12px; overflow: hidden;">
@@ -260,15 +262,23 @@
         <label data-i18n="your_address_label">Your address:</label>
         <div style="display: flex; align-items: center; gap: 10px;">
           <span class="value font-mono" id="receiveAddress" style="word-break: break-all; font-size: 12px;">{{ address|default('', true) }}</span>
-          <button class="btn-action outline" style="padding: 8px 12px;" onclick="copyAddressToClipboard()" title="Copy" data-i18n="copy_address_btn">📋</button>
+          <button class="btn-action outline" style="padding: 8px 12px;" onclick="copyAddressToClipboard()" title="Copy" >
+    <img src="/static/icons/Copy.png" width="20" height="20" alt="Copy" style="filter: invert(1);">
+</button>
         </div>
       </div>
       <button id="toggleQRBtn" class="btn-action outline" style="width: 100%; margin-top: 10px;" onclick="toggleReceiveQR()" data-i18n="show_qr_btn">📱 Show QR Code</button>
       <div id="qrBlock" class="hidden qr-container animate-fade">
         <div id="qrcode"></div>
         <div class="qr-actions">
-          <button class="btn-action outline" onclick="downloadQR()" data-i18n="download_qr_btn">📥 Download</button>
-          <button class="btn-action outline" onclick="shareQR()" data-i18n="share_qr_btn">📤 Share</button>
+          <div class="qr-actions">
+    <button class="btn-action outline" onclick="downloadQR()" >
+        <img src="/static/icons/Download.png" width="24" height="24" alt="Download" style="filter: invert(1);"> Download
+    </button>
+    <button class="btn-action outline" onclick="shareQR()" >
+        <img src="/static/icons/Share.png" width="24" height="24" alt="Share" style="filter: invert(1);"> Share
+    </button>
+</div>
         </div>
       </div>
     </div>
