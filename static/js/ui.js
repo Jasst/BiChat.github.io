@@ -151,8 +151,7 @@
         }
 
         const timeStr = Utils.formatTimestamp(msg.timestamp);
-        const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" title="${t('delete')}"><img src="/static/icons/Remove.png" width="16" height="16" alt="Delete" style="filter: invert(1);"></button>` : '';
-
+const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" title="${t('delete')}"><img src="/static/icons/Remove.png" width="16" height="16" alt="Delete"></button>` : '';
         let statusHtml = '';
         if (msg.is_mine) {
             const st = msg.status || 'sent';

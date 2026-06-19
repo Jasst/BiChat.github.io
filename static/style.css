@@ -599,15 +599,7 @@ body {
   font-size: 11px;
   color: var(--text-muted);
 }
-.delete-btn {
-  opacity: 0;
-  padding: 2px 8px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  border-radius: 60px;
-}
-.message:hover .delete-btn { opacity: 1; }
+
 
 /* ===== Овальное поле ввода (общее для чатов) ===== */
 /* Овальное поле ввода – позиционируем поверх сообщений */
@@ -1526,4 +1518,21 @@ audio::-webkit-media-controls-time-remaining-display {
         height: 64px;
         font-size: 26px;
     }
+}
+
+/* Кнопка удаления — всегда слегка видна, при касании становится ярче */
+.delete-btn {
+  opacity: 0.3 !important;          /* или 0.6, 0.7 — как вам удобнее */
+
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+}
+
+.delete-btn:hover,
+.delete-btn:active,
+.message:hover .delete-btn {
+  opacity: 1 !important;
 }
