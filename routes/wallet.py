@@ -213,7 +213,7 @@ async def last_proof(request: Request, address: str = Depends(require_auth)):
         'challenge': challenge,
     }
 
-@router.post('/mine', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=3))])
+@router.post('/mine', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=10))])
 async def mine(body: MineRequest, request: Request, address: str = Depends(require_auth)):
     if not ENABLE_MINING:
         raise HTTPException(403, 'Mining disabled')

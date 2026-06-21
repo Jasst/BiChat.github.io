@@ -1,13 +1,3 @@
-/**
- * notification-manager.js — Полная система уведомлений
- * 🔔 Звук (без файлов), баннеры, нативные уведомления
- *
- * ИСПРАВЛЕНИЯ v2:
- * 1. _showNative: удалён requireInteraction:true — ломает iOS (уведомление не показывается)
- * 2. _showNative: new Notification() не работает надёжно на мобильных когда страница в фоне;
- *    используем registration.showNotification() через SW — единственный надёжный способ
- * 3. Добавлен throttle на showToastForMessage — не показывать тост каждые 100мс при burst
- */
 (function() {
   'use strict';
 
@@ -35,8 +25,6 @@
       if (this.initialized) return;
       this.initialized = true;
 
-      // Не запрашиваем разрешение автоматически – только по жесту
-      // Отмечаем факт взаимодействия пользователя для звука
       const markInteraction = () => {
         if (this.userInteracted) return;
         this.userInteracted = true;
@@ -46,12 +34,11 @@
         document.removeEventListener('pointerdown', markInteraction);
         document.removeEventListener('keydown', markInteraction);
       };
-      // pointerdown + keydown покрывают больше сценариев на мобильных PWA
       document.addEventListener('click', markInteraction, { passive: true });
       document.addEventListener('touchstart', markInteraction, { passive: true });
       document.addEventListener('pointerdown', markInteraction, { passive: true });
       document.addEventListener('keydown', markInteraction, { passive: true });
-    }, // ← запятая
+    },
 
     async requestNotificationPermission() {
       if (!('Notification' in window)) return false;
@@ -70,14 +57,14 @@
         console.debug('Notification request failed', e);
       }
       return false;
-    }, // ← запятая
+    },
 
     _ensureAudioContext() {
       if (!this.audioCtx) {
         try {
           this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         } catch (e) {
-          console.debug('ℹ️ Web Audio not available');
+          console.debug('Web Audio not available');
           return false;
         }
       }
@@ -85,19 +72,38 @@
         this.audioCtx.resume().catch(() => {});
       }
       return this.audioCtx.state !== 'closed';
-    }, // ← запятая
+    },
 
     setActiveChat(chatId) {
       this.activeChatId = chatId ? this._normalizeChatId(chatId) : null;
       this.stopBlink();
-    }, // ← запятая
+
+      // ✅ Сообщаем Service Worker
+      this._syncActiveChatToSW();
+    },
+
+    // ✅ НОВОЕ: Централизованная синхронизация с SW
+    _syncActiveChatToSW() {
+      if (navigator.serviceWorker?.controller) {
+        if (this.activeChatId) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'SET_ACTIVE_CHAT',
+            chatId: this.activeChatId
+          });
+        } else {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'CLEAR_ACTIVE_CHAT'
+          });
+        }
+      }
+    },
 
     isActiveChat(chatId) {
       if (document.visibilityState !== 'visible') return false;
       const current = this.activeChatId;
       const target = this._normalizeChatId(chatId);
       return !!(current && target && current === target);
-    }, // ← запятая
+    },
 
     playSound(type = 'received') {
       if (!this.userInteracted) return;
@@ -124,14 +130,14 @@
         osc.start();
         osc.stop(this.audioCtx.currentTime + duration);
       } catch (e) {
-        console.debug('ℹ️ Sound play failed:', e);
+        console.debug('Sound play failed:', e);
       }
-    }, // ← запятая
+    },
 
     _normalizeChatId(chatId) {
       if (!chatId) return '';
       return chatId.startsWith('group:') ? chatId.slice(6) : chatId;
-    }, // ← запятая
+    },
 
     handleIncomingMessage(msg) {
       if (!msg?.sender || !msg?.chatId) return;
@@ -160,16 +166,14 @@
       }
 
       if (document.visibilityState !== 'visible') {
-        this._showViaSW(msg);
         if (this.config.blinkEnabled) {
           this.startBlink(msg.preview || 'Новое сообщение');
         }
       }
-    }, // ← запятая
+    },
 
     showToastForMessage(msg) {
       const senderName = (msg.sender?.slice(0, 12) || '?') + '…';
-      // ИСПРАВЛЕНИЕ: используем msg.content (расшифрованный текст) или msg.preview
       const preview = msg.content || msg.preview || 'Новое сообщение';
       const chatId = msg.chatId;
       const isGroup = msg.isGroup;
@@ -206,59 +210,7 @@
 
       document.body.appendChild(toast);
       setTimeout(() => { if (toast.parentNode) toast.remove(); }, this.config.toastDuration);
-    }, // ← запятая
-
-    async _showViaSW(msg) {
-      if (!this.config.notificationEnabled) return;
-      if (!('serviceWorker' in navigator)) return;
-      if (Notification.permission !== 'granted') return;
-
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        const senderName = (msg.sender?.slice(0, 12) || '?') + '…';
-        const title = msg.isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
-        const body = msg.content || 'Новое сообщение';
-        const chatId = this._normalizeChatId(msg.chatId);
-
-        await registration.showNotification(title, {
-          body,
-          icon: '/static/icon-192.png',
-          badge: '/static/icon-192.png',
-          tag: `msg-${chatId}`,
-          renotify: true,
-          silent: false,
-          data: {
-            url: msg.isGroup ? `/chat?group=${chatId}` : `/chat?address=${chatId}`,
-            chatId: msg.chatId,
-            isGroup: msg.isGroup
-          }
-        });
-      } catch(e) {
-        this._showNativeFallback(msg);
-      }
-    }, // ← запятая
-
-    _showNativeFallback(msg) {
-      if (!('Notification' in window) || Notification.permission !== 'granted') return;
-      try {
-        const senderName = (msg.sender?.slice(0, 12) || '?') + '…';
-        const title = msg.isGroup ? `👥 ${senderName}` : `💬 ${senderName}`;
-        const notif = new Notification(title, {
-          body: msg.content || 'Новое сообщение',
-          icon: '/static/icon-192.png',
-          tag: `msg-${this._normalizeChatId(msg.chatId)}`,
-          silent: true
-        });
-        notif.onclick = () => {
-          window.focus();
-          if (typeof window.selectConversation === 'function') {
-            window.selectConversation(msg.chatId, senderName, msg.isGroup);
-          }
-          notif.close();
-        };
-        setTimeout(() => notif.close(), this.config.notificationTimeout);
-      } catch (e) { /* ignore */ }
-    }, // ← запятая
+    },
 
     startBlink(text) {
       if (this.blinkInterval) clearInterval(this.blinkInterval);
@@ -269,12 +221,12 @@
         document.title = toggle ? `🔔 ${text}` : orig;
         toggle = !toggle;
       }, 1000);
-    }, // ← запятая
+    },
 
     stopBlink() {
       if (this.blinkInterval) { clearInterval(this.blinkInterval); this.blinkInterval = null; }
       document.title = this.originalTitle;
-    }, // ← запятая
+    },
 
     showToast(message, type = 'info', duration = 4000) {
       document.querySelectorAll('.system-toast').forEach(n => n.remove());
@@ -288,20 +240,20 @@
       toast.querySelector('.close').onclick = close;
       document.body.appendChild(toast);
       setTimeout(close, duration);
-    }, // ← запятая
+    },
 
     _getToastIcon(type) {
       const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
       return icons[type] || icons.info;
-    }, // ← запятая
+    },
 
     _escapeHtml(str) {
       const div = document.createElement('div');
       div.textContent = str || '';
       return div.innerHTML;
-    }, // ← запятая
+    },
 
-    configure(cfg) { this.config = { ...this.config, ...cfg }; }, // ← запятая
+    configure(cfg) { this.config = { ...this.config, ...cfg }; },
 
     destroy() {
       this.stopBlink();
@@ -319,12 +271,31 @@
     NotificationManager.init();
   }
 
+  // ✅ При уходе со страницы — сбрасываем активный чат в SW
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       NotificationManager.stopBlink();
       document.title = NotificationManager.originalTitle;
+      // ✅ При возвращении на страницу — обновляем activeChatId в SW
+      NotificationManager._syncActiveChatToSW();
+    } else {
+      // ✅ При уходе страницы в фон — сбрасываем activeChatId в SW
+      // чтобы push-уведомления показывались для ВСЕХ чатов
+      if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'CLEAR_ACTIVE_CHAT'
+        });
+      }
     }
   });
 
-  window.addEventListener('beforeunload', () => NotificationManager.destroy());
+  window.addEventListener('beforeunload', () => {
+    // ✅ При закрытии/перезагрузке — сбрасываем
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CLEAR_ACTIVE_CHAT'
+      });
+    }
+    NotificationManager.destroy();
+  });
 })();

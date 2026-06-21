@@ -1,6 +1,15 @@
 /**
- * call-manager.js — WebRTC менеджер с iOS-фиксами, таймером разговора и полной i18n поддержкой
- * Исправлено: добавлен флаг isEstablishing для защиты от восстановления во время запроса микрофона
+ * call-manager.js — WebRTC менеджер с поддержкой аудио/видео, восстановлением при переключении вкладок,
+ * ICE‑restart на iOS, таймером разговора и i18n.
+ *
+ * Исправления:
+ *   - Разрешён ICE‑restart на iOS.
+ *   - Увеличен таймер _disconnectTimer до 20 секунд.
+ *   - Улучшен _visibilityHandler: восстановление WebSocket, переподключение аудио, каскадное восстановление.
+ *   - Добавлена поддержка видеозвонков (отображение локального и удалённого видео).
+ *   - Исправлено восстановление видео после сворачивания.
+ *   - Автоопределение видеозвонка по SDP.
+ *   - Динамическое изменение размера модального окна.
  */
 (function() {
     if (window.CallManagerLoaded) return;
@@ -8,42 +17,44 @@
 
     class CallManager {
         constructor() {
-    this.pc = null;
-    this.localStream = null;
-    this.currentCallId = null;
-    this.currentPartner = null;
-    this.currentPartnerName = null;
-    this.isInitiator = false;
-    this.isAudioOnly = true;
-    this.iceServers = [];
-    this.isMuted = false;
-    this.isSpeakerEnabled = false;
-    this.activeModal = null;
-    this.remoteAudio = null;
-    this.isCompactMode = false;
-    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    this.outsideClickListener = null;
-    this.audioCtx = null;
-    this._visibilityHandler = null;
-    this._incomingModalObserver = null;   // ← ДОБАВИТЬ ЭТУ СТРОКУ
+            this.pc = null;
+            this.localStream = null;
+            this.currentCallId = null;
+            this.currentPartner = null;
+            this.currentPartnerName = null;
+            this.isInitiator = false;
+            this.isAudioOnly = true;         // true = только аудио, false = видео
+            this.iceServers = [];
+            this.isMuted = false;
+            this.isSpeakerEnabled = false;
+            this.activeModal = null;
+            this.remoteAudio = null;
+            this.isCompactMode = false;
+            this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            this.outsideClickListener = null;
+            this.audioCtx = null;
+            this._visibilityHandler = null;
+            this._incomingModalObserver = null;
 
-    // FIX: буфер для ICE candidates
-    this.pendingCandidates = [];
-    this.pendingAnswer = null;
+            // Буфер для ICE candidates
+            this.pendingCandidates = [];
+            this.pendingAnswer = null;
 
-    // Таймер разговора
-    this.callStartTime = null;
-    this.callDurationInterval = null;
+            // Таймер разговора
+            this.callStartTime = null;
+            this.callDurationInterval = null;
 
-    // Флаг: соединение в процессе установки
-    this.isEstablishing = false;
-    this._disconnectTimer = null;
-    this._connectTimeout = null;
+            // Флаг: соединение в процессе установки
+            this.isEstablishing = false;
+            this._disconnectTimer = null;
+            this._connectTimeout = null;
 
+            // Для управления видео
+            this.isVideoEnabled = false;      // показывает, включена ли камера в данный момент
+            this._initialized = false;
+        }
 
-
-}
-
+        // ========== i18n и таймеры ==========
         t(key, defaultValue = '') {
             if (typeof i18next !== 'undefined' && i18next.isInitialized && i18next.exists(key)) {
                 return i18next.t(key);
@@ -113,16 +124,22 @@
             this.setDurationText('00:00');
         }
 
+        // ========== Инициализация ==========
         async init() {
+            if (this._initialized) {
+                console.log('[CallManager] Already initialized, skipping');
+                return;
+            }
+            this._initialized = true;
+
             try {
                 const res = await fetch('/calls/turn-credentials');
                 const data = await res.json();
                 this.iceServers = data.iceServers;
                 console.log('ICE servers loaded', this.iceServers);
                 if ("Notification" in window && Notification.permission === "default") {
-                     await Notification.requestPermission();
+                    await Notification.requestPermission();
                 }
-
             } catch(e) {
                 console.warn('Failed to load TURN config, fallback to STUN only', e);
                 this.iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -149,26 +166,47 @@
                 document.addEventListener('click', unlockGesture, { once: true });
             }
 
-            this._visibilityHandler = () => {
-                if (document.visibilityState !== 'visible') return;
-                if (!this.pc) return;
-                if (this.isEstablishing) {
-                    console.log('[CallManager] Skipping visibility recovery – call is establishing');
-                    return;
-                }
-                const state = this.pc.connectionState;
-                const ice = this.pc.iceConnectionState;
+            // ========== Улучшенный обработчик видимости ==========
+            this._visibilityHandler = async () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!this.pc) return;
+    if (this.isEstablishing) {
+        console.log('[CallManager] Skipping visibility recovery – call is establishing');
+        return;
+    }
 
-                if (state === 'failed' || state === 'closed' || ice === 'failed' || ice === 'disconnected') {
-                    console.warn('[CallManager] Recovery: restarting call due to state', { state, ice });
-                    this.restartCallFull();
-                } else {
-                    this.reattachRemoteStream();
-                    if (ice !== 'connected' && ice !== 'completed') {
-                        this.restartIce();
-                    }
-                }
-            };
+    // Восстанавливаем WebSocket
+    if (window.wsClient && !window.wsClient.isConnected && typeof window.initWebSocket === 'function') {
+        console.warn('[CallManager] WebSocket disconnected, reconnecting...');
+        window.initWebSocket().catch(err => console.warn('[CallManager] WS reconnect failed:', err));
+    }
+
+    // Всегда переподключаем аудио и видео (на всякий случай)
+    this.reattachRemoteStream();
+    await this.refreshLocalVideo(); // теперь await разрешён
+
+    // Показываем контейнер видео, если нужно
+    if (!this.isAudioOnly) {
+        this.showVideoContainer(true);
+    } else {
+        this.showVideoContainer(false);
+    }
+    this.updateModalSize();
+
+    const state = this.pc.connectionState;
+    const ice = this.pc.iceConnectionState;
+
+    if (state === 'failed' || state === 'closed' || ice === 'failed') {
+        console.warn('[CallManager] Recovery: restarting call due to state', { state, ice });
+        this.restartCallFull();
+    } else {
+        console.warn('[CallManager] Forcing ICE restart to restore video after tab switch');
+        this.restartIce().catch(() => {
+            console.warn('[CallManager] ICE restart failed, falling back to full restart');
+            this.restartCallFull();
+        });
+    }
+};
             document.addEventListener('visibilitychange', this._visibilityHandler);
 
             if (typeof i18next !== 'undefined' && i18next.isInitialized) {
@@ -182,6 +220,7 @@
             }
         }
 
+        // ========== Работа с аудиоконтекстом (iOS) ==========
         unlockAudioContext() {
             if (!this.isIOS) return Promise.resolve();
             if (this.audioCtx && this.audioCtx.state === 'running') return Promise.resolve();
@@ -199,20 +238,23 @@
             }
         }
 
+        // ========== Звук входящего вызова ==========
         playIncomingSound() {
-            try {
-                if (this._incomingAudio) return;
-                const audio = new Audio("/sounds/incoming.mp3");
-                audio.loop = true;
-                audio.volume = 0.8;
-                const playPromise = audio.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(err => console.warn("[CallManager] sound blocked:", err));
+            if (this._incomingAudio) return;
+            this.unlockAudioContext().then(() => {
+                try {
+                    const audio = new Audio("/sounds/incoming.mp3");
+                    audio.loop = true;
+                    audio.volume = 0.8;
+                    const playPromise = audio.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(err => console.warn("[CallManager] sound blocked:", err));
+                    }
+                    this._incomingAudio = audio;
+                } catch (e) {
+                    console.warn("incoming sound error", e);
                 }
-                this._incomingAudio = audio;
-            } catch (e) {
-                console.warn("incoming sound error", e);
-            }
+            }).catch(() => {});
         }
 
         stopIncomingSound() {
@@ -223,13 +265,57 @@
             }
         }
 
-        reattachRemoteStream() {
-            if (!this.remoteAudio || !window._remoteStream) return;
-            this.remoteAudio.srcObject = null;
-            this.remoteAudio.srcObject = window._remoteStream;
-            this.remoteAudio.play().catch(e => console.warn('[iOS] play() after reattach failed:', e));
-        }
 
+// ========== Переподключение удалённого аудио ==========
+reattachRemoteStream() {
+    if (!this.remoteAudio || !window._remoteStream) return;
+    this.remoteAudio.srcObject = null;
+    this.remoteAudio.srcObject = window._remoteStream;
+    this.remoteAudio.load();
+    this.remoteAudio.play().catch(e => console.warn('[CallManager] remoteAudio play after reattach:', e));
+}
+
+// ========== Переподключение видео (локального и удалённого) ==========
+reattachVideoStreams() {
+    // --- Удалённое видео ---
+    if (window._remoteStream) {
+        const remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo) {
+            // Проверяем, есть ли видеодорожка и активна ли она
+            const videoTracks = window._remoteStream.getVideoTracks();
+            if (videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
+                // Сбрасываем, ждём микро-паузу, переустанавливаем
+                remoteVideo.srcObject = null;
+                // Небольшая задержка, чтобы браузер успел обработать сброс
+                setTimeout(() => {
+                    remoteVideo.srcObject = window._remoteStream;
+                    remoteVideo.load();
+                    remoteVideo.play().catch(e => console.warn('[CallManager] remoteVideo play after reattach:', e));
+                }, 50);
+            } else {
+                console.warn('[CallManager] Remote video track not live, skipping reattach');
+            }
+        }
+    }
+
+    // --- Локальное видео ---
+    if (this.localStream) {
+        const localVideo = document.getElementById('localVideo');
+        if (localVideo) {
+            const videoTracks = this.localStream.getVideoTracks();
+            if (videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
+                localVideo.srcObject = null;
+                setTimeout(() => {
+                    localVideo.srcObject = this.localStream;
+                    localVideo.load();
+                    localVideo.play().catch(e => console.warn('[CallManager] localVideo play after reattach:', e));
+                }, 50);
+            }
+        }
+    }
+}
+
+        // ========== Буферизация ICE-кандидатов ==========
         flushPendingCandidates() {
             if (!this.pc) return;
             console.log('[ICE] Flushing', this.pendingCandidates.length, 'buffered candidates');
@@ -241,13 +327,9 @@
             this.pendingCandidates = [];
         }
 
+        // ========== ICE‑restart (без блокировки iOS) ==========
         async restartIce() {
             if (!this.pc || !this.currentPartner) return;
-            if (this.isIOS) {
-                console.warn('[CallManager] ICE restart disabled on iOS');
-                this.endCall();
-                return;
-            }
             try {
                 const offer = await this.pc.createOffer({ iceRestart: true });
                 offer.sdp = this.preferOpusCodec(offer.sdp);
@@ -262,10 +344,11 @@
                 console.log('[CallManager] ICE restart offer sent');
             } catch(e) {
                 console.error('[CallManager] ICE restart failed:', e);
-                this.endCall();
+                await this.restartCallFull();
             }
         }
 
+        // ========== Полный перезапуск звонка (только для инициатора) ==========
         async restartCallFull() {
             if (!this.currentPartner || !this.currentCallId) return;
             if (!this.isInitiator) {
@@ -283,6 +366,7 @@
             await this.makeCall(partner, !isAudioOnly, partnerName);
         }
 
+        // ========== Кодек Opus (для аудио) ==========
         preferOpusCodec(sdp) {
             if (this.isIOS) return sdp;
             if (!sdp) return sdp;
@@ -303,6 +387,7 @@
             return lines.join('\r\n');
         }
 
+        // ========== Мини‑виджет (свёрнутый звонок) ==========
         createMiniWidget() {
             if (document.getElementById('callMiniWidget')) return;
             const widget = document.createElement('div');
@@ -317,7 +402,9 @@
                 </div>
                 <div class="call-mini-actions">
                     <button class="call-mini-btn" id="miniExpandBtn">⤢</button>
-                    <button class="call-mini-btn call-mini-end" id="miniEndBtn">📞</button>
+                    <button class="call-mini-btn call-mini-end" id="miniEndBtn">
+    <img src="/static/icons/EndCall.png" width="20" height="20" alt="End call" style="filter: invert(1);">
+</button>
                 </div>
             `;
             document.body.appendChild(widget);
@@ -334,6 +421,7 @@
                 if (this.isCompactMode) this.expandFromMini();
             });
 
+            // Перетаскивание
             let isDragging = false, startX, startY, offsetX, offsetY;
             const onDragStart = (e, clientX, clientY) => {
                 if (e.target.closest('.call-mini-btn')) return;
@@ -374,6 +462,7 @@
             document.addEventListener('touchend', onDragEnd);
         }
 
+        // ========== Клик вне модалки (сворачивание) ==========
         addOutsideClickListener() {
             this.removeOutsideClickListener();
             const attachAfterDelay = () => {
@@ -400,6 +489,7 @@
             }
         }
 
+        // ========== Получение медиапотока (аудио + видео) ==========
         async getUserMedia() {
             if (this.localStream) {
                 const tracks = this.localStream.getTracks();
@@ -411,15 +501,26 @@
                 }
             }
             if (this.localStream) return this.localStream;
+
+            const constraints = {
+                audio: true,
+                video: !this.isAudioOnly
+            };
+            const mediaPromise = navigator.mediaDevices.getUserMedia(constraints);
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Microphone access timeout (10s)')), 10000)
+            );
+
             try {
-                this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: !this.isAudioOnly });
+                this.localStream = await Promise.race([mediaPromise, timeoutPromise]);
                 return this.localStream;
             } catch(e) {
-                console.error('Media access denied', e);
-                throw new Error('Cannot access microphone/camera');
+                console.error('Media access denied or timed out', e);
+                throw new Error('Cannot access microphone/camera. Please check permissions.');
             }
         }
 
+        // ========== Закрытие медиапотоков ==========
         closeMedia() {
             if (this.localStream) {
                 this.localStream.getTracks().forEach(t => t.stop());
@@ -433,9 +534,139 @@
                 window._remoteStream.getTracks().forEach(t => t.stop());
                 window._remoteStream = null;
             }
+            // Очищаем видеоэлементы
+            const localVideo = document.getElementById('localVideo');
+            if (localVideo) { localVideo.srcObject = null; localVideo.pause(); }
+            const remoteVideo = document.getElementById('remoteVideo');
+            if (remoteVideo) { remoteVideo.srcObject = null; remoteVideo.pause(); }
+            this.showVideoContainer(false);
         }
 
+        // ========== Управление отображением видео в модалке ==========
+        showVideoContainer(show) {
+            const container = document.querySelector('.call-video-container');
+            if (container) container.style.display = show ? 'block' : 'none';
+            const avatar = document.querySelector('.call-avatar');
+            if (avatar) avatar.style.display = show ? 'none' : 'block';
+            this.updateModalSize();
+        }
+
+        // ========== Изменение размера модального окна ==========
+        updateModalSize() {
+            const modal = document.querySelector('#callModal .call-modal');
+            if (!modal) return;
+
+            if (!this.isAudioOnly) {
+                if (window.innerWidth < 768) {
+                    modal.style.maxWidth = '95vw';
+                    modal.style.width = '95%';
+                } else {
+                    modal.style.maxWidth = '70vw';
+                    modal.style.width = '70%';
+                }
+            } else {
+                modal.style.maxWidth = '340px';
+                modal.style.width = '90%';
+            }
+        }
+
+        // ========== Включить/выключить локальную камеру ==========
+        toggleVideo() {
+    if (!this.localStream) return;
+    const videoTracks = this.localStream.getVideoTracks();
+    if (videoTracks.length === 0) {
+        window.NotificationManager?.showToast('No video track available', 'error');
+        return;
+    }
+    const enabled = videoTracks[0].enabled;
+    videoTracks.forEach(t => t.enabled = !enabled);
+    this.isVideoEnabled = !enabled;
+    const videoBtn = document.getElementById('callVideoToggleBtn');
+    if (videoBtn) {
+        // Меняем иконку
+        const videoIcon = document.getElementById('videoIcon');
+        if (videoIcon) {
+            videoIcon.src = this.isVideoEnabled ? '/static/icons/Video.png' : '/static/icons/NoVideo.png';
+        }
+        videoBtn.classList.toggle('active', this.isVideoEnabled);
+        videoBtn.title = this.isVideoEnabled ? 'Turn off camera' : 'Turn on camera';
+    }
+}
+
+        // ========== Перезапрос локального видео и замена треков ==========
+        async refreshLocalVideo() {
+    if (this.isAudioOnly) return;
+    if (!this.currentPartner || !this.currentCallId) return;
+
+    try {
+        // Запрашиваем новый поток с камерой
+        const newStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: { facingMode: 'user' } // или 'environment'
+        });
+
+        // Находим видеодорожку в новом потоке
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        if (!newVideoTrack) {
+            console.warn('[CallManager] No video track in new stream');
+            return;
+        }
+
+        // Находим старый видеотрек в локальном потоке
+        const oldVideoTrack = this.localStream?.getVideoTracks()[0];
+        if (oldVideoTrack) {
+            // Заменяем трек в PeerConnection
+            const sender = this.pc?.getSenders().find(s => s.track === oldVideoTrack);
+            if (sender) {
+                await sender.replaceTrack(newVideoTrack);
+                console.log('[CallManager] Video track replaced in PeerConnection');
+            } else {
+                // Если sender не найден, добавляем новый трек
+                this.pc?.addTrack(newVideoTrack, this.localStream);
+            }
+            // Останавливаем старый трек
+            oldVideoTrack.stop();
+        } else {
+            // Если старого трека не было, просто добавляем
+            this.pc?.addTrack(newVideoTrack, this.localStream);
+        }
+
+        // Обновляем локальный поток: заменяем видеодорожку
+        const audioTracks = this.localStream?.getAudioTracks() || [];
+        const newStreamWithAudio = new MediaStream([...audioTracks, newVideoTrack]);
+        this.localStream = newStreamWithAudio;
+
+        // Обновляем локальное видео на экране
+        const localVideo = document.getElementById('localVideo');
+        if (localVideo) {
+            localVideo.srcObject = null;
+            localVideo.srcObject = this.localStream;
+            localVideo.load();
+            localVideo.play().catch(e => console.warn);
+        }
+
+        // Отправляем новый offer с iceRestart
+        await this.restartIce();
+
+        window.NotificationManager?.showToast('Camera reconnected', 'info');
+    } catch (err) {
+        console.error('[CallManager] Failed to refresh local video:', err);
+        window.NotificationManager?.showToast('Camera reconnection failed', 'error');
+    }
+}
+
+        // ========== Создание исходящего звонка ==========
         async makeCall(partnerAddress, isVideo = false, partnerName = '') {
+            if (this.currentCallId) {
+                const confirmEnd = confirm(this.t('call_active_message', 'You are already in a call. End it to start a new one?'));
+                if (!confirmEnd) {
+                    window.NotificationManager?.showToast(this.t('call_in_progress', 'Call already in progress'), 'warning');
+                    return;
+                }
+                this.endCall();
+                await new Promise(r => setTimeout(r, 500));
+            }
+
             await this.unlockAudioContext();
 
             this.isEstablishing = true;
@@ -445,19 +676,31 @@
                 this.currentPartnerName = partnerName || partnerAddress.slice(0,10) + '…';
                 this.isInitiator = true;
                 this.currentCallId = `call_${Date.now()}_${Math.random().toString(36)}`;
+
                 const stream = await this.getUserMedia();
                 this.createPeerConnection();
                 stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
+
+                const localVideo = document.getElementById('localVideo');
+                if (localVideo && !this.isAudioOnly) {
+                    localVideo.srcObject = stream;
+                    localVideo.play().catch(e => console.warn);
+                }
+                this.showVideoContainer(!this.isAudioOnly);
+
                 const offer = await this.pc.createOffer();
                 offer.sdp = this.preferOpusCodec(offer.sdp);
                 await this.pc.setLocalDescription(offer);
                 this.flushPendingAnswer();
+
                 window.wsClient?.send({
                     type: 'call_offer',
                     target: partnerAddress,
                     call_id: this.currentCallId,
-                    sdp: offer
+                    sdp: offer,
+                    video: isVideo
                 });
+
                 this.showCallModal('outgoing', this.t('call_calling'));
             } catch(err) {
                 console.error(err);
@@ -468,6 +711,7 @@
             }
         }
 
+        // ========== Создание PeerConnection (с увеличенным таймером) ==========
         createPeerConnection() {
             if (this.pc) {
                 this.pc.onconnectionstatechange = null;
@@ -477,7 +721,6 @@
                 this.pc.close();
                 this.stopCallTimer();
             }
-            this.pendingCandidates = [];
             this.pendingAnswer = null;
             window._remoteStream = null;
             if (window._pendingCallHandled) window._pendingCallHandled = false;
@@ -513,6 +756,16 @@
                 }
                 this.attachRemoteStream(window._remoteStream);
                 this.updateCallStatus('connected');
+
+                const hasVideo = window._remoteStream && window._remoteStream.getVideoTracks().length > 0;
+                if (hasVideo) {
+                    this.showVideoContainer(true);
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    if (remoteVideo) {
+                        remoteVideo.srcObject = window._remoteStream;
+                        remoteVideo.play().catch(e => console.warn);
+                    }
+                }
             };
 
             this.pc.onconnectionstatechange = () => {
@@ -539,16 +792,11 @@
                 const s = this.pc.iceConnectionState;
                 console.log('[CallManager] ICE state:', s);
                 if (s === 'failed') {
-                    if (this.isIOS) {
-                        console.warn('[CallManager] ICE failed on iOS, ending call');
-                        this.endCall();
+                    if (this.currentPartner && this.currentCallId) {
+                        console.warn('[CallManager] ICE failed, attempting restart');
+                        this.restartIce();
                     } else {
-                        if (this.currentPartner && this.currentCallId) {
-                            console.warn('[CallManager] ICE failed, attempting restart');
-                            this.restartIce();
-                        } else {
-                            this.endCall();
-                        }
+                        this.endCall();
                     }
                 } else if (s === 'disconnected') {
                     if (this._disconnectTimer) clearTimeout(this._disconnectTimer);
@@ -561,7 +809,7 @@
                             console.warn('[CallManager] ICE disconnected too long, restarting call');
                             this.restartCallFull();
                         }
-                    }, 10000);
+                    }, 20000);
                 } else if (s === 'connected' || s === 'completed') {
                     if (this._disconnectTimer) {
                         clearTimeout(this._disconnectTimer);
@@ -580,15 +828,18 @@
             }, 30000);
         }
 
+        // ========== Прикрепление удалённого видеопотока ==========
         attachRemoteStream(stream) {
             const remoteVideo = document.getElementById('remoteVideo');
             if (remoteVideo && stream.getVideoTracks().length > 0) {
                 remoteVideo.srcObject = stream;
                 remoteVideo.play().catch(e => console.warn);
+                this.showVideoContainer(true);
             }
         }
 
-        async answerCall(callId, fromAddress, offerSdp, partnerName = '') {
+        // ========== Ответ на входящий звонок ==========
+        async answerCall(callId, fromAddress, offerSdp, partnerName = '', isVideo = false) {
             console.log('[answerCall] start, callId:', callId, 'from:', fromAddress);
             this.stopIncomingSound();
             await this.unlockAudioContext();
@@ -599,6 +850,7 @@
                 this.currentPartner = fromAddress;
                 this.currentPartnerName = partnerName || fromAddress.slice(0,10) + '…';
                 this.isInitiator = false;
+                this.isAudioOnly = !isVideo;
 
                 let offer = offerSdp;
                 if (typeof offerSdp === 'string') {
@@ -613,6 +865,14 @@
                 const stream = await this.getUserMedia();
                 this.createPeerConnection();
                 stream.getTracks().forEach(track => this.pc.addTrack(track, stream));
+
+                const localVideo = document.getElementById('localVideo');
+                if (localVideo && !this.isAudioOnly) {
+                    localVideo.srcObject = stream;
+                    localVideo.play().catch(e => console.warn);
+                }
+                this.showVideoContainer(!this.isAudioOnly);
+
                 this.showCallModal('active', this.t('call_connecting'));
 
                 await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -638,6 +898,7 @@
             }
         }
 
+        // ========== Обработка ответа (SDP) ==========
         handleRemoteAnswer(answerSdp) {
             if (!this.pc || !this.pc.localDescription) {
                 console.warn('[CallManager] handleRemoteAnswer: pc not ready, buffering answer');
@@ -660,6 +921,7 @@
             this.handleRemoteAnswer(ans);
         }
 
+        // ========== Обработка ICE-кандидатов ==========
         handleRemoteIce(candidate) {
             if (!candidate) return;
             if (!this.pc || this.pc.signalingState === 'closed') {
@@ -680,18 +942,24 @@
                 .catch(err => console.error('[ICE] addIceCandidate failed:', err, candidateInit));
         }
 
-        toggleMute() {
-            if (!this.localStream) return;
-            this.isMuted = !this.isMuted;
-            this.localStream.getAudioTracks().forEach(track => track.enabled = !this.isMuted);
-            const muteBtn = document.getElementById('callMuteBtn');
-            if (muteBtn) {
-                muteBtn.innerHTML = this.isMuted ? '🔇' : '🎤';
-                muteBtn.classList.toggle('active', this.isMuted);
-                muteBtn.title = this.t(this.isMuted ? 'call_unmute_microphone' : 'call_mute_microphone');
-            }
+        // ========== Управление микрофоном ==========
+       toggleMute() {
+    if (!this.localStream) return;
+    this.isMuted = !this.isMuted;
+    this.localStream.getAudioTracks().forEach(track => track.enabled = !this.isMuted);
+    const muteBtn = document.getElementById('callMuteBtn');
+    if (muteBtn) {
+        // Заменяем иконку на изображение
+        const muteIcon = document.getElementById('muteIcon');
+        if (muteIcon) {
+            muteIcon.src = this.isMuted ? '/static/icons/Mic-off.png' : '/static/icons/Mic.png';
         }
+        muteBtn.classList.toggle('active', this.isMuted);
+        muteBtn.title = this.t(this.isMuted ? 'call_unmute_microphone' : 'call_mute_microphone');
+    }
+}
 
+        // ========== Переключение динамика ==========
         async toggleSpeaker() {
             if (this.isIOS) {
                 window.NotificationManager?.showToast('Speaker routing is automatic on iOS', 'info');
@@ -726,16 +994,18 @@
             }
         }
 
+        // ========== Повторное соединение (для входящих) ==========
         reconnectCall() {
-    if (!this.lastCallId || !this.lastFrom || !this.lastOffer) {
-        window.NotificationManager?.showToast('No call to reconnect', 'error');
-        return;
-    }
-    console.log('[CallManager] Reconnecting call', this.lastCallId);
-    this.hideIncomingModal();
-    this.answerCall(this.lastCallId, this.lastFrom, this.lastOffer, this.lastFromName);
-}
+            if (!this.lastCallId || !this.lastFrom || !this.lastOffer) {
+                window.NotificationManager?.showToast('No call to reconnect', 'error');
+                return;
+            }
+            console.log('[CallManager] Reconnecting call', this.lastCallId);
+            this.hideIncomingModal();
+            this.answerCall(this.lastCallId, this.lastFrom, this.lastOffer, this.lastFromName);
+        }
 
+        // ========== Завершение звонка ==========
         endCall() {
             this.stopIncomingSound();
             this.removeOutsideClickListener();
@@ -765,87 +1035,117 @@
             this.updateCallStatus('ended');
             this.isCompactMode = false;
             this.isEstablishing = false;
+            this.isVideoEnabled = false;
             window.NotificationManager?.showToast(this.t('call_ended'), 'info');
         }
 
+        // ========== Отклонение входящего звонка ==========
         rejectCall(callId, from) {
             window.wsClient?.send({ type: 'call_reject', target: from, call_id: callId });
             this.hideIncomingModal();
             window.NotificationManager?.showToast(this.t('call_rejected'), 'info');
         }
 
+        // ========== Отображение модального окна звонка ==========
         showCallModal(state, statusText = '') {
-            let modal = document.getElementById('callModal');
-            if (!modal) return;
-            if (!modal.classList.contains('hidden') && this.currentCallId && modal.dataset.callId === this.currentCallId) {
-                console.log('[CallManager] Call modal already visible, skipping');
-                return;
-            }
-            if (this.currentCallId) modal.dataset.callId = this.currentCallId;
+    let modal = document.getElementById('callModal');
+    if (!modal) return;
+    if (!modal.classList.contains('hidden') && this.currentCallId && modal.dataset.callId === this.currentCallId) {
+        console.log('[CallManager] Call modal already visible, skipping');
+        return;
+    }
+    if (this.currentCallId) modal.dataset.callId = this.currentCallId;
 
-            if (!document.getElementById('callDuration')) {
-                const statusDiv = modal.querySelector('.call-status');
-                if (statusDiv) {
-                    const durationDiv = document.createElement('div');
-                    durationDiv.id = 'callDuration';
-                    durationDiv.className = 'call-duration';
-                    durationDiv.style.marginTop = '8px';
-                    durationDiv.style.fontSize = '14px';
-                    durationDiv.style.fontWeight = '500';
-                    statusDiv.after(durationDiv);
-                }
-            }
-
-            modal.classList.remove('hidden');
-            this.activeModal = 'call';
-            this.isCompactMode = false;
-            this.hideMiniWidget();
-            this.addOutsideClickListener();
-
-            const avatarEl = document.getElementById('callAvatar');
-            const nameEl   = document.getElementById('callPartnerName');
-            const statusEl = document.getElementById('callStatusText');
-            if (nameEl)   nameEl.textContent   = this.currentPartnerName || this.currentPartner || 'Unknown';
-            if (avatarEl) avatarEl.textContent  = (this.currentPartnerName?.[0] || '?').toUpperCase();
-            if (statusEl) statusEl.textContent  = statusText || (state === 'outgoing' ? this.t('call_calling') : this.t('call_connected'));
-
-            const muteBtn     = document.getElementById('callMuteBtn');
-            const speakerBtn  = document.getElementById('callSpeakerBtn');
-            const endBtn      = document.getElementById('callEndBtn');
-            const collapseBtn = document.getElementById('callCollapseBtn');
-
-            if (muteBtn) {
-                muteBtn.innerHTML = '🎤';
-                muteBtn.classList.remove('active');
-                muteBtn.onclick = () => this.toggleMute();
-                muteBtn.title = this.t('call_mute_microphone');
-            }
-            if (speakerBtn) {
-                if (this.isIOS) {
-                    speakerBtn.style.display = 'none';
-                } else {
-                    speakerBtn.style.display = '';
-                    speakerBtn.innerHTML = '🎧';
-                    speakerBtn.classList.remove('active');
-                    speakerBtn.onclick = () => this.toggleSpeaker();
-                    speakerBtn.title = this.t('call_speaker');
-                }
-            }
-            if (endBtn) {
-                endBtn.innerHTML = '📞';
-                endBtn.onclick = () => this.endCall();
-                endBtn.title = this.t('call_end');
-            }
-            if (collapseBtn) {
-                collapseBtn.onclick = () => this.collapseToMini();
-                collapseBtn.title = this.t('call_minimize');
-            }
-
-            this.isMuted = false;
-            this.isSpeakerEnabled = false;
-            this.updateLocalizedTexts();
+    if (!document.getElementById('callDuration')) {
+        const statusDiv = modal.querySelector('.call-status');
+        if (statusDiv) {
+            const durationDiv = document.createElement('div');
+            durationDiv.id = 'callDuration';
+            durationDiv.className = 'call-duration';
+            durationDiv.style.marginTop = '8px';
+            durationDiv.style.fontSize = '14px';
+            durationDiv.style.fontWeight = '500';
+            statusDiv.after(durationDiv);
         }
+    }
 
+    modal.classList.remove('hidden');
+    this.activeModal = 'call';
+    this.isCompactMode = false;
+    this.hideMiniWidget();
+    this.addOutsideClickListener();
+
+    const avatarEl = document.getElementById('callAvatar');
+    const nameEl   = document.getElementById('callPartnerName');
+    const statusEl = document.getElementById('callStatusText');
+    if (nameEl)   nameEl.textContent   = this.currentPartnerName || this.currentPartner || 'Unknown';
+    if (avatarEl) avatarEl.textContent  = (this.currentPartnerName?.[0] || '?').toUpperCase();
+    if (statusEl) statusEl.textContent  = statusText || (state === 'outgoing' ? this.t('call_calling') : this.t('call_connected'));
+
+    const muteBtn     = document.getElementById('callMuteBtn');
+    const speakerBtn  = document.getElementById('callSpeakerBtn');
+    const endBtn      = document.getElementById('callEndBtn');
+    const collapseBtn = document.getElementById('callCollapseBtn');
+    const videoToggleBtn = document.getElementById('callVideoToggleBtn');
+
+    if (muteBtn) {
+    muteBtn.innerHTML = '<img src="/static/icons/Mic.png" width="28" height="28" alt="Mute" id="muteIcon" style="filter: invert(1);">';
+    muteBtn.classList.remove('active');
+    muteBtn.onclick = () => this.toggleMute();
+    muteBtn.title = this.t('call_mute_microphone');
+}
+    if (speakerBtn) {
+        if (this.isIOS) {
+            speakerBtn.style.display = 'none';
+        } else {
+            speakerBtn.style.display = '';
+            speakerBtn.innerHTML = '🎧';
+            speakerBtn.classList.remove('active');
+            speakerBtn.onclick = () => this.toggleSpeaker();
+            speakerBtn.title = this.t('call_speaker');
+        }
+    }
+    if (endBtn) {
+    endBtn.innerHTML = '<img src="/static/icons/EndCall.png" width="28" height="28" alt="Call" style="filter: invert(1);">';
+    endBtn.onclick = () => this.endCall();
+    endBtn.title = this.t('call_end');
+}
+    if (collapseBtn) {
+        collapseBtn.onclick = () => this.collapseToMini();
+        collapseBtn.title = this.t('call_minimize');
+    }
+
+    if (videoToggleBtn) {
+    if (this.isAudioOnly) {
+        videoToggleBtn.style.display = 'none';
+    } else {
+        videoToggleBtn.style.display = '';
+        // Устанавливаем начальную иконку Video.png
+        videoToggleBtn.innerHTML = '<img src="/static/icons/Video.png" width="24" height="24" alt="Video" id="videoIcon" style="filter: invert(1);">';
+        videoToggleBtn.classList.remove('active');
+        videoToggleBtn.onclick = () => this.toggleVideo();
+        videoToggleBtn.title = 'Turn off camera';
+    }
+}
+
+    this.isMuted = false;
+    this.isSpeakerEnabled = false;
+    this.isVideoEnabled = !this.isAudioOnly;
+    this.updateLocalizedTexts();
+    this.updateModalSize();
+
+    // 🔽 ДОБАВЛЕННЫЙ БЛОК – восстанавливаем воспроизведение видео при разворачивании
+    const remoteVideo = document.getElementById('remoteVideo');
+    if (remoteVideo && remoteVideo.srcObject) {
+        remoteVideo.play().catch(e => console.warn('[CallManager] remoteVideo play after expand:', e));
+    }
+    const localVideo = document.getElementById('localVideo');
+    if (localVideo && localVideo.srcObject) {
+        localVideo.play().catch(e => console.warn('[CallManager] localVideo play after expand:', e));
+    }
+}
+
+        // ========== Сворачивание в мини‑виджет ==========
         collapseToMini() {
             if (this.isCompactMode) return;
             this.isCompactMode = true;
@@ -876,6 +1176,7 @@
             document.getElementById('callMiniWidget')?.classList.add('hidden');
         }
 
+        // ========== Обновление статуса в интерфейсе ==========
         updateCallStatus(status) {
             const statusEl = document.getElementById('callStatusText');
             if (statusEl) {
@@ -894,11 +1195,11 @@
             const modal = document.getElementById('callModal');
             if (modal) modal.classList.add('hidden');
             this.activeModal = null;
-            const rv = document.getElementById('remoteVideo');
-            if (rv?.srcObject) rv.srcObject = null;
+
         }
 
-        showIncomingCallModal(callId, from, offerSdp, fromName = '') {
+        // ========== Модальное окно входящего звонка ==========
+        showIncomingCallModal(callId, from, offerSdp, fromName = '', bufferedCandidates = [], isVideo = false) {
             this.playIncomingSound();
             const modal = document.getElementById('incomingCallModal');
             if (!modal) return;
@@ -906,12 +1207,29 @@
                 this._incomingModalObserver.disconnect();
                 this._incomingModalObserver = null;
             }
+
+            // Автоопределение видео по SDP
+            let isVideoFlag = isVideo;
+            if (!isVideoFlag && offerSdp) {
+                const sdpString = typeof offerSdp === 'object' && offerSdp.sdp ? offerSdp.sdp : offerSdp;
+                if (typeof sdpString === 'string') {
+                    isVideoFlag = sdpString.includes('m=video');
+                    if (isVideoFlag) {
+                        console.log('[CallManager] Video detected from SDP (m=video found)');
+                    }
+                }
+            }
+
             modal.classList.remove('hidden');
             this.activeModal = 'incoming';
             modal.dataset.callId = callId;
             modal.dataset.from = from;
             modal.dataset.offerSdp = JSON.stringify(offerSdp);
+            modal.dataset.video = isVideoFlag ? 'true' : 'false';
             this.currentPartnerName = fromName || from.slice(0,16) + '…';
+
+            this.pendingCandidates = bufferedCandidates || [];
+            console.log('[CallManager] Buffered candidates from server:', this.pendingCandidates.length);
 
             const nameSpan = document.getElementById('incomingCallerName');
             if (nameSpan) nameSpan.textContent = this.currentPartnerName;
@@ -919,32 +1237,33 @@
             const acceptBtn = document.getElementById('acceptCallBtn');
             const rejectBtn = document.getElementById('rejectCallBtn');
 
-            if (acceptBtn) {
-                acceptBtn.innerHTML = '✓';
-                acceptBtn.title = this.t('call_accept');
-                acceptBtn.onclick = async () => {
-                    await this.unlockAudioContext();
-                    let actualOffer = offerSdp;
-                    if (!actualOffer || (typeof actualOffer === 'object' && !actualOffer?.sdp)) {
-                        const raw = modal.dataset.offerSdp;
-                        if (raw) {
-                            try { actualOffer = JSON.parse(raw); } catch(e) { actualOffer = null; }
-                        }
-                    }
-                    const actualCallId   = modal.dataset.callId   || callId;
-                    const actualFrom     = modal.dataset.from      || from;
-                    this.hideIncomingModal();
-                    this.answerCall(actualCallId, actualFrom, actualOffer, fromName);
-                };
+           if (acceptBtn) {
+    acceptBtn.innerHTML = '<img src="/static/icons/AddCall.png" width="28" height="28" alt="Accept" style="filter: invert(1);">';
+    acceptBtn.title = this.t('call_accept');
+    acceptBtn.onclick = async () => {
+        await this.unlockAudioContext();
+        let actualOffer = offerSdp;
+        if (!actualOffer || (typeof actualOffer === 'object' && !actualOffer?.sdp)) {
+            const raw = modal.dataset.offerSdp;
+            if (raw) {
+                try { actualOffer = JSON.parse(raw); } catch(e) { actualOffer = null; }
             }
-            if (rejectBtn) {
-                rejectBtn.innerHTML = '✕';
-                rejectBtn.title = this.t('call_reject');
-                rejectBtn.onclick = () => {
-                    this.rejectCall(callId, from);
-                    this.hideIncomingModal();
-                };
-            }
+        }
+        const actualCallId   = modal.dataset.callId   || callId;
+        const actualFrom     = modal.dataset.from      || from;
+        const videoFlag = modal.dataset.video === 'true';
+        this.hideIncomingModal();
+        this.answerCall(actualCallId, actualFrom, actualOffer, fromName, videoFlag);
+    };
+}
+if (rejectBtn) {
+    rejectBtn.innerHTML = '<img src="/static/icons/EndCall.png" width="28" height="28" alt="Reject" style="filter: invert(1);">';
+    rejectBtn.title = this.t('call_reject');
+    rejectBtn.onclick = () => {
+        this.rejectCall(callId, from);
+        this.hideIncomingModal();
+    };
+}
 
             const fromLabel = modal.querySelector('.call-status');
             if (fromLabel) {
@@ -972,6 +1291,7 @@
             }, 50);
         }
 
+        // ========== Push-уведомление о входящем звонке ==========
         showIncomingNotification(name, from) {
             if (!("Notification" in window)) return;
             const title = "📞 Incoming call";
@@ -1002,6 +1322,7 @@
             if (modal) modal.classList.add('hidden');
         }
 
+        // ========== Обновление локализованных надписей ==========
         updateLocalizedTexts() {
             const miniStatus = document.getElementById('miniStatus');
             if (miniStatus) miniStatus.textContent = this.t('call_connected');
@@ -1027,6 +1348,10 @@
                 if (endBtn) endBtn.title = this.t('call_end');
                 const collapseBtn = document.getElementById('callCollapseBtn');
                 if (collapseBtn) collapseBtn.title = this.t('call_minimize');
+                const videoToggleBtn = document.getElementById('callVideoToggleBtn');
+                if (videoToggleBtn && !this.isAudioOnly) {
+                    videoToggleBtn.title = this.isVideoEnabled ? 'Turn off camera' : 'Turn on camera';
+                }
             }
 
             const incomingModal = document.getElementById('incomingCallModal');
@@ -1050,45 +1375,39 @@
         }
     }
 
+    // ========== Создание и инициализация глобального экземпляра ==========
     window.CallManager = new CallManager();
     window.CallManager.init();
 
+    // ========== Глобальный обработчик сигналов WebSocket ==========
     window.handleCallSignal = (data) => {
-    const { type, call_id, from, sdp, candidate, from_name } = data;
+        const { type, call_id, from, sdp, candidate, from_name, candidates, video } = data;
 
-    // Защита от старых сигналов
-    if (call_id && window.CallManager.currentCallId && call_id !== window.CallManager.currentCallId) {
-        console.warn('[CallManager] stale signal ignored. current:', window.CallManager.currentCallId, 'received:', call_id);
-        return;
-    }
-
-    if (type === 'incoming_call') {
-        const callFrom = from || data.caller || data.sender || '';
-        const callSdp  = sdp || data.offer || data.sdp_offer || null;
-        const callName = from_name || data.caller_name || '';
-
-        // Проверяем, был ли это звонок из pending (после разблокировки)
-        const isPending = sessionStorage.getItem('pending_call_id') === call_id;
-        if (isPending) {
-            console.log('[handleCallSignal] Pending call – showing modal, waiting for user action');
-            sessionStorage.removeItem('pending_call_id');
+        if (call_id && window.CallManager.currentCallId && call_id !== window.CallManager.currentCallId) {
+            console.warn('[CallManager] stale signal ignored. current:', window.CallManager.currentCallId, 'received:', call_id);
+            return;
         }
 
-        // ВСЕГДА показываем модальное окно – пользователь сам нажмёт «Принять»
-        window.CallManager.showIncomingCallModal(call_id, callFrom, callSdp, callName);
-        window.CallManager.showIncomingNotification(callName, callFrom);
-        return;  // ← добавить
-    }
-    else if (type === 'call_answer') {
-        if (!sdp) console.error('[handleCallSignal] call_answer has NO sdp!');
-        window.CallManager.handleRemoteAnswer(sdp);
-    }
-    else if (type === 'call_ice') {
-        if (!candidate) console.warn('[handleCallSignal] call_ice has NO candidate');
-        window.CallManager.handleRemoteIce(candidate);
-    }
-    else if (type === 'call_hangup' || type === 'call_reject') {
-        window.CallManager.endCall();
-    }
-};
+        if (type === 'incoming_call') {
+            if (window.CallManager.currentCallId) {
+                console.warn('[CallManager] Already in call, rejecting incoming');
+                window.wsClient?.send({ type: 'call_reject', target: from, call_id: call_id });
+                return;
+            }
+            window.CallManager.showIncomingCallModal(call_id, from, sdp, from_name, candidates || [], video || false);
+        }
+        else if (type === 'call_answer') {
+            window.CallManager.handleRemoteAnswer(sdp);
+        }
+        else if (type === 'call_ice') {
+            window.CallManager.handleRemoteIce(candidate);
+        }
+        else if (type === 'call_hangup') {
+            window.CallManager.endCall();
+        }
+        else if (type === 'call_reject') {
+            window.CallManager.endCall();
+        }
+    };
+
 })();

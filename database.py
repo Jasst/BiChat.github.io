@@ -155,14 +155,6 @@ async def _create_tables(conn: asyncpg.Connection):
             version    INTEGER PRIMARY KEY,
             applied_at DOUBLE PRECISION
         );
-        CREATE TABLE IF NOT EXISTS push_subscriptions (
-              id            SERIAL PRIMARY KEY,
-              user_address  TEXT NOT NULL,
-              subscription  TEXT NOT NULL,
-              endpoint_hash TEXT,
-              created_at    DOUBLE PRECISION DEFAULT (extract(epoch from now())),
-             UNIQUE(user_address, subscription)
-        );
         CREATE TABLE IF NOT EXISTS offline_messages (
             id            BIGSERIAL PRIMARY KEY,
             user_address  TEXT NOT NULL,

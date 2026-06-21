@@ -367,9 +367,9 @@ const QRScanner = {
   config: {
     videoWidth: 1280,
     videoHeight: 720,
-    scanSize: 400,
+    scanSize: 280,
     inversionAttempts: "attemptBoth",
-    scanInterval: 100,
+    scanInterval: 80,
     videoWaitTimeout: 5000,
     videoWaitInterval: 100
   },
@@ -497,7 +497,7 @@ const QRScanner = {
       try {
         const videoW = videoEl.videoWidth;
         const videoH = videoEl.videoHeight;
-        const size = Math.min(videoW, videoH) * 0.8;
+        const size = Math.min(videoW, videoH) * 0.5;
         const sx = (videoW - size) / 2;
         const sy = (videoH - size) / 2;
 

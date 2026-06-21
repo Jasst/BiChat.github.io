@@ -106,3 +106,14 @@ TURN_USERNAME = os.getenv('TURN_USERNAME', '')
 TURN_PASSWORD = os.getenv('TURN_PASSWORD', '')
 TURN_REALM = os.getenv('TURN_REALM', 'blockchat.ru')
 TURN_CREDENTIAL_TTL = int(os.getenv('TURN_CREDENTIAL_TTL', '86400'))
+
+# Валидация критичных конфигов при старте
+def _validate_config():
+    if VAPID_PRIVATE_KEY and not VAPID_PUBLIC_KEY:
+        logging.error("CONFIG ERROR: VAPID_PRIVATE_KEY is set, but VAPID_PUBLIC_KEY is missing! Push will not work.")
+    if TURN_ENABLED and not TURN_STATIC_AUTH_SECRET and not (TURN_USERNAME and TURN_PASSWORD):
+        logging.warning("CONFIG WARN: TURN_ENABLED=1, but no TURN_STATIC_AUTH_SECRET or TURN_USERNAME/PASSWORD set. Calls may fail.")
+    if 'user:pass' in DATABASE_URL:
+        logging.error("CONFIG ERROR: DATABASE_URL has default credentials. Change it!")
+
+_validate_config()
