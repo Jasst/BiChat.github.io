@@ -29,6 +29,8 @@ from pydantic import BaseModel, Field
 import aiohttp
 from ddgs import DDGS
 import sys
+from .emergence_extensions import EmergenceMixin
+
 
 from config import (
     EASYDIFFUSION_ENABLED,
@@ -79,17 +81,6 @@ LM_STUDIO_TIMEOUT = 160
 LM_STUDIO_STREAM_TIMEOUT = 500
 MAX_IMAGE_SIZE_BASE64 = 5 * 1024 * 1024
 
-# Настройки интеллектуального поиска
-MAX_SEARCH_ITERATIONS = 3            # максимум итераций поиска
-SEARCH_CACHE_TTL = 300
-PAGE_CONTENT_MAX_CHARS = 6000
-MAX_PAGES_TO_FETCH = 5               # страниц за одну итерацию
-MIN_RELEVANCE_THRESHOLD = 0.35       # косинусное сходство для отбора фрагментов
-CHUNK_SIZE = 800                     # символов в одном фрагменте
-PARALLEL_FETCH_LIMIT = 3             # параллельных загрузок страниц
-
-_search_cache: Dict[str, Tuple[str, float]] = {}          # кэш результатов поиска
-_sufficiency_cache: Dict[str, Tuple[bool, float]] = {}    # кэш оценки достаточности
 
 # Глобальное обучение (без изменений)
 GLOBAL_KNOWLEDGE_DIR = Path("ai_memory_v3/_global")
@@ -105,12 +96,16 @@ MIN_GLOBAL_QUALITY      = 0.55
 GLOBAL_MERGE_INTERVAL   = 1800
 MAX_GLOBAL_EPISODES     = 5000
 
+
+
+
 # ==================================================================
 # 🧠 Подсознание (без изменений)
 # ==================================================================
 class Subconscious(nn.Module):
     def __init__(self, input_dim=EMBEDDING_DIM, latent_dim=LATENT_DIM, hidden=128):
         super().__init__()
+
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         self.hidden = hidden
@@ -503,17 +498,19 @@ class GlobalKnowledgeBase:
 #    - Fallback на сниппеты при ошибке загрузки страниц
 # ==================================================================
 
-# Обновлённые константы поиска
-MAX_SEARCH_ITERATIONS = 3
-SEARCH_CACHE_TTL = 300
-PAGE_CONTENT_MAX_CHARS = 6000
-MAX_PAGES_TO_FETCH = 5
-MIN_RELEVANCE_THRESHOLD = 0.30      # снижен: гибридный скор строже
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 150                 # НОВОЕ: перекрытие чанков
-PARALLEL_FETCH_LIMIT = 3
-DDG_MIN_INTERVAL = 1.5              # НОВОЕ: rate-limit DDG (секунды)
-SEARCH_CACHE_MAX_SIZE = 100         # НОВОЕ: макс элементов в кэше
+# Константы поиска (единый источник истины)
+MAX_SEARCH_ITERATIONS = 3           # максимум итераций поиска
+SEARCH_CACHE_TTL = 300              # TTL кэша в секундах
+PAGE_CONTENT_MAX_CHARS = 6000       # максимум символов со страницы
+MAX_PAGES_TO_FETCH = 5              # страниц за одну итерацию
+MIN_RELEVANCE_THRESHOLD = 0.28      # гибридный порог релевантности
+CHUNK_SIZE = 800                    # символов в одном чанке
+CHUNK_OVERLAP = 150                 # перекрытие чанков
+PARALLEL_FETCH_LIMIT = 4            # параллельных загрузок страниц (↑ с 3)
+DDG_MIN_INTERVAL = 1.2              # rate-limit DDG (секунды)
+DDG_MAX_RETRIES = 3                 # НОВОЕ: макс попыток при rate-limit
+SEARCH_CACHE_MAX_SIZE = 200         # НОВОЕ: макс элементов в кэше (↑ с 100)
+AUTO_SEARCH_ENABLED = True          # НОВОЕ: автодетект необходимости поиска
 
 _search_cache: Dict[str, Tuple[str, float]] = {}
 _sufficiency_cache: Dict[str, Tuple[bool, float]] = {}
@@ -726,55 +723,85 @@ class AdaptiveWebSearch:
     async def _ddg_search(
         self, query: str, max_results: int = 10
     ) -> List[Dict]:
-        """Поиск через DDGS с rate limiting."""
+        """Поиск через DDGS с rate limiting и автоматическим retry."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(DDG_MAX_RETRIES):
+            try:
+                return await self._ddg_search_once(query, max_results)
+            except Exception as e:
+                last_exc = e
+                err_str = str(e).lower()
+                is_rate_limit = (
+                    "202" in str(e)
+                    or "ratelimit" in err_str
+                    or "rate limit" in err_str
+                    or "too many" in err_str
+                    or "429" in str(e)
+                )
+                wait = (1.5 ** attempt) * self._ddg_min_interval + random.uniform(0, 0.8)
+                if is_rate_limit:
+                    logger.warning(
+                        f"DDG rate-limit попытка {attempt+1}/{DDG_MAX_RETRIES}, "
+                        f"ожидание {wait:.1f}с"
+                    )
+                else:
+                    logger.warning(f"DDG ошибка (попытка {attempt+1}): {e}")
+                if attempt < DDG_MAX_RETRIES - 1:
+                    await asyncio.sleep(wait)
+        logger.error(f"DDG не ответил после {DDG_MAX_RETRIES} попыток: {last_exc}")
+        return []
+
+    async def _ddg_search_once(
+        self, query: str, max_results: int = 10
+    ) -> List[Dict]:
+        """Единичный запрос к DDGS (без retry)."""
         now = time.time()
         elapsed = now - self._last_ddg_call
         if elapsed < self._ddg_min_interval:
             await asyncio.sleep(self._ddg_min_interval - elapsed)
         self._last_ddg_call = time.time()
 
-        results = []
-        try:
-            def sync_search():
-                with DDGS() as ddgs:
-                    return list(
-                        ddgs.text(
-                            query,
-                            max_results=max_results,
-                            safesearch="moderate",
-                            region="ru-ru",
-                        )
-                    )
+        # Детектируем язык для region
+        lang_hint = "ru-ru"
+        latin_ratio = sum(1 for c in query if c.isascii() and c.isalpha()) / max(1, len(query))
+        if latin_ratio > 0.6:
+            lang_hint = "wt-wt"  # глобальный
 
-            search_results = await asyncio.to_thread(sync_search)
-            for r in search_results:
-                url = r.get("href", "")
-                domain = self._extract_domain(url)
-                # Пропускаем проблемные домены (сниппет сохраним позже)
-                results.append(
-                    {
-                        "title": r.get("title", "")[:200],
-                        "url": url,
-                        "snippet": r.get("body", "")[:800],
-                        "skip_fetch": domain in self.SKIP_DOMAINS,
-                    }
+        def sync_search():
+            with DDGS() as ddgs:
+                return list(
+                    ddgs.text(
+                        query,
+                        max_results=max_results,
+                        safesearch="moderate",
+                        region=lang_hint,
+                    )
                 )
-        except Exception as e:
-            logger.warning(f"DDGS search error: {e}")
+
+        search_results = await asyncio.to_thread(sync_search)
+        results = []
+        for r in search_results:
+            url = r.get("href", "")
+            domain = self._extract_domain(url)
+            results.append({
+                "title": r.get("title", "")[:200],
+                "url": url,
+                "snippet": r.get("body", "")[:800],
+                "skip_fetch": domain in self.SKIP_DOMAINS,
+            })
         return results
 
     # ──────────────────────── Wikipedia API ────────────────────────
 
-    async def _wikipedia_search(
-        self, query: str, lang: str = "ru"
+    async def _wikipedia_search_lang(
+        self, query: str, lang: str
     ) -> List[Dict]:
-        """Поиск через Wikipedia API — отлично для фактических вопросов."""
+        """Поиск в одной языковой версии Wikipedia."""
         results = []
         try:
             session = await self._get_session()
             base_url = f"https://{lang}.wikipedia.org/w/api.php"
 
-            # Шаг 1: поиск статей
             search_params = {
                 "action": "query",
                 "list": "search",
@@ -792,7 +819,6 @@ class AdaptiveWebSearch:
                 data = await resp.json()
                 hits = data.get("query", {}).get("search", [])
 
-            # Шаг 2: получаем extract (текст) для каждой статьи
             for hit in hits:
                 page_id = hit.get("pageid")
                 title = hit.get("title", "")
@@ -819,24 +845,45 @@ class AdaptiveWebSearch:
                         for pid, page in pages.items():
                             extract = page.get("extract", "")
                             if extract and len(extract) > 100:
-                                results.append(
-                                    {
-                                        "title": title,
-                                        "url": (
-                                            f"https://{lang}.wikipedia.org/wiki/"
-                                            f"{urllib.parse.quote(title)}"
-                                        ),
-                                        "snippet": extract[:800],
-                                        "full_text": extract[
-                                            :PAGE_CONTENT_MAX_CHARS
-                                        ],
-                                    }
-                                )
+                                results.append({
+                                    "title": f"[{lang.upper()}] {title}",
+                                    "url": (
+                                        f"https://{lang}.wikipedia.org/wiki/"
+                                        f"{urllib.parse.quote(title)}"
+                                    ),
+                                    "snippet": extract[:800],
+                                    "full_text": extract[:PAGE_CONTENT_MAX_CHARS],
+                                })
                 except Exception:
                     continue
         except Exception as e:
-            logger.debug(f"Wikipedia search error: {e}")
+            logger.debug(f"Wikipedia [{lang}] error: {e}")
         return results
+
+    async def _wikipedia_search(
+        self, query: str, lang: str = "ru"
+    ) -> List[Dict]:
+        """Параллельный поиск в ru + en Wikipedia одновременно."""
+        # Определяем язык запроса
+        latin_ratio = sum(1 for c in query if c.isascii() and c.isalpha()) / max(1, len(query))
+        if latin_ratio > 0.7:
+            langs = ["en", "ru"]
+        else:
+            langs = ["ru", "en"]
+
+        tasks = [self._wikipedia_search_lang(query, l) for l in langs]
+        all_results_nested = await asyncio.gather(*tasks, return_exceptions=True)
+
+        merged: List[Dict] = []
+        seen_titles: set = set()
+        for res in all_results_nested:
+            if isinstance(res, list):
+                for r in res:
+                    key = r["title"].split("] ", 1)[-1].lower()[:40]
+                    if key not in seen_titles:
+                        seen_titles.add(key)
+                        merged.append(r)
+        return merged
 
     # ──────────────────────── Загрузка и парсинг страниц ────────────────────────
 
@@ -878,40 +925,62 @@ class AdaptiveWebSearch:
             return "", str(e)[:200]
 
     def _parse_with_bs4(self, html: str) -> str:
-        """Парсинг через BeautifulSoup — удаляет шум, ищет основной контент."""
+        """Парсинг через BeautifulSoup с определением основного контента по плотности текста."""
         try:
             soup = self._BS(html, "html.parser")
 
-            # Удаляем нежелательные теги
-            for tag in soup.find_all(
-                [
-                    "script", "style", "nav", "footer", "header",
-                    "aside", "iframe", "noscript", "form",
-                    "svg", "button", "input",
-                ]
-            ):
+            # Удаляем нежелательные теги целиком
+            for tag in soup.find_all([
+                "script", "style", "nav", "footer", "header",
+                "aside", "iframe", "noscript", "form", "svg",
+                "button", "input", "select", "textarea",
+                "figure figcaption",  # keep figcaption separately below
+            ]):
                 tag.decompose()
 
-            # Ищем основной контент
+            # Удаляем меню/рекламные блоки по class/id
+            for tag in soup.find_all(True, attrs={
+                "class": re.compile(
+                    r"(menu|nav|sidebar|widget|banner|ad|cookie|popup|"
+                    r"subscribe|share|social|related|recommend|comment)", re.I
+                )
+            }):
+                tag.decompose()
+
+            # Приоритетный поиск основного контента
             main_content = None
-            for selector in [
-                "article", "main", '[role="main"]',
-                ".content", ".post-content", ".article-content",
-                ".entry-content", "#content", "#main",
-                ".post-body", ".story-body",
-            ]:
+            selectors = [
+                "article",
+                "main",
+                '[role="main"]',
+                ".article-body", ".article-content", ".article-text",
+                ".post-content", ".post-body", ".entry-content",
+                ".story-body", ".story-content",
+                ".content-body", ".page-content",
+                "#article", "#content", "#main", "#post",
+                ".news-body", ".text", ".body",
+            ]
+            for selector in selectors:
                 main_content = soup.select_one(selector)
-                if main_content:
+                if main_content and len(main_content.get_text(strip=True)) > 200:
                     break
+            else:
+                main_content = None
 
-            content = (
-                main_content
-                if main_content
-                else soup.body
-                if soup.body
-                else soup
-            )
+            # Если не нашли по selectors — ищем div с наибольшей плотностью текста
+            if not main_content:
+                best_div = None
+                best_score = 0
+                for div in soup.find_all(["div", "section"]):
+                    text_len = len(div.get_text(strip=True))
+                    tag_count = len(div.find_all()) + 1
+                    score = text_len / tag_count
+                    if score > best_score and text_len > 300:
+                        best_score = score
+                        best_div = div
+                main_content = best_div
 
+            content = main_content or soup.body or soup
             text = content.get_text(separator=" ", strip=True)
             text = re.sub(r"\s+", " ", text).strip()
             return text
@@ -1189,35 +1258,64 @@ class AdaptiveWebSearch:
     async def is_information_sufficient(
         self, question: str, collected_chunks: List[RelevantChunk]
     ) -> Tuple[bool, Optional[str]]:
-        """LLM оценивает, хватает ли собранной информации для полного ответа."""
+        """Многоуровневая оценка достаточности информации (эвристика → LLM)."""
         if not collected_chunks:
             return False, None
 
-        # Быстрая эвристика: высокорелевантных чанков много → достаточно
-        high_score = sum(1 for c in collected_chunks if c.score > 0.55)
+        high_score = sum(1 for c in collected_chunks if c.score > 0.5)
         total_text = sum(len(c.text) for c in collected_chunks)
-        if high_score >= 3 and total_text > 2000:
+        wiki_present = any(c.engine == "wikipedia" for c in collected_chunks)
+        sources_count = len({c.source_url for c in collected_chunks})
+
+        # Уровень 1: быстрые эвристики (без LLM)
+        # Достаточно если: много высокорелевантных чанков из разных источников
+        if high_score >= 3 and total_text > 2500 and sources_count >= 2:
+            logger.debug("Sufficiency: fast pass (high_score+sources)")
             return True, None
 
-        # LLM-оценка
+        # Wiki + хороший DDG chunk = достаточно для большинства фактических вопросов
+        if wiki_present and high_score >= 1 and total_text > 1500:
+            logger.debug("Sufficiency: fast pass (wiki+ddg)")
+            return True, None
+
+        # Маленький вопрос (≤5 слов) — одного хорошего источника достаточно
+        if len(question.split()) <= 5 and high_score >= 1 and total_text > 500:
+            logger.debug("Sufficiency: fast pass (short question)")
+            return True, None
+
+        # Уровень 2: кэш LLM-оценки
+        cache_key = hashlib.md5(
+            (question + str(len(collected_chunks)) + str(total_text)).encode()
+        ).hexdigest()
+        if cache_key in _sufficiency_cache:
+            cached_result, ts = _sufficiency_cache[cache_key]
+            if time.time() - ts < 120:
+                return cached_result, None
+
+        # Уровень 3: LLM-оценка (только если эвристики не справились)
         chunks_text = "\n\n---\n\n".join(
-            f"[{c.engine}] Источник: {c.source_url}\n{c.text[:800]}"
-            for c in collected_chunks[:6]
+            f"[{c.engine.upper()}] {c.title[:60]}\n{c.text[:600]}"
+            for c in collected_chunks[:5]
         )
         prompt = (
-            f"Изучи фрагменты из интернета по запросу пользователя.\n"
             f"Вопрос: {question}\n\n"
-            f"Фрагменты:\n{chunks_text}\n\n"
-            f"Достаточно ли этой информации для полного и точного ответа?\n"
-            f"Если ДА — ответь: ДОСТАТОЧНО\n"
-            f"Если НЕТ — напиши новый поисковый запрос после слова ЗАПРОС:\n"
-            f"Формат: [ДОСТАТОЧНО или ЗАПРОС: <запрос>]"
+            f"Фрагменты из интернета:\n{chunks_text}\n\n"
+            f"Достаточно ли данных для полного ответа?\n"
+            f"Если ДА: ответь ДОСТАТОЧНО\n"
+            f"Если НЕТ: ответь ЗАПРОС: <уточняющий запрос>\n"
+            f"Только один из двух форматов выше."
         )
-        response = await self.assistant._call_llm(
-            [{"role": "user", "content": prompt}]
-        )
+        try:
+            response = await self.assistant._call_llm(
+                [{"role": "user", "content": prompt}]
+            )
+        except Exception:
+            # Если LLM недоступен — считаем что достаточно если есть хоть что-то
+            return total_text > 800, None
+
         response_upper = response.strip().upper()
         if response_upper.startswith("ДОСТАТОЧНО"):
+            _sufficiency_cache[cache_key] = (True, time.time())
             return True, None
         if "ЗАПРОС:" in response_upper:
             new_query = (
@@ -1227,8 +1325,10 @@ class AdaptiveWebSearch:
                 .strip("\"'")
             )
             if new_query and len(new_query) > 2:
+                _sufficiency_cache[cache_key] = (False, time.time())
                 return False, new_query
-        return False, None
+        _sufficiency_cache[cache_key] = (total_text > 1000, time.time())
+        return total_text > 1000, None
 
     # ──────────────────────── Итеративный поиск (главный метод) ────────────────────────
 
@@ -1275,23 +1375,23 @@ class AdaptiveWebSearch:
             meta["iterations"] = iteration + 1
             logger.info(f"🔍 Итерация {iteration + 1}: '{current_query}'")
 
-            # ── DDG поиск ──
-            ddg_results = await self._ddg_search(current_query, max_results=8)
+            # ── Параллельный запуск DDG + Wikipedia ──
+            ddg_task = asyncio.create_task(
+                self._ddg_search(current_query, max_results=10)
+            )
+            wiki_task = (
+                asyncio.create_task(self._wikipedia_search(current_query))
+                if iteration == 0
+                else None
+            )
+
+            ddg_results = await ddg_task
+            wiki_results = (await wiki_task) if wiki_task else []
+
             if ddg_results and "duckduckgo" not in meta["sources_used"]:
                 meta["sources_used"].append("duckduckgo")
-
-            # ── Wikipedia (только на первой итерации) ──
-            wiki_results = []
-            if iteration == 0:
-                wiki_results = await self._wikipedia_search(
-                    current_query, lang="ru"
-                )
-                if not wiki_results:
-                    wiki_results = await self._wikipedia_search(
-                        current_query, lang="en"
-                    )
-                if wiki_results and "wikipedia" not in meta["sources_used"]:
-                    meta["sources_used"].append("wikipedia")
+            if wiki_results and "wikipedia" not in meta["sources_used"]:
+                meta["sources_used"].append("wikipedia")
 
             # ── Обработка Wikipedia (текст уже есть) ──
             for wr in wiki_results:
@@ -1525,8 +1625,16 @@ class DynamicVocab:
         return {'size': self.next_idx, 'capacity': self.cur_size, 'avg_quality': round(float(avg_q),3)}
 
 # ==================================================================
-# 🧠 Память (без изменений, но расширена для обучения из поиска)
+# 🧠 Память (расширена для обучения из поиска)
 # ==================================================================
+@dataclass
+class Concept:
+    """Семантическая концепция в долгосрочной памяти."""
+    name: str
+    definition: str
+    embedding: np.ndarray
+    confidence: float = 0.5
+
 @dataclass
 class Episode:
     content: str
@@ -1650,7 +1758,7 @@ class CognitiveMemory:
 # ==================================================================
 # 🤖 Основной ассистент (с интеллектуальным поиском)
 # ==================================================================
-class SelfImprovingAssistant:
+class SelfImprovingAssistant(EmergenceMixin):
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.vocab = DynamicVocab()
@@ -1670,6 +1778,8 @@ class SelfImprovingAssistant:
         self.current_lr = LEARNING_RATE
         self._agent = None
         self.web_searcher = AdaptiveWebSearch(self)   # новый интеллектуальный поиск
+        self.init_emergence()
+        self._quality_threshold = 0.4
 
     @property
     def agent(self):
@@ -1716,6 +1826,24 @@ class SelfImprovingAssistant:
             return hashlib.md5(f"{message}|{img_hash}".encode()).hexdigest()
         return hashlib.md5(message.encode()).hexdigest()
 
+    def get_subconscious_instruction(self, text: str, context: str = "") -> str:
+        """Получить инструкцию от подсознания (делегирует внутренние torch-операции)."""
+        try:
+            query_emb = torch.tensor(
+                self.vocab.encode(text), dtype=torch.float32
+            ).unsqueeze(0)
+            mem_emb = (
+                torch.tensor(self.vocab.encode(context), dtype=torch.float32).unsqueeze(0)
+                if context
+                else torch.zeros(1, EMBEDDING_DIM)
+            )
+            _, logits = self.subconscious.forward(query_emb, mem_emb)
+            instruction, _ = self.subconscious.generate_prompt_instruction(logits)
+            return instruction
+        except Exception as e:
+            logger.debug(f"get_subconscious_instruction error: {e}")
+            return ""
+
     def _build_system_prompt(self, reasoning: bool, has_web: bool, sub_instruction: str = "") -> str:
         prompt = (
             "Ты — самообучающийся AI-ассистент с долговременной памятью и доступом к интернету.\n"
@@ -1737,6 +1865,11 @@ class SelfImprovingAssistant:
         if sub_instruction:
             prompt += f"\n\n{sub_instruction}"
         return prompt
+
+    async def _apply_reflection(self):
+        entry = await self.reflect.reflect(self.total_interactions, self._call_llm)
+        if entry:
+            await self.reflective_action.apply_reflection(entry)
 
     async def _call_llm(self, messages: List[Dict]) -> str:
         payload = {"messages": messages, "temperature": 0.75, "max_tokens": 2500, "stream": False}
@@ -1773,13 +1906,18 @@ class SelfImprovingAssistant:
         search_meta = None
         has_web = False
 
+        # ── Автоматическое определение необходимости поиска ──
+        if AUTO_SEARCH_ENABLED and not web_search and not url_to_fetch and not image_base64:
+            mem_preview = self.memory.get_context(message)
+            if self.web_searcher.should_search_fast(message, mem_preview):
+                web_search = True
+                logger.info(f"🔎 Auto-search triggered: {message[:60]}")
+
         # Приоритет: если передан url_to_fetch, загружаем его напрямую (совместимость)
         if url_to_fetch:
             web_ctx, chunks = await self.web_searcher.fetch_single_url(url_to_fetch, message)
             has_web = True
             search_meta = {"type": "single_url", "url": url_to_fetch, "chunks_count": len(chunks)}
-        # Если web_search == True, запускаем интеллектуальный итеративный поиск
-        # Если web_search == True — пользователь ЯВНО нажал кнопку, ищем в любом случае!
         elif web_search:
             web_ctx, chunks, meta = await self.web_searcher.iterative_search(message)
             has_web = True
@@ -1791,13 +1929,14 @@ class SelfImprovingAssistant:
         store = self.image_cache if image_base64 else self.cache
         if ck in store and not has_web and not reasoning:
             cached, _ = store[ck]
-            return cached, {'cached': True, 'response_time': time.time()-start}
+            return cached, {'cached': True, 'response_time': time.time() - start}
 
         # Получение контекста памяти
         mem_ctx = self.memory.get_context(message)
         # Эмбеддинги для подсознания
         query_emb = torch.tensor(self.vocab.encode(message), dtype=torch.float32).unsqueeze(0)
-        memory_emb = torch.tensor(self.vocab.encode(mem_ctx), dtype=torch.float32).unsqueeze(0) if mem_ctx else torch.zeros(1, EMBEDDING_DIM)
+        memory_emb = torch.tensor(self.vocab.encode(mem_ctx), dtype=torch.float32).unsqueeze(
+            0) if mem_ctx else torch.zeros(1, EMBEDDING_DIM)
         latent, logits = self.subconscious.forward(query_emb, memory_emb)
         sub_instruction, chosen_indices = self.subconscious.generate_prompt_instruction(logits)
 
@@ -1810,7 +1949,8 @@ class SelfImprovingAssistant:
             txt += f"\n\n{mem_ctx}"
         content_parts.append({"type": "text", "text": txt})
         if image_base64 and image_mime and len(image_base64) <= MAX_IMAGE_SIZE_BASE64:
-            content_parts.append({"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_base64}"}})
+            content_parts.append(
+                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_base64}"}})
 
         system_prompt = self._build_system_prompt(reasoning, has_web, sub_instruction)
         messages_llm = [{"role": "system", "content": system_prompt}, {"role": "user", "content": content_parts}]
@@ -1820,7 +1960,7 @@ class SelfImprovingAssistant:
 
         # Вычисляем награду и обучаем подсознание
         meta = {
-            'complexity': min(1.0, len(message.split())/20),
+            'complexity': min(1.0, len(message.split()) / 20),
             'web_search_used': has_web,
             'response_length': len(response.split())
         }
@@ -1833,7 +1973,6 @@ class SelfImprovingAssistant:
         # Сохраняем в память, если качество высокое
         quality = max(0.0, (reward + 1) / 2)
         if quality > MIN_QUALITY_SCORE:
-            # Добавляем метаинформацию о поиске, чтобы в будущем AI знал, какие запросы работают
             self.memory.add_episode(f"Q: {message}\nA: {response}", importance=quality, search_meta=search_meta)
             if not has_web and quality > 0.6:
                 store[ck] = (response, time.time())
@@ -1848,7 +1987,7 @@ class SelfImprovingAssistant:
                 asyncio.create_task(
                     GlobalKnowledgeBase.get_instance().contribute(
                         user_id=self.user_id,
-                        content="Q: "+message+"\nA: "+response,
+                        content="Q: " + message + "\nA: " + response,
                         embedding=emb_contrib,
                         importance=quality,
                         assistant=self
@@ -1861,7 +2000,34 @@ class SelfImprovingAssistant:
             self.memory.consolidate()
             self._save()
 
-        return response, {'quality': round(quality,3), 'reward': round(reward,3), 'response_time': time.time()-start,
+        # ====== ЭМЕРДЖЕНТНЫЙ БЛОК (ДОБАВЛЕН) ======
+        # Обновляем эмоции
+        reward = meta.get('reward', 0)
+        complexity = meta.get('complexity', 0.5)
+        self.emotions.update_from_reward(reward, complexity)
+
+        # Оцениваем неопределённость и запускаем исследование
+        asyncio.create_task(self.curiosity.check_and_research(message, response, meta))
+
+        # Мета-обучение наблюдает качество
+
+        self.meta_learner.observe_quality(quality)
+
+        # Если качество низкое – применяем рефлексию (с вероятностью 10%)
+        if quality < 0.3 and random.random() < 0.1:
+            reflection_entry = await self.reflect.reflect(self.total_interactions, self._call_llm)
+            if reflection_entry:
+                await self.reflective_action.apply_reflection(reflection_entry)
+
+        # Публикуем ключевой факт в глобальную шину, если качество высокое
+        if quality > 0.8 and len(response) > 100:
+            key_fact = await self._extract_key_fact(response)
+            if key_fact:
+                self.message_bus.publish('global_fact', {'fact': key_fact, 'source': self.user_id})
+        # ====== КОНЕЦ ЭМЕРДЖЕНТНОГО БЛОКА ======
+
+        return response, {'quality': round(quality, 3), 'reward': round(reward, 3),
+                          'response_time': time.time() - start,
                           'memory_episodes': len(self.memory.episodic.items), 'web_search_used': has_web,
                           'search_meta': search_meta}
 
@@ -1878,11 +2044,17 @@ class SelfImprovingAssistant:
         search_meta = None
         has_web = False
 
+        # ── Автоматическое определение необходимости поиска ──
+        if AUTO_SEARCH_ENABLED and not web_search and not url_to_fetch and not image_base64:
+            mem_preview = self.memory.get_context(message)
+            if self.web_searcher.should_search_fast(message, mem_preview):
+                web_search = True
+                logger.info(f"🔎 Auto-search (stream) triggered: {message[:60]}")
+
         if url_to_fetch:
             web_ctx, chunks = await self.web_searcher.fetch_single_url(url_to_fetch, message)
             has_web = True
             search_meta = {"type": "single_url", "url": url_to_fetch, "chunks_count": len(chunks)}
-            # Если web_search == True — пользователь ЯВНО нажал кнопку, ищем в любом случае!
         elif web_search:
             web_ctx, chunks, meta = await self.web_searcher.iterative_search(message)
             has_web = True
@@ -1892,7 +2064,8 @@ class SelfImprovingAssistant:
         # Получение контекста памяти
         mem_ctx = self.memory.get_context(message)
         query_emb = torch.tensor(self.vocab.encode(message), dtype=torch.float32).unsqueeze(0)
-        memory_emb = torch.tensor(self.vocab.encode(mem_ctx), dtype=torch.float32).unsqueeze(0) if mem_ctx else torch.zeros(1, EMBEDDING_DIM)
+        memory_emb = torch.tensor(self.vocab.encode(mem_ctx), dtype=torch.float32).unsqueeze(
+            0) if mem_ctx else torch.zeros(1, EMBEDDING_DIM)
         latent, logits = self.subconscious.forward(query_emb, memory_emb)
         sub_instruction, chosen_indices = self.subconscious.generate_prompt_instruction(logits)
 
@@ -1904,7 +2077,8 @@ class SelfImprovingAssistant:
             txt += f"\n\n{mem_ctx}"
         content_parts.append({"type": "text", "text": txt})
         if image_base64 and image_mime and len(image_base64) <= MAX_IMAGE_SIZE_BASE64:
-            content_parts.append({"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_base64}"}})
+            content_parts.append(
+                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_base64}"}})
 
         system_prompt = self._build_system_prompt(reasoning, has_web, sub_instruction)
         messages_llm = [{"role": "system", "content": system_prompt}, {"role": "user", "content": content_parts}]
@@ -1973,7 +2147,8 @@ class SelfImprovingAssistant:
                 self.subconscious.experience_replay()
             quality = max(0.0, (reward + 1) / 2)
             if quality > MIN_QUALITY_SCORE:
-                self.memory.add_episode(f"Q: {message}\nA: {full_response}", importance=quality, search_meta=search_meta)
+                self.memory.add_episode(f"Q: {message}\nA: {full_response}", importance=quality,
+                                        search_meta=search_meta)
                 ck = self._cache_key(message, image_base64)
                 store = self.image_cache if image_base64 else self.cache
                 if not has_web and quality > 0.6:
@@ -1998,6 +2173,30 @@ class SelfImprovingAssistant:
             if self.total_interactions % SAVE_EVERY_N_INTERACTIONS == 0:
                 self.memory.consolidate()
                 self._save()
+
+        # ====== ЭМЕРДЖЕНТНЫЙ БЛОК (ДОБАВЛЕН) ======
+        # Обновляем эмоции
+        reward = meta.get('reward', 0)
+        complexity = meta.get('complexity', 0.5)
+        self.emotions.update_from_reward(reward, complexity)
+
+        # Оцениваем неопределённость и запускаем исследование
+        asyncio.create_task(self.curiosity.check_and_research(message, full_response, meta))
+
+        # Мета-обучение наблюдает качество
+
+        self.meta_learner.observe_quality(quality)
+
+        # Если качество низкое – применяем рефлексию (в фоне)
+        if quality < 0.3 and random.random() < 0.1:
+            asyncio.create_task(self._apply_reflection())
+
+        # Публикуем ключевой факт в глобальную шину
+        if quality > 0.8 and len(full_response) > 100:
+            key_fact = await self._extract_key_fact(full_response)
+            if key_fact:
+                self.message_bus.publish('global_fact', {'fact': key_fact, 'source': self.user_id})
+        # ====== КОНЕЦ ЭМЕРДЖЕНТНОГО БЛОКА ======
 
         yield "data: [DONE]\n\n"
 
