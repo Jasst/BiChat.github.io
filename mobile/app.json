@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Dark Messenger",
+    "slug": "dark-messenger",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.darkmessenger.app"
+    },
+    "android": {
+      "package": "com.darkmessenger.app"
+    },
+    "plugins": [
+      "expo-barcode-scanner",
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ]
+    ]
+  }
+}
