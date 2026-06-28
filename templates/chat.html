@@ -720,18 +720,19 @@
     </header>
     <div class="modal-body">
       <div class="text-center">
-        <button class="btn-oval" onclick="openQRScannerInModal()" >
+        <button class="btn-oval" onclick="QRManager.openForChat()" >
     <img src="/static/icons/Cam.png" width="20" height="20" alt="Scan QR" style="filter: invert(1);"> Scan QR Code
 </button>
-        <div id="qrScannerContainerModal" class="hidden">
-          <div style="position:relative;display:inline-block;">
-            <video id="qrVideoModal" style="width:200px;height:200px;border-radius:var(--radius-md);background:#000;"></video>
-             <div style="position:absolute;inset:35%;border:2px dashed var(--accent);border-radius:12px;pointer-events:none;"></div>
-          </div>
-          <p class="text-muted" data-i18n="scan_qr">Point camera at QR code</p>
-          <button class="btn-oval" onclick="forceCloseQRScannerInModal()" data-i18n="cancel">Cancel</button>
-        </div>
-        <div id="scanResultModal" class="hidden scan-result"></div>
+        <div id="qrScannerContainerModal" class="qr-scanner-container hidden">
+    <div class="qr-video-wrapper">
+        <video id="qrVideoModal" playsinline autoplay muted disablepictureinpicture></video>
+        <div class="qr-frame"></div>
+    </div>
+    <p class="text-muted" style="margin: 12px 0 8px;" data-i18n="scan_qr">Point camera at QR code</p>
+    <div id="scanResultModal" class="scan-result hidden"></div>
+    <button class="btn-oval" onclick="QRManager.closeScanner()" data-i18n="cancel">Cancel</button>
+</div>
+
       </div>
       <div class="form-group">
         <label class="text-secondary" data-i18n="select_from_contacts">Select from contacts</label>
@@ -761,7 +762,7 @@
 </div>
 
 <script>window.process = window.process || { env: {} };</script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
 <script src="{{ url_for('static', path='js/WebSocketClient.js') }}"></script>
 <script src="{{ url_for('static', path='js/ui.js') }}"></script>
 <script src="{{ url_for('static', path='js/actions.js') }}"></script>

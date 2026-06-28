@@ -1536,3 +1536,45 @@ audio::-webkit-media-controls-time-remaining-display {
 .message:hover .delete-btn {
   opacity: 1 !important;
 }
+
+/* ===== QR Scanner Unified (дополнение/переопределение) ===== */
+.qr-scanner-container {
+    background: var(--bg-secondary);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+.qr-video-wrapper {
+    position: relative;
+    display: inline-block;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #000;
+    max-width: 400px;
+    width: 100%;
+}
+.qr-video-wrapper video {
+    width: 100%;
+    display: block;
+    border-radius: 16px;
+}
+/* Рамка-уголок – яркая, видимая на тёмном фоне */
+.qr-frame {
+    position: absolute;
+    inset: 37%;
+    border: 2px solid #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 0 24px rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+    z-index: 2;
+}
+.qr-scanner-container .scan-result {
+    margin: 12px 0;
+    font-weight: 600;
+    color: var(--status-success);
+    min-height: 1.4em;
+}

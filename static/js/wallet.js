@@ -543,14 +543,8 @@
     if (!address || address === 'None' || !qrDiv || typeof QRCode === 'undefined') return;
     qrDiv.innerHTML = '';
     try {
-      new QRCode(qrDiv, {
-        text: address,
-        width: 220, height: 220,
-        colorDark: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
-        colorLight: getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#0a0a0a',
-        correctLevel: QRCode.CorrectLevel.H
-      });
-      qrGenerated = true;
+      QRManager.generateQRCode(qrDiv, address);
+
     } catch (e) {
       qrDiv.innerHTML = '<span class="text-muted">' + t('qr_error') + '</span>';
     }
@@ -602,125 +596,8 @@
     }
   }
 
-  // ================== QR-сканер (wallet) ==================
-  var walletQR = {
-    stream: null,
-    active: false,
-    animationFrame: null,
-    canvas: null,
-    ctx: null,
-    config: {
-      videoWidth: 1280,
-      videoHeight: 720,
-      scanSize: 280,
-      inversionAttempts: "attemptBoth",
-      scanInterval: 80
-    },
-    open() {
-      if (this.active) return;
-      const video = document.getElementById('qrVideo');
-      const container = document.getElementById('qrScannerContainer');
-      const resultEl = document.getElementById('scanResult');
-      if (!video || !container) return;
-      this.active = true;
-      container.classList.remove('hidden');
-      resultEl?.classList.add('hidden');
-      resultEl && (resultEl.textContent = '');
 
-      navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: this.config.videoWidth }, height: { ideal: this.config.videoHeight } },
-        audio: false
-      }).then(stream => {
-        if (!this.active) return this._stopStream(stream);
-        this.stream = stream;
-        video.srcObject = stream;
-        return video.play();
-      }).then(() => {
-        const wait = () => {
-          if (!this.active) return;
-          if (video.videoWidth > 0 && video.videoHeight > 0) {
-            this._startScanning(video, resultEl);
-          } else {
-            setTimeout(wait, 50);
-          }
-        };
-        wait();
-      }).catch(err => {
-        this._showError(t('camera_error', { error: err.message || err.name }), resultEl);
-      });
-    },
-    close() {
-      this.active = false;
-      if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
-      if (this.stream) this._stopStream(this.stream);
-      document.getElementById('qrScannerContainer')?.classList.add('hidden');
-    },
-    _stopStream(stream) {
-      stream?.getTracks().forEach(t => t.stop());
-    },
-    _showError(msg, resultEl) {
-      if (resultEl) { resultEl.textContent = '⚠️ ' + msg; resultEl.style.color = 'var(--status-error)'; resultEl.classList.remove('hidden'); }
-      setTimeout(() => this.close(), 3000);
-    },
-    _startScanning(video, resultEl) {
-      if (!this.active) return;
-      if (!this.canvas) {
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = this.config.scanSize;
-        this.canvas.height = this.config.scanSize;
-        this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
-      }
-      let lastScan = 0;
-      const scan = () => {
-        if (!this.active) return;
-        const now = performance.now();
-        if (now - lastScan < this.config.scanInterval) {
-          this.animationFrame = requestAnimationFrame(scan);
-          return;
-        }
-        lastScan = now;
-        if (video.readyState !== video.HAVE_ENOUGH_DATA || !video.videoWidth) {
-          this.animationFrame = requestAnimationFrame(scan);
-          return;
-        }
-        try {
-          const vw = video.videoWidth, vh = video.videoHeight;
-          const size = Math.min(vw, vh) * 0.5;
-          const sx = (vw - size) / 2, sy = (vh - size) / 2;
-          const ctx = this.ctx;
-          const canvas = this.canvas;
-          canvas.width = this.config.scanSize;
-          canvas.height = this.config.scanSize;
-          ctx.drawImage(video, sx, sy, size, size, 0, 0, this.config.scanSize, this.config.scanSize);
-          const imageData = ctx.getImageData(0, 0, this.config.scanSize, this.config.scanSize);
-          const code = jsQR(imageData.data, this.config.scanSize, this.config.scanSize, { inversionAttempts: this.config.inversionAttempts });
-          if (code?.data) {
-            const addr = parseQRData(code.data);
-            if (addr) {
-              document.getElementById('sendAddress').value = addr;
-              if (resultEl) { resultEl.textContent = t('address_scanned'); resultEl.style.color = 'var(--status-success)'; resultEl.classList.remove('hidden'); }
-              this.close();
-              return;
-            } else {
-              if (resultEl) { resultEl.textContent = t('not_valid_wallet_qr'); resultEl.style.color = 'var(--status-warning)'; resultEl.classList.remove('hidden'); }
-            }
-          }
-        } catch (e) { /* ignore */ }
-        if (this.active) this.animationFrame = requestAnimationFrame(scan);
-      };
-      this.animationFrame = requestAnimationFrame(scan);
-    }
-  };
 
-  function parseQRData(data) {
-    if (!data) return null;
-    if (/^[a-fA-F0-9]{64}$/.test(data)) return data.toLowerCase();
-    const match = data.match(/(?:darkmsg|bitcoin):([a-fA-F0-9]{64})/i);
-    if (match?.[1]) return match[1].toLowerCase();
-    return null;
-  }
-  function openWalletQRScanner() { walletQR.open(); }
-  function forceCloseWalletQRScanner() { walletQR.close(); }
 
   // ================== Инициализация ==================
   document.addEventListener('DOMContentLoaded', function() {

@@ -440,13 +440,13 @@
         document.getElementById('newChatSelect').value = '';
         document.getElementById('newChatAddress').value = '';
         loadContactsForModal();
-        if (window.QRScanner) QRScanner.close();
+
     }
 
     function closeNewChatModal() {
         window.modalOpen = false;
         document.getElementById('newChatModal')?.classList.add('hidden');
-        if (window.QRScanner) QRScanner.close();
+
     }
 
     async function loadContactsForModal() {

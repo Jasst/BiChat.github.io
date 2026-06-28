@@ -401,22 +401,20 @@
 <div class="page-container">
   <div class="page-header">
     <h2 data-i18n="contacts">Contacts</h2>
-    <button class="btn-primary-oval" onclick="openQRScanner()" >
+    <button class="btn-primary-oval" onclick="QRManager.openForContacts()"  >
     <img src="/static/icons/Cam.png" width="24" height="24" alt="Scan QR" style="filter: invert(1);"> Scan QR
 </button>
   </div>
 
-  <div id="qrScannerContainer" class="hidden qr-scanner-container">
-    <div class="text-center">
-      <div class="qr-video-wrapper">
-        <video id="qrVideo" class="qr-video" playsinline autoplay muted disablepictureinpicture></video>
-        <div style="position:absolute;inset:35%;border:2px dashed var(--accent, #6c5ce7);border-radius:12px;pointer-events:none;box-shadow:0 0 20px rgba(108,92,231,0.3);"></div>
-      </div>
-      <p class="text-muted" data-i18n="scan_qr">Point camera at QR code</p>
-      <div id="scanResult" class="hidden scan-result"></div>
-      <button class="btn-oval" onclick="forceCloseQRScanner()" data-i18n="cancel">Cancel</button>
+  <div id="qrScannerContainer" class="qr-scanner-container hidden">
+    <div class="qr-video-wrapper">
+        <video id="qrVideo" playsinline autoplay muted disablepictureinpicture></video>
+        <div class="qr-frame"></div>
     </div>
-  </div>
+    <p class="text-muted" style="margin: 12px 0 8px;" data-i18n="scan_qr">Point camera at QR code</p>
+    <div id="scanResult" class="scan-result hidden"></div>
+    <button class="btn-oval" onclick="QRManager.closeScanner()" data-i18n="cancel">Cancel</button>
+</div>
 
   <div class="list-container" id="contactsList">
     <div class="loading" data-i18n="loading">Loading contacts…</div>
@@ -430,7 +428,7 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
 <script>
 (function() {
   if (window._contactsScriptLoaded) return;

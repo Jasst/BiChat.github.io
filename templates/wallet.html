@@ -231,23 +231,20 @@
       <h3 style="margin-top:0;" data-i18n="send_coins_title">📤 Send BlockCoin</h3>
       <div class="form-row">
         <input type="text" id="sendAddress" class="input" placeholder="Recipient address (64 hex)" maxlength="64" data-i18n-placeholder="recipient_address">
-        <button class="btn-action outline" onclick="openWalletQRScanner()" title="Scanner" >
+        <button class="btn-action outline" onclick="QRManager.openForWallet()" title="Scanner" >
     <img src="/static/icons/Cam.png" width="24" height="24" alt="Scanner" style="filter: invert(1);">
 </button>
       </div>
 
-      <div id="qrScannerContainer" class="hidden qr-scanner-container" style="margin-bottom: 20px; border-radius: 12px; overflow: hidden;">
-        <div class="text-center" style="background: #000; padding: 10px; position: relative;">
-          <div style="position:relative; display:inline-block;">
-            <video id="qrVideo" style="width: 100%; max-width: 400px; border-radius: 8px;" playsinline autoplay muted disablepictureinpicture></video>
-            <div style="position:absolute; inset:35%; border:2px dashed var(--accent); border-radius:12px; pointer-events:none;"></div>
-          </div>
-          <p class="text-muted" style="margin: 10px 0;" data-i18n="scan_qr_hint">Point camera at QR code</p>
-          <div id="scanResult" class="hidden scan-result" style="font-weight: bold; margin-bottom: 10px;"></div>
-          <button class="btn-action danger" onclick="forceCloseWalletQRScanner()" data-i18n="close_scanner_btn">Close scanner</button>
-        </div>
-      </div>
-
+      <div id="qrScannerContainer" class="qr-scanner-container hidden">
+    <div class="qr-video-wrapper">
+        <video id="qrVideo" playsinline autoplay muted disablepictureinpicture></video>
+        <div class="qr-frame"></div>
+    </div>
+    <p class="text-muted" style="margin: 12px 0 8px;" data-i18n="scan_qr_hint">Point camera at QR code</p>
+    <div id="scanResult" class="scan-result hidden"></div>
+    <button class="btn-action danger" onclick="QRManager.closeScanner()" data-i18n="close_scanner_btn">Close scanner</button>
+</div>
       <div class="form-row">
         <input type="number" id="sendAmount" class="input" placeholder="Amount" min="0.000001" step="0.000001" data-i18n-placeholder="send_amount_placeholder">
         <button class="btn-action" onclick="sendCoins()" data-i18n="send_btn">Send</button>
@@ -327,8 +324,7 @@
 </script>
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-<script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+
 <script src="{{ url_for('static', path='js/wallet.js') }}" defer></script>
 
 <script>

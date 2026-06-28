@@ -536,7 +536,6 @@
     </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 (function() {
   if (window._profileScriptLoaded) return;
@@ -569,12 +568,7 @@
     if (!address || address === 'None' || !qrDiv || typeof QRCode === 'undefined') return;
     qrDiv.innerHTML = '';
     try {
-      new QRCode(qrDiv, {
-        text: address, width: 220, height: 220,
-        colorDark: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
-        colorLight: getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#0a0a0a',
-        correctLevel: QRCode.CorrectLevel.H
-      });
+      QRManager.generateQRCode(qrDiv, address);
     } catch(e) { qrDiv.innerHTML = '<span class="text-muted">QR error</span>'; }
   }
 
