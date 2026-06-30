@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import DarkCrypto from '../shared/crypto-client';
 import useUserStore from '../store/userStore';
 import { storage } from '../utils/storage';
@@ -34,7 +35,6 @@ export default function CreateWalletScreen({ navigation }) {
         setMnemonic(newMnemonic);
         Alert.alert('Wallet created', `Your address: ${address}\n\nSave your mnemonic safely!`);
 
-        // Инициализируем WebSocket
         await initWebSocket();
         startHeartbeat();
         startStatusPolling();
@@ -61,29 +61,68 @@ export default function CreateWalletScreen({ navigation }) {
           <Text style={styles.mnemonicText}>{mnemonic}</Text>
         </View>
       )}
-      <TouchableOpacity style={styles.button} onPress={generateWallet} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Generate Wallet</Text>}
+      <TouchableOpacity
+        style={styles.button}
+        onPress={generateWallet}
+        disabled={loading}
+      >
+        <LinearGradient
+          colors={['#6c5ce7', '#4a3db8']}
+          style={styles.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+        >
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Generate Wallet</Text>}
+        </LinearGradient>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0a', padding: 20, justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 8, textAlign: 'center' },
-  subtitle: { fontSize: 16, color: '#a4b0be', marginBottom: 30, textAlign: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    padding: 20,
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#a4b0be',
+    marginBottom: 30,
+    textAlign: 'center',
+  },
   mnemonicBox: {
     backgroundColor: '#1e1e1e',
     padding: 16,
     borderRadius: 12,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
-  mnemonicText: { color: '#fff', fontSize: 16, textAlign: 'center' },
+  mnemonicText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+  },
   button: {
-    backgroundColor: '#6c5ce7',
-    padding: 16,
-    borderRadius: 12,
+    borderRadius: 50,
+    overflow: 'hidden',
+  },
+  gradient: {
+    paddingVertical: 16,
     alignItems: 'center',
   },
-  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });

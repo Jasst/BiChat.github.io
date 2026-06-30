@@ -7,6 +7,9 @@ import useChatStore from '../store/chatStore';
 import DarkCrypto from './crypto-client';
 import WebSocketClient from './WebSocketClient';
 import { API_BASE_URL } from '../config/constants';
+import * as Crypto from 'expo-crypto';
+import { sha256 } from '@noble/hashes/sha256';
+import { v4 as uuidv4 } from 'uuid';
 
 // ===================== Глобальное состояние модуля =====================
 let wsClient = null;
@@ -36,9 +39,8 @@ export async function getPubKey(address) {
   if (!res.ok) throw new Error(`Public key not found for ${address}`);
   const data = await res.json();
   const pubKeyBytes = DarkCrypto._fromBase64(data.public_key);
-  const hashBuf = await crypto.subtle.digest('SHA-256', pubKeyBytes);
-  const computedAddress = Array.from(new Uint8Array(hashBuf))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
+  const hash = sha256(pubKeyBytes);
+  const computedAddress = Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join('');
   if (computedAddress !== address) {
     throw new Error(`Public key mismatch for ${address}`);
   }
@@ -64,11 +66,9 @@ export async function restoreMnemonic() {
 
   const encrypted = await storage.getItem('encrypted_mnemonic');
   if (!encrypted) {
-    // Нет сохранённых данных – редирект на логин будет выполнен в App.js
     return false;
   }
 
-  // Устанавливаем флаг, что требуется разблокировка
   const userStore = getUserStore();
   userStore.setNeedsUnlock(true, encrypted);
   return false;
@@ -90,14 +90,17 @@ export async function initWebSocket() {
 
   try {
     const keys = await ensureKeys();
-    const nonce = crypto.randomUUID(); // В RN можно заменить на UUID из библиотеки или expo-random
+
+    // ✅ Генерируем валидный UUID v4
+    const nonce = uuidv4();
+
     const signatureArray = await DarkCrypto.signData(keys.signPrivateKey, nonce);
     const signatureHex = Array.from(new Uint8Array(signatureArray))
       .map(b => b.toString(16).padStart(2, '0')).join('');
 
     const WebSocketClientClass = require('./WebSocketClient').default || WebSocketClient;
     wsClient = new WebSocketClientClass({
-      url: `${API_BASE_URL.replace('http', 'ws')}/ws`, // wss:// или ws://
+      url: `${API_BASE_URL.replace('http', 'ws')}/ws`,
       onMessage: handleWebSocketMessage,
       onConnect: () => {
         console.log('✅ WebSocket connected');
@@ -106,12 +109,12 @@ export async function initWebSocket() {
         handlePendingCall();
       },
       onDisconnect: () => console.warn('⚠️ WebSocket disconnected'),
-      onError: (err) => console.error('WebSocket error:', err)
+      onError: (err) => console.error('WebSocket error:', err?.message || err),
     });
     wsClient.setAuth(address, signatureHex, nonce);
     wsClient.connect();
   } catch (err) {
-    console.error('Failed to init WebSocket:', err);
+    console.error('Failed to init WebSocket:', err?.message || err);
   }
 }
 
@@ -126,7 +129,6 @@ export async function handleWebSocketMessage(data) {
     return;
   }
 
-  // Сигналы звонка – перенаправляем в CallManager (глобальный объект или импорт)
   if (['incoming_call', 'call_answer', 'call_ice', 'call_hangup', 'call_reject'].includes(data.type)) {
     if (globalThis.CallManager) {
       globalThis.CallManager.handleCallSignal(data);
@@ -136,14 +138,12 @@ export async function handleWebSocketMessage(data) {
     return;
   }
 
-  // Обработка "call_not_found"
   if (data.type === 'call_not_found') {
     console.warn('[WS] Call not found:', data.call_id);
     await storage.removeItem('pending_call_id');
     return;
   }
 
-  // Обычные сообщения
   if (data.type === 'message') {
     const decrypted = await processMessageDecryption(data);
     const chatId = decrypted.chatId;
@@ -158,7 +158,6 @@ export async function handleWebSocketMessage(data) {
     return;
   }
 
-  // Статус пользователя (online/offline)
   if (data.type === 'status_update') {
     if (data.address && data.status) {
       const chatStore = getChatStore();
@@ -167,14 +166,12 @@ export async function handleWebSocketMessage(data) {
     return;
   }
 
-  // Статус сообщения (delivered/read)
   if (data.type === 'message_status') {
     const chatStore = getChatStore();
     chatStore.updateMessageStatus(data.message_id, data.status);
     return;
   }
 
-  // Fallback для старых сообщений
   if (!data.chatId && data.sender && data.recipient) {
     const userStore = getUserStore();
     data.chatId = (data.sender === userStore.address) ? data.recipient : data.sender;
@@ -195,10 +192,8 @@ export async function handleWebSocketMessage(data) {
 export function handlePendingCall() {
   if (_pendingCallHandled) return;
 
-  // В RN нет URL-параметров, поэтому храним call_id в AsyncStorage
   storage.getItem('pending_call_id').then(callId => {
     if (!callId) return;
-    // Удаляем, чтобы не обрабатывать повторно
     storage.removeItem('pending_call_id');
 
     if (wsClient && wsClient.isConnected) {
@@ -206,7 +201,6 @@ export function handlePendingCall() {
       wsClient.send({ type: 'get_call', call_id: callId });
       _pendingCallHandled = true;
     } else {
-      // Если WS не готов – пробуем позже (в onConnect уже вызывается handlePendingCall)
       console.warn('[App] WebSocket not ready, pending call will be retried on connect');
     }
   });
@@ -226,7 +220,6 @@ export async function processMessageDecryption(msg) {
     const userStore = getUserStore();
     const myAddress = userStore.address;
 
-    // ---------- ГРУППОВОЙ ЧАТ ----------
     if (parsed.encrypted_map) {
       const myEnc = parsed.encrypted_map[myAddress];
       if (!myEnc) return { ...msg, content: '🔒 No access', status: originalStatus };
@@ -284,7 +277,6 @@ export async function processMessageDecryption(msg) {
       };
     }
 
-    // ---------- ЛИЧНЫЙ ЧАТ ----------
     const senderPubKeyB64 = parsed.sender_pubkey || (parsed.myPubKey ? parsed.myPubKey : null);
     if (!senderPubKeyB64) {
       if (parsed.file_url) {
@@ -379,7 +371,7 @@ export async function processMessageDecryption(msg) {
       status: originalStatus
     };
   } catch (e) {
-    console.error('Decryption error', msg.id, e);
+    console.error('Decryption error', msg.id, e?.message || e);
     const userStore = getUserStore();
     const chatId = msg.sender === userStore.address ? msg.recipient : msg.sender;
     return {
@@ -461,7 +453,7 @@ export function startHeartbeat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ current_chat: userStore.currentChatAddress || '' })
       });
-    } catch(e) {
+    } catch (e) {
       // ignore
     }
   }, 30000);
@@ -479,7 +471,7 @@ export function startStatusPolling() {
   if (statusPollingInterval) clearInterval(statusPollingInterval);
   statusPollingInterval = setInterval(async () => {
     const chatStore = getChatStore();
-    const myMessages = chatStore.getMyPendingMessages(); // должно быть реализовано в сторе
+    const myMessages = chatStore.getMyPendingMessages();
     const ids = myMessages.map(m => m.id).filter(id => !String(id).startsWith('temp'));
     if (ids.length === 0) return;
     try {
@@ -493,7 +485,7 @@ export function startStatusPolling() {
       for (const [id, st] of Object.entries(statuses)) {
         chatStore.updateMessageStatus(Number(id), st);
       }
-    } catch(e) {
+    } catch (e) {
       // ignore
     }
   }, 30000);
@@ -518,7 +510,7 @@ export async function fetchUserStatuses(addresses) {
     const data = await res.json();
     return data.statuses || {};
   } catch (err) {
-    console.warn('Failed to fetch statuses:', err);
+    console.warn('Failed to fetch statuses:', err?.message || err);
     return {};
   }
 }
@@ -565,5 +557,4 @@ export async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
 export {
   wsClient,
   pubKeyCache,
-
 };

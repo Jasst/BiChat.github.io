@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function WelcomeScreen() {
   const navigation = useNavigation();
@@ -11,17 +12,24 @@ export default function WelcomeScreen() {
       <Text style={styles.subtitle}>Decentralized • Encrypted</Text>
 
       <TouchableOpacity
-        style={[styles.button, styles.loginButton]}
+        style={styles.button}
         onPress={() => navigation.navigate('Login')}
       >
-        <Text style={styles.buttonText}>🔑 Login</Text>
+        <LinearGradient
+          colors={['#6c5ce7', '#4a3db8']}
+          style={styles.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+        >
+          <Text style={styles.buttonText}>🔑 Login</Text>
+        </LinearGradient>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.button, styles.createButton]}
+        style={[styles.button, styles.outlineButton]}
         onPress={() => navigation.navigate('CreateWallet')}
       >
-        <Text style={styles.buttonText}>✨ Create New Wallet</Text>
+        <Text style={styles.outlineText}>✨ Create New Wallet</Text>
       </TouchableOpacity>
     </View>
   );
@@ -44,26 +52,33 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#a4b0be',
-    marginBottom: 40,
+    marginBottom: 50,
   },
   button: {
     width: '100%',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
     marginBottom: 16,
+    borderRadius: 50,
+    overflow: 'hidden',
   },
-  loginButton: {
-    backgroundColor: '#6c5ce7',
-  },
-  createButton: {
-    backgroundColor: '#2d2d3d',
-    borderWidth: 1,
-    borderColor: '#6c5ce7',
+  gradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
   buttonText: {
     color: '#fff',
-    fontWeight: 'bold',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  outlineButton: {
+    borderWidth: 1,
+    borderColor: '#6c5ce7',
+    backgroundColor: 'transparent',
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  outlineText: {
+    color: '#6c5ce7',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });

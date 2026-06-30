@@ -1,12 +1,16 @@
 /**
  * crypto-client.js — End-to-end шифрование на стороне клиента (React Native)
- * Версия: 3.4 — адаптирована под expo-random + react-native-quick-crypto
+ * Версия: 4.5 — адаптирована под expo-crypto + @noble/curves
  */
-import * as Random from 'expo-random';
-import { crypto as QuickCrypto } from 'react-native-quick-crypto';
+import * as Crypto from 'expo-crypto';
 import { Buffer } from 'buffer';
+import { sha256 } from '@noble/hashes/sha256';
+import { sha512 } from '@noble/hashes/sha512';
+import { pbkdf2 } from '@noble/hashes/pbkdf2';
+import { p256 } from '@noble/curves/p256';
+import { gcm } from '@noble/ciphers/aes';
 
-const { subtle } = QuickCrypto;
+const getRandomBytes = (size) => Crypto.getRandomBytes(size);
 
 class DarkCrypto {
   // =========================================================================
@@ -223,10 +227,10 @@ class DarkCrypto {
       "yard","year","yellow","you","young","youth","zebra","zero","zone","zoo"
     ];
 
-    const entropy = Random.getRandomBytes(32);
-    const hash = await subtle.digest('SHA-256', entropy);
+    const entropy = getRandomBytes(32);
+    const hash = sha256(entropy);
     const checksumBits = 8;
-    const checksumByte = new Uint8Array(hash)[0];
+    const checksumByte = hash[0];
     const checksum = checksumByte >> (8 - checksumBits);
     const fullBits = [];
     for (let i = 0; i < entropy.length; i++) {
@@ -252,177 +256,134 @@ class DarkCrypto {
   // 2. ДЕРИВАЦИЯ КЛЮЧЕЙ ИЗ МНЕМОНИКИ
   // =========================================================================
   static async deriveKeyPair(mnemonic) {
-    const seed = await this._mnemonicToSeed(mnemonic);
-    const rawPrivate = new Uint8Array(seed.slice(0, 32));
+    const mnemonicBytes = new TextEncoder().encode(mnemonic);
+    const saltBytes = new TextEncoder().encode('mnemonic');
+    // ✅ Используем SHA-512, как в браузерной версии и BIP39
+    const seed = pbkdf2(sha512, mnemonicBytes, saltBytes, { c: 2048, dkLen: 64 });
+    const rawPrivate = seed.slice(0, 32);
     const d = this._normalizePrivateKey(rawPrivate);
-    const point = this._derivePubPoint(d);
 
-    const jwkSign = {
-      kty: 'EC', crv: 'P-256',
-      d: this._bytesToBase64Url(d),
-      x: this._bytesToBase64Url(point.x),
-      y: this._bytesToBase64Url(point.y),
-      ext: true,
+    const privateKey = d;
+    const compressedPubKey = p256.getPublicKey(privateKey, true);
+    const hash = sha256(compressedPubKey);
+    const address = Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return {
+      signPrivateKey: privateKey,
+      ecdhPrivateKey: privateKey,
+      compressedPubKey,
+      address,
     };
-    const signPrivateKey = await subtle.importKey(
-      'jwk', jwkSign, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']
-    );
-    const ecdhPrivateKey = await subtle.importKey(
-      'jwk', jwkSign, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']
-    );
-    const jwk = await subtle.exportKey('jwk', signPrivateKey);
-    const xBytes = this._base64UrlToBytes(jwk.x);
-    const yBytes = this._base64UrlToBytes(jwk.y);
-    const prefix = (yBytes[31] % 2 === 0) ? 0x02 : 0x03;
-    const compressed = new Uint8Array(33);
-    compressed[0] = prefix;
-    compressed.set(xBytes, 1);
-    const hash = await subtle.digest('SHA-256', compressed);
-    const address = Array.from(new Uint8Array(hash))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
-    return { signPrivateKey, ecdhPrivateKey, compressedPubKey: compressed, address };
-  }
+}
 
   // =========================================================================
   // 3. ДЕКОМПРЕССИЯ ПУБЛИЧНОГО КЛЮЧА
   // =========================================================================
   static decompressPublicKey(compressedKey) {
-    if (compressedKey.length !== 33 || (compressedKey[0] !== 0x02 && compressedKey[0] !== 0x03)) {
+    try {
+      return p256.getPublicKey(compressedKey, false);
+    } catch (e) {
       throw new Error('Invalid compressed key');
     }
-    const p = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFn;
-    const a = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFCn;
-    const b = 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604Bn;
-    const x = BigInt('0x' + Array.from(compressedKey.slice(1)).map(b => b.toString(16).padStart(2,'0')).join(''));
-    const rhs = (x * x * x + a * x + b) % p;
-
-    const modPow = (base, exp) => {
-      let res = 1n;
-      while (exp > 0n) {
-        if (exp & 1n) res = (res * base) % p;
-        base = (base * base) % p;
-        exp >>= 1n;
-      }
-      return res;
-    };
-
-    let y = modPow(rhs, (p + 1n) / 4n);
-    if ((y & 1n) !== (compressedKey[0] === 0x03 ? 1n : 0n)) {
-      y = p - y;
-    }
-    const xBytes = this._to32Bytes(x);
-    const yBytes = this._to32Bytes(y);
-    const uncompressed = new Uint8Array(65);
-    uncompressed[0] = 0x04;
-    uncompressed.set(xBytes, 1);
-    uncompressed.set(yBytes, 33);
-    return uncompressed;
   }
 
   // =========================================================================
   // 4. ECDH ОБЩИЙ СЕКРЕТ
   // =========================================================================
-  static async getSharedSecret(myEcdhPrivateKey, theirPubKeyBytes) {
-    let pubKey = theirPubKeyBytes;
-    if (pubKey.length === 33 && (pubKey[0] === 0x02 || pubKey[0] === 0x03)) {
-      pubKey = this.decompressPublicKey(pubKey);
-    }
-    const pubKeyObj = await subtle.importKey(
-      'raw', pubKey, { name: 'ECDH', namedCurve: 'P-256' }, false, []
-    );
-    const shared = await subtle.deriveBits(
-      { name: 'ECDH', public: pubKeyObj }, myEcdhPrivateKey, 256
-    );
-    return shared;
+  static async getSharedSecret(myPrivateKey, theirPubKeyBytes) {
+    return p256.getSharedSecret(myPrivateKey, theirPubKeyBytes);
   }
 
   // =========================================================================
   // 5. AES-GCM ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ
   // =========================================================================
   static async encryptAES(sharedSecret, plaintext) {
-    const iv = Random.getRandomBytes(12);
-    const key = await subtle.importKey(
-      'raw', sharedSecret, { name: 'AES-GCM' }, false, ['encrypt']
-    );
-    const encoded = new TextEncoder().encode(plaintext);
-    const ciphertext = await subtle.encrypt(
-      { name: 'AES-GCM', iv }, key, encoded
-    );
-    return { ciphertext, iv };
+    const iv = getRandomBytes(12);
+    const aes = gcm(sharedSecret);
+    const encrypted = aes.encrypt(iv, new TextEncoder().encode(plaintext));
+    return { ciphertext: encrypted, iv };
   }
 
   static async decryptAES(sharedSecret, ciphertext, iv) {
-    const key = await subtle.importKey(
-      'raw', sharedSecret, { name: 'AES-GCM' }, false, ['decrypt']
-    );
-    const decrypted = await subtle.decrypt(
-      { name: 'AES-GCM', iv }, key, ciphertext
-    );
+    const aes = gcm(sharedSecret);
+    const decrypted = aes.decrypt(iv, ciphertext);
     return new TextDecoder().decode(decrypted);
   }
 
   // =========================================================================
-  // 6. ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ СООБЩЕНИЙ (обёртки)
+  // 6. ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ СООБЩЕНИЙ
   // =========================================================================
-  static async encryptMessage(myEcdhPrivateKey, myCompressedPubKey, recipientPubKey, plaintext) {
-    const shared = await this.getSharedSecret(myEcdhPrivateKey, recipientPubKey);
+  static async encryptMessage(myPrivateKey, myPubKey, recipientPubKey, plaintext) {
+    const shared = await this.getSharedSecret(myPrivateKey, recipientPubKey);
     const { ciphertext, iv } = await this.encryptAES(shared, plaintext);
     return {
       ciphertext: this._arrayBufferToBase64(ciphertext),
       iv: this._toBase64(iv),
-      myPubKey: this._toBase64(myCompressedPubKey)
+      myPubKey: this._toBase64(myPubKey),
     };
   }
 
-  static async decryptMessage(myEcdhPrivateKey, senderCompressedPubKey, ivBase64, ciphertextBase64) {
+  static async decryptMessage(myPrivateKey, senderPubKey, ivBase64, ciphertextBase64) {
     const iv = this._fromBase64(ivBase64);
     const ciphertext = this._base64ToArrayBuffer(ciphertextBase64);
-    const shared = await this.getSharedSecret(myEcdhPrivateKey, senderCompressedPubKey);
+    const shared = await this.getSharedSecret(myPrivateKey, senderPubKey);
     return await this.decryptAES(shared, ciphertext, iv);
   }
 
   // =========================================================================
-  // 7. ПОДПИСЬ ДАННЫХ
+  // 7. ПОДПИСЬ ДАННЫХ (ИСПРАВЛЕНО)
   // =========================================================================
   static async signData(privateKey, dataString) {
-    const signature = await subtle.sign(
-      { name: 'ECDSA', hash: 'SHA-256' },
-      privateKey,
-      new TextEncoder().encode(dataString)
-    );
-    return new Uint8Array(signature);
-  }
+    const sig = p256.sign(new TextEncoder().encode(dataString), privateKey);
+    // Возвращаем DER-кодированную подпись
+    if (typeof sig.toDERRawBytes === 'function') {
+        return sig.toDERRawBytes();
+    }
+    // Если нет, конвертируем вручную из компактного формата
+    const compact = sig.toCompactRawBytes ? sig.toCompactRawBytes() : sig.toRawBytes();
+    const r = compact.slice(0, 32);
+    const s = compact.slice(32, 64);
+
+    const encodeInteger = (bytes) => {
+        let start = 0;
+        while (start < bytes.length && bytes[start] === 0) start++;
+        const trimmed = bytes.slice(start);
+        if (trimmed.length > 0 && (trimmed[0] & 0x80) !== 0) {
+            const result = new Uint8Array(trimmed.length + 1);
+            result[0] = 0x00;
+            result.set(trimmed, 1);
+            return result;
+        }
+        return trimmed;
+    };
+
+    const rEnc = encodeInteger(r);
+    const sEnc = encodeInteger(s);
+    const der = new Uint8Array(2 + rEnc.length + 2 + sEnc.length);
+    der[0] = 0x30;
+    der[1] = 4 + rEnc.length + sEnc.length;
+    let offset = 2;
+    der[offset++] = 0x02;
+    der[offset++] = rEnc.length;
+    der.set(rEnc, offset);
+    offset += rEnc.length;
+    der[offset++] = 0x02;
+    der[offset++] = sEnc.length;
+    der.set(sEnc, offset);
+    return der;
+}
 
   // =========================================================================
-  // 8. ВЕРИФИКАЦИЯ ПОДПИСИ
+  // 8. ВЕРИФИКАЦИЯ ПОДПИСИ (ИСПРАВЛЕНО)
   // =========================================================================
   static async verifySignature(publicKeyBytes, signature, dataString) {
-    const pubKeyObj = await subtle.importKey(
-      'raw', publicKeyBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']
-    );
-    return await subtle.verify(
-      { name: 'ECDSA', hash: 'SHA-256' },
-      pubKeyObj,
-      signature,
-      new TextEncoder().encode(dataString)
-    );
+    const sig = p256.Signature.fromCompact(signature);
+    return p256.verify(sig, new TextEncoder().encode(dataString), publicKeyBytes);
   }
 
   // =========================================================================
-  // 9. ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ (исправлены с использованием Buffer)
+  // 9. ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ (с Buffer)
   // =========================================================================
-  static async _mnemonicToSeed(mnemonic) {
-    const keyMaterial = await subtle.importKey(
-      'raw', new TextEncoder().encode(mnemonic),
-      'PBKDF2', false, ['deriveBits']
-    );
-    return subtle.deriveBits(
-      { name: 'PBKDF2', salt: new TextEncoder().encode('mnemonic'),
-        iterations: 2048, hash: 'SHA-512' },
-      keyMaterial, 512
-    );
-  }
-
   static _normalizePrivateKey(rawBytes) {
     const n = BigInt("0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551");
     let scalar = 0n;
@@ -439,6 +400,7 @@ class DarkCrypto {
   }
 
   static _derivePubPoint(privateScalar) {
+    // Метод не используется, оставлен для совместимости
     const p = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFn;
     const a = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFCn;
     const Gx = 0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296n;
@@ -520,7 +482,6 @@ class DarkCrypto {
     return bytes;
   }
 
-  // === ИСПРАВЛЕННЫЕ МЕТОДЫ (без btoa/atob) ===
   static _toBase64(arr) {
     return Buffer.from(arr).toString('base64');
   }
@@ -558,24 +519,23 @@ class DarkCrypto {
   }
 
   // =========================================================================
-  // 10. ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ДЛЯ РАБОТЫ С ФАЙЛАМИ
+  // 10. ФАЙЛОВЫЕ ОПЕРАЦИИ
   // =========================================================================
   static async encryptFile(fileData, key, iv) {
-    const cryptoKey = await subtle.importKey('raw', key, { name: 'AES-GCM' }, false, ['encrypt']);
-    const encrypted = await subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, fileData);
-    return new Uint8Array(encrypted);
+    const aes = gcm(key);
+    return aes.encrypt(iv, fileData);
   }
 
   static async decryptFile(encryptedData, key, iv) {
-    const cryptoKey = await subtle.importKey('raw', key, { name: 'AES-GCM' }, false, ['decrypt']);
-    const decrypted = await subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, encryptedData);
-    return decrypted;
+    const aes = gcm(key);
+    return aes.decrypt(iv, encryptedData);
   }
 
   static generateFileKeyAndIv() {
-    const key = Random.getRandomBytes(32);
-    const iv = Random.getRandomBytes(12);
-    return { key, iv };
+    return {
+      key: getRandomBytes(32),
+      iv: getRandomBytes(12),
+    };
   }
 
   static arrayBufferToBase64(buffer) {

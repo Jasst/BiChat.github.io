@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { getBalance, getGlobalStats, getTransactions, stake, unstake, sendCoins, getStakingInfo } from '../api';
 
 export default function WalletScreen() {
@@ -45,7 +46,7 @@ export default function WalletScreen() {
     loadData();
   };
 
-  if (loading) return <ActivityIndicator size="large" color="#fff" style={styles.loader} />;
+  if (loading) return <ActivityIndicator size="large" color="#6c5ce7" style={styles.loader} />;
 
   return (
     <View style={styles.container}>
@@ -74,11 +75,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a', padding: 16 },
   balance: { fontSize: 32, color: '#fff', fontWeight: 'bold', marginBottom: 20 },
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' },
-  input: { backgroundColor: '#1e1e1e', borderRadius: 8, padding: 10, color: '#fff', flex: 1, marginRight: 8, minWidth: 100 },
-  btn: { backgroundColor: '#6c5ce7', padding: 10, borderRadius: 8 },
+  input: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 12,
+    padding: 10,
+    color: '#fff',
+    flex: 1,
+    marginRight: 8,
+    minWidth: 100,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  btn: { backgroundColor: '#6c5ce7', padding: 10, borderRadius: 50 },
   btnText: { color: '#fff', fontWeight: 'bold' },
   stats: { color: '#a4b0be', fontSize: 14, marginVertical: 4 },
   txsTitle: { color: '#fff', fontSize: 18, marginTop: 16, marginBottom: 8 },
   tx: { color: '#fff', fontSize: 14, paddingVertical: 4 },
-  loader: { flex: 1, justifyContent: 'center' },
+  loader: { flex: 1, justifyContent: 'center', backgroundColor: '#0a0a0a' },
 });

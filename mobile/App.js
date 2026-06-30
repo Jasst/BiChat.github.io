@@ -1,4 +1,5 @@
 // App.js
+import 'react-native-get-random-values';
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -11,6 +12,9 @@ import useUserStore from './src/store/userStore';
 import { storage } from './src/utils/storage';
 import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from './src/shared/core';
 import DarkCrypto from './src/shared/crypto-client';
+import { Buffer } from 'buffer';
+global.Buffer = Buffer;
+
 
 const Stack = createStackNavigator();
 

@@ -1,5 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+import { Ionicons } from '@expo/vector-icons';
 import ChatScreen from '../screens/ChatScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
 import ContactsScreen from '../screens/ContactsScreen';
@@ -22,11 +23,36 @@ function ChatsStack() {
 export default function BottomTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: { backgroundColor: '#141414', borderTopColor: '#2a2a2a' },
-        tabBarActiveTintColor: '#fff',
-      }}
+        tabBarStyle: {
+          backgroundColor: '#141414',
+          borderTopColor: '#2a2a2a',
+          paddingBottom: 6,
+          height: 70,
+        },
+        tabBarActiveTintColor: '#6c5ce7',
+        tabBarInactiveTintColor: '#a4b0be',
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '500',
+        },
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+          if (route.name === 'Chats') {
+            iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+          } else if (route.name === 'Contacts') {
+            iconName = focused ? 'people' : 'people-outline';
+          } else if (route.name === 'Groups') {
+            iconName = focused ? 'people-circle' : 'people-circle-outline';
+          } else if (route.name === 'Wallet') {
+            iconName = focused ? 'wallet' : 'wallet-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
+          }
+          return <Ionicons name={iconName} size={24} color={color} />;
+        },
+      })}
     >
       <Tab.Screen name="Chats" component={ChatsStack} />
       <Tab.Screen name="Contacts" component={ContactsScreen} />

@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { getConversation } from '../api';
@@ -23,7 +24,6 @@ export default function ChatDetailScreen({ route }) {
   const [loading, setLoading] = useState(false);
   const flatListRef = useRef();
 
-  // Загрузка сообщений
   const loadMessages = async () => {
     setLoading(true);
     try {
@@ -46,7 +46,6 @@ export default function ChatDetailScreen({ route }) {
     const content = input.trim();
     setInput('');
 
-    // Локальное добавление сообщения (для мгновенного отображения)
     const tempMsg = {
       id: Date.now(),
       sender: myAddress,
@@ -66,12 +65,10 @@ export default function ChatDetailScreen({ route }) {
         isGroup,
         isGroup ? address.replace('group:', '') : null
       );
-      // Можно обновить статус или ID сообщения, если нужно
       console.log('Message sent:', result);
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Failed to send message');
-      // Опционально: удалить временное сообщение или пометить ошибкой
     }
   };
 
@@ -79,7 +76,7 @@ export default function ChatDetailScreen({ route }) {
     <View style={[styles.messageRow, item.is_mine ? styles.myMessage : styles.otherMessage]}>
       <Text style={styles.messageText}>{item.content}</Text>
       <Text style={styles.time}>
-        {new Date(item.timestamp * 1000).toLocaleTimeString()}
+        {new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </Text>
     </View>
   );
@@ -114,7 +111,7 @@ export default function ChatDetailScreen({ route }) {
           multiline
         />
         <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-          <Text style={styles.sendText}>➤</Text>
+          <Ionicons name="send" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -158,6 +155,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#2a2a2a',
     alignItems: 'center',
+    backgroundColor: '#141414',
   },
   input: {
     flex: 1,
@@ -167,6 +165,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     color: '#fff',
     maxHeight: 100,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
   sendButton: {
     marginLeft: 8,
@@ -174,5 +174,4 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 10,
   },
-  sendText: { color: '#fff', fontSize: 18 },
 });

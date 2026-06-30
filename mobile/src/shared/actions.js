@@ -32,7 +32,7 @@ export async function uploadEncryptedFile(file) {
 // ===================== Отправка сообщения =====================
 export async function sendMessage(recipient, content, fileAttachment = null, isGroup = false, groupId = null) {
   const userStore = useUserStore.getState();
-  const chatStore = useChatStore.getState();
+  const chatStore = useChatStore.getState();   // ← объявляем ОДИН раз
 
   if (!content && !fileAttachment) {
     throw new Error('Enter message or attach file');
@@ -158,7 +158,7 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
   };
 
   addMessageToCache(recipient, sentMessage);
-  chatStore.addLocalMessage(recipient, sentMessage);
+  chatStore.addLocalMessage(recipient, sentMessage);          // ← используем уже существующую переменную
   chatStore.updateConversationPreview(recipient, content?.slice(0, 40) || '📎 File');
 
   return data;

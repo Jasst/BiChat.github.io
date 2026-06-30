@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import DarkCrypto from '../shared/crypto-client';
 import useUserStore from '../store/userStore';
 import { storage } from '../utils/storage';
@@ -23,19 +24,16 @@ export default function LoginScreen({ navigation }) {
       const keys = await DarkCrypto.deriveKeyPair(mnemonic.trim());
       const { address, compressedPubKey, signPrivateKey } = keys;
 
-      // Получаем nonce с сервера
       const nonceRes = await fetch(`${API_BASE_URL}/nonce`);
       if (!nonceRes.ok) throw new Error('Failed to get nonce');
       const nonceData = await nonceRes.json();
       const nonce = nonceData.nonce;
 
-      // Подписываем nonce
       const signatureArray = await DarkCrypto.signData(signPrivateKey, nonce);
       const signatureHex = Array.from(new Uint8Array(signatureArray))
         .map(b => b.toString(16).padStart(2, '0')).join('');
       const pubkeyB64 = DarkCrypto._toBase64(compressedPubKey);
 
-      // Отправляем логин
       const loginRes = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -44,13 +42,11 @@ export default function LoginScreen({ navigation }) {
       const loginData = await loginRes.json();
 
       if (loginRes.ok) {
-        // Сохраняем мнемонику и адрес
         await storage.setItem('mnemonic', mnemonic.trim());
         await storage.setItem('userAddress', address);
         setAddress(address);
         setAuthenticated(true);
 
-        // Инициализируем WebSocket
         await initWebSocket();
         startHeartbeat();
         startStatusPolling();
@@ -88,8 +84,19 @@ export default function LoginScreen({ navigation }) {
         value={password}
         onChangeText={setPassword}
       />
-      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        <LinearGradient
+          colors={['#6c5ce7', '#4a3db8']}
+          style={styles.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+        >
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
+        </LinearGradient>
       </TouchableOpacity>
     </View>
   );
@@ -118,11 +125,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     minHeight: 80,
     textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
   button: {
-    backgroundColor: '#6c5ce7',
-    padding: 16,
-    borderRadius: 12,
+    borderRadius: 50,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  gradient: {
+    paddingVertical: 16,
     alignItems: 'center',
   },
   buttonText: {
