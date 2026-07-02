@@ -34,6 +34,7 @@ class LoginRequest(BaseModel):
     address:    str
     public_key: str
     signature:  str
+    nonce:      str          # ✅ добавлено — без этого поля auth.py падает с AttributeError
 
     @field_validator('address')
     @classmethod
@@ -41,6 +42,14 @@ class LoginRequest(BaseModel):
         v = v.strip()
         if len(v) != 64:
             raise ValueError('Address must be 64 hex characters')
+        return v
+
+    @field_validator('nonce')
+    @classmethod
+    def validate_nonce(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('nonce is required')
         return v
 
 

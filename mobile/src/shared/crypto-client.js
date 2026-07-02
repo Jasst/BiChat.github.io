@@ -290,9 +290,11 @@ class DarkCrypto {
   // =========================================================================
   // 4. ECDH ОБЩИЙ СЕКРЕТ
   // =========================================================================
-  static async getSharedSecret(myPrivateKey, theirPubKeyBytes) {
-    return p256.getSharedSecret(myPrivateKey, theirPubKeyBytes);
-  }
+static async getSharedSecret(myPrivateKey, theirPubKeyBytes) {
+    const shared = p256.getSharedSecret(myPrivateKey, theirPubKeyBytes);
+    // Убедимся, что возвращаем Uint8Array
+    return shared instanceof Uint8Array ? shared : new Uint8Array(shared);
+}
 
   // =========================================================================
   // 5. AES-GCM ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ
@@ -305,10 +307,15 @@ class DarkCrypto {
   }
 
   static async decryptAES(sharedSecret, ciphertext, iv) {
-    const aes = gcm(sharedSecret);
-    const decrypted = aes.decrypt(iv, ciphertext);
+    // Принудительно приводим к Uint8Array
+    const key = sharedSecret instanceof Uint8Array ? sharedSecret : new Uint8Array(sharedSecret);
+    const nonce = iv instanceof Uint8Array ? iv : new Uint8Array(iv);
+    const data = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext);
+
+    const aes = gcm(key);
+    const decrypted = aes.decrypt(nonce, data);
     return new TextDecoder().decode(decrypted);
-  }
+}
 
   // =========================================================================
   // 6. ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ СООБЩЕНИЙ
@@ -324,62 +331,43 @@ class DarkCrypto {
   }
 
   static async decryptMessage(myPrivateKey, senderPubKey, ivBase64, ciphertextBase64) {
-    const iv = this._fromBase64(ivBase64);
-    const ciphertext = this._base64ToArrayBuffer(ciphertextBase64);
-    const shared = await this.getSharedSecret(myPrivateKey, senderPubKey);
-    return await this.decryptAES(shared, ciphertext, iv);
-  }
-
-  // =========================================================================
-  // 7. ПОДПИСЬ ДАННЫХ (ИСПРАВЛЕНО)
-  // =========================================================================
-  static async signData(privateKey, dataString) {
-    const sig = p256.sign(new TextEncoder().encode(dataString), privateKey);
-    // Возвращаем DER-кодированную подпись
-    if (typeof sig.toDERRawBytes === 'function') {
-        return sig.toDERRawBytes();
+    // Преобразуем senderPubKey
+    if (typeof senderPubKey === 'string') {
+        senderPubKey = this._fromBase64(senderPubKey);
     }
-    // Если нет, конвертируем вручную из компактного формата
-    const compact = sig.toCompactRawBytes ? sig.toCompactRawBytes() : sig.toRawBytes();
-    const r = compact.slice(0, 32);
-    const s = compact.slice(32, 64);
+    if (!(senderPubKey instanceof Uint8Array)) {
+        senderPubKey = new Uint8Array(senderPubKey);
+    }
 
-    const encodeInteger = (bytes) => {
-        let start = 0;
-        while (start < bytes.length && bytes[start] === 0) start++;
-        const trimmed = bytes.slice(start);
-        if (trimmed.length > 0 && (trimmed[0] & 0x80) !== 0) {
-            const result = new Uint8Array(trimmed.length + 1);
-            result[0] = 0x00;
-            result.set(trimmed, 1);
-            return result;
-        }
-        return trimmed;
-    };
+    const iv = this._fromBase64(ivBase64);
+    const ciphertext = this._fromBase64(ciphertextBase64);
 
-    const rEnc = encodeInteger(r);
-    const sEnc = encodeInteger(s);
-    const der = new Uint8Array(2 + rEnc.length + 2 + sEnc.length);
-    der[0] = 0x30;
-    der[1] = 4 + rEnc.length + sEnc.length;
-    let offset = 2;
-    der[offset++] = 0x02;
-    der[offset++] = rEnc.length;
-    der.set(rEnc, offset);
-    offset += rEnc.length;
-    der[offset++] = 0x02;
-    der[offset++] = sEnc.length;
-    der.set(sEnc, offset);
-    return der;
+    // Проверка типов
+    console.log('iv instanceof Uint8Array?', iv instanceof Uint8Array);
+    console.log('ciphertext instanceof Uint8Array?', ciphertext instanceof Uint8Array);
+
+    const shared = await this.getSharedSecret(myPrivateKey, senderPubKey);
+    console.log('shared instanceof Uint8Array?', shared instanceof Uint8Array);
+
+    return await this.decryptAES(shared, ciphertext, iv);
 }
 
-  // =========================================================================
-  // 8. ВЕРИФИКАЦИЯ ПОДПИСИ (ИСПРАВЛЕНО)
-  // =========================================================================
-  static async verifySignature(publicKeyBytes, signature, dataString) {
+
+// =========================================================================
+// 7. ПОДПИСЬ ДАННЫХ (ГАРАНТИРОВАННО ВОЗВРАЩАЕТ 64 БАЙТА)
+// =========================================================================
+
+static async signData(privateKey, dataString) {
+    const msgHash = sha256(new TextEncoder().encode(dataString));
+    const sig = p256.sign(msgHash, privateKey);
+    return sig.toCompactRawBytes();
+}
+
+static async verifySignature(publicKeyBytes, signature, dataString) {
     const sig = p256.Signature.fromCompact(signature);
-    return p256.verify(sig, new TextEncoder().encode(dataString), publicKeyBytes);
-  }
+    const msgHash = sha256(new TextEncoder().encode(dataString));
+    return p256.verify(sig, msgHash, publicKeyBytes);
+}
 
   // =========================================================================
   // 9. ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ (с Buffer)

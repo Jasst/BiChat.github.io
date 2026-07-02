@@ -1,6 +1,17 @@
+// src/screens/LoginScreen.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  Switch,
+} from 'react-native';
+import { BlurView } from 'expo-blur';
+import { colors, glassStyle } from '../theme';
+import { OvalButton } from '../components/OvalButton';
 import DarkCrypto from '../shared/crypto-client';
 import useUserStore from '../store/userStore';
 import { storage } from '../utils/storage';
@@ -10,6 +21,7 @@ import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolli
 export default function LoginScreen({ navigation }) {
   const [mnemonic, setMnemonic] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const { setAddress, setAuthenticated } = useUserStore();
 
@@ -18,14 +30,20 @@ export default function LoginScreen({ navigation }) {
       Alert.alert('Error', 'Enter your mnemonic phrase');
       return;
     }
+    if (remember && !password.trim()) {
+      Alert.alert('Error', 'Please enter an encryption password to remember your wallet');
+      return;
+    }
 
     setLoading(true);
     try {
-      const keys = await DarkCrypto.deriveKeyPair(mnemonic.trim());
+      const trimmedMnemonic = mnemonic.trim();
+      const keys = await DarkCrypto.deriveKeyPair(trimmedMnemonic);
       const { address, compressedPubKey, signPrivateKey } = keys;
 
+      // Получаем nonce с сервера
       const nonceRes = await fetch(`${API_BASE_URL}/nonce`);
-      if (!nonceRes.ok) throw new Error('Failed to get nonce');
+      if (!nonceRes.ok) throw new Error('Could not get nonce from server');
       const nonceData = await nonceRes.json();
       const nonce = nonceData.nonce;
 
@@ -37,15 +55,30 @@ export default function LoginScreen({ navigation }) {
       const loginRes = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, public_key: pubkeyB64, signature: signatureHex })
+        body: JSON.stringify({ address, public_key: pubkeyB64, signature: signatureHex, nonce })
       });
       const loginData = await loginRes.json();
 
       if (loginRes.ok) {
-        await storage.setItem('mnemonic', mnemonic.trim());
+        // ✅ Сохраняем nonce из ответа /login (сервер должен его вернуть)
+        const serverNonce = loginData.nonce;
+        if (serverNonce) {
+          await storage.setItem('nonce', serverNonce);
+        } else {
+          // fallback: используем тот, что получили от /nonce
+          await storage.setItem('nonce', nonce);
+        }
+
+        await storage.setItem('mnemonic', trimmedMnemonic);
         await storage.setItem('userAddress', address);
         setAddress(address);
         setAuthenticated(true);
+
+        if (remember && password) {
+          const { encryptMnemonic, saveEncryptedMnemonic } = await import('../utils/secureStorage');
+          const encrypted = await encryptMnemonic(trimmedMnemonic, password);
+          await saveEncryptedMnemonic(encrypted);
+        }
 
         await initWebSocket();
         startHeartbeat();
@@ -66,38 +99,43 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter your 24-word mnemonic"
-        placeholderTextColor="#666"
-        multiline
-        numberOfLines={4}
-        value={mnemonic}
-        onChangeText={setMnemonic}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Encryption password (optional)"
-        placeholderTextColor="#666"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleLogin}
-        disabled={loading}
-      >
-        <LinearGradient
-          colors={['#6c5ce7', '#4a3db8']}
-          style={styles.gradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
-        </LinearGradient>
-      </TouchableOpacity>
+      <BlurView intensity={20} tint="dark" style={[styles.card, glassStyle]}>
+        <Text style={styles.title}>Login</Text>
+        <TextInput
+          style={[styles.input, styles.mnemonicInput]}
+          placeholder="Enter your 24-word mnemonic"
+          placeholderTextColor={colors.textMuted}
+          multiline
+          numberOfLines={4}
+          value={mnemonic}
+          onChangeText={setMnemonic}
+          autoCapitalize="none"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Encryption password (required if remembering)"
+          placeholderTextColor={colors.textMuted}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+        <View style={styles.switchRow}>
+          <Switch
+            value={remember}
+            onValueChange={setRemember}
+            trackColor={{ false: '#2a2a2a', true: colors.accent }}
+            thumbColor={remember ? '#fff' : '#f4f3f4'}
+          />
+          <Text style={styles.switchLabel}>Remember me (encrypt wallet locally)</Text>
+        </View>
+        <OvalButton
+          title="Login"
+          primary
+          loading={loading}
+          onPress={handleLogin}
+          style={styles.fullWidth}
+        />
+      </BlurView>
     </View>
   );
 }
@@ -105,41 +143,52 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
-    padding: 20,
+    backgroundColor: colors.bgPrimary,
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 480,
+    padding: 24,
+    ...glassStyle,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.textMain,
     marginBottom: 30,
     textAlign: 'center',
   },
   input: {
-    backgroundColor: '#1e1e1e',
-    borderRadius: 12,
-    padding: 12,
-    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: 50,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: colors.textMain,
     fontSize: 16,
     marginBottom: 16,
+  },
+  mnemonicInput: {
     minHeight: 80,
     textAlignVertical: 'top',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderRadius: 16,
   },
-  button: {
-    borderRadius: 50,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  gradient: {
-    paddingVertical: 16,
+  switchRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+  switchLabel: {
+    color: colors.textMuted,
+    fontSize: 14,
+    flexShrink: 1,
+  },
+  fullWidth: {
+    width: '100%',
   },
 });

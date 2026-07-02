@@ -75,12 +75,13 @@ export async function restoreMnemonic() {
 }
 
 // ===================== WebSocket =====================
+
 export async function initWebSocket() {
-  const userStore = getUserStore();
+  const userStore = useUserStore.getState();
   const address = userStore.address;
   if (!address) {
     console.warn('No user address, WebSocket not initialized');
-    return;
+    return false;
   }
 
   if (wsClient) {
@@ -91,20 +92,24 @@ export async function initWebSocket() {
   try {
     const keys = await ensureKeys();
 
-    // ✅ Генерируем валидный UUID v4
-    const nonce = uuidv4();
+    // ✅ Всегда запрашиваем свежий nonce с сервера
+    const nonceRes = await fetch(`${API_BASE_URL}/nonce`);
+    if (!nonceRes.ok) throw new Error('Failed to get nonce from server');
+    const nonceData = await nonceRes.json();
+    const nonce = nonceData.nonce;
+    // Сохраняем для других случаев (не обязательно для WebSocket, но полезно)
+    await storage.setItem('nonce', nonce);
 
     const signatureArray = await DarkCrypto.signData(keys.signPrivateKey, nonce);
     const signatureHex = Array.from(new Uint8Array(signatureArray))
       .map(b => b.toString(16).padStart(2, '0')).join('');
 
-    const WebSocketClientClass = require('./WebSocketClient').default || WebSocketClient;
-    wsClient = new WebSocketClientClass({
+    wsClient = new WebSocketClient({
       url: `${API_BASE_URL.replace('http', 'ws')}/ws`,
       onMessage: handleWebSocketMessage,
       onConnect: () => {
         console.log('✅ WebSocket connected');
-        const chatStore = getChatStore();
+        const chatStore = useChatStore.getState();
         chatStore.loadConversations();
         handlePendingCall();
       },
@@ -113,10 +118,13 @@ export async function initWebSocket() {
     });
     wsClient.setAuth(address, signatureHex, nonce);
     wsClient.connect();
+    return true;
   } catch (err) {
     console.error('Failed to init WebSocket:', err?.message || err);
+    return false;
   }
 }
+
 
 export function getWsClient() {
   return wsClient;
@@ -229,12 +237,12 @@ export async function processMessageDecryption(msg) {
 
       if (isMine && myEnc.self_text) {
         const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-        const ciphertext = DarkCrypto._base64ToArrayBuffer(myEnc.self_text.ciphertext);
+        const ciphertext = DarkCrypto._fromBase64(myEnc.self_text.ciphertext);
         const iv = DarkCrypto._fromBase64(myEnc.self_text.iv);
         content = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
       } else if (myEnc.text) {
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-        const ciphertext = DarkCrypto._base64ToArrayBuffer(myEnc.text.ciphertext);
+        const ciphertext = DarkCrypto._fromBase64(myEnc.text.ciphertext);
         const iv = DarkCrypto._fromBase64(myEnc.text.iv);
         content = await DarkCrypto.decryptAES(shared, ciphertext, iv);
       } else {
@@ -249,7 +257,7 @@ export async function processMessageDecryption(msg) {
           fileIv = myEnc.self_file_iv;
         } else if (myEnc.file_key && myEnc.file_iv) {
           const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-          const keyCipher = DarkCrypto._base64ToArrayBuffer(myEnc.file_key.ciphertext);
+          const keyCipher = DarkCrypto._fromBase64(myEnc.file_key.ciphertext);
           const keyIv = DarkCrypto._fromBase64(myEnc.file_key.iv);
           const decKey = await DarkCrypto.decryptAES(shared, keyCipher, keyIv);
           const ivCipher = DarkCrypto._base64ToArrayBuffer(myEnc.file_iv.ciphertext);
@@ -310,12 +318,12 @@ export async function processMessageDecryption(msg) {
     if (parsed.text && parsed.text.ciphertext && parsed.text.iv) {
       if (isMine && parsed.self_text && parsed.self_text.ciphertext) {
         const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-        const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_text.ciphertext);
+        const ciphertext = DarkCrypto._fromBase64(parsed.self_text.ciphertext);
         const iv = DarkCrypto._fromBase64(parsed.self_text.iv);
         decryptedText = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
       } else {
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-        const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.text.ciphertext);
+        const ciphertext = DarkCrypto._fromBase64(parsed.text.ciphertext);
         const iv = DarkCrypto._fromBase64(parsed.text.iv);
         decryptedText = await DarkCrypto.decryptAES(shared, ciphertext, iv);
       }
@@ -323,12 +331,12 @@ export async function processMessageDecryption(msg) {
     } else if (parsed.ciphertext && parsed.iv) {
       if (isMine && parsed.self_text && parsed.self_text.ciphertext) {
         const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-        const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.self_text.ciphertext);
+        const ciphertext = DarkCrypto._fromBase64(parsed.self_text.ciphertext);
         const iv = DarkCrypto._fromBase64(parsed.self_text.iv);
         decryptedText = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
       } else {
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-        const ciphertext = DarkCrypto._base64ToArrayBuffer(parsed.ciphertext);
+        const ciphertext = DarkCrypto._fromBase64(parsed.ciphertext);
         const iv = DarkCrypto._fromBase64(parsed.iv);
         decryptedText = await DarkCrypto.decryptAES(shared, ciphertext, iv);
       }
@@ -345,7 +353,7 @@ export async function processMessageDecryption(msg) {
         fileIv = parsed.self_file_iv;
       } else if (parsed.file_key && parsed.file_iv) {
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-        const keyCipher = DarkCrypto._base64ToArrayBuffer(parsed.file_key.ciphertext);
+        const keyCipher = DarkCrypto._fromBase64(parsed.file_key.ciphertext);
         const keyIv = DarkCrypto._fromBase64(parsed.file_key.iv);
         const decKey = await DarkCrypto.decryptAES(shared, keyCipher, keyIv);
         const ivCipher = DarkCrypto._base64ToArrayBuffer(parsed.file_iv.ciphertext);

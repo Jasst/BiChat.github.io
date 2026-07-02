@@ -1,18 +1,10 @@
+// shared/WebSocketClient.js
 /**
  * WebSocketClient.js — клиент для WebSocket с авто-переподключением
  * Адаптирован для React Native
- *
- * ИСПРАВЛЕНИЯ:
- * 1. reconnectDelay сбрасывается до начального значения после успешного подключения
- * 2. Добавлен метод send() с проверкой готовности соединения
- * 3. Добавлен публичный метод getState() для диагностики
- * 4. Убраны зависимости от window (браузерное окружение)
- * 5. Экспорт по умолчанию (ES Module)
  */
-
-class WebSocketClient {
+export default class WebSocketClient {
   constructor(options = {}) {
-    // URL должен быть передан явно (из constants.js)
     this.url = options.url || null;
     this.onMessage    = options.onMessage    || (() => {});
     this.onError      = options.onError      || (() => {});
@@ -51,7 +43,7 @@ class WebSocketClient {
     }
 
     if (!this.url) {
-      throw new Error('WebSocket URL not provided. Please set options.url');
+      throw new Error('WebSocket URL not provided');
     }
 
     let finalUrl = this.url;
@@ -148,5 +140,3 @@ class WebSocketClient {
     if (this.debug) console.log('[WebSocketClient]', ...args);
   }
 }
-
-export default WebSocketClient;

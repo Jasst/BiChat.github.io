@@ -311,10 +311,10 @@ if (window._loginScriptLoaded) {
         const pubkeyB64 = DarkCrypto._toBase64(compressedPubKey);
 
         const res = await fetch('/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, public_key: pubkeyB64, signature: signatureHex })
-        });
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ address, public_key: pubkeyB64, signature: signatureHex, nonce })  // ← добавили nonce
+});
 
         const data = await res.json();
 

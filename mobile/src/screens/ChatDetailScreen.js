@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+// src/screens/ChatDetailScreen.js
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,28 +10,221 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
+  Modal,
+  Image,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { colors } from '../theme';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
-import { getConversation } from '../api';
+import { getConversation, addContact } from '../api';
 import { sendMessage as sendEncryptedMessage } from '../shared/actions';
+import { clearMessageCache } from '../shared/core';
+import DarkCrypto from '../shared/crypto-client';
+import { API_BASE_URL } from '../config/constants';
 
-export default function ChatDetailScreen({ route }) {
+// ===================== Кэш расшифрованных изображений (в памяти сессии) =====================
+const decryptedImageCache = new Map(); // messageId -> data URI
+
+async function decryptAndCacheImage(msg) {
+  if (!msg.fileUrl || !msg.fileKey || !msg.fileIv) return null;
+  if (decryptedImageCache.has(msg.id)) return decryptedImageCache.get(msg.id);
+  try {
+    const fullUrl = msg.fileUrl.startsWith('http') ? msg.fileUrl : `${API_BASE_URL}${msg.fileUrl}`;
+    const localPath = FileSystem.cacheDirectory + `enc_${msg.id}`;
+    const { uri } = await FileSystem.downloadAsync(fullUrl, localPath);
+    const encryptedB64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    const encryptedBytes = DarkCrypto._fromBase64(encryptedB64);
+    const keyBytes = DarkCrypto._fromBase64(msg.fileKey);
+    const ivBytes = DarkCrypto._fromBase64(msg.fileIv);
+    const decrypted = await DarkCrypto.decryptFile(encryptedBytes, keyBytes, ivBytes);
+    const decryptedB64 = DarkCrypto.arrayBufferToBase64(decrypted);
+    const mime = (msg.fileType && msg.fileType.startsWith('image/')) ? msg.fileType : 'image/jpeg';
+    const dataUri = `data:${mime};base64,${decryptedB64}`;
+    decryptedImageCache.set(msg.id, dataUri);
+    FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+    return dataUri;
+  } catch (e) {
+    console.warn('Image decrypt failed for message', msg.id, e?.message || e);
+    return null;
+  }
+}
+
+// ===================== Превью изображения в сообщении (лениво расшифровывается) =====================
+function MessageImage({ msg, onPress }) {
+  const [uri, setUri] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    decryptAndCacheImage(msg).then((u) => {
+      if (!alive) return;
+      if (u) setUri(u);
+      else setFailed(true);
+    });
+    return () => { alive = false; };
+  }, [msg.id]);
+
+  if (failed) {
+    return (
+      <View style={styles.fileAttachment}>
+        <Ionicons name="alert-circle-outline" size={18} color="#aaa" />
+        <Text style={styles.fileName}>Failed to load image</Text>
+      </View>
+    );
+  }
+  if (!uri) {
+    return (
+      <View style={styles.imagePlaceholder}>
+        <ActivityIndicator size="small" color={colors.accent} />
+      </View>
+    );
+  }
+  return (
+    <TouchableOpacity onPress={() => onPress(uri)}>
+      <Image source={{ uri }} style={styles.messageImage} resizeMode="cover" />
+    </TouchableOpacity>
+  );
+}
+
+export default function ChatDetailScreen({ route, navigation }) {
   const { address, name, isGroup } = route.params;
-  const { messages, setMessages, addMessage } = useChatStore();
+  const { messages, setMessages, addMessage, addLocalMessage, updateConversationPreview } = useChatStore();
   const { address: myAddress } = useUserStore();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [attachment, setAttachment] = useState(null);
   const flatListRef = useRef();
+  const [hasMore, setHasMore] = useState(true);
 
-  const loadMessages = async () => {
+  // ===== Лайтбокс для просмотра изображений (паритет с #imageModal) =====
+  const [lightboxUri, setLightboxUri] = useState(null);
+  const [lightboxVisible, setLightboxVisible] = useState(false);
+
+  const openLightbox = (uri) => {
+    setLightboxUri(uri);
+    setLightboxVisible(true);
+  };
+
+  const shareLightboxImage = async () => {
+    if (!lightboxUri) return;
+    try {
+      await Share.share({ url: lightboxUri, message: lightboxUri });
+    } catch (e) {
+      Alert.alert('Error', 'Could not share image');
+    }
+  };
+
+  // ===== "Добавить в контакты" (паритет с #addToContactsBtn) =====
+  const handleAddToContacts = async () => {
+    if (isGroup) return;
+    try {
+      const contactName = name && name !== address.slice(0, 10) + '…'
+        ? name
+        : 'Contact_' + address.slice(0, 8);
+      await addContact(contactName, address);
+      Alert.alert('Success', 'Contact added');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to add contact');
+    }
+  };
+
+  // ===== "Очистить переписку" (паритет с #clearConversationBtn -> /clear_conversation) =====
+  const handleClearConversation = () => {
+    Alert.alert('Clear conversation', 'This will delete all messages in this chat. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const res = await fetch(`${API_BASE_URL}/clear_conversation`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_with: address }),
+            });
+            if (!res.ok) throw new Error('Failed to clear conversation');
+            setMessages([]);
+            clearMessageCache(address);
+            updateConversationPreview(address, '');
+          } catch (e) {
+            Alert.alert('Error', e.message || 'Failed to clear conversation');
+          }
+        },
+      },
+    ]);
+  };
+
+  // ===== Звонок / видеозвонок =====
+  // ⚠️ В мобильном приложении пока нет WebRTC-слоя (CallManager), как в вебе
+  // (call-manager.js + ws.py call_offer/answer/ice уже готовы на бэкенде).
+  // Кнопки оставлены как явный задел — подключение react-native-webrtc
+  // и экрана звонка стоит делать отдельной задачей.
+  const handleCall = (video) => {
+    Alert.alert(
+      video ? 'Video call' : 'Voice call',
+      'Calling is not yet implemented in the mobile app. This needs a WebRTC layer (react-native-webrtc) similar to the web call-manager.js.'
+    );
+  };
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: name || address.slice(0, 10),
+      headerStyle: { backgroundColor: colors.bgPrimary, borderBottomWidth: 0 },
+      headerTitleStyle: { color: colors.textMain },
+      headerTintColor: colors.textMain,
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 10 }}>
+          <Ionicons name="arrow-back" size={24} color={colors.textMain} />
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          {!isGroup && (
+            <TouchableOpacity onPress={() => handleCall(false)} style={styles.headerBtn}>
+              <Ionicons name="call-outline" size={22} color={colors.textMain} />
+            </TouchableOpacity>
+          )}
+          {!isGroup && (
+            <TouchableOpacity onPress={() => handleCall(true)} style={styles.headerBtn}>
+              <Ionicons name="videocam-outline" size={22} color={colors.textMain} />
+            </TouchableOpacity>
+          )}
+          {!isGroup && (
+            <TouchableOpacity onPress={handleAddToContacts} style={styles.headerBtn}>
+              <Ionicons name="person-add-outline" size={20} color={colors.textMain} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={handleClearConversation} style={styles.headerBtn}>
+            <Ionicons name="trash-outline" size={20} color={colors.textMain} />
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation, name, address, isGroup]);
+
+  const loadMessages = async (loadMore = false) => {
+    if (loading) return;
     setLoading(true);
     try {
-      const data = await getConversation(address);
-      setMessages(data.messages || []);
+      const beforeId = loadMore && messages.length > 0 ? messages[0].id : null;
+      const data = await getConversation(address, beforeId);
+      const newMessages = data.messages || [];
+      if (loadMore) {
+        if (newMessages.length === 0) setHasMore(false);
+        else setMessages([...newMessages, ...messages]);
+      } else {
+        setMessages(newMessages);
+        setHasMore(true);
+      }
     } catch (e) {
-      console.error(e);
       Alert.alert('Error', 'Failed to load messages');
     } finally {
       setLoading(false);
@@ -42,91 +236,228 @@ export default function ChatDetailScreen({ route }) {
   }, [address]);
 
   const handleSend = async () => {
-    if (!input.trim()) return;
     const content = input.trim();
-    setInput('');
+    if (!content && !attachment) {
+      Alert.alert('Error', 'Enter a message or attach a file');
+      return;
+    }
+    if (sending) return;
 
+    setSending(true);
+    const tempId = Date.now();
     const tempMsg = {
-      id: Date.now(),
+      id: tempId,
       sender: myAddress,
-      content: content,
+      content: content || '',
       timestamp: Date.now() / 1000,
       is_mine: true,
-      status: 'sent',
+      status: 'sending',
     };
+    if (attachment) {
+      tempMsg.fileType = attachment.type;
+      tempMsg.fileUrl = attachment.uri;
+    }
     addMessage(tempMsg);
+    setInput('');
+    setAttachment(null);
     flatListRef.current?.scrollToEnd();
 
     try {
       const result = await sendEncryptedMessage(
         address,
         content,
-        null,
+        attachment ? { uri: attachment.uri, type: attachment.type, name: attachment.name } : null,
         isGroup,
         isGroup ? address.replace('group:', '') : null
       );
-      console.log('Message sent:', result);
+      const updatedMsg = { ...tempMsg, id: result.tx_id || tempId, status: 'sent' };
+      const updatedMessages = messages.map(m => m.id === tempId ? updatedMsg : m);
+      setMessages(updatedMessages);
+      updateConversationPreview(address, content.slice(0, 40) || '📎 File');
     } catch (e) {
       console.error(e);
+      const filtered = messages.filter(m => m.id !== tempId);
+      setMessages(filtered);
       Alert.alert('Error', 'Failed to send message');
+    } finally {
+      setSending(false);
     }
   };
 
-  const renderItem = ({ item }) => (
-    <View style={[styles.messageRow, item.is_mine ? styles.myMessage : styles.otherMessage]}>
-      <Text style={styles.messageText}>{item.content}</Text>
-      <Text style={styles.time}>
-        {new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </Text>
-    </View>
-  );
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setAttachment({
+        uri: result.assets[0].uri,
+        type: 'image/jpeg',
+        name: 'image.jpg',
+      });
+    }
+  };
+
+  const pickFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+    });
+    if (result.type === 'success') {
+      setAttachment({
+        uri: result.uri,
+        type: result.mimeType || 'application/octet-stream',
+        name: result.name,
+      });
+    }
+  };
+
+  const renderItem = ({ item }) => {
+    const isMine = item.is_mine;
+    const showSender = isGroup && !isMine && item.sender;
+    const senderName = showSender ? (item.sender_name || item.sender.slice(0, 10)) : null;
+    const isImage = item.fileType && item.fileType.startsWith('image/');
+
+    let statusIcon = null;
+    if (isMine) {
+      if (item.status === 'sending') statusIcon = <ActivityIndicator size="small" color="#aaa" style={{ marginLeft: 4 }} />;
+      else if (item.status === 'sent') statusIcon = <Text style={styles.statusIcon}>✓</Text>;
+      else if (item.status === 'delivered') statusIcon = <Text style={styles.statusIcon}>✓✓</Text>;
+      else if (item.status === 'read') statusIcon = <Text style={[styles.statusIcon, styles.statusRead]}>✓✓</Text>;
+    }
+
+    return (
+      <View style={[styles.messageRow, isMine ? styles.myMessage : styles.otherMessage]}>
+        {showSender && <Text style={styles.senderName}>{senderName}</Text>}
+
+        {item.fileUrl && isImage && (
+          <MessageImage msg={item} onPress={openLightbox} />
+        )}
+        {item.fileUrl && !isImage && (
+          <View style={styles.fileAttachment}>
+            <Ionicons name="document-outline" size={20} color="#aaa" />
+            <Text style={styles.fileName}>{item.fileUrl.split('/').pop()}</Text>
+          </View>
+        )}
+
+        {!!item.content && <Text style={styles.messageText}>{item.content}</Text>}
+        <View style={styles.metaRow}>
+          <Text style={styles.time}>
+            {new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+          {statusIcon}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{name || address.slice(0, 10)}</Text>
-      </View>
-      {loading ? (
-        <Text style={styles.loading}>Loading...</Text>
+      {loading && messages.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={styles.loading}>Loading messages...</Text>
+        </View>
       ) : (
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingVertical: 16 }}
+          contentContainerStyle={{ paddingVertical: 16, paddingHorizontal: 8 }}
+          onEndReached={() => { if (!loading && hasMore && messages.length) loadMessages(true); }}
+          onEndReachedThreshold={0.3}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubble-ellipses-outline" size={64} color="#444" />
+              <Text style={styles.emptyText}>No messages yet</Text>
+              <Text style={styles.emptySub}>Say hello!</Text>
+            </View>
+          }
           onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
         />
       )}
-      <View style={styles.inputContainer}>
+
+      {/* Овальное поле ввода */}
+      <BlurView intensity={20} tint="dark" style={styles.inputContainer}>
+        <TouchableOpacity onPress={pickImage} style={styles.attachButton}>
+          <Ionicons name="image-outline" size={24} color={colors.textMuted} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={pickFile} style={styles.attachButton}>
+          <Ionicons name="attach-outline" size={24} color={colors.textMuted} />
+        </TouchableOpacity>
+        {attachment && (
+          <View style={styles.attachmentPreview}>
+            <Text style={styles.attachmentName} numberOfLines={1}>{attachment.name}</Text>
+            <TouchableOpacity onPress={() => setAttachment(null)}>
+              <Ionicons name="close-circle" size={20} color={colors.danger} />
+            </TouchableOpacity>
+          </View>
+        )}
         <TextInput
           style={styles.input}
           value={input}
           onChangeText={setInput}
           placeholder="Type a message..."
-          placeholderTextColor="#666"
+          placeholderTextColor={colors.textMuted}
           multiline
         />
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-          <Ionicons name="send" size={20} color="#fff" />
+        <TouchableOpacity
+          style={[styles.sendButton, (sending || (!input.trim() && !attachment)) && styles.sendDisabled]}
+          onPress={handleSend}
+          disabled={sending || (!input.trim() && !attachment)}
+        >
+          {sending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={20} color="#fff" />}
         </TouchableOpacity>
-      </View>
+      </BlurView>
+
+      {/* ===== Лайтбокс — паритет с #imageModal ===== */}
+      <Modal visible={lightboxVisible} transparent animationType="fade" onRequestClose={() => setLightboxVisible(false)}>
+        <View style={styles.lightboxOverlay}>
+          <TouchableOpacity style={styles.lightboxClose} onPress={() => setLightboxVisible(false)}>
+            <Ionicons name="close" size={30} color="#fff" />
+          </TouchableOpacity>
+          {lightboxUri && (
+            <Image source={{ uri: lightboxUri }} style={styles.lightboxImage} resizeMode="contain" />
+          )}
+          <TouchableOpacity style={styles.lightboxShareBtn} onPress={shareLightboxImage}>
+            <Ionicons name="share-outline" size={18} color="#fff" />
+            <Text style={styles.lightboxShareText}>Share</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0a' },
-  header: {
-    padding: 16,
-    backgroundColor: '#141414',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
+  container: {
+    flex: 1,
+    backgroundColor: colors.bgPrimary,
   },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loading: {
+    color: colors.textMain,
+    marginTop: 10,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  headerBtn: {
+    padding: 6,
+    marginLeft: 2,
+  },
   messageRow: {
     marginVertical: 4,
     maxWidth: '80%',
@@ -135,43 +466,168 @@ const styles = StyleSheet.create({
   },
   myMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#6c5ce7',
+    backgroundColor: colors.accent,
   },
   otherMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
   },
-  messageText: { color: '#fff', fontSize: 15 },
-  time: {
-    color: '#aaa',
-    fontSize: 10,
+  senderName: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginBottom: 4,
+    fontWeight: 'bold',
+  },
+  messageText: {
+    color: colors.textMain,
+    fontSize: 15,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
     marginTop: 4,
-    alignSelf: 'flex-end',
+    gap: 4,
   },
-  loading: { color: '#fff', textAlign: 'center', marginTop: 40 },
+  time: {
+    color: colors.textMuted,
+    fontSize: 10,
+  },
+  statusIcon: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  statusRead: {
+    color: colors.accent,
+  },
+  fileAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  fileName: {
+    color: colors.textMain,
+    marginLeft: 6,
+    fontSize: 13,
+  },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 6,
+  },
+  imagePlaceholder: {
+    width: 200,
+    height: 120,
+    borderRadius: 12,
+    marginBottom: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   inputContainer: {
     flexDirection: 'row',
     padding: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#2a2a2a',
     alignItems: 'center',
-    backgroundColor: '#141414',
+    backgroundColor: 'rgba(20,20,30,0.6)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: 60,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  attachButton: {
+    padding: 6,
+  },
+  attachmentPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 4,
+  },
+  attachmentName: {
+    color: colors.textMain,
+    fontSize: 12,
+    maxWidth: 100,
   },
   input: {
     flex: 1,
-    backgroundColor: '#1e1e1e',
-    borderRadius: 20,
-    paddingHorizontal: 16,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    color: '#fff',
+    color: colors.textMain,
     maxHeight: 100,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
+    minHeight: 40,
+    fontSize: 15,
   },
   sendButton: {
     marginLeft: 8,
-    backgroundColor: '#6c5ce7',
+    backgroundColor: colors.accent,
     borderRadius: 24,
     padding: 10,
+    minWidth: 44,
+    alignItems: 'center',
+  },
+  sendDisabled: {
+    opacity: 0.5,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    color: colors.textMuted,
+    fontSize: 18,
+    marginTop: 16,
+  },
+  emptySub: {
+    color: '#666',
+    fontSize: 14,
+    marginTop: 8,
+  },
+
+  // ===== Лайтбокс =====
+  lightboxOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1,
+    padding: 8,
+  },
+  lightboxImage: {
+    width: '100%',
+    height: '80%',
+  },
+  lightboxShareBtn: {
+    position: 'absolute',
+    bottom: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 50,
+  },
+  lightboxShareText: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });

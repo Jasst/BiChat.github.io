@@ -1,25 +1,32 @@
 // shared/actions.js — полностью адаптирован для React Native
-// Вся логика отправки сообщений, файлов, записи аудио
-// Все DOM-зависимости убраны, возвращают промисы и используют хранилище
+// Исправлены: отправка файлов через expo-file-system, получение членов группы
 
 import { storage } from '../utils/storage';
+import * as FileSystem from 'expo-file-system'; // <--- ДОБАВЛЕНО
 import DarkCrypto from './crypto-client';
 import { getPubKey, ensureKeys, addMessageToCache } from './core';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { API_BASE_URL } from '../config/constants';
 
-// ===================== Вспомогательные функции =====================
-
-// Загрузка файла на сервер (зашифрованного)
+// ===================== Загрузка зашифрованного файла (ИСПРАВЛЕНО) =====================
 export async function uploadEncryptedFile(file) {
+  // file — объект с полями uri, type, name (из expo-image-picker или document-picker)
   const { key, iv } = DarkCrypto.generateFileKeyAndIv();
-  const fileData = await file.arrayBuffer();
-  const encrypted = await DarkCrypto.encryptFile(new Uint8Array(fileData), key, iv);
+  // Читаем файл как base64 через expo-file-system
+  const base64 = await FileSystem.readAsStringAsync(file.uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const fileData = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  const encrypted = await DarkCrypto.encryptFile(fileData, key, iv);
+  // Создаём Blob для FormData (в React Native FormData работает с blob)
   const blob = new Blob([encrypted], { type: 'application/octet-stream' });
   const formData = new FormData();
   formData.append('file', blob, 'encrypted.bin');
-  const res = await fetch(`${API_BASE_URL}/upload_encrypted`, { method: 'POST', body: formData });
+  const res = await fetch(`${API_BASE_URL}/upload_encrypted`, {
+    method: 'POST',
+    body: formData,
+  });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return {
@@ -29,24 +36,26 @@ export async function uploadEncryptedFile(file) {
   };
 }
 
-// ===================== Отправка сообщения =====================
+// ===================== Отправка сообщения (ИСПРАВЛЕНО: получение членов группы) =====================
 export async function sendMessage(recipient, content, fileAttachment = null, isGroup = false, groupId = null) {
   const userStore = useUserStore.getState();
-  const chatStore = useChatStore.getState();   // ← объявляем ОДИН раз
+  const chatStore = useChatStore.getState();
 
   if (!content && !fileAttachment) {
     throw new Error('Enter message or attach file');
   }
 
   const keys = await ensureKeys();
-
-  // Подготовка пейлоада
   let payload = {};
   const myAddress = userStore.address;
 
   if (isGroup && groupId) {
-    // Получаем актуальных участников группы из хранилища или с сервера
-    const members = chatStore.getGroupMembers(groupId) || [];
+    // ✅ ВМЕСТО chatStore.getGroupMembers() — реальный запрос к серверу
+    const gRes = await fetch(`${API_BASE_URL}/get_groups`);
+    if (!gRes.ok) throw new Error('Failed to fetch group info');
+    const gData = await gRes.json();
+    const freshGroup = gData.groups?.find(g => g.id === groupId);
+    const members = freshGroup?.members || [];
     if (!members.length) throw new Error('Group members not loaded');
 
     const encryptedMap = {};
@@ -61,8 +70,8 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
       }
       let encFileKey = null, encFileIv = null;
       if (fileAttachment) {
-        const fileKeyBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.key);
-        const fileIvBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.iv);
+        const fileKeyBuffer = DarkCrypto._fromBase64(fileAttachment.key);
+        const fileIvBuffer = DarkCrypto._fromBase64(fileAttachment.iv);
         const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
         const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
         encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
@@ -99,8 +108,8 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
     }
     let encFileKey = null, encFileIv = null;
     if (fileAttachment) {
-      const fileKeyBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.key);
-      const fileIvBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.iv);
+      const fileKeyBuffer = DarkCrypto._fromBase64(fileAttachment.key);
+      const fileIvBuffer = DarkCrypto._fromBase64(fileAttachment.iv);
       const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
       const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
       encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
@@ -158,14 +167,13 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
   };
 
   addMessageToCache(recipient, sentMessage);
-  chatStore.addLocalMessage(recipient, sentMessage);          // ← используем уже существующую переменную
+  chatStore.addLocalMessage(recipient, sentMessage);
   chatStore.updateConversationPreview(recipient, content?.slice(0, 40) || '📎 File');
 
   return data;
 }
 
 // ===================== Запись аудио (заглушка для RN) =====================
-// В React Native используется react-native-audio-record или expo-av
 export async function startRecording() {
   console.warn('Audio recording not implemented for React Native');
 }
@@ -175,14 +183,12 @@ export async function stopRecording() {
 }
 
 // ===================== Сжатие изображений (заглушка для RN) =====================
-// В React Native используйте библиотеку 'react-native-image-resizer'
 export async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
   console.warn('compressImage not implemented – returning original');
   return dataUrl;
 }
 
 // ===================== Обработка выбора файла (для RN) =====================
-// В RN выбор файла делается через DocumentPicker или ImagePicker
 export function handleFileSelection(file, type) {
   const maxSize = type === 'image' ? 10 * 1024 * 1024 : 2 * 1024 * 1024;
   if (file.size > maxSize) {
