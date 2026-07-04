@@ -245,6 +245,7 @@ export async function processMessageDecryption(msg) {
     const userStore = getUserStore();
     const myAddress = userStore.address;
 
+    // ========== ГРУППОВОЙ ЧАТ ==========
     if (parsed.encrypted_map) {
       const myEnc = parsed.encrypted_map[myAddress];
       if (!myEnc) {
@@ -308,14 +309,18 @@ export async function processMessageDecryption(msg) {
       return result;
     }
 
-    const senderPubKeyB64 = parsed.sender_pubkey || (parsed.myPubKey ? parsed.myPubKey : null);
+    // ========== ЛИЧНЫЙ ЧАТ ==========
+    // ✅ ИСПРАВЛЕНИЕ: payload может быть обёрнут в поле payload (как отправляет rn_actions.js)
+    const msgPayload = parsed.payload || parsed;
+
+    const senderPubKeyB64 = msgPayload.sender_pubkey || (msgPayload.myPubKey ? msgPayload.myPubKey : null);
     if (!senderPubKeyB64) {
-      if (parsed.file_url) {
-        fileUrl = parsed.file_url;
-        fileType = parsed.file_type;
-        if (parsed.self_file_key && parsed.self_file_iv) {
-          fileKey = parsed.self_file_key;
-          fileIv = parsed.self_file_iv;
+      if (msgPayload.file_url) {
+        fileUrl = msgPayload.file_url;
+        fileType = msgPayload.file_type;
+        if (msgPayload.self_file_key && msgPayload.self_file_iv) {
+          fileKey = msgPayload.self_file_key;
+          fileIv = msgPayload.self_file_iv;
         }
       }
       const chatId = msg.sender === myAddress ? msg.recipient : msg.sender;
@@ -340,29 +345,29 @@ export async function processMessageDecryption(msg) {
     const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
 
     let decryptedText = '';
-    if (parsed.text && parsed.text.ciphertext && parsed.text.iv) {
-      if (isMine && parsed.self_text && parsed.self_text.ciphertext) {
+    if (msgPayload.text && msgPayload.text.ciphertext && msgPayload.text.iv) {
+      if (isMine && msgPayload.self_text && msgPayload.self_text.ciphertext) {
         const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-        const ciphertext = DarkCrypto._fromBase64(parsed.self_text.ciphertext);
-        const iv = DarkCrypto._fromBase64(parsed.self_text.iv);
+        const ciphertext = DarkCrypto._fromBase64(msgPayload.self_text.ciphertext);
+        const iv = DarkCrypto._fromBase64(msgPayload.self_text.iv);
         decryptedText = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
       } else {
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-        const ciphertext = DarkCrypto._fromBase64(parsed.text.ciphertext);
-        const iv = DarkCrypto._fromBase64(parsed.text.iv);
+        const ciphertext = DarkCrypto._fromBase64(msgPayload.text.ciphertext);
+        const iv = DarkCrypto._fromBase64(msgPayload.text.iv);
         decryptedText = await DarkCrypto.decryptAES(shared, ciphertext, iv);
       }
       content = decryptedText;
-    } else if (parsed.ciphertext && parsed.iv) {
-      if (isMine && parsed.self_text && parsed.self_text.ciphertext) {
+    } else if (msgPayload.ciphertext && msgPayload.iv) {
+      if (isMine && msgPayload.self_text && msgPayload.self_text.ciphertext) {
         const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
-        const ciphertext = DarkCrypto._fromBase64(parsed.self_text.ciphertext);
-        const iv = DarkCrypto._fromBase64(parsed.self_text.iv);
+        const ciphertext = DarkCrypto._fromBase64(msgPayload.self_text.ciphertext);
+        const iv = DarkCrypto._fromBase64(msgPayload.self_text.iv);
         decryptedText = await DarkCrypto.decryptAES(selfShared, ciphertext, iv);
       } else {
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-        const ciphertext = DarkCrypto._fromBase64(parsed.ciphertext);
-        const iv = DarkCrypto._fromBase64(parsed.iv);
+        const ciphertext = DarkCrypto._fromBase64(msgPayload.ciphertext);
+        const iv = DarkCrypto._fromBase64(msgPayload.iv);
         decryptedText = await DarkCrypto.decryptAES(shared, ciphertext, iv);
       }
       content = decryptedText;
@@ -370,19 +375,19 @@ export async function processMessageDecryption(msg) {
       content = '';
     }
 
-    if (parsed.file_url) {
-      fileUrl = parsed.file_url;
-      fileType = parsed.file_type;
-      if (isMine && parsed.self_file_key && parsed.self_file_iv) {
-        fileKey = parsed.self_file_key;
-        fileIv = parsed.self_file_iv;
-      } else if (parsed.file_key && parsed.file_iv) {
+    if (msgPayload.file_url) {
+      fileUrl = msgPayload.file_url;
+      fileType = msgPayload.file_type;
+      if (isMine && msgPayload.self_file_key && msgPayload.self_file_iv) {
+        fileKey = msgPayload.self_file_key;
+        fileIv = msgPayload.self_file_iv;
+      } else if (msgPayload.file_key && msgPayload.file_iv) {
         const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, senderPubKeyBytes);
-        const keyCipher = DarkCrypto._fromBase64(parsed.file_key.ciphertext);
-        const keyIv = DarkCrypto._fromBase64(parsed.file_key.iv);
+        const keyCipher = DarkCrypto._fromBase64(msgPayload.file_key.ciphertext);
+        const keyIv = DarkCrypto._fromBase64(msgPayload.file_key.iv);
         const decKey = await DarkCrypto.decryptAES(shared, keyCipher, keyIv);
-        const ivCipher = DarkCrypto._fromBase64(parsed.file_iv.ciphertext);
-        const ivIv = DarkCrypto._fromBase64(parsed.file_iv.iv);
+        const ivCipher = DarkCrypto._fromBase64(msgPayload.file_iv.ciphertext);
+        const ivIv = DarkCrypto._fromBase64(msgPayload.file_iv.iv);
         const decIv = await DarkCrypto.decryptAES(shared, ivCipher, ivIv);
         fileKey = decKey;
         fileIv = decIv;

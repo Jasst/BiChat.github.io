@@ -34,7 +34,7 @@
         return {
             url: data.file_url,
             key: DarkCrypto.arrayBufferToBase64(key),
-            iv: DarkCrypto.arrayBufferToBase64(iv)
+            iv: DarkCrypto.arrayBufferToBase64(iv),
         };
     }
 
@@ -295,8 +295,8 @@
                 if (fileAttachment) {
                     const fileKeyBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.key);
                     const fileIvBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.iv);
-                    const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
-                    const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
+                    const encKey = await DarkCrypto.encryptAESBytes(shared, fileKeyBuffer);
+                    const encIv = await DarkCrypto.encryptAESBytes(shared, fileIvBuffer);
                     encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
                     encFileIv = { ciphertext: DarkCrypto._arrayBufferToBase64(encIv.ciphertext), iv: DarkCrypto._toBase64(encIv.iv) };
                 }
@@ -332,8 +332,8 @@
             if (fileAttachment) {
                 const fileKeyBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.key);
                 const fileIvBuffer = DarkCrypto.base64ToArrayBuffer(fileAttachment.iv);
-                const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
-                const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
+                const encKey = await DarkCrypto.encryptAESBytes(shared, fileKeyBuffer);
+                const encIv = await DarkCrypto.encryptAESBytes(shared, fileIvBuffer);
                 encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
                 encFileIv = { ciphertext: DarkCrypto._arrayBufferToBase64(encIv.ciphertext), iv: DarkCrypto._toBase64(encIv.iv) };
             }

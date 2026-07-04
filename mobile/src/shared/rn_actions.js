@@ -1,7 +1,7 @@
 // shared/actions.js — полностью адаптирован для React Native
 import { Buffer } from 'buffer';
 import { storage } from '../utils/storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import DarkCrypto from './rn_crypto-client';
 import { getPubKey, ensureKeys, addMessageToCache } from './rn_core';
 import useChatStore from '../store/chatStore';
@@ -10,25 +10,52 @@ import { API_BASE_URL } from '../config/constants';
 
 export async function uploadEncryptedFile(file) {
   const { key, iv } = DarkCrypto.generateFileKeyAndIv();
+
+  // 1. Читаем оригинал
   const base64 = await FileSystem.readAsStringAsync(file.uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
   const fileData = new Uint8Array(Buffer.from(base64, 'base64'));
+
+  // 2. Шифруем
   const encrypted = await DarkCrypto.encryptFile(fileData, key, iv);
-  const blob = new Blob([encrypted], { type: 'application/octet-stream' });
-  const formData = new FormData();
-  formData.append('file', blob, 'encrypted.bin');
-  const res = await fetch(`${API_BASE_URL}/upload_encrypted`, {
-    method: 'POST',
-    body: formData,
+  const encryptedB64 = DarkCrypto.arrayBufferToBase64(encrypted);
+
+  // 3. Пишем зашифрованное во временный файл
+  const tempPath = FileSystem.cacheDirectory + `upload_${Date.now()}.bin`;
+  await FileSystem.writeAsStringAsync(tempPath, encryptedB64, {
+    encoding: FileSystem.EncodingType.Base64,
   });
-  if (!res.ok) throw new Error(await res.text());
-  const data = await res.json();
-  return {
-    url: data.file_url,
-    key: DarkCrypto.arrayBufferToBase64(key),
-    iv: DarkCrypto.arrayBufferToBase64(iv)
-  };
+
+  try {
+    // 4. Загружаем через FileSystem.uploadAsync (надёжнее fetch+Blob в RN)
+    const uploadResult = await FileSystem.uploadAsync(
+      `${API_BASE_URL}/upload_encrypted`,
+      tempPath,
+      {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType: 'application/octet-stream',
+        fileName: file.name || 'encrypted.bin',
+      }
+    );
+
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      throw new Error(`Upload failed: ${uploadResult.status} ${uploadResult.body}`);
+    }
+
+    const data = JSON.parse(uploadResult.body);
+    return {
+      url: data.file_url,
+      key: DarkCrypto.arrayBufferToBase64(key),
+      iv: DarkCrypto.arrayBufferToBase64(iv),
+      type: file.type
+    };
+  } finally {
+    // 5. Чистим временный файл
+    FileSystem.deleteAsync(tempPath, { idempotent: true }).catch(() => {});
+  }
 }
 
 export async function sendMessage(recipient, content, fileAttachment = null, isGroup = false, groupId = null) {

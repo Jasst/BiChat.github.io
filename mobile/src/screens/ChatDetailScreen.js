@@ -22,7 +22,7 @@ import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors } from '../theme';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
@@ -36,25 +36,36 @@ import { API_BASE_URL } from '../config/constants';
 const decryptedImageCache = new Map();
 
 async function decryptAndCacheImage(msg) {
-  if (!msg.fileUrl || !msg.fileKey || !msg.fileIv) return null;
+  if (!msg.fileUrl || !msg.fileKey || !msg.fileIv) {
+    console.log('[Image] Skip: missing fields', msg.id, { url: !!msg.fileUrl, key: !!msg.fileKey, iv: !!msg.fileIv });
+    return null;
+  }
   if (decryptedImageCache.has(msg.id)) return decryptedImageCache.get(msg.id);
+
   try {
     const fullUrl = msg.fileUrl.startsWith('http') ? msg.fileUrl : `${API_BASE_URL}${msg.fileUrl}`;
     const localPath = FileSystem.cacheDirectory + `enc_${msg.id}`;
+
+    console.log('[Image] Downloading', msg.id, fullUrl);
     const { uri } = await FileSystem.downloadAsync(fullUrl, localPath);
     const encryptedB64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
     const encryptedBytes = DarkCrypto._fromBase64(encryptedB64);
+
     const keyBytes = DarkCrypto._fromBase64(msg.fileKey);
     const ivBytes = DarkCrypto._fromBase64(msg.fileIv);
+
+    console.log('[Image] Decrypting', msg.id, { enc: encryptedBytes.length, key: keyBytes.length, iv: ivBytes.length });
     const decrypted = await DarkCrypto.decryptFile(encryptedBytes, keyBytes, ivBytes);
     const decryptedB64 = DarkCrypto.arrayBufferToBase64(decrypted);
+
     const mime = (msg.fileType && msg.fileType.startsWith('image/')) ? msg.fileType : 'image/jpeg';
     const dataUri = `data:${mime};base64,${decryptedB64}`;
     decryptedImageCache.set(msg.id, dataUri);
+
     FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
     return dataUri;
   } catch (e) {
-
+    console.error('[Image] Decrypt failed for', msg.id, e.message, e.stack);
     return null;
   }
 }
@@ -72,7 +83,7 @@ function MessageImage({ msg, onPress }) {
       else setFailed(true);
     });
     return () => { alive = false; };
-  }, [msg.id]);
+  }, [msg.fileUrl, msg.fileKey, msg.fileIv, msg.fileType]); // ← добавили зависимости
 
   if (failed) {
     return (
@@ -398,9 +409,14 @@ export default function ChatDetailScreen({ route, navigation }) {
         isGroup ? address.replace('group:', '') : null
       );
 
+      // ✅ Обновляем temp-сообщение серверными данными файла
       updateMessage(tempId, {
         id: result.tx_id || tempId,
-        status: 'sent'
+        status: 'sent',
+        fileUrl: fileAttachment?.url || attachment?.uri,
+        fileKey: fileAttachment?.key,
+        fileIv: fileAttachment?.iv,
+        fileType: fileAttachment?.type || attachment?.type,
       });
       updateConversationPreview(address, content.slice(0, 40) || '📎 File');
     } catch (e) {
