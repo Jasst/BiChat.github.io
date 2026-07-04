@@ -225,9 +225,15 @@ export function handlePendingCall() {
   });
 }
 
-// ===================== Расшифровка входящих сообщений (с логами) =====================
+
+// ===================== Расшифровка входящих сообщений =====================
 export async function processMessageDecryption(msg) {
   if (!msg.content) return msg;
+
+  // ✅ Проверяем кеш первым делом
+  const cached = getCachedDecryptedMessage(msg.id, msg.timestamp);
+  if (cached) return cached;
+
   let content = msg.content;
   let image = msg.image;
   let fileUrl = null, fileKey = null, fileIv = null, fileType = null;
@@ -241,16 +247,14 @@ export async function processMessageDecryption(msg) {
 
     if (parsed.encrypted_map) {
       const myEnc = parsed.encrypted_map[myAddress];
-      if (!myEnc) return { ...msg, content: '🔒 No access', status: originalStatus };
+      if (!myEnc) {
+        const result = { ...msg, content: '🔒 No access', status: originalStatus };
+        setCachedDecryptedMessage(msg.id, msg.timestamp, result);
+        return result;
+      }
 
       const senderPubKeyBytes = DarkCrypto._fromBase64(myEnc.sender_pubkey);
       const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
-
-      // ===== ДИАГНОСТИЧЕСКИЕ ЛОГИ =====
-      console.log('🔍 [processMessageDecryption] GROUP - senderPubKeyBytes type:', senderPubKeyBytes?.constructor?.name);
-      console.log('🔍 [processMessageDecryption] GROUP - senderPubKeyBytes length:', senderPubKeyBytes?.length);
-      console.log('🔍 [processMessageDecryption] GROUP - keys.ecdhPrivateKey type:', keys.ecdhPrivateKey?.constructor?.name);
-      console.log('🔍 [processMessageDecryption] GROUP - keys.ecdhPrivateKey length:', keys.ecdhPrivateKey?.length);
 
       if (isMine && myEnc.self_text) {
         const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
@@ -286,7 +290,7 @@ export async function processMessageDecryption(msg) {
       }
 
       const chatId = msg.recipient;
-      return {
+      const result = {
         ...msg,
         content,
         image,
@@ -300,6 +304,8 @@ export async function processMessageDecryption(msg) {
         isDecrypted: true,
         status: originalStatus
       };
+      setCachedDecryptedMessage(msg.id, msg.timestamp, result);
+      return result;
     }
 
     const senderPubKeyB64 = parsed.sender_pubkey || (parsed.myPubKey ? parsed.myPubKey : null);
@@ -313,7 +319,7 @@ export async function processMessageDecryption(msg) {
         }
       }
       const chatId = msg.sender === myAddress ? msg.recipient : msg.sender;
-      return {
+      const result = {
         ...msg,
         content: '🔒 No sender pubkey',
         image: null,
@@ -326,16 +332,12 @@ export async function processMessageDecryption(msg) {
         isDecrypted: false,
         status: originalStatus
       };
+      setCachedDecryptedMessage(msg.id, msg.timestamp, result);
+      return result;
     }
 
     const senderPubKeyBytes = DarkCrypto._fromBase64(senderPubKeyB64);
     const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
-
-    // ===== ДИАГНОСТИЧЕСКИЕ ЛОГИ =====
-    console.log('🔍 [processMessageDecryption] DIRECT - senderPubKeyBytes type:', senderPubKeyBytes?.constructor?.name);
-    console.log('🔍 [processMessageDecryption] DIRECT - senderPubKeyBytes length:', senderPubKeyBytes?.length);
-    console.log('🔍 [processMessageDecryption] DIRECT - keys.ecdhPrivateKey type:', keys.ecdhPrivateKey?.constructor?.name);
-    console.log('🔍 [processMessageDecryption] DIRECT - keys.ecdhPrivateKey length:', keys.ecdhPrivateKey?.length);
 
     let decryptedText = '';
     if (parsed.text && parsed.text.ciphertext && parsed.text.iv) {
@@ -388,7 +390,7 @@ export async function processMessageDecryption(msg) {
     }
 
     const chatId = msg.sender === myAddress ? msg.recipient : msg.sender;
-    return {
+    const result = {
       ...msg,
       content,
       image: null,
@@ -401,11 +403,13 @@ export async function processMessageDecryption(msg) {
       isDecrypted: true,
       status: originalStatus
     };
+    setCachedDecryptedMessage(msg.id, msg.timestamp, result);
+    return result;
+
   } catch (e) {
-    console.error('Decryption error', msg.id, e?.message || e);
     const userStore = getUserStore();
     const chatId = msg.sender === userStore.address ? msg.recipient : msg.sender;
-    return {
+    const result = {
       ...msg,
       content: '🔒 Decrypt error',
       image: null,
@@ -413,12 +417,33 @@ export async function processMessageDecryption(msg) {
       isDecrypted: false,
       status: originalStatus
     };
+    setCachedDecryptedMessage(msg.id, msg.timestamp, result);
+    return result;
   }
 }
 
 // ===================== Кеш сообщений (в памяти) =====================
 const messagesCache = new Map();
+const textDecryptionCache = new Map();
 const messageIdSets = new Map();
+
+
+
+export function getCachedDecryptedMessage(msgId, timestamp) {
+  return textDecryptionCache.get(`${msgId}:${timestamp}`);
+}
+
+export function setCachedDecryptedMessage(msgId, timestamp, decrypted) {
+  textDecryptionCache.set(`${msgId}:${timestamp}`, decrypted);
+  if (textDecryptionCache.size > 500) {
+    const firstKey = textDecryptionCache.keys().next().value;
+    textDecryptionCache.delete(firstKey);
+  }
+}
+
+export function clearDecryptionCache() {
+  textDecryptionCache.clear();
+}
 
 export function addMessageToCache(chatId, message) {
   if (!chatId || !message || !message.id) return;
@@ -575,17 +600,17 @@ export function stopUserStatusPolling() {
 
 // ===================== Push-уведомления (заглушка для RN) =====================
 export async function initPushNotifications() {
-  console.log('[Push] Not implemented for React Native – use native modules');
+
 }
 
 // ===================== Компрессия изображений (для RN) =====================
 export async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
-  console.warn('compressImage not implemented for RN – returning original');
+
   return dataUrl;
 }
 
 // ===================== Экспорты =====================
-// ❌ УБРАН "мертвый" экспорт wsClient — используйте только getWsClient()
 export {
   pubKeyCache,
+
 };

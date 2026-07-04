@@ -28,7 +28,7 @@ import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { getConversation, addContact } from '../api';
 import { sendMessage as sendEncryptedMessage, uploadEncryptedFile } from '../shared/rn_actions';
-import { processMessageDecryption, clearMessageCache, addMessageToCache } from '../shared/rn_core';
+import { processMessageDecryption, clearMessageCache, addMessageToCache, clearDecryptionCache, getCachedMessages } from '../shared/rn_core';
 import DarkCrypto from '../shared/rn_crypto-client';
 import { API_BASE_URL } from '../config/constants';
 
@@ -54,7 +54,7 @@ async function decryptAndCacheImage(msg) {
     FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
     return dataUri;
   } catch (e) {
-    console.warn('Image decrypt failed for message', msg.id, e?.message || e);
+
     return null;
   }
 }
@@ -162,12 +162,13 @@ export default function ChatDetailScreen({ route, navigation }) {
   }, []);
 
   // Устанавливаем текущий чат в store при входе и сбрасываем при выходе
+   // Устанавливаем текущий чат в store при входе и сбрасываем при выходе
   useEffect(() => {
     setCurrentChat({ address, name, isGroup });
     loadMessages();
     return () => {
       setCurrentChat(null);
-      clearMessageCache(address);
+
     };
   }, [address]);
 
@@ -266,47 +267,87 @@ export default function ChatDetailScreen({ route, navigation }) {
     });
   }, [navigation, name, address, isGroup]);
 
-  const loadMessages = async (loadMore = false) => {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const currentMessages = useChatStore.getState().messages;
-      const beforeId = loadMore && currentMessages.length > 0 ? currentMessages[0].id : null;
-      const data = await getConversation(address, beforeId);
-      const rawMessages = data.messages || [];
+   const loadMessages = async (loadMore = false) => {
+  if (loading) return;
 
-      const decryptedMessages = [];
-      for (const msg of rawMessages) {
-        try {
-          const decrypted = await processMessageDecryption(msg);
-          decryptedMessages.push(decrypted);
-        } catch (e) {
-          console.warn('Failed to decrypt message', msg.id, e);
-          decryptedMessages.push({ ...msg, content: '🔒 Decrypt error', isDecrypted: false });
-        }
-      }
-
-      if (loadMore) {
-        if (decryptedMessages.length === 0) {
-          setHasMore(false);
-        } else {
-          setMessages((prev) => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const newOnes = decryptedMessages.filter(m => !existingIds.has(m.id));
-            return [...newOnes, ...prev];
-          });
-        }
-      } else {
-        setMessages(decryptedMessages);
-        setHasMore(true);
-        decryptedMessages.forEach(msg => addMessageToCache(address, msg));
-      }
-    } catch (e) {
-      Alert.alert('Error', 'Failed to load messages');
-    } finally {
-      setLoading(false);
+  // ✅ Если не loadMore и есть кеш — показываем кеш мгновенно
+  if (!loadMore) {
+    const cached = getCachedMessages(address);
+    if (cached.length > 0) {
+      setMessages(cached);
+      // Фоновая проверка на новые сообщения (silent)
+      refreshMessages();
+      return;
     }
-  };
+  }
+
+  setLoading(true);
+  try {
+    const currentMessages = useChatStore.getState().messages;
+    const beforeId = loadMore && currentMessages.length > 0 ? currentMessages[0].id : null;
+    const data = await getConversation(address, beforeId);
+    const rawMessages = data.messages || [];
+
+    const decryptedMessages = await Promise.all(
+      rawMessages.map(async (msg) => {
+        try {
+          return await processMessageDecryption(msg);
+        } catch (e) {
+          return { ...msg, content: '🔒 Decrypt error', isDecrypted: false };
+        }
+      })
+    );
+
+    if (loadMore) {
+      if (decryptedMessages.length === 0) {
+        setHasMore(false);
+      } else {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const newOnes = decryptedMessages.filter(m => !existingIds.has(m.id));
+          return [...newOnes, ...prev];
+        });
+      }
+    } else {
+      setMessages(decryptedMessages);
+      setHasMore(decryptedMessages.length >= 20);
+      decryptedMessages.forEach(msg => addMessageToCache(address, msg));
+    }
+  } catch (e) {
+    Alert.alert('Error', 'Failed to load messages');
+  } finally {
+    setLoading(false);
+  }
+};
+
+   // Фоновое обновление (без лоадера)
+   const refreshMessages = async () => {
+  try {
+    const data = await getConversation(address);
+    const rawMessages = data.messages || [];
+
+    const decryptedMessages = await Promise.all(
+      rawMessages.map(async (msg) => {
+        try {
+          return await processMessageDecryption(msg);
+        } catch (e) {
+          return { ...msg, content: '🔒 Decrypt error', isDecrypted: false };
+        }
+      })
+    );
+
+    // Обновляем только если есть новые сообщения
+    const currentIds = new Set(useChatStore.getState().messages.map(m => m.id));
+    const hasNew = decryptedMessages.some(m => !currentIds.has(m.id));
+
+    if (hasNew) {
+      setMessages(decryptedMessages);
+      decryptedMessages.forEach(msg => addMessageToCache(address, msg));
+    }
+  } catch (e) {
+    // silent fail
+  }
+};
 
   // Прокрутка вниз при новых сообщениях
   useEffect(() => {
@@ -363,7 +404,7 @@ export default function ChatDetailScreen({ route, navigation }) {
       });
       updateConversationPreview(address, content.slice(0, 40) || '📎 File');
     } catch (e) {
-      console.error('Send error:', e);
+
       removeMessage(tempId);
       Alert.alert('Error', e.message || 'Failed to send');
     } finally {
