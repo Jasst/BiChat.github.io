@@ -1,4 +1,5 @@
-// src/services/miningService.js — реальный майнинг через API
+// src/services/miningService.js
+import { sha256 } from 'js-sha256';
 import { getLastProof, mineBlock } from '../api';
 
 const BLOCKCOIN_SATS = 1_000_000;
@@ -7,7 +8,6 @@ class MiningService {
   constructor() {
     this.isMining = false;
     this.callbacks = {};
-    this.abortController = null;
   }
 
   setCallbacks(callbacks) {
@@ -21,58 +21,100 @@ class MiningService {
   }
 
   async startMining() {
-    if (this.isMining) return;
+    if (this.isMining) {
+      console.log('⛔ [MiningService] already running, ignored');
+      return;
+    }
     this.isMining = true;
-    this.abortController = new AbortController();
+    console.log('🚀 [MiningService] startMining() called');
 
     try {
       const chainData = await getLastProof();
+      console.log('📡 [MiningService] last-proof OK:', JSON.stringify(chainData));
       this.runMiningLoop(chainData);
     } catch (err) {
+      console.error('💥 [MiningService] getLastProof FAILED:', err.message);
       this.callbacks.onError?.(err);
       this.stopMining();
     }
   }
 
-  async runMiningLoop(chainData) {
-    if (!this.isMining) return;
+  restartMining() {
+    console.log('🔔 [MiningService] restartMining() called, isMining=', this.isMining);
+
+    // Сначала полностью останавливаем
+    const wasRunning = this.isMining;
+    this.isMining = false;
+
+    // Вызываем onStopped ТОЛЬКО если был запущен (чтобы UI сбросил прогресс)
+    if (wasRunning) {
+      this.callbacks.onStopped?.();
+    }
+
+    // Ждём 500мс и перезапускаем
+    setTimeout(() => {
+      console.log('🔄 [MiningService] auto-restarting after new_block...');
+      // НЕ вызываем stopMining() повторно — сразу стартуем
+      this.startMining();
+    }, 500);
+  }
+
+    async runMiningLoop(chainData) {
+    if (!this.isMining) {
+      console.log('⛔ [MiningService] runMiningLoop: isMining=false, exit');
+      return;
+    }
 
     let { last_proof, last_index, difficulty, challenge } = chainData;
     const maxIter = 5000000;
     let proof = 0;
     const startTime = Date.now();
     const target = '0'.repeat(difficulty);
-    const BATCH_SIZE = 500;
+    const BATCH_SIZE = 20000;
 
-    const mineBatch = async () => {
-      if (!this.isMining) return;
+    console.log(`⛏️ [MiningService] loop started | diff=${difficulty} | target="${target}" | maxIter=${maxIter}`);
 
-      const batchPromises = [];
+    while (this.isMining && proof < maxIter) {
+      const limit = Math.min(BATCH_SIZE, maxIter - proof);
       const batchProofs = [];
+      const hashes = [];
 
-      for (let i = 0; i < BATCH_SIZE && (proof + i) < maxIter; i++) {
+      // Генерируем пакет хешей
+      for (let i = 0; i < limit; i++) {
         const currentProof = proof + i;
-        const message = `${last_proof}${challenge}${currentProof}`;
         batchProofs.push(currentProof);
-        batchPromises.push(this.sha256(message));
+        hashes.push(sha256(`${last_proof}${challenge}${currentProof}`));
       }
 
-      const hashes = await Promise.all(batchPromises);
-
+      // Проверяем пакет
       for (let i = 0; i < hashes.length; i++) {
         if (hashes[i].startsWith(target)) {
-          // Блок найден! Отправляем на сервер
+          console.log('🎯 [MiningService] BLOCK FOUND! proof=', batchProofs[i], 'hash=', hashes[i]);
+          this.isMining = false;
+
           try {
             const result = await mineBlock(batchProofs[i], challenge, last_proof, last_index);
-            this.isMining = false;
+            console.log('✅ [MiningService] mineBlock server response:', JSON.stringify(result));
             this.callbacks.onBlockFound?.({ reward: result.reward || 50 * BLOCKCOIN_SATS });
             return;
           } catch (err) {
+            console.warn('⚠️ [MiningService] mineBlock rejected:', err.message);
+
             if (err.message?.includes('409') || err.message?.includes('conflict')) {
-              const fresh = await getLastProof();
-              this.runMiningLoop(fresh);
-              return;
+              console.log('🔄 [MiningService] 409 conflict, fetching fresh proof...');
+              try {
+                const fresh = await getLastProof();
+                console.log('📡 [MiningService] fresh proof after conflict:', JSON.stringify(fresh));
+                this.runMiningLoop(fresh);
+                return;
+              } catch (e2) {
+                console.error('💥 [MiningService] failed to get fresh proof:', e2.message);
+                this.callbacks.onError?.(e2);
+                this.stopMining();
+                return;
+              }
             }
+
             this.callbacks.onError?.(err);
             this.stopMining();
             return;
@@ -80,15 +122,21 @@ class MiningService {
         }
       }
 
-      proof += batchPromises.length;
+      proof += limit;
 
-      // Прогресс каждые ~50k итераций
-      if (proof % 50000 < BATCH_SIZE) {
+      // Прогресс + даём UI подышать каждые ~50k
+      if (proof % 50000 < limit) {
         const elapsedSec = (Date.now() - startTime) / 1000;
         const hashrate = proof / elapsedSec;
         const remaining = maxIter - proof;
         const etaSec = hashrate > 0 ? remaining / hashrate : Infinity;
         const percent = Math.min((proof / maxIter) * 100, 100);
+
+        console.log(
+          `⏳ [MiningService] progress ${percent.toFixed(2)}% | ` +
+          `hashes=${proof} | ${Math.floor(hashrate).toLocaleString()} h/s | ` +
+          `ETA ${etaSec === Infinity ? '∞' : (etaSec / 60).toFixed(1) + ' min'}`
+        );
 
         this.callbacks.onProgress?.({
           progress: proof,
@@ -98,37 +146,31 @@ class MiningService {
           percent,
         });
 
-        // Даём UI подышать
+        // Короткая пауза, чтобы React Native не завис
         await new Promise(r => setTimeout(r, 0));
       }
+    }
 
-      // Следующий батч
-      if (proof < maxIter && this.isMining) {
-        setTimeout(mineBatch, 0);
-      } else if (this.isMining) {
-        // Не нашли — перезапускаем
+    // Если дошли до maxIter и майнинг всё ещё активен — перезапускаем с новым proof
+    if (this.isMining) {
+      console.log('🔁 [MiningService] maxIter reached, no block. Restarting loop...');
+      try {
         const fresh = await getLastProof();
         this.runMiningLoop(fresh);
+      } catch (err) {
+        console.error('💥 [MiningService] failed to restart loop:', err.message);
+        this.callbacks.onError?.(err);
+        this.stopMining();
       }
-    };
-
-    mineBatch();
-  }
-
-  async sha256(message) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = new Uint8Array(hashBuffer);
-    let hex = '';
-    for (let i = 0; i < hashArray.length; i++) {
-      hex += hashArray[i].toString(16).padStart(2, '0');
+    } else {
+      console.log('🛑 [MiningService] loop ended (mining stopped)');
     }
-    return hex;
   }
 
   stopMining() {
+    const wasRunning = this.isMining;
     this.isMining = false;
+    console.log('🛑 [MiningService] stopMining() called, wasRunning=', wasRunning);
     this.callbacks.onStopped?.();
   }
 }

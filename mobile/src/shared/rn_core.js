@@ -130,12 +130,29 @@ export function getWsClient() {
   return wsClient;
 }
 
+
 // ===================== Обработка входящих сообщений WebSocket =====================
 export async function handleWebSocketMessage(data) {
   if (data.error) {
     console.error('WS error:', data.error);
     return;
   }
+
+  // ===== ПЕРЕЗАПУСК МАЙНИНГА ПРИ НОВОМ БЛОКЕ (как в веб-версии) =====
+  if (data.type === 'new_block') {
+    console.log('🔔 [WS] new_block received from network');
+    // Импортируем miningService динамически чтобы избежать циклической зависимости
+    const { default: miningService } = await import('../services/miningService');
+    // Перезапускаем ТОЛЬКО если майнинг активен (как в веб-версии: miningActive)
+    if (miningService.isMining) {
+      console.log('🔄 [WS] mining is active, calling restartMining()');
+      miningService.restartMining();
+    } else {
+      console.log('⏸️ [WS] mining not active, ignoring new_block');
+    }
+    return;
+  }
+  // ======================================================
 
   if (['incoming_call', 'call_answer', 'call_ice', 'call_hangup', 'call_reject'].includes(data.type)) {
     if (globalThis.CallManager) {
@@ -574,7 +591,7 @@ export async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
 }
 
 // ===================== Экспорты =====================
+// ❌ УБРАН "мертвый" экспорт wsClient — используйте только getWsClient()
 export {
-  wsClient,
   pubKeyCache,
 };

@@ -421,6 +421,15 @@ export default function WalletScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // ========== REF для актуального isMining в WebSocket-колбэке ==========
+    // ========== REF для актуального isMining ==========
+  const isMiningRef = useRef(false);
+
+  // Синхронизируем ref с state
+  useEffect(() => {
+    isMiningRef.current = isMining;
+  }, [isMining]);
+
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -521,6 +530,65 @@ export default function WalletScreen() {
     }
   };
 
+  // ========== WebSocket: перезапуск майнинга при new_block ==========
+  useEffect(() => {
+    const { getWsClient } = require('../shared/rn_core');
+    const ws = getWsClient();
+
+    if (!ws) {
+      console.warn('[WalletScreen] WebSocket client not found, new_block notifications disabled');
+      const checkInterval = setInterval(() => {
+        const client = getWsClient();
+        if (client) {
+          clearInterval(checkInterval);
+          attachNewBlockListener(client);
+        }
+      }, 1000);
+      setTimeout(() => clearInterval(checkInterval), 30000);
+      return;
+    }
+
+    attachNewBlockListener(ws);
+
+    function attachNewBlockListener(client) {
+      console.log('[WalletScreen] Attaching new_block listener to WebSocket');
+
+      const handleMessage = (data) => {
+        if (data?.type === 'new_block' && isMiningRef.current) {
+          console.log('🔔 [WalletScreen] new_block detected, updating UI...');
+          loadData();
+          loadStakingInfo();
+         miningService.restartMining();
+        }
+      };
+
+      // Вариант А: нативный WebSocket
+      if (client.ws && client.ws.addEventListener) {
+        const listener = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleMessage(data);
+          } catch {}
+        };
+        client.ws.addEventListener('message', listener);
+        return () => client.ws.removeEventListener('message', listener);
+      }
+
+      // Вариант Б: кастомный onMessage
+      if (client.onMessage !== undefined) {
+        const original = client.onMessage;
+        client.onMessage = (payload) => {
+          if (typeof original === 'function') original(payload);
+          handleMessage(payload);
+        };
+        return () => {
+          client.onMessage = original;
+        };
+      }
+    }
+  }, [loadData, loadStakingInfo]);
+
+    // ========== Колбэки майнинга ==========
   useEffect(() => {
     miningService.setCallbacks({
       onProgress: ({ progress, maxIter, hashrate, eta, percent }) => {
@@ -533,42 +601,41 @@ export default function WalletScreen() {
         Alert.alert('🎉 Block mined!', `+${(result.reward || 0) / BLOCKCOIN_SATS} BlockCoin`);
         loadData();
         loadStakingInfo();
-        setIsMining(false);
-        setMiningStatus('Block found!');
+        setMiningStatus('Block found! Restarting...');
         setMiningProgress(0);
         setMiningHashRate(0);
         setMiningEta(null);
-        AsyncStorage.setItem(AUTO_MINING_KEY, 'false');
+        setTimeout(() => {
+          setMiningStatus('Starting…');
+          miningService.startMining();
+        }, 2000);
       },
       onError: (error) => {
         Alert.alert('Mining Error', error.message);
         setMiningStatus('Error: ' + error.message);
-      },
-      onStopped: () => {
-        setMiningStatus('Stopped');
-        setMiningProgress(0);
-        setMiningHashRate(0);
-        setMiningEta(null);
         setIsMining(false);
         AsyncStorage.setItem(AUTO_MINING_KEY, 'false');
       },
+      onStopped: () => {
+        if (!isMiningRef.current) {
+          setMiningStatus('Stopped');
+          setMiningProgress(0);
+          setMiningHashRate(0);
+          setMiningEta(null);
+          setIsMining(false);
+          AsyncStorage.setItem(AUTO_MINING_KEY, 'false');
+        } else {
+          console.log('⏭️ [WalletScreen] onSkipped: restart in progress, ignoring');
+        }
+      },
     });
+  }, [loadData, loadStakingInfo]);
 
-    const checkAuto = async () => {
-      const auto = await AsyncStorage.getItem(AUTO_MINING_KEY);
-      if (auto === 'true') {
-        setIsMining(true);
-        miningService.startMining();
-      }
-    };
-    checkAuto();
-
-    return () => miningService.stopMining();
-  }, [loadData]);
-
+  // ========== Функции управления майнингом ==========
   const startMining = () => {
     if (isMining) return;
     setIsMining(true);
+    isMiningRef.current = true;
     AsyncStorage.setItem(AUTO_MINING_KEY, 'true');
     setMiningStatus('Starting…');
     setMiningProgress(0);
@@ -577,6 +644,7 @@ export default function WalletScreen() {
 
   const stopMining = () => {
     setIsMining(false);
+    isMiningRef.current = false;
     AsyncStorage.setItem(AUTO_MINING_KEY, 'false');
     miningService.stopMining();
   };
