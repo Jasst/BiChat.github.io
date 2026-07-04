@@ -74,6 +74,12 @@ export async function decryptMnemonic(encryptedData, password) {
   }
 }
 
+// Добавить в secureStorage.js:
+export async function hasEncryptedMnemonic() {
+  const data = await getEncryptedMnemonic();
+  return !!data;
+}
+
 // === Сохранение зашифрованной мнемоники в SecureStore ===
 export async function saveEncryptedMnemonic(encryptedData) {
   await SecureStore.setItemAsync('encrypted_mnemonic', encryptedData);

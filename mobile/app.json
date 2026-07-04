@@ -20,7 +20,7 @@
       "package": "com.darkmessenger.app"
     },
     "plugins": [
-
+      "expo-build-properties",
       "expo-barcode-scanner",
       "expo-secure-store",
       "react-native-quick-crypto",

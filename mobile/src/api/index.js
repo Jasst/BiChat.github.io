@@ -14,6 +14,13 @@ const api = async (endpoint, options = {}) => {
   return res.json();
 };
 
+export const getLastProof = () => api('/wallet/last-proof');
+export const mineBlock = (proof, challenge, lastProof, lastIndex) =>
+  api('/wallet/mine', {
+    method: 'POST',
+    body: JSON.stringify({ proof, challenge, last_proof: lastProof, last_index: lastIndex })
+  });
+
 export const getContacts = () => api('/get_contacts');
 export const addContact = (name, address) => api('/add_contact', { method: 'POST', body: JSON.stringify({ name, address }) });
 export const deleteContact = (address) => api('/delete_contact', { method: 'POST', body: JSON.stringify({ address }) });
