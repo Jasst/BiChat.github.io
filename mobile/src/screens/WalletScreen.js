@@ -440,7 +440,7 @@ export default function WalletScreen() {
     Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, []);
 
-  const loadData = useCallback(async () => {
+    const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const bal = await getBalance();
@@ -459,6 +459,26 @@ export default function WalletScreen() {
     }
     setLoading(false);
   }, []);
+
+  // ← ВСТАВЬТЕ СЮДА
+  const softRefresh = useCallback(async () => {
+    try {
+      const bal = await getBalance();
+      setBalance(bal.balance / BLOCKCOIN_SATS);
+      const st = await getGlobalStats();
+      setStats(st);
+      const tx = await getTransactions();
+      setTxs(tx.transactions || []);
+      const staking = await getStakingInfo();
+      setStakingInfo(staking);
+    } catch (e) {
+      // silent fail — не дергаем UI
+    }
+  }, []);
+
+
+
+
 
   const refreshFeeDisplay = async () => {
     try {
@@ -551,18 +571,12 @@ export default function WalletScreen() {
     attachNewBlockListener(ws);
 
     function attachNewBlockListener(client) {
-      console.log('[WalletScreen] Attaching new_block listener to WebSocket');
-
       const handleMessage = (data) => {
         if (data?.type === 'new_block' && isMiningRef.current) {
-          console.log('🔔 [WalletScreen] new_block detected, updating UI...');
-          loadData();
-          loadStakingInfo();
-         miningService.restartMining();
+          miningService.restartMining();
         }
       };
 
-      // Вариант А: нативный WebSocket
       if (client.ws && client.ws.addEventListener) {
         const listener = (event) => {
           try {
@@ -574,7 +588,6 @@ export default function WalletScreen() {
         return () => client.ws.removeEventListener('message', listener);
       }
 
-      // Вариант Б: кастомный onMessage
       if (client.onMessage !== undefined) {
         const original = client.onMessage;
         client.onMessage = (payload) => {
@@ -599,8 +612,7 @@ export default function WalletScreen() {
       },
       onBlockFound: (result) => {
         Alert.alert('🎉 Block mined!', `+${(result.reward || 0) / BLOCKCOIN_SATS} BlockCoin`);
-        loadData();
-        loadStakingInfo();
+        softRefresh(); // ← мягкое обновление, без лоадера
         setMiningStatus('Block found! Restarting...');
         setMiningProgress(0);
         setMiningHashRate(0);

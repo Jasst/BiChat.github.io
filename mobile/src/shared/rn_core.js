@@ -139,16 +139,10 @@ export async function handleWebSocketMessage(data) {
   }
 
   // ===== ПЕРЕЗАПУСК МАЙНИНГА ПРИ НОВОМ БЛОКЕ (как в веб-версии) =====
-  if (data.type === 'new_block') {
-    console.log('🔔 [WS] new_block received from network');
-    // Импортируем miningService динамически чтобы избежать циклической зависимости
+   if (data.type === 'new_block') {
     const { default: miningService } = await import('../services/miningService');
-    // Перезапускаем ТОЛЬКО если майнинг активен (как в веб-версии: miningActive)
     if (miningService.isMining) {
-      console.log('🔄 [WS] mining is active, calling restartMining()');
       miningService.restartMining();
-    } else {
-      console.log('⏸️ [WS] mining not active, ignoring new_block');
     }
     return;
   }
