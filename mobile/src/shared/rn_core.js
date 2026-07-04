@@ -4,8 +4,8 @@
 import { storage } from '../utils/storage';
 import useUserStore from '../store/userStore';
 import useChatStore from '../store/chatStore';
-import DarkCrypto from './crypto-client';
-import WebSocketClient from './WebSocketClient';
+import DarkCrypto from './rn_crypto-client';
+import WebSocketClient from './RNWebSocketClient';
 import { API_BASE_URL } from '../config/constants';
 import * as Crypto from 'expo-crypto';
 import { sha256 } from '@noble/hashes/sha256';
@@ -214,7 +214,7 @@ export function handlePendingCall() {
   });
 }
 
-// ===================== Расшифровка входящих сообщений =====================
+// ===================== Расшифровка входящих сообщений (с логами) =====================
 export async function processMessageDecryption(msg) {
   if (!msg.content) return msg;
   let content = msg.content;
@@ -234,6 +234,12 @@ export async function processMessageDecryption(msg) {
 
       const senderPubKeyBytes = DarkCrypto._fromBase64(myEnc.sender_pubkey);
       const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
+
+      // ===== ДИАГНОСТИЧЕСКИЕ ЛОГИ =====
+      console.log('🔍 [processMessageDecryption] GROUP - senderPubKeyBytes type:', senderPubKeyBytes?.constructor?.name);
+      console.log('🔍 [processMessageDecryption] GROUP - senderPubKeyBytes length:', senderPubKeyBytes?.length);
+      console.log('🔍 [processMessageDecryption] GROUP - keys.ecdhPrivateKey type:', keys.ecdhPrivateKey?.constructor?.name);
+      console.log('🔍 [processMessageDecryption] GROUP - keys.ecdhPrivateKey length:', keys.ecdhPrivateKey?.length);
 
       if (isMine && myEnc.self_text) {
         const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
@@ -260,7 +266,7 @@ export async function processMessageDecryption(msg) {
           const keyCipher = DarkCrypto._fromBase64(myEnc.file_key.ciphertext);
           const keyIv = DarkCrypto._fromBase64(myEnc.file_key.iv);
           const decKey = await DarkCrypto.decryptAES(shared, keyCipher, keyIv);
-          const ivCipher = DarkCrypto._base64ToArrayBuffer(myEnc.file_iv.ciphertext);
+          const ivCipher = DarkCrypto._fromBase64(myEnc.file_iv.ciphertext);
           const ivIv = DarkCrypto._fromBase64(myEnc.file_iv.iv);
           const decIv = await DarkCrypto.decryptAES(shared, ivCipher, ivIv);
           fileKey = decKey;
@@ -314,6 +320,12 @@ export async function processMessageDecryption(msg) {
     const senderPubKeyBytes = DarkCrypto._fromBase64(senderPubKeyB64);
     const isMine = arraysEqual(senderPubKeyBytes, keys.compressedPubKey);
 
+    // ===== ДИАГНОСТИЧЕСКИЕ ЛОГИ =====
+    console.log('🔍 [processMessageDecryption] DIRECT - senderPubKeyBytes type:', senderPubKeyBytes?.constructor?.name);
+    console.log('🔍 [processMessageDecryption] DIRECT - senderPubKeyBytes length:', senderPubKeyBytes?.length);
+    console.log('🔍 [processMessageDecryption] DIRECT - keys.ecdhPrivateKey type:', keys.ecdhPrivateKey?.constructor?.name);
+    console.log('🔍 [processMessageDecryption] DIRECT - keys.ecdhPrivateKey length:', keys.ecdhPrivateKey?.length);
+
     let decryptedText = '';
     if (parsed.text && parsed.text.ciphertext && parsed.text.iv) {
       if (isMine && parsed.self_text && parsed.self_text.ciphertext) {
@@ -356,7 +368,7 @@ export async function processMessageDecryption(msg) {
         const keyCipher = DarkCrypto._fromBase64(parsed.file_key.ciphertext);
         const keyIv = DarkCrypto._fromBase64(parsed.file_key.iv);
         const decKey = await DarkCrypto.decryptAES(shared, keyCipher, keyIv);
-        const ivCipher = DarkCrypto._base64ToArrayBuffer(parsed.file_iv.ciphertext);
+        const ivCipher = DarkCrypto._fromBase64(parsed.file_iv.ciphertext);
         const ivIv = DarkCrypto._fromBase64(parsed.file_iv.iv);
         const decIv = await DarkCrypto.decryptAES(shared, ivCipher, ivIv);
         fileKey = decKey;

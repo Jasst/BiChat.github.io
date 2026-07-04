@@ -1,10 +1,10 @@
 // shared/actions.js — полностью адаптирован для React Native
 // Исправлены: отправка файлов через expo-file-system, получение членов группы
-
+import { Buffer } from 'buffer';
 import { storage } from '../utils/storage';
 import * as FileSystem from 'expo-file-system'; // <--- ДОБАВЛЕНО
-import DarkCrypto from './crypto-client';
-import { getPubKey, ensureKeys, addMessageToCache } from './core';
+import DarkCrypto from './rn_crypto-client';
+import { getPubKey, ensureKeys, addMessageToCache } from './rn_core';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { API_BASE_URL } from '../config/constants';
@@ -17,7 +17,7 @@ export async function uploadEncryptedFile(file) {
   const base64 = await FileSystem.readAsStringAsync(file.uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  const fileData = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  const fileData = new Uint8Array(Buffer.from(base64, 'base64'));
   const encrypted = await DarkCrypto.encryptFile(fileData, key, iv);
   // Создаём Blob для FormData (в React Native FormData работает с blob)
   const blob = new Blob([encrypted], { type: 'application/octet-stream' });

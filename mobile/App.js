@@ -12,8 +12,8 @@ import UnlockScreen from './src/screens/UnlockScreen';
 import useUserStore from './src/store/userStore';
 import { storage } from './src/utils/storage';
 import { getEncryptedMnemonic } from './src/utils/secureStorage';
-import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from './src/shared/core';
-import DarkCrypto from './src/shared/crypto-client';
+import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from './src/shared/rn_core';
+import DarkCrypto from './src/shared/rn_crypto-client';
 import { Buffer } from 'buffer';
 import { API_BASE_URL } from './src/config/constants';
 

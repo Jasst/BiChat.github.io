@@ -13,11 +13,11 @@ import {
 import { BlurView } from 'expo-blur';
 import { colors, glassStyle } from '../theme';
 import { OvalButton } from '../components/OvalButton';
-import DarkCrypto from '../shared/crypto-client';
+import DarkCrypto from '../shared/rn_crypto-client';
 import useUserStore from '../store/userStore';
 import { storage } from '../utils/storage';
 import { API_BASE_URL } from '../config/constants';
-import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from '../shared/core';
+import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from '../shared/rn_core';
 
 export default function CreateWalletScreen({ navigation }) {
   const [mnemonic, setMnemonic] = useState(null);

@@ -13,10 +13,10 @@ import { colors, glassStyle } from '../theme';
 import { OvalButton } from '../components/OvalButton';
 import useUserStore from '../store/userStore';
 import { decryptMnemonic, clearEncryptedMnemonic } from '../utils/secureStorage';
-import DarkCrypto from '../shared/crypto-client';
+import DarkCrypto from '../shared/rn_crypto-client';
 import { storage } from '../utils/storage';
 import { API_BASE_URL } from '../config/constants';
-import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from '../shared/core';
+import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from '../shared/rn_core';
 
 export default function UnlockScreen({ navigation }) {
   const [password, setPassword] = useState('');

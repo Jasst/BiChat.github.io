@@ -27,9 +27,10 @@ import { colors } from '../theme';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { getConversation, addContact } from '../api';
-import { sendMessage as sendEncryptedMessage, uploadEncryptedFile } from '../shared/actions';
-import { clearMessageCache } from '../shared/core';
-import DarkCrypto from '../shared/crypto-client';
+import { sendMessage as sendEncryptedMessage, uploadEncryptedFile } from '../shared/rn_actions';
+import { processMessageDecryption, clearMessageCache } from '../shared/rn_core';
+
+import DarkCrypto from '../shared/rn_crypto-client';
 import { API_BASE_URL } from '../config/constants';
 
 // ===================== Кэш расшифрованных изображений =====================
@@ -256,25 +257,41 @@ export default function ChatDetailScreen({ route, navigation }) {
   }, [navigation, name, address, isGroup]);
 
   const loadMessages = async (loadMore = false) => {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const beforeId = loadMore && messages.length > 0 ? messages[0].id : null;
-      const data = await getConversation(address, beforeId);
-      const newMessages = data.messages || [];
-      if (loadMore) {
-        if (newMessages.length === 0) setHasMore(false);
-        else setMessages([...newMessages, ...messages]);
-      } else {
-        setMessages(newMessages);
-        setHasMore(true);
+  if (loading) return;
+  setLoading(true);
+  try {
+    const beforeId = loadMore && messages.length > 0 ? messages[0].id : null;
+    const data = await getConversation(address, beforeId);
+    const rawMessages = data.messages || [];
+
+    // Расшифровываем каждое сообщение
+    const decryptedMessages = [];
+    for (const msg of rawMessages) {
+      try {
+        const decrypted = await processMessageDecryption(msg);
+        decryptedMessages.push(decrypted);
+      } catch (e) {
+        console.warn('Failed to decrypt message', msg.id, e);
+        // Если расшифровка не удалась, показываем сообщение об ошибке
+        decryptedMessages.push({ ...msg, content: '🔒 Decrypt error', isDecrypted: false });
       }
-    } catch (e) {
-      Alert.alert('Error', 'Failed to load messages');
-    } finally {
-      setLoading(false);
     }
-  };
+
+    if (loadMore) {
+      if (decryptedMessages.length === 0) setHasMore(false);
+      else setMessages([...decryptedMessages, ...messages]);
+    } else {
+      setMessages(decryptedMessages);
+      setHasMore(true);
+      // Добавляем расшифрованные сообщения в кеш
+      decryptedMessages.forEach(msg => addMessageToCache(address, msg));
+    }
+  } catch (e) {
+    Alert.alert('Error', 'Failed to load messages');
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     loadMessages();

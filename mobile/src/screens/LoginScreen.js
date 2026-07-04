@@ -12,11 +12,11 @@ import {
 import { BlurView } from 'expo-blur';
 import { colors, glassStyle } from '../theme';
 import { OvalButton } from '../components/OvalButton';
-import DarkCrypto from '../shared/crypto-client';
+import DarkCrypto from '../shared/rn_crypto-client';
 import useUserStore from '../store/userStore';
 import { storage } from '../utils/storage';
 import { API_BASE_URL } from '../config/constants';
-import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from '../shared/core';
+import { initWebSocket, startHeartbeat, startStatusPolling, startUserStatusPolling } from '../shared/rn_core';
 
 export default function LoginScreen({ navigation }) {
   const [mnemonic, setMnemonic] = useState('');
@@ -38,19 +38,36 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       const trimmedMnemonic = mnemonic.trim();
+      console.log('[Login] step 1: deriveKeyPair start');
       const keys = await DarkCrypto.deriveKeyPair(trimmedMnemonic);
+      console.log('[Login] step 1: deriveKeyPair OK', {
+        addressLen: keys.address?.length,
+        signPrivateKeyType: keys.signPrivateKey?.constructor?.name,
+        signPrivateKeyLen: keys.signPrivateKey?.length,
+        compressedPubKeyType: keys.compressedPubKey?.constructor?.name,
+        compressedPubKeyLen: keys.compressedPubKey?.length,
+      });
       const { address, compressedPubKey, signPrivateKey } = keys;
 
       // Получаем nonce с сервера
+      console.log('[Login] step 2: fetching nonce');
       const nonceRes = await fetch(`${API_BASE_URL}/nonce`);
       if (!nonceRes.ok) throw new Error('Could not get nonce from server');
       const nonceData = await nonceRes.json();
       const nonce = nonceData.nonce;
+      console.log('[Login] step 2: nonce OK', { nonceType: typeof nonce, nonceValue: nonce });
 
+      console.log('[Login] step 3: signData start');
       const signatureArray = await DarkCrypto.signData(signPrivateKey, nonce);
+      console.log('[Login] step 3: signData OK', {
+        sigType: signatureArray?.constructor?.name,
+        sigLen: signatureArray?.length,
+      });
       const signatureHex = Array.from(new Uint8Array(signatureArray))
         .map(b => b.toString(16).padStart(2, '0')).join('');
+      console.log('[Login] step 4: signatureHex OK', signatureHex?.slice(0, 16) + '...');
       const pubkeyB64 = DarkCrypto._toBase64(compressedPubKey);
+      console.log('[Login] step 5: pubkeyB64 OK');
 
       const loginRes = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
