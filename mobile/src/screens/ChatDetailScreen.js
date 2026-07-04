@@ -28,8 +28,7 @@ import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { getConversation, addContact } from '../api';
 import { sendMessage as sendEncryptedMessage, uploadEncryptedFile } from '../shared/rn_actions';
-import { processMessageDecryption, clearMessageCache } from '../shared/rn_core';
-
+import { processMessageDecryption, clearMessageCache, addMessageToCache } from '../shared/rn_core';
 import DarkCrypto from '../shared/rn_crypto-client';
 import { API_BASE_URL } from '../config/constants';
 
@@ -99,7 +98,15 @@ function MessageImage({ msg, onPress }) {
 
 export default function ChatDetailScreen({ route, navigation }) {
   const { address, name, isGroup } = route.params;
-  const { messages, setMessages, addMessage, updateConversationPreview } = useChatStore();
+  const {
+    messages,
+    setMessages,
+    addMessage,
+    updateMessage,
+    removeMessage,
+    setCurrentChat,
+    updateConversationPreview
+  } = useChatStore();
   const { address: myAddress } = useUserStore();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -108,22 +115,15 @@ export default function ChatDetailScreen({ route, navigation }) {
   const flatListRef = useRef(null);
   const [hasMore, setHasMore] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  // Лайтбокс
   const [lightboxUri, setLightboxUri] = useState(null);
   const [lightboxVisible, setLightboxVisible] = useState(false);
 
-  // Скрываем таб-бар при фокусе на этом экране
-    // Скрываем таб-бар при фокусе на этом экране
-  const originalTabBarStyle = useRef(null);
-
+  // Скрываем таб-бар
   useFocusEffect(
     useCallback(() => {
       const parent = navigation.getParent();
       if (parent) {
-        parent.setOptions({
-          tabBarStyle: { display: 'none' },
-        });
+        parent.setOptions({ tabBarStyle: { display: 'none' } });
       }
       return () => {
         if (parent) {
@@ -160,6 +160,16 @@ export default function ChatDetailScreen({ route, navigation }) {
       hideSub.remove();
     };
   }, []);
+
+  // Устанавливаем текущий чат в store при входе и сбрасываем при выходе
+  useEffect(() => {
+    setCurrentChat({ address, name, isGroup });
+    loadMessages();
+    return () => {
+      setCurrentChat(null);
+      clearMessageCache(address);
+    };
+  }, [address]);
 
   const openLightbox = (uri) => {
     setLightboxUri(uri);
@@ -257,45 +267,46 @@ export default function ChatDetailScreen({ route, navigation }) {
   }, [navigation, name, address, isGroup]);
 
   const loadMessages = async (loadMore = false) => {
-  if (loading) return;
-  setLoading(true);
-  try {
-    const beforeId = loadMore && messages.length > 0 ? messages[0].id : null;
-    const data = await getConversation(address, beforeId);
-    const rawMessages = data.messages || [];
+    if (loading) return;
+    setLoading(true);
+    try {
+      const currentMessages = useChatStore.getState().messages;
+      const beforeId = loadMore && currentMessages.length > 0 ? currentMessages[0].id : null;
+      const data = await getConversation(address, beforeId);
+      const rawMessages = data.messages || [];
 
-    // Расшифровываем каждое сообщение
-    const decryptedMessages = [];
-    for (const msg of rawMessages) {
-      try {
-        const decrypted = await processMessageDecryption(msg);
-        decryptedMessages.push(decrypted);
-      } catch (e) {
-        console.warn('Failed to decrypt message', msg.id, e);
-        // Если расшифровка не удалась, показываем сообщение об ошибке
-        decryptedMessages.push({ ...msg, content: '🔒 Decrypt error', isDecrypted: false });
+      const decryptedMessages = [];
+      for (const msg of rawMessages) {
+        try {
+          const decrypted = await processMessageDecryption(msg);
+          decryptedMessages.push(decrypted);
+        } catch (e) {
+          console.warn('Failed to decrypt message', msg.id, e);
+          decryptedMessages.push({ ...msg, content: '🔒 Decrypt error', isDecrypted: false });
+        }
       }
-    }
 
-    if (loadMore) {
-      if (decryptedMessages.length === 0) setHasMore(false);
-      else setMessages([...decryptedMessages, ...messages]);
-    } else {
-      setMessages(decryptedMessages);
-      setHasMore(true);
-      // Добавляем расшифрованные сообщения в кеш
-      decryptedMessages.forEach(msg => addMessageToCache(address, msg));
+      if (loadMore) {
+        if (decryptedMessages.length === 0) {
+          setHasMore(false);
+        } else {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const newOnes = decryptedMessages.filter(m => !existingIds.has(m.id));
+            return [...newOnes, ...prev];
+          });
+        }
+      } else {
+        setMessages(decryptedMessages);
+        setHasMore(true);
+        decryptedMessages.forEach(msg => addMessageToCache(address, msg));
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to load messages');
+    } finally {
+      setLoading(false);
     }
-  } catch (e) {
-    Alert.alert('Error', 'Failed to load messages');
-  } finally {
-    setLoading(false);
-  }
-};
-
-  useEffect(() => {
-    loadMessages();
-  }, [address]);
+  };
 
   // Прокрутка вниз при новых сообщениях
   useEffect(() => {
@@ -345,14 +356,15 @@ export default function ChatDetailScreen({ route, navigation }) {
         isGroup,
         isGroup ? address.replace('group:', '') : null
       );
-      const updatedMsg = { ...tempMsg, id: result.tx_id || tempId, status: 'sent' };
-      const updatedMessages = messages.map(m => m.id === tempId ? updatedMsg : m);
-      setMessages(updatedMessages);
+
+      updateMessage(tempId, {
+        id: result.tx_id || tempId,
+        status: 'sent'
+      });
       updateConversationPreview(address, content.slice(0, 40) || '📎 File');
     } catch (e) {
       console.error('Send error:', e);
-      const filtered = messages.filter(m => m.id !== tempId);
-      setMessages(filtered);
+      removeMessage(tempId);
       Alert.alert('Error', e.message || 'Failed to send');
     } finally {
       setSending(false);
@@ -362,7 +374,7 @@ export default function ChatDetailScreen({ route, navigation }) {
   const pickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], // Исправлено: новый API вместо deprecated MediaTypeOptions
+        mediaTypes: ['images'],
         allowsEditing: true,
         quality: 0.7,
       });
@@ -398,16 +410,23 @@ export default function ChatDetailScreen({ route, navigation }) {
     }
   };
 
-  const renderItem = ({ item }) => {
+  const renderItem = ({ item, index }) => {
     const isMine = item.is_mine;
     const showSender = isGroup && !isMine && item.sender;
     const senderName = showSender ? (item.sender_name || item.sender.slice(0, 10)) : null;
     const isImage = item.fileType && item.fileType.startsWith('image/');
+    const isAudio = item.fileType && item.fileType.startsWith('audio/');
 
+    // ===== РАЗДЕЛИТЕЛЬ ДАТ =====
+    const showDateDivider = index === 0 ||
+      new Date(messages[index - 1]?.timestamp * 1000).toDateString() !==
+      new Date(item.timestamp * 1000).toDateString();
+
+    // ===== ИКОНКА СТАТУСА =====
     let statusIcon = null;
     if (isMine) {
       if (item.status === 'sending') {
-        statusIcon = <ActivityIndicator size="small" color="#aaa" style={{ marginLeft: 4 }} />;
+        statusIcon = <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" style={{ marginLeft: 4 }} />;
       } else if (item.status === 'sent') {
         statusIcon = <Text style={styles.statusIcon}>✓</Text>;
       } else if (item.status === 'delivered') {
@@ -417,32 +436,75 @@ export default function ChatDetailScreen({ route, navigation }) {
       }
     }
 
-    return (
-      <View style={[styles.messageRow, isMine ? styles.myMessage : styles.otherMessage]}>
-        {showSender && <Text style={styles.senderName}>{senderName}</Text>}
+    const timeStr = item.timestamp
+      ? new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
 
-        {item.fileUrl && isImage && (
-          <MessageImage msg={item} onPress={openLightbox} />
-        )}
-        {item.fileUrl && !isImage && (
-          <View style={styles.fileAttachment}>
-            <Ionicons name="document-outline" size={20} color="#aaa" />
-            <Text style={styles.fileName}>{item.fileUrl.split('/').pop()}</Text>
+    return (
+      <>
+        {showDateDivider && (
+          <View style={styles.dateDivider}>
+            <Text style={styles.dateText}>
+              {new Date(item.timestamp * 1000).toLocaleDateString(undefined, {
+                day: 'numeric',
+                month: 'long',
+                year: new Date(item.timestamp * 1000).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+              })}
+            </Text>
           </View>
         )}
 
-        {!!item.content && <Text style={styles.messageText}>{item.content}</Text>}
-        <View style={styles.metaRow}>
-          <Text style={styles.time}>
-            {new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-          {statusIcon}
+        <View style={[
+          styles.messageRow,
+          isMine ? styles.myMessage : styles.otherMessage,
+          item.status === 'sending' && styles.sendingMessage,
+        ]}>
+          {showSender && (
+            <Text style={styles.senderName}>{senderName}</Text>
+          )}
+
+          {item.fileUrl && isImage && (
+            <MessageImage msg={item} onPress={openLightbox} />
+          )}
+
+          {item.fileUrl && isAudio && (
+            <View style={styles.audioAttachment}>
+              <Ionicons name="musical-note" size={20} color={colors.accent} />
+              <Text style={styles.audioText}>Voice message</Text>
+            </View>
+          )}
+
+          {item.fileUrl && !isImage && !isAudio && (
+            <TouchableOpacity
+              style={styles.fileAttachment}
+              onPress={() => Alert.alert('File', item.fileUrl.split('/').pop())}
+            >
+              <Ionicons name="document-outline" size={20} color="#aaa" />
+              <Text style={styles.fileName} numberOfLines={1}>
+                {item.fileUrl.split('/').pop() || 'File'}
+              </Text>
+              <Ionicons name="download-outline" size={16} color={colors.accent} />
+            </TouchableOpacity>
+          )}
+
+          {!!item.content && (
+            <Text style={[
+              styles.messageText,
+              item.content.startsWith('🔒') && styles.errorText,
+            ]}>
+              {item.content}
+            </Text>
+          )}
+
+          <View style={styles.metaRow}>
+            <Text style={styles.time}>{timeStr}</Text>
+            {statusIcon}
+          </View>
         </View>
-      </View>
+      </>
     );
   };
 
-  // Вычисляем отступ снизу
   const bottomOffset = keyboardHeight > 0
     ? (Platform.OS === 'ios' ? keyboardHeight : 0)
     : 0;
@@ -463,7 +525,7 @@ export default function ChatDetailScreen({ route, navigation }) {
           contentContainerStyle={{
             paddingVertical: 16,
             paddingHorizontal: 12,
-            paddingBottom: bottomOffset + 80, // Отступ для поля ввода
+            paddingBottom: bottomOffset + 80,
           }}
           onEndReached={() => { if (!loading && hasMore && messages.length) loadMessages(true); }}
           onEndReachedThreshold={0.3}
@@ -479,7 +541,6 @@ export default function ChatDetailScreen({ route, navigation }) {
         />
       )}
 
-      {/* Поле ввода — фиксированное снизу */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
@@ -532,7 +593,6 @@ export default function ChatDetailScreen({ route, navigation }) {
         </BlurView>
       </KeyboardAvoidingView>
 
-      {/* Лайтбокс */}
       <Modal
         visible={lightboxVisible}
         transparent
@@ -586,16 +646,37 @@ const styles = StyleSheet.create({
     padding: 6,
     marginLeft: 4,
   },
+  dateDivider: {
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  dateText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 12,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+    overflow: 'hidden',
+  },
   messageRow: {
-    marginVertical: 4,
+    marginVertical: 3,
     maxWidth: '78%',
     padding: 12,
-    borderRadius: 18,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   myMessage: {
     alignSelf: 'flex-end',
     backgroundColor: colors.accent,
     borderBottomRightRadius: 4,
+    marginLeft: '22%',
   },
   otherMessage: {
     alignSelf: 'flex-start',
@@ -603,47 +684,75 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
     borderBottomLeftRadius: 4,
+    marginRight: '22%',
+  },
+  sendingMessage: {
+    opacity: 0.7,
   },
   senderName: {
     color: colors.accent,
-    fontSize: 11,
-    marginBottom: 4,
-    fontWeight: 'bold',
+    fontSize: 12,
+    marginBottom: 5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   messageText: {
     color: colors.textMain,
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 21,
+    letterSpacing: 0.1,
+  },
+  errorText: {
+    color: '#ff6b6b',
+    fontStyle: 'italic',
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
+    marginTop: 5,
+    gap: 5,
   },
   time: {
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.45)',
     fontSize: 10,
+    fontWeight: '400',
   },
   statusIcon: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: -1,
+    marginLeft: 2,
   },
   statusRead: {
-    color: '#00d2ff',
+    color: '#74b9ff',
   },
   fileAttachment: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.1)',
     padding: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 6,
+    gap: 8,
   },
   fileName: {
     color: colors.textMain,
-    marginLeft: 8,
+    fontSize: 13,
+    flex: 1,
+  },
+  audioAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 6,
+    gap: 8,
+  },
+  audioText: {
+    color: colors.textMain,
     fontSize: 13,
   },
   messageImage: {
@@ -661,7 +770,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Поле ввода
   inputWrapper: {
     position: 'absolute',
     left: 0,
@@ -741,7 +849,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8,
   },
-  // Лайтбокс
   lightboxOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.94)',

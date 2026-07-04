@@ -1,25 +1,20 @@
 // shared/actions.js — полностью адаптирован для React Native
-// Исправлены: отправка файлов через expo-file-system, получение членов группы
 import { Buffer } from 'buffer';
 import { storage } from '../utils/storage';
-import * as FileSystem from 'expo-file-system'; // <--- ДОБАВЛЕНО
+import * as FileSystem from 'expo-file-system';
 import DarkCrypto from './rn_crypto-client';
 import { getPubKey, ensureKeys, addMessageToCache } from './rn_core';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { API_BASE_URL } from '../config/constants';
 
-// ===================== Загрузка зашифрованного файла (ИСПРАВЛЕНО) =====================
 export async function uploadEncryptedFile(file) {
-  // file — объект с полями uri, type, name (из expo-image-picker или document-picker)
   const { key, iv } = DarkCrypto.generateFileKeyAndIv();
-  // Читаем файл как base64 через expo-file-system
   const base64 = await FileSystem.readAsStringAsync(file.uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
   const fileData = new Uint8Array(Buffer.from(base64, 'base64'));
   const encrypted = await DarkCrypto.encryptFile(fileData, key, iv);
-  // Создаём Blob для FormData (в React Native FormData работает с blob)
   const blob = new Blob([encrypted], { type: 'application/octet-stream' });
   const formData = new FormData();
   formData.append('file', blob, 'encrypted.bin');
@@ -36,10 +31,8 @@ export async function uploadEncryptedFile(file) {
   };
 }
 
-// ===================== Отправка сообщения (ИСПРАВЛЕНО: получение членов группы) =====================
 export async function sendMessage(recipient, content, fileAttachment = null, isGroup = false, groupId = null) {
   const userStore = useUserStore.getState();
-  const chatStore = useChatStore.getState();
 
   if (!content && !fileAttachment) {
     throw new Error('Enter message or attach file');
@@ -50,7 +43,6 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
   const myAddress = userStore.address;
 
   if (isGroup && groupId) {
-    // ✅ ВМЕСТО chatStore.getGroupMembers() — реальный запрос к серверу
     const gRes = await fetch(`${API_BASE_URL}/get_groups`);
     if (!gRes.ok) throw new Error('Failed to fetch group info');
     const gData = await gRes.json();
@@ -95,7 +87,6 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
     }
     payload = { message_type: 'group', group_id: groupId, encrypted_map: encryptedMap };
   } else {
-    // Личный чат
     const pubRes = await fetch(`${API_BASE_URL}/get_public_key/${recipient}`);
     if (!pubRes.ok) throw new Error('Recipient public key not found');
     const pubData = await pubRes.json();
@@ -150,7 +141,7 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Send failed');
 
-  // Создаём объект сообщения для локального добавления
+  // Кладём в глобальный кеш в памяти (не в Zustand — UI обновляет сам экран)
   const sentMessage = {
     id: data.tx_id,
     sender: myAddress,
@@ -165,15 +156,11 @@ export async function sendMessage(recipient, content, fileAttachment = null, isG
     fileIv: fileAttachment?.iv,
     fileType: fileAttachment?.type
   };
-
   addMessageToCache(recipient, sentMessage);
-  chatStore.addLocalMessage(recipient, sentMessage);
-  chatStore.updateConversationPreview(recipient, content?.slice(0, 40) || '📎 File');
 
   return data;
 }
 
-// ===================== Запись аудио (заглушка для RN) =====================
 export async function startRecording() {
   console.warn('Audio recording not implemented for React Native');
 }
@@ -182,13 +169,11 @@ export async function stopRecording() {
   console.warn('Audio recording stop not implemented');
 }
 
-// ===================== Сжатие изображений (заглушка для RN) =====================
 export async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
   console.warn('compressImage not implemented – returning original');
   return dataUrl;
 }
 
-// ===================== Обработка выбора файла (для RN) =====================
 export function handleFileSelection(file, type) {
   const maxSize = type === 'image' ? 10 * 1024 * 1024 : 2 * 1024 * 1024;
   if (file.size > maxSize) {

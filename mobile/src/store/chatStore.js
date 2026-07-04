@@ -9,27 +9,47 @@ const useChatStore = create((set, get) => ({
 
   setConversations: (conv) => set({ conversations: conv }),
   setCurrentChat: (chat) => set({ currentChat: chat, messages: [] }),
-  setMessages: (msgs) => set({ messages: msgs }),
-  addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
 
-  // Новый метод для локального добавления сообщения (из actions.js)
+  // Теперь поддерживает callback: setMessages(prev => [...prev, msg])
+  setMessages: (msgs) => set((state) => ({
+    messages: typeof msgs === 'function' ? msgs(state.messages) : msgs
+  })),
+
+  // Добавление с защитой от дубликатов
+  addMessage: (msg) => set((state) => {
+    if (!msg?.id || state.messages.find(m => m.id === msg.id)) return state;
+    return { messages: [...state.messages, msg] };
+  }),
+
+  // Обновить сообщение по id (ищем старый id, заменяем объект)
+  updateMessage: (id, updater) => set((state) => ({
+    messages: state.messages.map(m => {
+      if (m.id !== id) return m;
+      return typeof updater === 'function' ? updater(m) : { ...m, ...updater };
+    })
+  })),
+
+  // Удалить сообщение по id
+  removeMessage: (id) => set((state) => ({
+    messages: state.messages.filter(m => m.id !== id)
+  })),
+
   addLocalMessage: (chatId, msg) => {
     const state = get();
-    // Если это текущий чат – добавляем в сообщения
-    if (state.currentChat?.address === chatId) {
-      set({ messages: [...state.messages, msg] });
-    }
-    // Обновляем превью в списке диалогов
+    const isCurrent = state.currentChat?.address === chatId;
+    const alreadyHas = state.messages.find(m => m.id === msg.id);
+    const newMessages = isCurrent && !alreadyHas
+      ? [...state.messages, msg]
+      : state.messages;
     const convs = state.conversations.map((c) => {
       if (c.address === chatId) {
         return { ...c, last_preview: msg.content?.slice(0, 40) || '📎 File' };
       }
       return c;
     });
-    set({ conversations: convs });
+    set({ messages: newMessages, conversations: convs });
   },
 
-  // Новый метод для обновления превью (из actions.js)
   updateConversationPreview: (chatId, preview) => {
     const state = get();
     const convs = state.conversations.map((c) => {
@@ -41,7 +61,6 @@ const useChatStore = create((set, get) => ({
     set({ conversations: convs });
   },
 
-  // Загрузка списка диалогов
   loadConversations: async () => {
     try {
       const data = await getConversations();
@@ -51,7 +70,6 @@ const useChatStore = create((set, get) => ({
     }
   },
 
-  // Загрузка сообщений конкретного чата
   loadMessages: async (address) => {
     try {
       set({ loading: true });
@@ -63,36 +81,31 @@ const useChatStore = create((set, get) => ({
     }
   },
 
-  // Обработка входящего сообщения через WebSocket
   addIncomingMessage: (msg) => {
     const state = get();
-    // Если это текущий чат – добавляем в сообщения
-    if (state.currentChat?.address === msg.chatId || state.currentChat?.address === msg.sender) {
-      set({ messages: [...state.messages, msg] });
-    }
-    // Обновляем превью в списке диалогов
+    const chatId = msg.chatId || msg.sender;
+    const isCurrent = state.currentChat?.address === chatId || state.currentChat?.address === msg.sender;
+    const alreadyHas = state.messages.find(m => m.id === msg.id);
+    const newMessages = isCurrent && !alreadyHas
+      ? [...state.messages, msg]
+      : state.messages;
     const convs = state.conversations.map((c) => {
-      if (c.address === msg.chatId || c.address === msg.sender) {
+      if (c.address === chatId || c.address === msg.sender) {
         return { ...c, last_preview: msg.content?.slice(0, 40) || 'New message' };
       }
       return c;
     });
-    set({ conversations: convs });
+    set({ messages: newMessages, conversations: convs });
   },
 
-  // Метод для получения членов группы (заглушка, пока не реализовано)
   getGroupMembers: (groupId) => {
-    // В будущем загружать с сервера или из кеша
     return [];
   },
 
-  // Обновление статуса пользователя
   updateUserStatus: (address, status) => {
-    // Можно обновить статус в списке диалогов или в отдельном хранилище
-    // Пока заглушка
+    // заглушка
   },
 
-  // Обновление статуса сообщения
   updateMessageStatus: (messageId, status) => {
     const state = get();
     const updatedMessages = state.messages.map((msg) => {
@@ -104,7 +117,6 @@ const useChatStore = create((set, get) => ({
     set({ messages: updatedMessages });
   },
 
-  // Получить свои сообщения с пометкой is_mine
   getMyPendingMessages: () => {
     const state = get();
     return state.messages.filter((msg) => msg.is_mine && msg.status !== 'read');
