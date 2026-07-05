@@ -1,0 +1,216 @@
+// shared/actions.js — полностью адаптирован для React Native
+import { Buffer } from 'buffer';
+import { storage } from '../utils/storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import DarkCrypto from './rn_crypto-client';
+import { getPubKey, ensureKeys, addMessageToCache } from './rn_core';
+import useChatStore from '../store/chatStore';
+import useUserStore from '../store/userStore';
+import { API_BASE_URL } from '../config/constants';
+
+export async function uploadEncryptedFile(file) {
+  const { key, iv } = DarkCrypto.generateFileKeyAndIv();
+
+  // 1. Читаем оригинал
+  const base64 = await FileSystem.readAsStringAsync(file.uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const fileData = new Uint8Array(Buffer.from(base64, 'base64'));
+
+  // 2. Шифруем
+  const encrypted = await DarkCrypto.encryptFile(fileData, key, iv);
+  const encryptedB64 = DarkCrypto.arrayBufferToBase64(encrypted);
+
+  // 3. Пишем зашифрованное во временный файл
+  const tempPath = FileSystem.cacheDirectory + `upload_${Date.now()}.bin`;
+  await FileSystem.writeAsStringAsync(tempPath, encryptedB64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  try {
+    // 4. Загружаем через FileSystem.uploadAsync (надёжнее fetch+Blob в RN)
+    const uploadResult = await FileSystem.uploadAsync(
+      `${API_BASE_URL}/upload_encrypted`,
+      tempPath,
+      {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType: 'application/octet-stream',
+        fileName: file.name || 'encrypted.bin',
+      }
+    );
+
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      throw new Error(`Upload failed: ${uploadResult.status} ${uploadResult.body}`);
+    }
+
+    const data = JSON.parse(uploadResult.body);
+    return {
+      url: data.file_url,
+      key: DarkCrypto.arrayBufferToBase64(key),
+      iv: DarkCrypto.arrayBufferToBase64(iv),
+      type: file.type
+    };
+  } finally {
+    // 5. Чистим временный файл
+    FileSystem.deleteAsync(tempPath, { idempotent: true }).catch(() => {});
+  }
+}
+
+export async function sendMessage(recipient, content, fileAttachment = null, isGroup = false, groupId = null) {
+  const userStore = useUserStore.getState();
+
+  if (!content && !fileAttachment) {
+    throw new Error('Enter message or attach file');
+  }
+
+  const keys = await ensureKeys();
+  let payload = {};
+  const myAddress = userStore.address;
+
+  if (isGroup && groupId) {
+    const gRes = await fetch(`${API_BASE_URL}/get_groups`);
+    if (!gRes.ok) throw new Error('Failed to fetch group info');
+    const gData = await gRes.json();
+    const freshGroup = gData.groups?.find(g => g.id === groupId);
+    const members = freshGroup?.members || [];
+    if (!members.length) throw new Error('Group members not loaded');
+
+    const encryptedMap = {};
+    for (const addr of members) {
+      const pubKeyB64 = await getPubKey(addr);
+      const pubKeyBytes = DarkCrypto._fromBase64(pubKeyB64);
+      const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, pubKeyBytes);
+      let encryptedText = null;
+      if (content) {
+        const { ciphertext, iv: textIv } = await DarkCrypto.encryptAES(shared, content);
+        encryptedText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(textIv) };
+      }
+      let encFileKey = null, encFileIv = null;
+      if (fileAttachment) {
+        const fileKeyBuffer = DarkCrypto._fromBase64(fileAttachment.key);
+        const fileIvBuffer = DarkCrypto._fromBase64(fileAttachment.iv);
+        const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
+        const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
+        encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
+        encFileIv = { ciphertext: DarkCrypto._arrayBufferToBase64(encIv.ciphertext), iv: DarkCrypto._toBase64(encIv.iv) };
+      }
+      encryptedMap[addr] = {
+        text: encryptedText,
+        file_url: fileAttachment?.url,
+        file_key: encFileKey,
+        file_iv: encFileIv,
+        file_type: fileAttachment?.type,
+        sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey)
+      };
+      if (addr === myAddress) {
+        encryptedMap[addr].self_text = content ? { ciphertext: encryptedText.ciphertext, iv: encryptedText.iv } : null;
+        if (fileAttachment) {
+          encryptedMap[addr].self_file_key = fileAttachment.key;
+          encryptedMap[addr].self_file_iv = fileAttachment.iv;
+        }
+      }
+    }
+    payload = { message_type: 'group', group_id: groupId, encrypted_map: encryptedMap };
+  } else {
+    const pubRes = await fetch(`${API_BASE_URL}/get_public_key/${recipient}`);
+    if (!pubRes.ok) throw new Error('Recipient public key not found');
+    const pubData = await pubRes.json();
+    const recipientPubKeyBytes = DarkCrypto._fromBase64(pubData.public_key);
+    const shared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, recipientPubKeyBytes);
+    let encryptedText = null;
+    if (content) {
+      const { ciphertext, iv } = await DarkCrypto.encryptAES(shared, content);
+      encryptedText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(iv) };
+    }
+    let encFileKey = null, encFileIv = null;
+    if (fileAttachment) {
+      const fileKeyBuffer = DarkCrypto._fromBase64(fileAttachment.key);
+      const fileIvBuffer = DarkCrypto._fromBase64(fileAttachment.iv);
+      const encKey = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileKeyBuffer)));
+      const encIv = await DarkCrypto.encryptAES(shared, DarkCrypto.arrayBufferToBase64(new Uint8Array(fileIvBuffer)));
+      encFileKey = { ciphertext: DarkCrypto._arrayBufferToBase64(encKey.ciphertext), iv: DarkCrypto._toBase64(encKey.iv) };
+      encFileIv = { ciphertext: DarkCrypto._arrayBufferToBase64(encIv.ciphertext), iv: DarkCrypto._toBase64(encIv.iv) };
+    }
+    const selfShared = await DarkCrypto.getSharedSecret(keys.ecdhPrivateKey, keys.compressedPubKey);
+    let selfEncText = null, selfFileKey = null, selfFileIv = null;
+    if (content) {
+      const { ciphertext, iv } = await DarkCrypto.encryptAES(selfShared, content);
+      selfEncText = { ciphertext: DarkCrypto._arrayBufferToBase64(ciphertext), iv: DarkCrypto._toBase64(iv) };
+    }
+    if (fileAttachment) {
+      selfFileKey = fileAttachment.key;
+      selfFileIv = fileAttachment.iv;
+    }
+    payload = {
+      recipient: recipient,
+      payload: {
+        text: encryptedText,
+        file_url: fileAttachment?.url,
+        file_key: encFileKey,
+        file_iv: encFileIv,
+        file_type: fileAttachment?.type,
+        sender_pubkey: DarkCrypto._toBase64(keys.compressedPubKey),
+        self_text: selfEncText,
+        self_file_key: selfFileKey,
+        self_file_iv: selfFileIv
+      },
+      message_type: 'direct'
+    };
+  }
+
+  const res = await fetch(`${API_BASE_URL}/send_message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Send failed');
+
+  // Кладём в глобальный кеш в памяти (не в Zustand — UI обновляет сам экран)
+  const sentMessage = {
+    id: data.tx_id,
+    sender: myAddress,
+    recipient: recipient,
+    content: content || '',
+    timestamp: Date.now() / 1000,
+    is_mine: true,
+    status: 'sent',
+    isDecrypted: true,
+    fileUrl: fileAttachment?.url,
+    fileKey: fileAttachment?.key,
+    fileIv: fileAttachment?.iv,
+    fileType: fileAttachment?.type
+  };
+  addMessageToCache(recipient, sentMessage);
+
+  return data;
+}
+
+export async function startRecording() {
+  console.warn('Audio recording not implemented for React Native');
+}
+
+export async function stopRecording() {
+  console.warn('Audio recording stop not implemented');
+}
+
+export async function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
+  console.warn('compressImage not implemented – returning original');
+  return dataUrl;
+}
+
+export function handleFileSelection(file, type) {
+  const maxSize = type === 'image' ? 10 * 1024 * 1024 : 2 * 1024 * 1024;
+  if (file.size > maxSize) {
+    throw new Error(`File too large (max ${maxSize / 1024 / 1024} MB)`);
+  }
+  const allowedTypes = type === 'image'
+    ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    : ['audio/webm', 'audio/mp4', 'audio/ogg'];
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error(`Unsupported ${type} type`);
+  }
+  return { file, type };
+}

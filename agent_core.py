@@ -16,26 +16,38 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import torch
-import numpy as np
+
 
 logger = logging.getLogger(__name__)
 
-# УЛУЧШЕНИЕ: импорт из ai_assistant для синхронизации параметров и глобальной БЗ
+
+# Импорт из ai_assistant: пробуем несколько вариантов пути
 try:
     from routes.ai_assistant import (
         MAX_PAGES_TO_FETCH,
         GLOBAL_BLEND_ALPHA,
         EMBEDDING_DIM,
         GlobalKnowledgeBase,
-        AdaptiveWebSearch,      # ← БЫЛО WebSearchTool (не существует!)
+        AdaptiveWebSearch,
+        AUTO_SEARCH_ENABLED,
     )
 except ImportError:
-    MAX_PAGES_TO_FETCH = 5
-    GLOBAL_BLEND_ALPHA = 0.3
-    EMBEDDING_DIM = 128
-    GlobalKnowledgeBase = None
-    AdaptiveWebSearch = None
+    try:
+        from ai_assistant import (
+            MAX_PAGES_TO_FETCH,
+            GLOBAL_BLEND_ALPHA,
+            EMBEDDING_DIM,
+            GlobalKnowledgeBase,
+            AdaptiveWebSearch,
+            AUTO_SEARCH_ENABLED,
+        )
+    except ImportError:
+        MAX_PAGES_TO_FETCH = 5
+        GLOBAL_BLEND_ALPHA = 0.3
+        EMBEDDING_DIM = 128
+        GlobalKnowledgeBase = None
+        AdaptiveWebSearch = None
+        AUTO_SEARCH_ENABLED = True
 
 # Конфигурация агента (остаётся локальной)
 MAX_AGENT_STEPS = 8
@@ -136,23 +148,33 @@ class ToolRegistry:
 
 # ---------- AgentPlanner (без изменений) ----------
 class AgentPlanner:
-    PLAN_SYSTEM_PROMPT = """Ты — автономный AI-агент. Твоя задача: разбить цель на конкретные шаги.
+    PLAN_SYSTEM_PROMPT = """Ты — автономный AI-агент. Разбей цель на шаги, выбирая оптимальные инструменты.
 
 Доступные инструменты:
 {tools}
 
-Формат ОДНОГО шага (строго JSON, один объект):
-{{"thought": "рассуждение", "tool": "имя_инструмента", "input": "аргумент"}}
+Формат ОДНОГО шага (строго JSON):
+{{"thought": "краткое рассуждение", "tool": "имя_инструмента", "input": "аргумент"}}
 
-Для финального ответа без инструмента:
-{{"thought": "рассуждение", "tool": "final", "input": "готовый ответ"}}
+Для финального ответа:
+{{"thought": "итог", "tool": "final", "input": "готовый развёрнутый ответ"}}
+
+Стратегия выбора инструментов:
+1. memory_search — ПЕРВЫЙ шаг. Возможно, ответ уже известен.
+2. web_search — если в памяти нет или нужна свежая информация.
+3. parallel_search — если нужно одновременно проверить несколько аспектов (формат: "запрос1|запрос2|запрос3").
+4. fact_check — проверить конкретное утверждение на достоверность.
+5. extract_facts — структурировать большой текст в конкретные факты.
+6. learn_from_web — сохранить полезные факты из результатов поиска.
+7. self_reflect — если застрял или нужна переоценка прогресса.
+8. summarize — сжать длинный текст для финального ответа.
+9. final — когда собрано достаточно информации.
 
 Правила:
-- Не более {max_steps} шагов
-- Каждый шаг должен приближать к цели
-- Используй memory_search перед web_search (быстрее и дешевле)
-- Используй self_reflect для оценки своего прогресса
-- Если цель простая — сразу "final"
+- Не более {max_steps} шагов.
+- Простые вопросы → сразу "final".
+- Не повторяй один инструмент с тем же запросом дважды.
+- После web_search всегда проверь, нужен ли learn_from_web.
 """
 
     def __init__(self, call_llm_fn: Callable):
@@ -471,6 +493,65 @@ class AgentMemory:
         }
 #      но в итоговом файле они должны быть на своих местах. Для краткости здесь пропущены.)
 
+# ---------- Фоновый исследователь (автономное выполнение целей) ----------
+class BackgroundResearcher:
+    """
+    Автономно выполняет авто-цели в фоне, пока агент занят диалогом.
+    Результаты сохраняются в память агента для последующего использования.
+    """
+
+    def __init__(self):
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        self._task: Optional[asyncio.Task] = None
+        self._processed = 0
+
+    def schedule(self, goal: AgentGoal, agent: 'AutonomousAgent') -> bool:
+        """Поставить цель в очередь. Возвращает True если поставлено."""
+        try:
+            self._queue.put_nowait((goal, agent))
+            if self._task is None or self._task.done():
+                self._task = asyncio.create_task(self._loop())
+            return True
+        except asyncio.QueueFull:
+            return False
+
+    async def _loop(self):
+        while True:
+            try:
+                item = await asyncio.wait_for(self._queue.get(), timeout=120)
+            except asyncio.TimeoutError:
+                break  # Очередь пустая — выходим из цикла
+            goal, agent = item
+            try:
+                await self._execute(goal, agent)
+            except Exception as e:
+                logger.debug(f"BackgroundResearcher error for {goal.goal_id}: {e}")
+            finally:
+                self._queue.task_done()
+
+    async def _execute(self, goal: AgentGoal, agent: 'AutonomousAgent'):
+        logger.info(f"🔬 Фоновое исследование: {goal.description[:70]}")
+        result = await agent._run_agent_loop(
+            goal.description, context="[Автономное фоновое исследование]"
+        )
+        answer = result["final_answer"]
+        agent.goals.complete_goal(goal.goal_id, answer)
+        # Сохраняем резюме в память
+        key = f"bg_research_{goal.goal_id[:8]}"
+        agent.memory.store_fact(key, answer[:600], confidence=0.75)
+        self._processed += 1
+        logger.info(f"✅ Фоновое исследование завершено [{self._processed}]: {goal.goal_id[:8]}")
+
+    def stats(self) -> Dict:
+        return {
+            "queue_size": self._queue.qsize(),
+            "processed": self._processed,
+            "active": self._task is not None and not self._task.done(),
+        }
+
+# ---------- Глобальный экземпляр фонового исследователя ----------
+_background_researcher = BackgroundResearcher()
+
 # ---------- Главный агент (AutonomousAgent) с улучшениями ----------
 class AutonomousAgent:
     COMPLEXITY_THRESHOLD = 50
@@ -492,6 +573,10 @@ class AutonomousAgent:
 
         self._register_builtin_tools()
         logger.info(f"🤖 AutonomousAgent ready for {self._user_id[:8]}")
+        from routes.emergence_extensions import ExternalToolbox
+        self.external_tools = ExternalToolbox(self._a)
+        self.external_tools.register_tools(self)
+
 
         # УЛУЧШЕНИЕ: применение глобального подсознания при старте
         if GlobalKnowledgeBase is not None:
@@ -532,9 +617,18 @@ class AutonomousAgent:
                             "Создаёт 3 проверяемые гипотезы по вопросу")
         self.tools.register("verify_information", self._tool_verify_information,
                             "Анализирует текст на подтверждения и противоречия")
-        # УЛУЧШЕНИЕ: новый инструмент для чтения подсознания
         self.tools.register("get_subconscious_state", self._tool_get_subconscious_state,
                             "Возвращает текущее латентное состояние подсознания и статистику")
+        # Новые инструменты для улучшенного поиска и автономности
+        self.tools.register("parallel_search", self._tool_parallel_search,
+                            "Параллельный поиск по нескольким запросам: 'запрос1|запрос2|запрос3'",
+                            ["parallel_search: Python 3.12 features|Python vs Rust performance|Python async improvements"])
+        self.tools.register("fact_check", self._tool_fact_check,
+                            "Проверяет конкретное утверждение через интернет и память",
+                            ["fact_check: Python быстрее Rust для веб-серверов"])
+        self.tools.register("deep_research", self._tool_deep_research,
+                            "Углублённое исследование темы с синтезом из нескольких источников",
+                            ["deep_research: применение LLM в медицинской диагностике 2024"])
 
     async def _tool_web_search(self, query: str) -> str:
         """Поиск в интернете через AdaptiveWebSearch ассистента."""
@@ -659,6 +753,129 @@ class AutonomousAgent:
         ]
         return await self._call_llm_direct(messages)
 
+    async def _tool_parallel_search(self, queries_str: str) -> str:
+        """
+        Параллельный поиск по нескольким запросам одновременно.
+        Формат входа: 'запрос1|запрос2|запрос3'
+        """
+        queries = [q.strip() for q in queries_str.split("|") if q.strip()]
+        if not queries:
+            return "[parallel_search: нет запросов]"
+        queries = queries[:4]  # макс 4 параллельных запроса
+
+        web_searcher = getattr(self._a, 'web_searcher', None)
+        if web_searcher is None:
+            # Fallback: последовательный поиск
+            parts = []
+            for q in queries:
+                res = await self._tool_web_search(q)
+                parts.append(f"=== '{q}' ===\n{res[:800]}")
+            return "\n\n".join(parts)
+
+        tasks = [
+            web_searcher.iterative_search(q, max_iterations=1)
+            for q in queries
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        parts = []
+        for query, result in zip(queries, results):
+            if isinstance(result, Exception):
+                parts.append(f"=== '{query}' — ошибка: {result} ===")
+            else:
+                context, chunks, meta = result
+                snippet = context[:1200] if context else "(нет результатов)"
+                parts.append(f"=== '{query}' ({len(chunks)} чанков) ===\n{snippet}")
+
+        combined = "\n\n".join(parts)
+        # Автообучение из объединённых результатов
+        if AUTO_LEARN_FROM_WEB and len(combined) > 1000:
+            asyncio.create_task(self._learn_from_search_result(combined))
+        return combined
+
+    async def _tool_fact_check(self, claim: str) -> str:
+        """
+        Проверяет конкретное утверждение через интернет и память.
+        Возвращает вердикт: ✅ ПОДТВЕРЖДЕНО / ❌ ОПРОВЕРГНУТО / ⚠️ НЕОДНОЗНАЧНО
+        """
+        web_searcher = getattr(self._a, 'web_searcher', None)
+
+        # Поиск в памяти
+        mem_result = await self._tool_memory_search(claim)
+
+        # Поиск в интернете
+        search_query = await self._tool_rewrite_query(f"проверить факт: {claim}")
+        if web_searcher:
+            web_ctx, chunks, _ = await web_searcher.iterative_search(
+                search_query, max_iterations=2
+            )
+        else:
+            web_ctx = await self._tool_web_search(search_query)
+
+        messages = [
+            {"role": "system", "content": (
+                "Ты — профессиональный фактчекер. Оцени достоверность утверждения "
+                "на основе предоставленных данных.\n"
+                "Начни ответ с одного из маркеров:\n"
+                "✅ ПОДТВЕРЖДЕНО — если данные явно подтверждают\n"
+                "❌ ОПРОВЕРГНУТО — если данные явно опровергают\n"
+                "⚠️ НЕОДНОЗНАЧНО — если данных недостаточно или они противоречивы\n"
+                "Затем укажи конкретные доказательства (1-3 предложения)."
+            )},
+            {"role": "user", "content": (
+                f"Утверждение: {claim}\n\n"
+                f"Из памяти:\n{mem_result[:400]}\n\n"
+                f"Из интернета:\n{web_ctx[:2000] if web_ctx else '(нет данных)'}"
+            )},
+        ]
+        verdict = await self._call_llm_direct(messages)
+        return verdict or "⚠️ Не удалось проверить утверждение."
+
+    async def _tool_deep_research(self, topic: str) -> str:
+        """
+        Углублённое исследование темы: гипотезы → параллельный поиск → синтез.
+        """
+        # Генерируем 3 аспекта для исследования
+        aspects_raw = await self._tool_generate_hypothesis(topic)
+        aspects = [
+            line.strip("•- 1234567890.").strip()
+            for line in aspects_raw.split("\n")
+            if len(line.strip()) > 20
+        ][:3]
+
+        if not aspects:
+            aspects = [topic]
+
+        # Параллельный поиск по всем аспектам
+        parallel_query = "|".join(aspects)
+        search_results = await self._tool_parallel_search(parallel_query)
+
+        # Извлекаем факты
+        facts = await self._tool_extract_facts(search_results[:4000])
+
+        # Синтез
+        messages = [
+            {"role": "system", "content": (
+                "Ты — аналитик-исследователь. На основе фактов из нескольких источников "
+                "напиши структурированное резюме исследования. Выдели ключевые выводы, "
+                "укажи степень уверенности."
+            )},
+            {"role": "user", "content": (
+                f"Тема исследования: {topic}\n\n"
+                f"Аспекты: {', '.join(aspects)}\n\n"
+                f"Извлечённые факты:\n{facts[:3000]}\n\n"
+                f"Напиши итоговое резюме исследования:"
+            )},
+        ]
+        synthesis = await self._call_llm_direct(messages)
+
+        # Сохраняем в память
+        if synthesis and len(synthesis) > 100:
+            key = hashlib.md5(topic.encode()).hexdigest()[:16]
+            self.memory.store_fact(f"deep_research_{key}", synthesis[:600], confidence=0.8)
+
+        return synthesis or "[Исследование не дало результата]"
+
     # ---------- LLM-вызов ----------
     async def _call_llm_direct(self, messages: List[Dict]) -> str:
         return await self._a._call_llm(messages)
@@ -675,20 +892,38 @@ class AutonomousAgent:
     ) -> Tuple[str, Dict]:
         self.goals.observe_message(message)
         self._step_counter += 1
+
+        # Генерируем авто-цели и ставим их в фоновую очередь
         new_goals = self.goals.generate_goals()
         if new_goals:
-            logger.info(f"🎯 Auto-goals generated: {[g.description[:50] for g in new_goals]}")
+            logger.info(f"🎯 Auto-goals: {[g.description[:50] for g in new_goals]}")
+            for goal in new_goals[:2]:  # не больше 2 фоновых задач
+                _background_researcher.schedule(goal, self)
+
         is_complex = self._is_complex_task(message)
+
+        # Авто-определение необходимости поиска (если пользователь не нажал кнопку)
+        if not web_search and not url_to_fetch and not image_base64 and not is_complex:
+            web_searcher = getattr(self._a, 'web_searcher', None)
+            if web_searcher and web_searcher.should_search_fast(message):
+                web_search = True
+                logger.info(f"🔎 Agent auto-search triggered: {message[:50]}")
+
         if is_complex and not image_base64:
             result = await self._run_agent_loop(message, context="")
             response = result["final_answer"]
-            meta = {"agent_mode": True, "steps_taken": result["steps_taken"], "tools_used": result["tools_used"]}
+            meta = {
+                "agent_mode": True,
+                "steps_taken": result["steps_taken"],
+                "tools_used": result["tools_used"],
+            }
         else:
             response, meta = await self._a.get_response(
                 message=message, image_base64=image_base64, image_mime=image_mime,
                 reasoning=reasoning, web_search=web_search, url_to_fetch=url_to_fetch,
             )
             meta["agent_mode"] = False
+
         quality = meta.get("quality", 0.5)
         self.reflect.log_interaction(message, response, quality)
         if self._step_counter % REFLECTION_INTERVAL == 0:
@@ -719,15 +954,12 @@ class AutonomousAgent:
         if best_pattern:
             context += f"\n[Успешный паттерн для похожей задачи: {', '.join(best_pattern['steps'])}]"
 
-        # УЛУЧШЕНИЕ: получаем инструкцию от подсознания перед началом петли
+        # Получаем инструкцию от подсознания (делегируем torch-логику ассистенту)
         sub_instruction = ""
         try:
-            # Берём эмбеддинг цели как запрос
-            query_emb = torch.tensor(self._a.vocab.encode(goal), dtype=torch.float32).unsqueeze(0)
-            mem_emb = torch.zeros(1, EMBEDDING_DIM)  # можно было бы добавить контекст, но для простоты ноль
-            _, logits = self._a.subconscious.forward(query_emb, mem_emb)
-            sub_instruction, _ = self._a.subconscious.generate_prompt_instruction(logits)
-            context += f"\n\n{sub_instruction}"
+            sub_instruction = self._a.get_subconscious_instruction(goal, context[:200])
+            if sub_instruction:
+                context += f"\n\n{sub_instruction}"
         except Exception as e:
             logger.debug(f"Could not get subconscious instruction: {e}")
 
@@ -800,13 +1032,33 @@ class AutonomousAgent:
 
     # ---------- Вспомогательные методы ----------
     def _is_complex_task(self, message: str) -> bool:
-        research_keywords = ['правда ли', 'докажи', 'опровергни', 'исследуй', 'проверь', 'действительно ли']
-        if any(kw in message.lower() for kw in research_keywords):
+        """Определяет, требует ли задача агентного режима (multi-step)."""
+        ml = message.lower()
+
+        # Явные маркеры исследования / факт-чекинга
+        research_kw = [
+            'правда ли', 'докажи', 'опровергни', 'исследуй', 'проверь',
+            'действительно ли', 'fact check', 'проверить факт',
+        ]
+        if any(kw in ml for kw in research_kw):
             return True
-        complex_keywords = ['исследуй', 'проанализируй', 'составь план', 'найди и сравни', 'подготовь отчёт', 'изучи', 'research', 'analyze', 'compare']
-        has_keyword = any(kw in message.lower() for kw in complex_keywords)
-        if has_keyword:
+
+        # Маркеры многошагового анализа
+        complex_kw = [
+            'исследуй', 'проанализируй', 'составь план', 'найди и сравни',
+            'подготовь отчёт', 'изучи', 'research', 'analyze', 'compare',
+            'write a report', 'investigate', 'углублённо', 'подробный анализ',
+            'сравнительный анализ', 'всестороннее',
+        ]
+        if any(kw in ml for kw in complex_kw):
             return True
+
+        # Длинный вопрос с поисковым триггером → агентный режим
+        web_searcher = getattr(self._a, 'web_searcher', None)
+        if web_searcher and len(message.split()) >= 10:
+            if web_searcher.should_search_fast(message):
+                return True
+
         return len(message.split()) >= self.COMPLEXITY_THRESHOLD
 
     def _classify_goal(self, goal: str) -> str:

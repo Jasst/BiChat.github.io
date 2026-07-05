@@ -358,7 +358,56 @@ class DarkCrypto {
       { name: 'AES-GCM', iv }, key, ciphertext
     );
     return new TextDecoder().decode(decrypted);
+
   }
+  // =========================================================================
+  // 5.5. ФАЙЛОВЫЕ ОПЕРАЦИИ (AES-GCM для бинарных данных)
+  // =========================================================================
+  static async encryptFile(fileData, key, iv) {
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw', key, { name: 'AES-GCM' }, false, ['encrypt']
+    );
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv }, cryptoKey, fileData
+    );
+    return new Uint8Array(encrypted);
+  }
+
+  static async decryptFile(encryptedData, key, iv) {
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw', key, { name: 'AES-GCM' }, false, ['decrypt']
+    );
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv }, cryptoKey, encryptedData
+    );
+    return new Uint8Array(decrypted);
+  }
+
+  static generateFileKeyAndIv() {
+    return {
+      key: crypto.getRandomValues(new Uint8Array(32)),
+      iv: crypto.getRandomValues(new Uint8Array(12))
+    };
+  }
+
+  static arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  static base64ToArrayBuffer(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
 
   // =========================================================================
   // 6. ШИФРОВАНИЕ / ДЕШИФРОВАНИЕ СООБЩЕНИЙ

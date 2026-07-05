@@ -9,3 +9,5 @@
 *.db-wal
 /ai_memory_v3
 *.pid
+/mobile/node_modules
+/mobile/android

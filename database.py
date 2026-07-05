@@ -274,6 +274,12 @@ async def _apply_migrations(conn: asyncpg.Connection):
             ON CONFLICT(version) DO NOTHING
         """)
 
+    if current_version < 10:
+        await conn.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ws_nonce TEXT")
+        await conn.execute(
+            """INSERT INTO schema_version (version, applied_at) VALUES (10, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
+        current_version = 10
+
 
 
 
