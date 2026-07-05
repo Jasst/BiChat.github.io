@@ -452,7 +452,7 @@ export default function ChatDetailScreen({ route, navigation }) {
 
   // 2. Проверка: можно удалять только свои сообщения
   if (!msg.is_mine) {
-    Alert.alert('Woarning', 'You can only delete your own messages');
+    Alert.alert('Failed', 'You can only delete your own messages');
     return;
   }
 
