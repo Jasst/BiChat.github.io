@@ -31,6 +31,7 @@ import { sendMessage as sendEncryptedMessage, uploadEncryptedFile } from '../sha
 import { processMessageDecryption, clearMessageCache, addMessageToCache, clearDecryptionCache, getCachedMessages } from '../shared/rn_core';
 import DarkCrypto from '../shared/rn_crypto-client';
 import { API_BASE_URL } from '../config/constants';
+import { prepareFileForUpload } from '../utils/fileCompression';
 
 // ===================== Кэш расшифрованных изображений =====================
 const decryptedImageCache = new Map();
@@ -370,63 +371,127 @@ export default function ChatDetailScreen({ route, navigation }) {
   }, [messages.length]);
 
   const handleSend = async () => {
-    const content = input.trim();
-    if (!content && !attachment) {
-      Alert.alert('Error', 'Enter a message or attach a file');
-      return;
-    }
-    if (sending) return;
+  const content = input.trim();
+  if (!content && !attachment) {
+    Alert.alert('Error', 'Enter a message or attach a file');
+    return;
+  }
+  if (sending) return;
 
-    setSending(true);
-    const tempId = `temp_${Date.now()}`;
-    const tempMsg = {
-      id: tempId,
-      sender: myAddress,
-      content: content || '',
-      timestamp: Date.now() / 1000,
-      is_mine: true,
-      status: 'sending',
-    };
-    if (attachment) {
-      tempMsg.fileType = attachment.type;
-      tempMsg.fileUrl = attachment.uri;
-    }
-    addMessage(tempMsg);
-    setInput('');
-    setAttachment(null);
-
-    try {
-      let fileAttachment = null;
-      if (attachment) {
-        fileAttachment = await uploadEncryptedFile(attachment);
-      }
-
-      const result = await sendEncryptedMessage(
-        address,
-        content,
-        fileAttachment,
-        isGroup,
-        isGroup ? address.replace('group:', '') : null
-      );
-
-      // ✅ Обновляем temp-сообщение серверными данными файла
-      updateMessage(tempId, {
-        id: result.tx_id || tempId,
-        status: 'sent',
-        fileUrl: fileAttachment?.url || attachment?.uri,
-        fileKey: fileAttachment?.key,
-        fileIv: fileAttachment?.iv,
-        fileType: fileAttachment?.type || attachment?.type,
-      });
-      updateConversationPreview(address, content.slice(0, 40) || '📎 File');
-    } catch (e) {
-
-      removeMessage(tempId);
-      Alert.alert('Error', e.message || 'Failed to send');
-    } finally {
-      setSending(false);
-    }
+  setSending(true);
+  const tempId = `temp_${Date.now()}`;
+  const tempMsg = {
+    id: tempId,
+    sender: myAddress,
+    content: content || '',
+    timestamp: Date.now() / 1000,
+    is_mine: true,
+    status: 'sending',
   };
+  if (attachment) {
+    // Показываем временный файл с оригинальным типом и URI (позже обновим)
+    tempMsg.fileType = attachment.type;
+    tempMsg.fileUrl = attachment.uri;
+  }
+  addMessage(tempMsg);
+  setInput('');
+  setAttachment(null);
+
+  try {
+    // ===== СЖАТИЕ ФАЙЛА (если есть) =====
+    let fileToUpload = null;
+    if (attachment) {
+      // Подготавливаем файл: сжимаем изображения и видео
+      fileToUpload = await prepareFileForUpload(attachment);
+      // fileToUpload содержит новые uri, type, name
+    }
+
+    // Загружаем зашифрованный файл на сервер
+    let fileAttachment = null;
+    if (fileToUpload) {
+      fileAttachment = await uploadEncryptedFile(fileToUpload);
+      // fileAttachment теперь содержит url, key, iv, type (если добавили type в uploadEncryptedFile)
+    }
+
+    // Отправляем сообщение (текст + ссылка на файл)
+    const result = await sendEncryptedMessage(
+      address,
+      content,
+      fileAttachment,
+      isGroup,
+      isGroup ? address.replace('group:', '') : null
+    );
+
+    // Обновляем временное сообщение серверными данными
+    updateMessage(tempId, {
+      id: result.tx_id || tempId,
+      status: 'sent',
+      fileUrl: fileAttachment?.url || fileToUpload?.uri || attachment?.uri,
+      fileKey: fileAttachment?.key,
+      fileIv: fileAttachment?.iv,
+      fileType: fileAttachment?.type || fileToUpload?.type || attachment?.type,
+    });
+
+    updateConversationPreview(address, content.slice(0, 40) || '📎 File');
+  } catch (e) {
+    console.error('Send error:', e);
+    removeMessage(tempId);
+    Alert.alert('Error', e.message || 'Failed to send');
+  } finally {
+    setSending(false);
+  }
+};
+
+  // 🆕 ВСТАВЬТЕ СЮДА
+  const handleDeleteMessage = (msg) => {
+  // 1. Проверка: нельзя удалять отправляемые
+  if (msg.status === 'sending') {
+    Alert.alert('Error', 'Cannot delete message while sending');
+    return;
+  }
+
+  // 2. Проверка: можно удалять только свои сообщения
+  if (!msg.is_mine) {
+    Alert.alert('Woarning', 'You can only delete your own messages');
+    return;
+  }
+
+  Alert.alert(
+    'Delete Message',
+    'Are you sure you want to delete this message?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            // ✅ Правильный вызов (POST /delete_message с телом)
+            const res = await fetch(`${API_BASE_URL}/delete_message`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message_id: msg.id }),
+            });
+
+            if (!res.ok) {
+              const errorData = await res.json().catch(() => ({}));
+              throw new Error(errorData.error || 'Failed to delete');
+            }
+
+            // Удаляем из локального состояния
+            setMessages(prev => prev.filter(m => m.id !== msg.id));
+
+            // Очищаем кеш и перезагружаем (чтобы синхронизировать)
+            clearMessageCache(address);
+            await loadMessages(); // перезагрузит сообщения с сервера
+          } catch (e) {
+            Alert.alert('Error', e.message || 'Failed to delete message');
+          }
+        },
+      },
+    ]
+  );
+};
 
   const pickImage = async () => {
     try {
@@ -468,99 +533,102 @@ export default function ChatDetailScreen({ route, navigation }) {
   };
 
   const renderItem = ({ item, index }) => {
-    const isMine = item.is_mine;
-    const showSender = isGroup && !isMine && item.sender;
-    const senderName = showSender ? (item.sender_name || item.sender.slice(0, 10)) : null;
-    const isImage = item.fileType && item.fileType.startsWith('image/');
-    const isAudio = item.fileType && item.fileType.startsWith('audio/');
+  const isMine = item.is_mine;
+  const showSender = isGroup && !isMine && item.sender;
+  const senderName = showSender ? (item.sender_name || item.sender.slice(0, 10)) : null;
+  const isImage = item.fileType && item.fileType.startsWith('image/');
+  const isAudio = item.fileType && item.fileType.startsWith('audio/');
 
-    // ===== РАЗДЕЛИТЕЛЬ ДАТ =====
-    const showDateDivider = index === 0 ||
-      new Date(messages[index - 1]?.timestamp * 1000).toDateString() !==
-      new Date(item.timestamp * 1000).toDateString();
+  const showDateDivider = index === 0 ||
+    new Date(messages[index - 1]?.timestamp * 1000).toDateString() !==
+    new Date(item.timestamp * 1000).toDateString();
 
-    // ===== ИКОНКА СТАТУСА =====
-    let statusIcon = null;
-    if (isMine) {
-      if (item.status === 'sending') {
-        statusIcon = <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" style={{ marginLeft: 4 }} />;
-      } else if (item.status === 'sent') {
-        statusIcon = <Text style={styles.statusIcon}>✓</Text>;
-      } else if (item.status === 'delivered') {
-        statusIcon = <Text style={styles.statusIcon}>✓✓</Text>;
-      } else if (item.status === 'read') {
-        statusIcon = <Text style={[styles.statusIcon, styles.statusRead]}>✓✓</Text>;
-      }
+  let statusIcon = null;
+  if (isMine) {
+    if (item.status === 'sending') {
+      statusIcon = <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" style={{ marginLeft: 4 }} />;
+    } else if (item.status === 'sent') {
+      statusIcon = <Text style={styles.statusIcon}>✓</Text>;
+    } else if (item.status === 'delivered') {
+      statusIcon = <Text style={styles.statusIcon}>✓✓</Text>;
+    } else if (item.status === 'read') {
+      statusIcon = <Text style={[styles.statusIcon, styles.statusRead]}>✓✓</Text>;
     }
+  }
 
-    const timeStr = item.timestamp
-      ? new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : '';
+  const timeStr = item.timestamp
+    ? new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
 
-    return (
-      <>
-        {showDateDivider && (
-          <View style={styles.dateDivider}>
-            <Text style={styles.dateText}>
-              {new Date(item.timestamp * 1000).toLocaleDateString(undefined, {
-                day: 'numeric',
-                month: 'long',
-                year: new Date(item.timestamp * 1000).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
-              })}
-            </Text>
-          </View>
-        )}
+  return (
+    <>
+      {showDateDivider && (
+        <View style={styles.dateDivider}>
+          <Text style={styles.dateText}>
+            {new Date(item.timestamp * 1000).toLocaleDateString(undefined, {
+              day: 'numeric',
+              month: 'long',
+              year: new Date(item.timestamp * 1000).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+            })}
+          </Text>
+        </View>
+      )}
 
-        <View style={[
+      {/* Оборачиваем сообщение в TouchableOpacity для long press */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onLongPress={() => handleDeleteMessage(item)}   // ← добавляем
+        style={[
           styles.messageRow,
           isMine ? styles.myMessage : styles.otherMessage,
           item.status === 'sending' && styles.sendingMessage,
-        ]}>
-          {showSender && (
-            <Text style={styles.senderName}>{senderName}</Text>
-          )}
+        ]}
+      >
+        {showSender && (
+          <Text style={styles.senderName}>{senderName}</Text>
+        )}
 
-          {item.fileUrl && isImage && (
-            <MessageImage msg={item} onPress={openLightbox} />
-          )}
+        {item.fileUrl && isImage && (
+          <MessageImage msg={item} onPress={openLightbox} />
+        )}
 
-          {item.fileUrl && isAudio && (
-            <View style={styles.audioAttachment}>
-              <Ionicons name="musical-note" size={20} color={colors.accent} />
-              <Text style={styles.audioText}>Voice message</Text>
-            </View>
-          )}
-
-          {item.fileUrl && !isImage && !isAudio && (
-            <TouchableOpacity
-              style={styles.fileAttachment}
-              onPress={() => Alert.alert('File', item.fileUrl.split('/').pop())}
-            >
-              <Ionicons name="document-outline" size={20} color="#aaa" />
-              <Text style={styles.fileName} numberOfLines={1}>
-                {item.fileUrl.split('/').pop() || 'File'}
-              </Text>
-              <Ionicons name="download-outline" size={16} color={colors.accent} />
-            </TouchableOpacity>
-          )}
-
-          {!!item.content && (
-            <Text style={[
-              styles.messageText,
-              item.content.startsWith('🔒') && styles.errorText,
-            ]}>
-              {item.content}
-            </Text>
-          )}
-
-          <View style={styles.metaRow}>
-            <Text style={styles.time}>{timeStr}</Text>
-            {statusIcon}
+        {item.fileUrl && isAudio && (
+          <View style={styles.audioAttachment}>
+            <Ionicons name="musical-note" size={20} color={colors.accent} />
+            <Text style={styles.audioText}>Voice message</Text>
           </View>
+        )}
+
+        {item.fileUrl && !isImage && !isAudio && (
+          <TouchableOpacity
+            style={styles.fileAttachment}
+            onPress={() => Alert.alert('File', item.fileUrl.split('/').pop())}
+          >
+            <Ionicons name="document-outline" size={20} color="#aaa" />
+            <Text style={styles.fileName} numberOfLines={1}>
+              {item.fileUrl.split('/').pop() || 'File'}
+            </Text>
+            <Ionicons name="download-outline" size={16} color={colors.accent} />
+          </TouchableOpacity>
+        )}
+
+        {!!item.content && (
+          <Text style={[
+            styles.messageText,
+            item.content.startsWith('🔒') && styles.errorText,
+          ]}>
+            {item.content}
+          </Text>
+        )}
+
+        <View style={styles.metaRow}>
+          <Text style={styles.time}>{timeStr}</Text>
+          {statusIcon}
         </View>
-      </>
-    );
-  };
+      </TouchableOpacity>
+    </>
+  );
+};
 
   const bottomOffset = keyboardHeight > 0
     ? (Platform.OS === 'ios' ? keyboardHeight : 0)

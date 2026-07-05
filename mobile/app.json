@@ -31,7 +31,8 @@
             "useFrameworks": "static"
           }
         }
-      ]
+      ],
+      "react-native-compressor"
     ]
   }
 }

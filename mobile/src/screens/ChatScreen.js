@@ -15,13 +15,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { GlassCard } from '../components/GlassCard';
 import { colors, glassStyle } from '../theme';
 import useChatStore from '../store/chatStore';
 import useUserStore from '../store/userStore';
 import { getContacts } from '../api';
 import QRScannerModal from '../components/QRScannerModal';
 import { isValidAddress } from '../utils/QRManager';
+import { clearMessageCache } from '../shared/rn_core';
+import { API_BASE_URL } from '../config/constants';
 
 export default function ChatScreen() {
   const { conversations, loadConversations, loading } = useChatStore();
@@ -29,7 +30,6 @@ export default function ChatScreen() {
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
 
-  // ===== Новый чат: модалка =====
   const [newChatVisible, setNewChatVisible] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [manualAddress, setManualAddress] = useState('');
@@ -92,7 +92,37 @@ export default function ChatScreen() {
     startChatWith(scannedAddress, null);
   };
 
-  // ===== ИСПРАВЛЕНО: Дедупликация + сортировка =====
+  // ✅ Исправленная функция удаления диалога
+  const handleDeleteConversation = (item) => {
+    Alert.alert(
+      'Delete Conversation',
+      `Delete chat with "${item.name || item.address.slice(0,10)}"? All messages will be lost.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_BASE_URL}/clear_conversation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_with: item.address }),
+              });
+              if (!res.ok) throw new Error('Failed to delete');
+              // Обновляем список чатов
+              await loadConversations();
+              // Очищаем кеш сообщений
+              clearMessageCache(item.address);
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Failed to delete');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const uniqueConversations = React.useMemo(() => {
     const seen = new Set();
     return conversations
@@ -102,7 +132,6 @@ export default function ChatScreen() {
         return true;
       })
       .sort((a, b) => {
-        // Сначала по unread_count (сверху непрочитанные), потом по времени
         const unreadDiff = (b.unread_count || 0) - (a.unread_count || 0);
         if (unreadDiff !== 0) return unreadDiff;
         return (b.last_time || 0) - (a.last_time || 0);
@@ -120,6 +149,7 @@ export default function ChatScreen() {
       <TouchableOpacity
         style={[styles.item, hasUnread && styles.itemUnread]}
         onPress={() => openChat(item)}
+        onLongPress={() => handleDeleteConversation(item)}
         activeOpacity={0.7}
       >
         <View style={styles.avatar}>
@@ -129,7 +159,6 @@ export default function ChatScreen() {
               <Text style={styles.groupBadgeText}>G</Text>
             </View>
           )}
-          {/* ИНДИКАТОР ОНЛАЙН (если есть статус) */}
           {item.status === 'online' && !isGroup && (
             <View style={styles.onlineIndicator} />
           )}
@@ -214,7 +243,6 @@ export default function ChatScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* ===== Модалка "Новый чат" ===== */}
       <Modal
         visible={newChatVisible}
         animationType="slide"
