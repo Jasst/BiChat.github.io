@@ -3,6 +3,10 @@ emergence_extensions.py — Модуль для добавления эмерд�
 Версия 1.0
 Интегрируется с ai_assistant.py и agent_core.py
 """
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import asyncio
 import json
 import logging
@@ -18,9 +22,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Теперь agent_core виден
+from agent_core import ReflectionLog
 
 logger = logging.getLogger(__name__)
-
 
 # ==================================================================
 # 1. АКТИВНАЯ РЕФЛЕКСИЯ → ИЗМЕНЕНИЕ ПОВЕДЕНИЯ
@@ -48,7 +53,6 @@ class ReflectiveAction:
 
         # Если в weak_points есть "недостаток фактов" → увеличиваем приоритет web_search
         if any('факт' in wp or 'данные' in wp for wp in reflection_entry.weak_points):
-            # Включаем авто-поиск на более долгий срок
             if hasattr(self._a, 'web_searcher'):
                 self._a.web_searcher._ddg_min_interval = max(0.5, self._a.web_searcher._ddg_min_interval - 0.1)
                 changes['ddg_interval'] = self._a.web_searcher._ddg_min_interval
@@ -56,7 +60,6 @@ class ReflectiveAction:
 
         # Если рефлексия указывает на избыточную длину ответов — меняем системный промпт
         if any('длинный' in wp or 'многословный' in wp for wp in reflection_entry.weak_points):
-            # Добавляем в системный промпт требование краткости (будет подхвачено при следующем вызове)
             self._a._system_prompt_override = "Будь кратким, не более 5 предложений."
             changes['system_override'] = self._a._system_prompt_override
             actions.append("Добавлено требование краткости")
@@ -88,14 +91,12 @@ class SelfModifier:
 
     def modify_config(self, key: str, value: Any) -> bool:
         """Изменяет глобальную конфигурацию (из config.py или атрибуты)."""
-        # Для простоты работаем с атрибутами объекта
         if hasattr(self._a, key):
             old = getattr(self._a, key)
             setattr(self._a, key, value)
             self._backup[key] = old
             logger.info(f"SelfModifier: {key} = {value} (was {old})")
             return True
-        # Также можно изменять глобальные переменные из config
         try:
             import config
             if hasattr(config, key):
@@ -173,9 +174,7 @@ class CuriosityEngine:
         if (uncertainty > self._uncertainty_threshold and
                 time.time() - self._last_research_time > self._research_interval):
             self._last_research_time = time.time()
-            # Формируем исследовательскую цель
             goal = f"Исследовать тему: '{message[:100]}' для снижения неопределённости ({uncertainty:.2f})"
-            # Запускаем в фоне
             if hasattr(self._a, 'agent'):
                 asyncio.create_task(self._run_research(goal))
             return True
@@ -186,7 +185,6 @@ class CuriosityEngine:
             if hasattr(self._a, 'agent'):
                 result = await self._a.agent.run_goal(goal)
                 logger.info(f"Curiosity research completed: {result[:200]}")
-                # Сохраняем результат в память
                 self._a.memory.add_episode(f"[Исследование любопытства] {goal}\nРезультат: {result}", importance=0.7)
         except Exception as e:
             logger.warning(f"Curiosity research failed: {e}")
@@ -227,19 +225,15 @@ class MetaLearner:
         trend = np.polyfit(range(len(recent)), recent, 1)[0]
 
         changes = {}
-        # Если качество падает → уменьшаем LR, увеличиваем replay
         if trend < -0.01 and avg < 0.5:
             new_lr = max(0.0001, self._hyperparams['learning_rate'] * 0.95)
             self._hyperparams['learning_rate'] = new_lr
             changes['learning_rate'] = new_lr
-            self._a.current_lr = new_lr  # применяем
+            self._a.current_lr = new_lr
 
             new_batch = min(64, self._hyperparams['replay_batch_size'] + 4)
             self._hyperparams['replay_batch_size'] = new_batch
-            # не применяем напрямую, но можно изменить глобальную переменную
-            # для простоты сохраним в объекте
 
-        # Если качество растёт → можно увеличить LR (осторожно)
         elif trend > 0.02 and avg > 0.7:
             new_lr = min(0.002, self._hyperparams['learning_rate'] * 1.05)
             self._hyperparams['learning_rate'] = new_lr
@@ -249,7 +243,6 @@ class MetaLearner:
         if changes:
             logger.info(f"MetaLearner adjusted: {changes}")
             self._last_adjust = time.time()
-            # Сохраняем в память
             self._a.memory.add_episode(f"[Meta-обучение] Изменены параметры: {changes}", importance=0.6)
 
 
@@ -317,14 +310,12 @@ class HierarchicalPlanner:
         goal_id = hashlib.md5(description.encode()).hexdigest()[:16]
         goal = HierarchicalGoal(id=goal_id, description=description)
 
-        # Если есть родитель, добавляем как подцель
         if parent:
             parent.subgoals.append(goal)
             goal.parent = parent
         else:
             self._root_goals.append(goal)
 
-        # Если цель сложная, пытаемся разбить её с помощью LLM
         if len(description.split()) > 10:
             subgoals = await self._decompose_goal(description)
             for sg in subgoals:
@@ -348,40 +339,31 @@ class HierarchicalPlanner:
 
     async def get_next_action(self) -> Optional[str]:
         """Возвращает следующую подцель для выполнения (обход в глубину)."""
-        # Ищем активную или первую невыполненную подцель
         if self._active_goal:
-            # Проверяем, есть ли у активной подцели невыполненные подцели
             for sg in self._active_goal.subgoals:
                 if sg.status == 'pending':
                     self._active_goal = sg
                     return sg.description
-            # Если все подцели завершены, помечаем родителя как завершённый
             if all(sg.status == 'completed' for sg in self._active_goal.subgoals):
                 self._active_goal.status = 'completed'
                 self._goal_history.append(self._active_goal)
-                # Переходим к следующей на том же уровне
                 if self._active_goal.parent:
                     self._active_goal = self._active_goal.parent
-                    # ищем следующую незавершённую подцель родителя
                     for sg in self._active_goal.subgoals:
                         if sg.status == 'pending':
                             self._active_goal = sg
                             return sg.description
                 else:
-                    # корневая цель завершена
                     self._active_goal = None
-                    # берём следующую корневую
                     for g in self._root_goals:
                         if g.status == 'pending':
                             self._active_goal = g
                             return g.description
                     return None
         else:
-            # Выбираем первую корневую цель
             for g in self._root_goals:
                 if g.status == 'pending':
                     self._active_goal = g
-                    # если есть подцели, берём первую
                     if g.subgoals:
                         for sg in g.subgoals:
                             if sg.status == 'pending':
@@ -430,12 +412,10 @@ class ExternalToolbox:
 
     async def fetch_news(self, query: str) -> str:
         """Получает новости через RSS или NewsAPI (заглушка)."""
-        # В реальности нужен API-ключ. Здесь заглушка.
         return f"[Новости по запросу '{query}']: 1. ... 2. ..."
 
     async def execute_code(self, code: str) -> str:
         """Выполняет Python-код в изолированной среде (заглушка)."""
-        # В реальности использовать subprocess или docker
         try:
             exec_globals = {}
             exec(code, exec_globals)
@@ -469,18 +449,14 @@ class EmotionalModel:
 
     def update_from_reward(self, reward: float, complexity: float):
         """Обновляет эмоции на основе награды и сложности."""
-        # Валентность коррелирует с наградой
         self.valence = 0.9 * self.valence + 0.1 * reward
-        # Возбуждение зависит от сложности и новизны
         self.arousal = 0.9 * self.arousal + 0.1 * (0.5 + 0.5 * complexity)
-        # А также небольшой шум
         self.arousal = np.clip(self.arousal + random.uniform(-0.05, 0.05), 0, 1)
         self._history.append({'valence': self.valence, 'arousal': self.arousal, 'time': time.time()})
 
     def get_decision_biases(self) -> Dict:
         """Возвращает смещения для принятия решений."""
         biases = {}
-        # При отрицательной валентности предпочитаем более надёжные действия
         if self.valence < -0.2:
             biases['prefer_reliable'] = True
             biases['risk_tolerance'] = 0.2
@@ -488,7 +464,6 @@ class EmotionalModel:
             biases['prefer_reliable'] = False
             biases['risk_tolerance'] = 0.8
 
-        # При высоком возбуждении ускоряем действия
         if self.arousal > 0.7:
             biases['speed_over_accuracy'] = True
         else:
@@ -582,8 +557,8 @@ class EmergenceMixin:
         # Подписываемся на шину сообщений
         self.message_bus = AgentMessageBus()
         self.message_bus.subscribe('global_fact', self._handle_global_fact)
-        from agent_core import ReflectionLog
-        self.reflect = ReflectionLog()  # <-- добавить
+        # ДОБАВЛЕНО: инициализируем ReflectionLog (теперь импорт есть)
+        self.reflect = ReflectionLog()
 
         # Регистрируем внешние инструменты, если есть агент
         if hasattr(self, 'agent') and self.agent:
@@ -596,18 +571,14 @@ class EmergenceMixin:
         """Фоновый цикл для периодических действий."""
         while True:
             try:
-                # Мета-обучение
                 await self.meta_learner.adjust_if_needed()
-                # Мутации
                 await self.mutation_engine.maybe_mutate()
-                # Проверка иерархического планировщика
                 next_goal = await self.hierarchical_planner.get_next_action()
                 if next_goal and hasattr(self, 'agent'):
-                    # Если есть невыполненная цель, запускаем её в фоне
                     asyncio.create_task(self.agent.run_goal(next_goal))
             except Exception as e:
                 logger.warning(f"Emergence background error: {e}")
-            await asyncio.sleep(120)  # каждые 2 минуты
+            await asyncio.sleep(120)
 
     async def _handle_global_fact(self, payload):
         """Обработчик сообщений от других агентов."""
@@ -617,34 +588,23 @@ class EmergenceMixin:
 
     async def get_response_emergence(self, message, **kwargs):
         """Обёртка вокруг get_response с добавлением эмерджентных шагов."""
-        # Наблюдаем за сообщением для любопытства
         self.curiosity._last_message = message
-
-        # Получаем ответ обычным способом
         response, meta = await self.get_response(message, **kwargs)
 
-        # Обновляем эмоции
         reward = meta.get('reward', 0)
         complexity = meta.get('complexity', 0.5)
         self.emotions.update_from_reward(reward, complexity)
 
-        # Оцениваем неопределённость и запускаем исследование
         await self.curiosity.check_and_research(message, response, meta)
-
-        # Мета-обучение наблюдает качество
         quality = meta.get('quality', 0.5)
         self.meta_learner.observe_quality(quality)
 
-        # Если качество низкое – применяем рефлексию (периодически)
         if quality < 0.3 and random.random() < 0.1:
-            # Запускаем рефлексию и применяем действия
             reflection_entry = await self.reflect.reflect(self.total_interactions, self._call_llm)
             if reflection_entry:
                 await self.reflective_action.apply_reflection(reflection_entry)
 
-        # Сохраняем некоторые факты в глобальную шину
         if quality > 0.8 and len(response) > 100:
-            # Извлекаем ключевой факт и публикуем
             key_fact = await self._extract_key_fact(response)
             if key_fact:
                 self.message_bus.publish('global_fact', {'fact': key_fact, 'source': self.user_id})
@@ -659,47 +619,29 @@ class EmergenceMixin:
                 return s.strip()
         return None
 
-
 # ==================================================================
-# ИНСТРУКЦИЯ ПО ИНТЕГРАЦИИ
+# ИНСТРУКЦИЯ ПО ИНТЕГРАЦИИ (оставлена как комментарий)
 # ==================================================================
 """
 Чтобы добавить все эти механизмы в существующую систему, выполните следующие шаги:
-
 1. Поместите этот файл (emergence_extensions.py) в папку routes/ (или туда же, где ai_assistant.py).
-
 2. В файле ai_assistant.py импортируйте миксин и добавьте его в класс SelfImprovingAssistant:
    from .emergence_extensions import EmergenceMixin
    class SelfImprovingAssistant(EmergenceMixin, ...):
        def __init__(self, user_id):
            super().__init__(user_id)
            self.__init_emergence()   # вызываем инициализацию миксина
-
    (При множественном наследовании порядок важен: EmergenceMixin должен быть первым,
     чтобы его методы переопределяли родительские, если нужно.)
-
 3. Переопределите методы get_response и stream_response, чтобы использовать обёртку
    get_response_emergence вместо прямого вызова. Например:
    async def get_response(self, message, ...):
        return await self.get_response_emergence(message, ...)
-
    Аналогично для stream_response.
-
 4. В agent_core.py добавьте импорт и используйте внешние инструменты:
    from .emergence_extensions import ExternalToolbox
    внутри __init__ агента вызовите self.external_tools.register_tools(self)
-
 5. Запустите систему. Новые механизмы будут работать в фоновом режиме.
-
 Примечание: для полноценной работы некоторых инструментов (fetch_news, execute_code, send_email)
 необходимо реализовать реальные вызовы API. В текущей версии они являются заглушками.
 """
-
-
-# ==================================================================
-# ПРИМЕР ИСПОЛЬЗОВАНИЯ (ДЛЯ ТЕСТИРОВАНИЯ)
-# ==================================================================
-async def test_emergence():
-    # Здесь можно создать экземпляр ассистента и проверить работу
-    # (требуется наличие LM Studio и т.д.)
-    pass
