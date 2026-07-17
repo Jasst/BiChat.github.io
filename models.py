@@ -34,7 +34,7 @@ class LoginRequest(BaseModel):
     address:    str
     public_key: str
     signature:  str
-    nonce:      str          # ✅ добавлено — без этого поля auth.py падает с AttributeError
+    nonce:      str
 
     @field_validator('address')
     @classmethod
@@ -316,3 +316,28 @@ class HeartbeatRequest(BaseModel):
 
 class ManyStatusesRequest(BaseModel):
     addresses: List[str] = []
+
+# =============================================================================
+# Calls - удаление
+# =============================================================================
+
+class DeleteCallRequest(BaseModel):
+    call_id: int
+
+    @field_validator('call_id')
+    @classmethod
+    def validate_id(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError('call_id must be positive')
+        return v
+# =============================================================================
+# Calls (история звонков) – НОВОЕ
+# =============================================================================
+
+class CallLogEntry(BaseModel):
+    address: str                      # адрес собеседника
+    name: Optional[str] = None        # имя собеседника
+    direction: str                    # 'incoming' или 'outgoing'
+    status: str                       # 'answered', 'missed', 'rejected'
+    duration: int = 0                 # длительность в секундах
+    timestamp: int                    # Unix timestamp начала звонка

@@ -72,11 +72,8 @@ if os.path.isdir(STATIC_FOLDER):
 if os.path.isdir(UPLOAD_FOLDER):
     app.mount('/uploads', StaticFiles(directory=UPLOAD_FOLDER), name='uploads')
 
-# КРИТИЧНО: sw.js и manifest.json должны отдаваться из КОРНЯ сайта (/sw.js, /manifest.json)
-# Если отдавать из /static/sw.js — scope SW будет /static/, push не будет работать
-# для /chat, /profile и других страниц вне /static/
-from fastapi.responses import FileResponse
 
+# ========== sw.js и manifest.json ==========
 @app.get('/sw.js', include_in_schema=False)
 async def serve_sw():
     sw_path = os.path.join(STATIC_FOLDER, 'sw.js')
@@ -84,9 +81,8 @@ async def serve_sw():
         sw_path,
         media_type='application/javascript',
         headers={
-            # SW не должен кешироваться браузером — иначе старая версия зависает
             'Cache-Control': 'no-store, no-cache, must-revalidate',
-            'Service-Worker-Allowed': '/',  # разрешаем scope = /
+            'Service-Worker-Allowed': '/',
         }
     )
 
@@ -97,6 +93,18 @@ async def serve_manifest():
         raise HTTPException(404, 'manifest.json not found')
     return FileResponse(manifest_path, media_type='application/manifest+json',
                         headers={'Cache-Control': 'public, max-age=86400'})
+
+
+# ========== favicon.ico (чтобы убрать 404) ==========
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    favicon_path = os.path.join(STATIC_FOLDER, 'favicon.ico')
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path, media_type='image/x-icon')
+    # Если файла нет – возвращаем пустой ответ 204 (No Content), чтобы не было 404
+    raise HTTPException(204)  # или 404, но лучше 204
+# ==================================================
+
 
 from routes.auth import router as auth_router
 from routes.messages import router as messages_router
