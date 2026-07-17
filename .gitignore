@@ -11,3 +11,4 @@
 *.pid
 /mobile/node_modules
 /mobile/android
+/uploads
