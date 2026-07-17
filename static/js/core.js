@@ -615,6 +615,27 @@
             return;
         }
 
+        // ====== НОВЫЙ БЛОК: Уведомления о транзакциях ======
+        if (data.type === 'new_transaction') {
+    const tx = data.transaction;
+    // Проверяем, что транзакция касается нас
+    if (tx && (tx.recipient === State.userAddress || tx.sender === State.userAddress)) {
+        const amount = (tx.amount / 1_000_000).toFixed(6);
+        const isIncome = tx.recipient === State.userAddress;
+        const sign = isIncome ? '+' : '-';
+        const label = isIncome ? t('received') : t('sent');
+        window.NotificationManager?.showToast(
+    `${label} ${sign}${amount} BlockCoin`,
+    isIncome ? 'success' : 'info',
+    8000  // ← 8 секунд
+);
+        // Обновляем баланс и историю
+        if (window.refreshBalance) window.refreshBalance();
+        if (window.loadTx) window.loadTx();
+    }
+    return; // не продолжаем обработку
+}
+
         // 7. Старые сообщения (без chatId, без типа) – обратная совместимость
         if (!data.chatId && data.sender && data.recipient) {
             data.chatId = (data.sender === State.userAddress) ? data.recipient : data.sender;

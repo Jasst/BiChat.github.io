@@ -29,8 +29,6 @@ router = APIRouter(prefix='/wallet', tags=['wallet'])
 _CHALLENGE_TTL = MINING_CHALLENGE_TTL
 
 
-
-
 @router.get('/config')
 async def wallet_config(request: Request):
     blockchain = request.app.state.blockchain
@@ -125,6 +123,28 @@ async def wallet_send(body: TransferRequest, request: Request, address: str = De
         if ENABLE_STAKING and services.wallet.staking_manager:
             await services.wallet.staking_manager.add_to_fee_pool(TRANSFER_FEE, cursor=conn)
         await conn.execute('COMMIT')
+
+    # 🔔 Уведомление о переводе
+    tx_data = {
+        'sender': address,
+        'recipient': body.recipient,
+        'amount': body.amount,
+        'timestamp': ts,
+        'tx_type': 'transfer'
+    }
+    try:
+        await manager.send_personal_message(address, {
+            'type': 'new_transaction',
+            'transaction': tx_data
+        })
+        if body.recipient != address:
+            await manager.send_personal_message(body.recipient, {
+                'type': 'new_transaction',
+                'transaction': tx_data
+            })
+    except Exception as e:
+        logger.warning(f"Failed to send transfer notification: {e}")
+
     return {'message': 'Sent', 'amount': body.amount, 'fee': TRANSFER_FEE, 'coin_name': COIN_NAME}
 
 
@@ -139,6 +159,23 @@ async def stake(body: StakeRequest, request: Request, address: str = Depends(req
     unlock_block = await services.wallet.staking_manager.stake(address, body.amount)
     if unlock_block == -1:
         raise HTTPException(400, 'Insufficient balance')
+
+    # 🔔 Уведомление о стейкинге
+    tx_data = {
+        'sender': address,
+        'recipient': STAKING_FEE_POOL_ADDRESS,
+        'amount': body.amount,
+        'timestamp': time.time(),
+        'tx_type': 'stake'
+    }
+    try:
+        await manager.send_personal_message(address, {
+            'type': 'new_transaction',
+            'transaction': tx_data
+        })
+    except Exception as e:
+        logger.warning(f"Failed to send stake notification: {e}")
+
     return {'message': 'Staked', 'unlock_block': unlock_block}
 
 
@@ -152,6 +189,23 @@ async def unstake(request: Request, address: str = Depends(require_auth)):
     if not result.get('success'):
         error_msg = result.get('error', 'No active stake or still locked')
         raise HTTPException(400, error_msg)
+
+    # 🔔 Уведомление об анстейкинге
+    tx_data = {
+        'sender': STAKING_FEE_POOL_ADDRESS,
+        'recipient': address,
+        'amount': result['total_payout'],
+        'timestamp': time.time(),
+        'tx_type': 'unstake'
+    }
+    try:
+        await manager.send_personal_message(address, {
+            'type': 'new_transaction',
+            'transaction': tx_data
+        })
+    except Exception as e:
+        logger.warning(f"Failed to send unstake notification: {e}")
+
     coin_div = COIN
     return {
         'message': f"Unstaked {result['unstaked_count']} stake(s). Total payout: {result['total_payout'] / coin_div:.6f} {COIN_NAME}",
@@ -191,13 +245,13 @@ async def staking_info(request: Request, address: str = Depends(require_auth)):
     }
 
 
-@router.get('/last-proof', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=10))])  # window убран
+@router.get('/last-proof', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=10))])
 async def last_proof(request: Request, address: str = Depends(require_auth)):
     blockchain = request.app.state.blockchain
     from database import get_db_cursor
     async with get_db_cursor() as conn:
         last = await blockchain._last_block_raw(conn)
-        difficulty = await blockchain.get_difficulty(conn)   # ✅ теперь внутри контекста
+        difficulty = await blockchain.get_difficulty(conn)
     last_index = last.get('block_index', 0)
     challenge = secrets.token_hex(16)
     with _mining_challenges_lock:
@@ -212,6 +266,7 @@ async def last_proof(request: Request, address: str = Depends(require_auth)):
         'difficulty': difficulty,
         'challenge': challenge,
     }
+
 
 @router.post('/mine', dependencies=[Depends(make_rate_limit_dep(general_limiter, limit=10))])
 async def mine(body: MineRequest, request: Request, address: str = Depends(require_auth)):
@@ -235,6 +290,21 @@ async def mine(body: MineRequest, request: Request, address: str = Depends(requi
         raise HTTPException(status_code, error_msg)
     logger.info(f"Block {block_index} mined by {address}, reward: {reward_amount}")
 
+    # 🔔 Уведомление о награде за блок
+    tx_data = {
+        'sender': 'blockchain',
+        'recipient': address,
+        'amount': reward_amount,
+        'timestamp': time.time(),
+        'tx_type': 'block_reward'
+    }
+    try:
+        await manager.send_personal_message(address, {
+            'type': 'new_transaction',
+            'transaction': tx_data
+        })
+    except Exception as e:
+        logger.warning(f"Failed to send mining reward notification: {e}")
 
     await manager.broadcast({
         'type': 'new_block',
@@ -262,7 +332,7 @@ async def wallet_global_stats(request: Request):
         total_blocks = (await conn.fetchval('SELECT COUNT(*) FROM blockchain')) or 0
         total_staked_raw = (await conn.fetchval('SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE active = 1')) or 0
 
-        difficulty = await blockchain.get_difficulty(conn)  # FIX: динамическая сложность
+        difficulty = await blockchain.get_difficulty(conn)
 
     max_supply_sats = MAX_SUPPLY * COIN if MAX_SUPPLY else None
     if max_supply_sats is not None:
@@ -284,5 +354,3 @@ async def wallet_global_stats(request: Request):
         'remaining_supply': remaining_sats,
         'message_fee': MESSAGE_FEE,
     }
-
-
