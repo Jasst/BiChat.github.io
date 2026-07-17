@@ -438,5 +438,8 @@
 "delete_call_confirm": "Delete this call record?",
 "call": "Call",
 "video_call": "Video Call",
+  "add_to_contacts": "Add to Contacts",
+"already_added": "Already in contacts",
+"added": "Added",
   "close_scanner_btn": "Close scanner"
 }

@@ -437,7 +437,11 @@
 "call_in_progress": "Звонок уже идёт",
   "clear_history": "Очистить всё",
 "delete_call_confirm": "Удалить эту запись о звонке?",
+  "add_to_contacts": "Добавить в контакты",
+"already_added": "Уже в контактах",
+"added": "Добавлен",
 "call": "Звонок",
 "video_call": "Видеозвонок",
 "call_reconnect": "Переподключиться"
+
 }

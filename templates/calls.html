@@ -152,24 +152,36 @@
   }
   .contact-actions {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
+    align-items: center;
   }
-  .btn-icon {
-    background: transparent;
+
+  /* Стили для кнопок-иконок (как в чате) */
+  .btn-icon-oval {
+    padding: 6px;
+    border-radius: 50px;
     border: none;
+    background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 18px;
-    padding: 6px 8px;
-    border-radius: 50px;
     transition: background 0.2s, color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
   }
-  .btn-icon:hover {
-    background: rgba(255,255,255,0.08);
+  .btn-icon-oval:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
     color: var(--text-main);
   }
-  .btn-icon.danger:hover {
+  .btn-icon-oval:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-icon-oval.danger:hover {
     color: var(--danger-color);
     background: rgba(214,48,49,0.15);
   }
@@ -188,7 +200,7 @@
     transition: max-height 0.4s ease;
   }
   .call-list-container.open {
-    max-height: 2000px; /* достаточно для многих звонков */
+    max-height: 2000px;
   }
 
   .call-item {
@@ -228,12 +240,8 @@
   }
   .call-item .call-actions {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     flex-shrink: 0;
-  }
-  .call-item .call-actions .btn-icon {
-    font-size: 14px;
-    padding: 4px 6px;
   }
 
   .empty-state {
@@ -252,7 +260,7 @@
     font-size: 18px;
   }
 
-  /* Модалка нового звонка (как ранее) */
+  /* Модалка нового звонка */
   .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
   .modal {
     background: var(--glass-bg);
@@ -361,8 +369,9 @@
       font-size: 12px;
       gap: 8px;
     }
-    .call-item .call-actions .btn-icon {
-      font-size: 12px;
+    .call-item .call-actions .btn-icon-oval {
+      width: 30px;
+      height: 30px;
     }
   }
 </style>
@@ -371,8 +380,12 @@
   <div class="page-header">
     <h2 data-i18n="calls">Calls</h2>
     <div class="header-actions">
-      <button class="btn-oval" onclick="clearAllCalls()" data-i18n="clear_history" style="color:var(--danger-color);">🗑️ Clear All</button>
-      <button class="btn-primary-oval" onclick="openNewCallModal()" data-i18n="new_call">+ New Call</button>
+      <button class="btn-oval" onclick="clearAllCalls()" data-i18n="clear_history" style="color:var(--danger-color);">
+        <img src="/static/icons/Remove.png" width="16" height="16" alt="Clear" style="filter: invert(1);"> Clear All
+      </button>
+      <button class="btn-primary-oval" onclick="openNewCallModal()" data-i18n="new_call">
+        <img src="/static/icons/AddCall.png" width="20" height="20" alt="New Call" style="filter: invert(1);"> New Call
+      </button>
     </div>
   </div>
 
@@ -388,7 +401,7 @@
   </div>
 </div>
 
-<!-- Модалка нового звонка (без изменений) -->
+<!-- Модалка нового звонка -->
 <div id="newCallModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal">
     <header class="modal-header">
@@ -407,8 +420,12 @@
         <input type="text" id="callAddressInput" class="input input-monospace" placeholder="64-character hex address" maxlength="64">
       </div>
       <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
-        <button class="btn-primary-oval" onclick="startCallFromModal(false)" data-i18n="call_audio">📞 Audio</button>
-        <button class="btn-primary-oval" onclick="startCallFromModal(true)" data-i18n="call_video">📹 Video</button>
+        <button class="btn-primary-oval" onclick="startCallFromModal(false)" data-i18n="call_audio">
+          <img src="/static/icons/Call.png" width="20" height="20" alt="Audio" style="filter: invert(1);"> Audio
+        </button>
+        <button class="btn-primary-oval" onclick="startCallFromModal(true)" data-i18n="call_video">
+          <img src="/static/icons/Video.png" width="20" height="20" alt="Video" style="filter: invert(1);"> Video
+        </button>
       </div>
       <div id="newCallError" class="hidden text-muted" style="color:var(--danger-color); margin-top:8px;"></div>
     </div>
@@ -443,7 +460,10 @@
       'clear_history': 'Clear All',
       'delete': 'Delete',
       'call': 'Call',
-      'video_call': 'Video Call'
+      'video_call': 'Video Call',
+      'add_contact': 'Add contact',
+      'contact_already_exists': 'Contact already exists',
+      'contact_added': 'Contact added'
     };
     let res = fallback[key] || key;
     if (opts) for (const [k,v] of Object.entries(opts)) res = res.replace(`{${k}}`, v);
@@ -452,24 +472,33 @@
 
   let allCalls = [];
   let currentFilter = 'all';
-  let expandedContacts = new Set(); // адреса развёрнутых групп
+  let expandedContacts = new Set();
+  let allContacts = [];
 
-  // ===== Загрузка контактов для модалки =====
-  async function loadContactsForModal() {
+  // ===== Загрузка контактов для модалки и для проверки дублирования =====
+  async function loadAllContacts() {
     try {
       const res = await fetch('/get_contacts');
       const data = await res.json();
       if (res.ok && data.contacts) {
-        const select = document.getElementById('callContactSelect');
-        select.innerHTML = `<option value="">${t('choose_contact')}</option>`;
-        data.contacts.forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c.address;
-          opt.textContent = c.name + ' (' + c.address.slice(0,10) + '…)';
-          select.appendChild(opt);
-        });
+        allContacts = data.contacts;
       }
-    } catch (e) { console.warn('Failed to load contacts for call modal', e); }
+    } catch (e) {
+      console.warn('Failed to load contacts', e);
+    }
+  }
+
+  // ===== Загрузка контактов для выпадающего списка =====
+  async function loadContactsForModal() {
+    await loadAllContacts();
+    const select = document.getElementById('callContactSelect');
+    select.innerHTML = `<option value="">${t('choose_contact')}</option>`;
+    allContacts.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.address;
+      opt.textContent = c.name + ' (' + c.address.slice(0,10) + '…)';
+      select.appendChild(opt);
+    });
   }
 
   // ===== Загрузка истории звонков =====
@@ -488,6 +517,45 @@
     }
   }
 
+  // ===== Добавление в контакты =====
+  async function addToContacts(address, name) {
+    // Проверяем, есть ли уже такой контакт
+    const exists = allContacts.some(c => c.address === address);
+    if (exists) {
+      window.NotificationManager?.showToast(t('contact_already_exists'), 'warning');
+      return;
+    }
+    // Запрашиваем имя, если не передано
+    if (!name || name === address.slice(0,16)+'…') {
+      const newName = await window.showPromptModal(
+        t('add_contact_title', 'Add Contact'),
+        t('enter_contact_name', 'Enter contact name'),
+        address.slice(0,10)
+      );
+      if (!newName) return;
+      name = newName;
+    }
+    try {
+      const res = await fetch('/add_contact_from_chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact_address: address, contact_name: name })
+      });
+      if (res.ok) {
+        window.NotificationManager?.showToast(t('contact_added'), 'success');
+        await loadAllContacts(); // обновляем список контактов
+        // обновляем заголовки групп, чтобы отобразить, что контакт добавлен (можно перерисовать)
+        renderCalls(currentFilter);
+      } else {
+        const err = await res.json();
+        window.NotificationManager?.showToast(err.error || 'Failed', 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      window.NotificationManager?.showToast('Network error', 'error');
+    }
+  }
+
   // ===== Рендер с группировкой =====
   function renderCalls(filter) {
     const container = document.getElementById('callListContainer');
@@ -499,7 +567,6 @@
     } else if (filter === 'incoming') {
       filtered = allCalls.filter(c => c.direction === 'incoming');
     }
-    // Сортировка по времени (новые сверху)
     filtered.sort((a,b) => b.timestamp - a.timestamp);
 
     if (filtered.length === 0) {
@@ -511,7 +578,6 @@
       return;
     }
 
-    // Группируем по contact_address
     const groups = new Map();
     for (const call of filtered) {
       const key = call.address;
@@ -531,7 +597,6 @@
       groupDiv.className = 'contact-group';
       groupDiv.dataset.address = address;
 
-      // Заголовок группы
       const header = document.createElement('div');
       header.className = 'contact-group-header';
       const avatar = document.createElement('div');
@@ -550,35 +615,49 @@
       if (missed > 0) {
         meta.innerHTML += ` <span class="missed-badge">${missed} пропущенных</span>`;
       }
-      const lastCall = group.calls[0]; // последний по времени (т.к. отсортированы)
+      const lastCall = group.calls[0];
       const date = new Date(lastCall.timestamp * 1000);
       meta.innerHTML += ` <span>${date.toLocaleDateString()}</span>`;
       info.appendChild(nameSpan);
       info.appendChild(meta);
 
-      // Кнопки действий заголовка
       const actions = document.createElement('div');
       actions.className = 'contact-actions';
+
+      // Кнопка "добавить в контакты" (если ещё не добавлен)
+      const isContact = allContacts.some(c => c.address === address);
+      if (!isContact) {
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn-icon-oval';
+        addBtn.innerHTML = '<img src="/static/icons/Contact.png" width="20" height="20" alt="Add contact" style="filter: invert(1);">';
+        addBtn.title = t('add_contact');
+        addBtn.onclick = (e) => {
+          e.stopPropagation();
+          addToContacts(address, group.name);
+        };
+        actions.appendChild(addBtn);
+      }
+
       const callBtn = document.createElement('button');
-      callBtn.className = 'btn-icon';
-      callBtn.innerHTML = '📞';
+      callBtn.className = 'btn-icon-oval';
+      callBtn.innerHTML = '<img src="/static/icons/Call.png" width="20" height="20" alt="Call" style="filter: invert(1);">';
       callBtn.title = t('call_audio');
       callBtn.onclick = (e) => {
         e.stopPropagation();
         window.CallManager?.makeCall(address, false, group.name);
       };
       const videoBtn = document.createElement('button');
-      videoBtn.className = 'btn-icon';
-      videoBtn.innerHTML = '📹';
+      videoBtn.className = 'btn-icon-oval';
+      videoBtn.innerHTML = '<img src="/static/icons/Video.png" width="20" height="20" alt="Video" style="filter: invert(1);">';
       videoBtn.title = t('call_video');
       videoBtn.onclick = (e) => {
         e.stopPropagation();
         window.CallManager?.makeCall(address, true, group.name);
       };
       const expandBtn = document.createElement('button');
-      expandBtn.className = 'btn-icon expand-icon';
+      expandBtn.className = 'btn-icon-oval expand-icon';
       expandBtn.innerHTML = '▼';
-      expandBtn.title = 'Развернуть';
+      expandBtn.title = 'Expand';
       const isExpanded = expandedContacts.has(address);
       if (isExpanded) expandBtn.classList.add('open');
       expandBtn.onclick = (e) => {
@@ -586,24 +665,27 @@
         toggleGroup(address);
       };
       const deleteAllBtn = document.createElement('button');
-      deleteAllBtn.className = 'btn-icon danger';
-      deleteAllBtn.innerHTML = '🗑️';
-      deleteAllBtn.title = 'Удалить все звонки этого контакта';
+      deleteAllBtn.className = 'btn-icon-oval danger';
+      deleteAllBtn.innerHTML = '<img src="/static/icons/Remove.png" width="20" height="20" alt="Delete" style="filter: invert(1);">';
+      deleteAllBtn.title = 'Delete all calls for this contact';
       deleteAllBtn.onclick = (e) => {
         e.stopPropagation();
         deleteGroupCalls(address);
       };
+
       actions.appendChild(callBtn);
       actions.appendChild(videoBtn);
       actions.appendChild(expandBtn);
       actions.appendChild(deleteAllBtn);
+      if (!isContact) {
+        actions.prepend(addBtn); // вставляем первой, если есть
+      }
 
       header.appendChild(avatar);
       header.appendChild(info);
       header.appendChild(actions);
       header.addEventListener('click', () => toggleGroup(address));
 
-      // Список звонков
       const listContainer = document.createElement('div');
       listContainer.className = 'call-list-container';
       if (isExpanded) listContainer.classList.add('open');
@@ -644,8 +726,8 @@
         const actionsItem = document.createElement('div');
         actionsItem.className = 'call-actions';
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'btn-icon danger';
-        deleteBtn.innerHTML = '✕';
+        deleteBtn.className = 'btn-icon-oval danger';
+        deleteBtn.innerHTML = '<img src="/static/icons/Remove.png" width="16" height="16" alt="Delete" style="filter: invert(1);">';
         deleteBtn.title = t('delete');
         deleteBtn.onclick = (e) => {
           e.stopPropagation();
@@ -664,7 +746,6 @@
     }
   }
 
-  // ===== Переключение разворота группы =====
   function toggleGroup(address) {
     const groupDiv = document.querySelector(`.contact-group[data-address="${address}"]`);
     if (!groupDiv) return;
@@ -681,7 +762,6 @@
     }
   }
 
-  // ===== Удаление одиночного звонка =====
   async function deleteSingleCall(callId) {
     if (!confirm(t('delete_call_confirm', 'Delete this call record?'))) return;
     try {
@@ -691,7 +771,6 @@
         body: JSON.stringify({ call_id: callId })
       });
       if (res.ok) {
-        // Удаляем из массива
         allCalls = allCalls.filter(c => c.id !== callId);
         renderCalls(currentFilter);
         window.NotificationManager?.showToast('Call deleted', 'success');
@@ -705,12 +784,10 @@
     }
   }
 
-  // ===== Удаление всех звонков контакта =====
   async function deleteGroupCalls(address) {
     if (!confirm(`Delete all calls with ${address.slice(0,16)}…?`)) return;
     const ids = allCalls.filter(c => c.address === address).map(c => c.id);
     if (ids.length === 0) return;
-    // удаляем по одному (можно было бы добавить bulk delete, но для простоты)
     for (const id of ids) {
       try {
         await fetch('/calls/delete', {
@@ -725,7 +802,6 @@
     window.NotificationManager?.showToast('Calls deleted', 'success');
   }
 
-  // ===== Очистка всей истории =====
   window.clearAllCalls = async function() {
     if (!confirm('Delete ALL call history?')) return;
     try {
@@ -743,7 +819,6 @@
     }
   };
 
-  // ===== Форматирование времени =====
   function formatTimestamp(ts) {
     const diff = Math.floor((Date.now() - ts * 1000) / 1000);
     if (diff < 60) return t('just_now');
@@ -797,8 +872,8 @@
 
   // ===== Инициализация =====
   document.addEventListener('DOMContentLoaded', function() {
+    loadAllContacts();
     loadCallHistory();
-    // При завершении звонка обновляем историю
     const origEndCall = window.CallManager?.endCall;
     if (origEndCall) {
       window.CallManager.endCall = function() {
@@ -808,7 +883,6 @@
     }
   });
 
-  // ===== Глобальные функции =====
   window.openNewCallModal = openNewCallModal;
   window.closeNewCallModal = closeNewCallModal;
   window.startCallFromModal = startCallFromModal;
