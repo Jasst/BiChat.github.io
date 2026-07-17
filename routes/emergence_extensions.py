@@ -1,12 +1,8 @@
 """
 emergence_extensions.py — Модуль для добавления эмерджентных и автономных свойств
-Версия 1.0
-Интегрируется с ai_assistant.py и agent_core.py
+Версия 2.1 (с интеграцией механизмов уверенности и LoRA)
+Интегрируется с ai_assistant.py (с улучшениями) и agent_core.py
 """
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 import asyncio
 import logging
 import random
@@ -17,16 +13,25 @@ from dataclasses import dataclass, field
 from collections import deque, defaultdict
 import numpy as np
 
-# Теперь agent_core виден
 from agent_core import ReflectionLog
+from config_ai import (
+    ENABLE_CODE_EXECUTION,
+    CURIOSITY_UNCERTAINTY_THRESHOLD,
+    CURIOSITY_RESEARCH_INTERVAL,
+    META_ADJUST_INTERVAL,
+    EMBEDDING_DIM,
+)
 
 logger = logging.getLogger(__name__)
+
 
 # ==================================================================
 # 1. АКТИВНАЯ РЕФЛЕКСИЯ → ИЗМЕНЕНИЕ ПОВЕДЕНИЯ
 # ==================================================================
 class ReflectiveAction:
-    """Анализирует выводы рефлексии и преобразует их в конкретные действия."""
+    """Анализирует выводы рефлексии и преобразует их в конкретные действия.
+       Теперь также корректирует порог уверенности при необходимости.
+    """
 
     def __init__(self, assistant):
         self._a = assistant
@@ -47,17 +52,39 @@ class ReflectiveAction:
             actions.append(f"Уменьшен LR: {old_lr:.5f} → {new_lr:.5f}")
 
         # Если в weak_points есть "недостаток фактов" → увеличиваем приоритет web_search
+        # и, если есть классификатор уверенности, снижаем порог для более частого поиска
         if any('факт' in wp or 'данные' in wp for wp in reflection_entry.weak_points):
             if hasattr(self._a, 'web_searcher'):
                 self._a.web_searcher._ddg_min_interval = max(0.5, self._a.web_searcher._ddg_min_interval - 0.1)
                 changes['ddg_interval'] = self._a.web_searcher._ddg_min_interval
                 actions.append("Ускорен интервал поиска")
+            # Корректируем порог уверенности вниз, чтобы активнее искать данные
+            if hasattr(self._a, '_confidence_threshold'):
+                old_th = self._a._confidence_threshold
+                new_th = max(0.4, old_th - 0.05)
+                self._a._confidence_threshold = new_th
+                changes['confidence_threshold'] = new_th
+                actions.append(f"Снижен порог уверенности: {old_th:.2f} → {new_th:.2f}")
 
         # Если рефлексия указывает на избыточную длину ответов — меняем системный промпт
         if any('длинный' in wp or 'многословный' in wp for wp in reflection_entry.weak_points):
+            if not hasattr(self._a, '_system_prompt_override'):
+                self._a._system_prompt_override = ""
             self._a._system_prompt_override = "Будь кратким, не более 5 предложений."
             changes['system_override'] = self._a._system_prompt_override
             actions.append("Добавлено требование краткости")
+
+        # Если качество высокое, но при этом уверенность низкая – возможно, классификатор ошибается,
+        # можно слегка поднять порог, чтобы не отказываться от хороших ответов
+        if reflection_entry.quality_score > 0.7 and hasattr(self._a, '_confidence_threshold'):
+            # Проверим, есть ли сохранённая уверенность в последнем ответе (можно хранить в meta)
+            # Упрощённо: если качество >0.7, а порог был низким, поднимем его
+            if self._a._confidence_threshold < 0.5:
+                old_th = self._a._confidence_threshold
+                new_th = min(0.6, old_th + 0.05)
+                self._a._confidence_threshold = new_th
+                changes['confidence_threshold'] = new_th
+                actions.append(f"Повышен порог уверенности: {old_th:.2f} → {new_th:.2f}")
 
         # Сохраняем историю
         self._action_history.append({
@@ -129,18 +156,20 @@ class SelfModifier:
 class CuriosityEngine:
     """
     Измеряет неопределённость и запускает исследования для её снижения.
+    Теперь использует также оценку уверенности из классификатора.
     """
 
     def __init__(self, assistant):
         self._a = assistant
-        self._uncertainty_threshold = 0.7
+        self._uncertainty_threshold = CURIOSITY_UNCERTAINTY_THRESHOLD
+        self._research_interval = CURIOSITY_RESEARCH_INTERVAL
         self._last_research_time = 0
-        self._research_interval = 600  # сек
         self._pending_research = []
+        self._last_message = ""
 
     def compute_uncertainty(self, message: str, response: str) -> float:
         """Оценивает неопределённость ответа (чем выше, тем больше нужно исследовать)."""
-        # 1. Энтропия PromptAdvisor (лёгкая numpy-политика, без PyTorch)
+        # 1. Энтропия PromptAdvisor
         try:
             emb = self._a.vocab.encode(message)
             mem_emb = np.zeros(self._a.vocab.dim)
@@ -148,20 +177,34 @@ class CuriosityEngine:
             logits = logits - np.max(logits)
             probs = np.exp(logits) / (np.sum(np.exp(logits)) + 1e-8)
             entropy = float(-np.sum(probs * np.log(probs + 1e-8)))
-            entropy = entropy / max(1e-8, np.log(len(probs)))  # нормируем в [0..~1]
+            entropy = entropy / max(1e-8, np.log(len(probs)))
         except Exception:
             entropy = 0.5
 
-        # 2. Наличие маркеров неуверенности в ответе
+        # 2. Маркеры неуверенности
         uncertain_phrases = ['возможно', 'вероятно', 'не уверен', 'может быть', 'похоже', 'не знаю']
         text_lower = response.lower()
         phrase_count = sum(1 for ph in uncertain_phrases if ph in text_lower)
 
-        # 3. Длина ответа (короткий ответ часто означает неуверенность)
+        # 3. Длина ответа
         length_factor = min(1.0, len(response.split()) / 50)
 
-        # Комбинируем
-        uncertainty = 0.4 * entropy + 0.3 * min(1.0, phrase_count / 3) + 0.3 * (1 - length_factor)
+        # 4. Если есть классификатор уверенности, используем его оценку (инвертируем)
+        confidence = 0.5
+        if hasattr(self._a, 'confidence_classifier'):
+            try:
+                query_emb = self._a.vocab.encode(message)
+                mem_ctx = self._a.memory.get_context(message)
+                mem_emb = self._a.vocab.encode(mem_ctx) if mem_ctx else np.zeros(EMBEDDING_DIM)
+                meta_emb = np.array([len(message.split()), 0, 0, 0])  # упрощённо
+                meta_emb_pad = np.pad(meta_emb, (0, max(0, 64 - len(meta_emb))), 'constant')
+                confidence = self._a.confidence_classifier.predict(query_emb, mem_emb, meta_emb_pad)
+            except Exception:
+                pass
+        # Чем ниже уверенность, тем выше неопределённость
+        confidence_factor = 1.0 - confidence
+
+        uncertainty = 0.3 * entropy + 0.2 * min(1.0, phrase_count / 3) + 0.2 * (1 - length_factor) + 0.3 * confidence_factor
         return np.clip(uncertainty, 0, 1)
 
     async def check_and_research(self, message: str, response: str, meta: Dict):
@@ -192,6 +235,7 @@ class CuriosityEngine:
 class MetaLearner:
     """
     Отслеживает динамику качества и подстраивает гиперпараметры.
+    Теперь также корректирует порог уверенности и параметры LoRA при необходимости.
     """
 
     def __init__(self, assistant):
@@ -204,7 +248,7 @@ class MetaLearner:
             'replay_frequency': 10,
         }
         self._last_adjust = 0
-        self._adjust_interval = 300  # сек
+        self._adjust_interval = META_ADJUST_INTERVAL
 
     def observe_quality(self, quality: float):
         self._quality_history.append(quality)
@@ -230,11 +274,32 @@ class MetaLearner:
             new_batch = min(64, self._hyperparams['replay_batch_size'] + 4)
             self._hyperparams['replay_batch_size'] = new_batch
 
+            # Если качество падает, можно снизить порог уверенности, чтобы чаще искать данные
+            if hasattr(self._a, '_confidence_threshold'):
+                old_th = self._a._confidence_threshold
+                new_th = max(0.4, old_th - 0.03)
+                self._a._confidence_threshold = new_th
+                changes['confidence_threshold'] = new_th
+
+            # Также можно увеличить масштаб LoRA для более быстрой адаптации
+            if hasattr(self._a.subconscious, 'lora_scale'):
+                old_scale = self._a.subconscious.lora_scale
+                new_scale = min(2.0, old_scale * 1.1)
+                self._a.subconscious.lora_scale = new_scale
+                changes['lora_scale'] = new_scale
+
         elif trend > 0.02 and avg > 0.7:
             new_lr = min(0.002, self._hyperparams['learning_rate'] * 1.05)
             self._hyperparams['learning_rate'] = new_lr
             changes['learning_rate'] = new_lr
             self._a.current_lr = new_lr
+
+            # При хорошем качестве можно повысить порог уверенности, чтобы реже отказываться
+            if hasattr(self._a, '_confidence_threshold'):
+                old_th = self._a._confidence_threshold
+                new_th = min(0.7, old_th + 0.03)
+                self._a._confidence_threshold = new_th
+                changes['confidence_threshold'] = new_th
 
         if changes:
             logger.info(f"MetaLearner adjusted: {changes}")
@@ -330,7 +395,7 @@ class HierarchicalPlanner:
             response = await self._a._call_llm([{"role": "user", "content": prompt}])
             lines = [line.strip("-• 0123456789. ") for line in response.split('\n') if line.strip()]
             return [l for l in lines if len(l) > 10][:4]
-        except:
+        except Exception:
             return []
 
     async def get_next_action(self) -> Optional[str]:
@@ -371,7 +436,6 @@ class HierarchicalPlanner:
 
     def mark_completed(self, goal_id: str, result: str = ""):
         """Отмечает цель как завершённую."""
-
         def find_goal(node: HierarchicalGoal) -> Optional[HierarchicalGoal]:
             if node.id == goal_id:
                 return node
@@ -396,17 +460,7 @@ class HierarchicalPlanner:
 class ExternalToolbox:
     """
     Набор инструментов для взаимодействия с внешними сервисами.
-
-    ВАЖНО: раньше здесь были fetch_news и send_email — ЗАГЛУШКИ, которые
-    регистрировались как настоящие инструменты и возвращали фиктивный текст
-    ("1. ... 2. ..." / "Email отправлен"). Агент воспринимал это как реальный
-    результат и на его основе "узнавал" несуществующие новости или считал,
-    что письмо отправлено — прямой источник галлюцинаций. Не реализованные
-    инструменты теперь НЕ регистрируются вообще: агент должен использовать
-    web_search (он настоящий, через DuckDuckGo/Wikipedia), а не мнимый
-    fetch_news. Если нужен реальный fetch_news/send_email — подключите
-    конкретный API (RSS/NewsAPI, SMTP) и зарегистрируйте инструмент только
-    после этого.
+    Регистрирует только реально работающие инструменты.
     """
 
     def __init__(self, assistant):
@@ -421,9 +475,7 @@ class ExternalToolbox:
 
     async def execute_code(self, code: str) -> str:
         """
-        Выполняет Python-код. НЕ песочница: используется тот же процесс,
-        без ограничения builtins/файловой системы/сети. Включать только
-        если вы доверяете источнику кода (обычно — только себе).
+        Выполняет Python-код. НЕ песочница! Включать только если доверяете источнику.
         Таймаут и обрезка вывода — минимальная защита от зависаний.
         """
         import asyncio as _asyncio
@@ -450,28 +502,17 @@ class ExternalToolbox:
             return "Ошибка выполнения: превышен таймаут (10с)"
 
     def register_tools(self, agent):
-        """Регистрирует ТОЛЬКО реально работающие внешние инструменты."""
-        if getattr(self._a, "enable_code_execution", False):
+        """Регистрирует инструменты, если они разрешены конфигурацией."""
+        if ENABLE_CODE_EXECUTION:
             agent.tools.register(
                 "execute_code", self.execute_code,
                 "Выполнить Python-код в текущем процессе (НЕ изолировано, только для доверенного кода)",
             )
+            logger.info("ExternalToolbox: зарегистрирован инструмент execute_code")
 
 
 # ==================================================================
-# Удалено: EmotionalModel и MutationEngine.
-#
-# EmotionalModel писал valence/arousal, но их нигде не читали (кроме
-# неиспользуемого get_decision_biases) — чистый мёртвый код.
-#
-# MutationEngine случайно менял learning_rate/пороги/chunk_size/системный
-# промпт каждые ~120с БЕЗ проверки, помогло это или навредило — это не
-# обучение, а случайное блуждание параметров, которое реально снижает
-# стабильность и качество ответов со временем. Настоящая адаптация
-# гиперпараметров у нас уже есть в MetaLearner (ниже) — она меняет lr
-# по фактическому тренду качества, а не наугад.
-# ==================================================================
-# 10. ИНТЕГРАЦИЯ ВСЕХ КОМПОНЕНТОВ В СУЩЕСТВУЮЩУЮ СИСТЕМУ
+# 8. МИКСИН ДЛЯ ИНТЕГРАЦИИ ВСЕХ КОМПОНЕНТОВ
 # ==================================================================
 class EmergenceMixin:
     """
@@ -479,33 +520,45 @@ class EmergenceMixin:
     """
 
     def init_emergence(self):
-        # Инициализируем новые компоненты
+        # Инициализируем компоненты
         self.reflective_action = ReflectiveAction(self)
         self.self_modifier = SelfModifier(self)
         self.curiosity = CuriosityEngine(self)
         self.meta_learner = MetaLearner(self)
         self.hierarchical_planner = HierarchicalPlanner(self)
         self.external_tools = ExternalToolbox(self)
-        # Подписываемся на шину сообщений
         self.message_bus = AgentMessageBus()
         self.message_bus.subscribe('global_fact', self._handle_global_fact)
-        # ДОБАВЛЕНО: инициализируем ReflectionLog (теперь импорт есть)
         self.reflect = ReflectionLog()
 
         # Регистрируем внешние инструменты, если есть агент
         if hasattr(self, 'agent') and self.agent:
             self.external_tools.register_tools(self.agent)
 
-        # Запускаем фоновые задачи
-        asyncio.create_task(self._emergence_background_loop())
+        # Управление фоновыми задачами
+        self._bg_tasks = []
+        self._stop_event = asyncio.Event()
+        self._start_emergence_background()
+
+    def _start_emergence_background(self):
+        """Запускает фоновый цикл миксина."""
+        task = asyncio.create_task(self._emergence_background_loop())
+        self._bg_tasks.append(task)
+
+    async def shutdown_emergence(self):
+        """Останавливает фоновые задачи миксина."""
+        self._stop_event.set()
+        for task in self._bg_tasks:
+            task.cancel()
+        await asyncio.gather(*self._bg_tasks, return_exceptions=True)
 
     async def _emergence_background_loop(self):
         """Фоновый цикл для периодических действий."""
-        while True:
+        while not self._stop_event.is_set():
             try:
                 await self.meta_learner.adjust_if_needed()
                 next_goal = await self.hierarchical_planner.get_next_action()
-                if next_goal and hasattr(self, 'agent'):
+                if next_goal and hasattr(self, 'agent') and self.agent:
                     asyncio.create_task(self.agent.run_goal(next_goal))
             except Exception as e:
                 logger.warning(f"Emergence background error: {e}")
@@ -517,27 +570,7 @@ class EmergenceMixin:
         if fact:
             self.memory.add_episode(f"[Глобальный факт] {fact}", importance=0.6)
 
-    async def get_response_emergence(self, message, **kwargs):
-        """Обёртка вокруг get_response с добавлением эмерджентных шагов."""
-        self.curiosity._last_message = message
-        response, meta = await self.get_response(message, **kwargs)
-
-        await self.curiosity.check_and_research(message, response, meta)
-        quality = meta.get('quality', 0.5)
-        self.meta_learner.observe_quality(quality)
-
-        if quality < 0.3 and random.random() < 0.1:
-            reflection_entry = await self.reflect.reflect(self.total_interactions, self._call_llm)
-            if reflection_entry:
-                await self.reflective_action.apply_reflection(reflection_entry)
-
-        if quality > 0.8 and len(response) > 100:
-            key_fact = await self._extract_key_fact(response)
-            if key_fact:
-                self.message_bus.publish('global_fact', {'fact': key_fact, 'source': self.user_id})
-
-        return response, meta
-
+    # Метод _extract_key_fact уже есть в основном классе, но оставим для совместимости
     async def _extract_key_fact(self, text: str) -> Optional[str]:
         """Извлекает один ключевой факт из ответа (упрощённо)."""
         sentences = text.split('.')
@@ -546,30 +579,3 @@ class EmergenceMixin:
             if len(s) > 20 and any(m in s for m in markers):
                 return s.strip()
         return None
-
-# ==================================================================
-# ИНСТРУКЦИЯ ПО ИНТЕГРАЦИИ (оставлена как комментарий)
-# ==================================================================
-"""
-Чтобы добавить все эти механизмы в существующую систему, выполните следующие шаги:
-1. Поместите этот файл (emergence_extensions.py) в папку routes/ (или туда же, где ai_assistant.py).
-2. В файле ai_assistant.py импортируйте миксин и добавьте его в класс SelfImprovingAssistant:
-   from .emergence_extensions import EmergenceMixin
-   class SelfImprovingAssistant(EmergenceMixin, ...):
-       def __init__(self, user_id):
-           super().__init__(user_id)
-           self.__init_emergence()   # вызываем инициализацию миксина
-   (При множественном наследовании порядок важен: EmergenceMixin должен быть первым,
-    чтобы его методы переопределяли родительские, если нужно.)
-3. Переопределите методы get_response и stream_response, чтобы использовать обёртку
-   get_response_emergence вместо прямого вызова. Например:
-   async def get_response(self, message, ...):
-       return await self.get_response_emergence(message, ...)
-   Аналогично для stream_response.
-4. В agent_core.py добавьте импорт и используйте внешние инструменты:
-   from .emergence_extensions import ExternalToolbox
-   внутри __init__ агента вызовите self.external_tools.register_tools(self)
-5. Запустите систему. Новые механизмы будут работать в фоновом режиме.
-Примечание: для полноценной работы некоторых инструментов (fetch_news, execute_code, send_email)
-необходимо реализовать реальные вызовы API. В текущей версии они являются заглушками.
-"""
