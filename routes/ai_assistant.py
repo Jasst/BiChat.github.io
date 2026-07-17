@@ -14,13 +14,10 @@ import random
 import re
 import atexit
 import urllib.parse
-from typing import Dict, List, Optional, Tuple, Any, Callable
-from collections import deque, defaultdict
+from typing import Dict, List, Optional, Tuple, Any
+from collections import deque
 from dataclasses import dataclass, field, asdict
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -28,7 +25,7 @@ import aiohttp
 from ddgs import DDGS
 
 from agent_core import ReflectionLog, AutonomousAgent
-from .emergence_extensions import EmergenceMixin
+from routes.emergence_extensions import EmergenceMixin
 
 from config import (
     EASYDIFFUSION_ENABLED,
@@ -102,14 +99,19 @@ ANOMALY_THRESHOLD_QUALITY_DROP = 0.15   # падение качества за 1
 EXPLAIN_MODE_TRIGGER = "#explain"
 
 # ==================================================================
-# 🧠 Подсознание (без изменений)
+# 🧠 PromptAdvisor — лёгкая онлайн-обучаемая нейросеть без PyTorch/GPU
 # ==================================================================
-class Subconscious(nn.Module):
-    # ... (код полностью сохранён, без изменений) ...
-    def __init__(self, input_dim=EMBEDDING_DIM, latent_dim=LATENT_DIM, hidden=128):
-        super().__init__()
-        self.latent_dim = latent_dim
+# Раньше здесь был Subconscious(nn.Module) — RL-политика на PyTorch,
+# требующая тяжёлую зависимость и GPU/CPU-тензоры на каждый запрос ради
+# выбора одной из 10 фиксированных фраз. PromptAdvisor делает то же самое
+# честным двухслойным перцептроном на чистом numpy: прямой проход,
+# softmax, REINFORCE-обновление весов вручную. Это НАСТОЯЩАЯ нейросеть —
+# просто маленькая и без автодифференцирования фреймворка. Она реально
+# дообучается на каждом взаимодействии (learn() ниже), а не имитирует это.
+class PromptAdvisor:
+    def __init__(self, input_dim=EMBEDDING_DIM, latent_dim=LATENT_DIM, hidden=128, seed=None):
         self.input_dim = input_dim
+        self.latent_dim = latent_dim
         self.hidden = hidden
         self.prompt_vocab = [
             "Будь кратким и по делу.",
@@ -121,37 +123,48 @@ class Subconscious(nn.Module):
             "Покажи цепочку рассуждений.",
             "Будь эмпатичным и поддерживающим.",
             "Используй факты из глобальной базы знаний.",
-            "Инициатива: предложи пользователю новую тему.",
+            "Если фактов из интернета/памяти недостаточно — честно скажи об этом, не придумывай.",
         ]
         self.vocab_size = len(self.prompt_vocab)
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim * 2 + latent_dim, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, latent_dim)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, self.vocab_size)
-        )
-        self.register_buffer('latent_state', torch.zeros(1, latent_dim))
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=LEARNING_RATE)
+        rng = np.random.default_rng(seed)
+        in_dim = input_dim * 2 + latent_dim
+        # Xavier-подобная инициализация
+        self.W1 = rng.normal(0, 1.0 / np.sqrt(in_dim), (in_dim, hidden))
+        self.b1 = np.zeros(hidden)
+        self.W2 = rng.normal(0, 1.0 / np.sqrt(hidden), (hidden, latent_dim))
+        self.b2 = np.zeros(latent_dim)
+        self.W3 = rng.normal(0, 1.0 / np.sqrt(latent_dim), (latent_dim, self.vocab_size))
+        self.b3 = np.zeros(self.vocab_size)
+        self.latent_state = np.zeros(latent_dim)
+        self.lr = LEARNING_RATE
         self.replay_buffer = deque(maxlen=200)
         self.total_updates = 0
 
-    def forward(self, query_emb: torch.Tensor, memory_emb: torch.Tensor):
-        x = torch.cat([query_emb, memory_emb, self.latent_state], dim=-1)
-        latent = self.encoder(x)
-        self.latent_state = latent.detach()
-        logits = self.decoder(latent)
+    def _forward_full(self, query_emb: np.ndarray, memory_emb: np.ndarray):
+        x = np.concatenate([query_emb, memory_emb, self.latent_state])
+        h = np.tanh(x @ self.W1 + self.b1)
+        latent = np.tanh(h @ self.W2 + self.b2)
+        logits = latent @ self.W3 + self.b3
+        return x, h, latent, logits
+
+    def forward(self, query_emb: np.ndarray, memory_emb: np.ndarray):
+        x, h, latent, logits = self._forward_full(query_emb, memory_emb)
+        self.latent_state = latent
         return latent, logits
 
-    def generate_prompt_instruction(self, logits: torch.Tensor) -> Tuple[str, List[int]]:
-        probs = torch.softmax(logits.squeeze(), dim=-1)
+    @staticmethod
+    def _softmax(logits: np.ndarray) -> np.ndarray:
+        z = logits - np.max(logits)
+        e = np.exp(z)
+        return e / (np.sum(e) + 1e-8)
+
+    def generate_prompt_instruction(self, logits: np.ndarray) -> Tuple[str, List[int]]:
+        probs = self._softmax(logits)
         num = random.choices([1, 2, 3], weights=[0.5, 0.3, 0.2])[0]
-        indices = torch.multinomial(probs, num, replacement=False).tolist()
+        num = min(num, self.vocab_size)
+        indices = list(np.random.choice(self.vocab_size, size=num, replace=False, p=probs))
         selected = [self.prompt_vocab[i] for i in indices]
-        instruction = "### Подсознание (внутренний голос):\n" + "\n".join(f"- {s}" for s in selected)
+        instruction = "### Внутренняя подсказка (адаптивный советник):\n" + "\n".join(f"- {s}" for s in selected)
         return instruction, indices
 
     def compute_reward(self, response: str, meta: Dict) -> float:
@@ -167,66 +180,80 @@ class Subconscious(nn.Module):
         score += complexity * 0.3
         if meta.get("web_search_used") and length > 100:
             score += 0.2
-        if "глобальной базы" in response or "сообщество" in response:
-            score += 0.1
-        return np.clip(score, -1.0, 1.0)
+        if meta.get("grounded") is False:
+            score -= 0.3  # ответ не подтверждён источниками — штрафуем
+        return float(np.clip(score, -1.0, 1.0))
 
-    def learn(self, query_emb: torch.Tensor, memory_emb: torch.Tensor,
-              chosen_indices: List[int], reward: float):
-        _, logits = self.forward(query_emb, memory_emb)
-        probs = torch.softmax(logits.squeeze(), dim=-1)
-        log_prob = 0.0
+    def _grad_step(self, query_emb: np.ndarray, memory_emb: np.ndarray,
+                    chosen_indices: List[int], reward: float):
+        x, h, latent, logits = self._forward_full(query_emb, memory_emb)
+        probs = self._softmax(logits)
+
+        # d(reward * log pi(a))/d(logits) = reward * (onehot(a) - probs), суммируем по выбранным
+        grad_logits = -probs.copy() * len(chosen_indices)
         for idx in chosen_indices:
-            log_prob += torch.log(probs[idx] + 1e-8)
-        loss = -log_prob * reward
-        self.optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-        self.optimizer.step()
+            grad_logits[idx] += 1.0
+        grad_logits *= reward
+
+        grad_W3 = np.outer(latent, grad_logits)
+        grad_b3 = grad_logits
+        grad_latent = grad_logits @ self.W3.T
+        grad_latent_pre = grad_latent * (1 - latent ** 2)  # tanh'
+
+        grad_W2 = np.outer(h, grad_latent_pre)
+        grad_b2 = grad_latent_pre
+        grad_h = grad_latent_pre @ self.W2.T
+        grad_h_pre = grad_h * (1 - h ** 2)
+
+        grad_W1 = np.outer(x, grad_h_pre)
+        grad_b1 = grad_h_pre
+
+        for arr, grad in (
+            (self.W1, grad_W1), (self.b1, grad_b1),
+            (self.W2, grad_W2), (self.b2, grad_b2),
+            (self.W3, grad_W3), (self.b3, grad_b3),
+        ):
+            np.clip(grad, -5.0, 5.0, out=grad)
+            arr += self.lr * grad  # градиентный ПОДЪЁМ (максимизируем ожидаемую награду)
+
+    def learn(self, query_emb: np.ndarray, memory_emb: np.ndarray,
+              chosen_indices: List[int], reward: float):
+        self._grad_step(query_emb, memory_emb, chosen_indices, reward)
         self.total_updates += 1
-        self.replay_buffer.append((query_emb.detach().cpu().numpy(),
-                                   memory_emb.detach().cpu().numpy(),
-                                   chosen_indices, reward))
+        self.replay_buffer.append((query_emb.copy(), memory_emb.copy(), list(chosen_indices), reward))
 
     def experience_replay(self):
         if len(self.replay_buffer) < REPLAY_BATCH_SIZE:
             return
         batch = random.sample(self.replay_buffer, REPLAY_BATCH_SIZE)
-        total_loss = 0.0
-        for q_np, m_np, indices, rew in batch:
-            q = torch.tensor(q_np, dtype=torch.float32)
-            m = torch.tensor(m_np, dtype=torch.float32)
-            _, logits = self.forward(q, m)
-            probs = torch.softmax(logits.squeeze(), dim=-1)
-            log_prob = sum(torch.log(probs[i] + 1e-8) for i in indices)
-            loss = -log_prob * rew
-            total_loss += loss
-        if total_loss != 0.0:
-            self.optimizer.zero_grad()
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-            self.optimizer.step()
+        for q, m, indices, rew in batch:
+            self._grad_step(q, m, indices, rew)
 
     def save(self, path: Path):
-        torch.save({
-            'state_dict': self.state_dict(),
-            'latent_state': self.latent_state,
-            'total_updates': self.total_updates,
-        }, path)
+        np.savez(
+            str(path.with_suffix('.npz')),
+            W1=self.W1, b1=self.b1, W2=self.W2, b2=self.b2, W3=self.W3, b3=self.b3,
+            latent_state=self.latent_state, total_updates=np.array([self.total_updates]),
+        )
 
     def load(self, path: Path):
-        if path.exists():
-            data = torch.load(path, map_location='cpu')
-            self.load_state_dict(data['state_dict'])
+        npz_path = path.with_suffix('.npz')
+        if npz_path.exists():
+            data = np.load(str(npz_path))
+            self.W1, self.b1 = data['W1'], data['b1']
+            self.W2, self.b2 = data['W2'], data['b2']
+            self.W3, self.b3 = data['W3'], data['b3']
             self.latent_state = data['latent_state']
-            self.total_updates = data['total_updates']
+            self.total_updates = int(data['total_updates'][0])
 
     def get_latent(self) -> np.ndarray:
-        return self.latent_state.squeeze().detach().cpu().numpy()
+        return self.latent_state.copy()
 
-    def apply_global_weights(self, global_net: 'Subconscious', alpha=GLOBAL_BLEND_ALPHA):
-        for local_param, global_param in zip(self.parameters(), global_net.parameters()):
-            local_param.data = (1 - alpha) * local_param.data + alpha * global_param.data
+    def apply_global_weights(self, global_net: 'PromptAdvisor', alpha=GLOBAL_BLEND_ALPHA):
+        for name in ('W1', 'b1', 'W2', 'b2', 'W3', 'b3'):
+            local = getattr(self, name)
+            glob = getattr(global_net, name)
+            setattr(self, name, (1 - alpha) * local + alpha * glob)
 
 # ==================================================================
 # 🌍 Глобальная база (без изменений)
@@ -248,7 +275,7 @@ class GlobalKnowledgeBase:
     def __init__(self):
         self._io_lock = asyncio.Lock()
         self._episodes: List[GlobalEpisode] = []
-        self._global_subconscious: Optional[Subconscious] = None
+        self._global_subconscious: Optional[PromptAdvisor] = None
         self._global_embeddings: Dict[str, np.ndarray] = {}
         self._global_word_counts: Dict[str, int] = {}
         self.total_contributors = 0
@@ -285,7 +312,7 @@ class GlobalKnowledgeBase:
 
         if GLOBAL_SUBCONSCIOUS_PATH.exists():
             try:
-                self._global_subconscious = Subconscious()
+                self._global_subconscious = PromptAdvisor()
                 self._global_subconscious.load(GLOBAL_SUBCONSCIOUS_PATH)
             except Exception as e:
                 logger.error(f"GlobalKB subconscious load error: {e}")
@@ -430,7 +457,7 @@ class GlobalKnowledgeBase:
 
             if assistants and all(hasattr(a, 'subconscious') for a in assistants):
                 if self._global_subconscious is None:
-                    self._global_subconscious = Subconscious()
+                    self._global_subconscious = PromptAdvisor()
                 for param in self._global_subconscious.parameters():
                     param.data.zero_()
                 total_weight = 0.0
@@ -1668,8 +1695,32 @@ class LongTermPlanner:
             logger.warning(f"LongTermPlanner error: {e}")
 
     async def _fetch_trends(self) -> List[str]:
-        # Заглушка – в реальности можно использовать RSS, NewsAPI или просто DDG
-        return ["Искусственный интеллект в медицине", "Квантовые вычисления 2025", "Устойчивое развитие"]
+        """
+        Раньше это была заглушка с тремя захардкоженными "трендами",
+        которые выдавались агенту за актуальные внешние данные — источник
+        фиктивных автономных целей. Теперь реально ищем через web_searcher
+        (DuckDuckGo), используя интересы, накопленные из реальных диалогов
+        пользователя, а не выдумку.
+        """
+        web_searcher = getattr(self._assistant, 'web_searcher', None)
+        if web_searcher is None:
+            return []
+        topics = []
+        try:
+            agent = getattr(self._assistant, '_agent', None)
+            if agent is not None and hasattr(agent, 'goals'):
+                topics = [t for t, _ in sorted(
+                    agent.goals._topic_freq.items(), key=lambda x: -x[1]
+                )[:2]]
+        except Exception:
+            topics = []
+        query = ("новости технологий " + " ".join(topics)) if topics else "актуальные технологические новости сегодня"
+        try:
+            results = await web_searcher._ddg_search(query, max_results=5)
+        except Exception as e:
+            logger.debug(f"LongTermPlanner._fetch_trends search failed: {e}")
+            return []
+        return [r["title"] for r in results if r.get("title")][:5]
 
     async def _generate_goals_from_trends(self, trends: List[str]) -> List[str]:
         prompt = "На основе следующих трендов сформулируй 3 конкретные исследовательские цели для AI-ассистента. Каждая цель должна быть измеримой и выполнимой за 1-2 дня.\nТренды: " + ", ".join(trends)
@@ -1830,20 +1881,30 @@ class FactConflictResolver:
         """
         key = hashlib.md5(claim.encode()).hexdigest()
         if key not in self._fact_store:
-            self._fact_store[key] = {"value": claim, "sources": sources}
-            return claim
-        existing = self._fact_store[key]
-        # Байесовское обновление: усредняем уверенности
-        all_vals = [conf for _, conf in sources]
-        avg_conf = np.mean(all_vals)
-        # Если есть противоречие (разброс > 0.3), запускаем дополнительную проверку
-        if len(all_vals) > 1 and np.std(all_vals) > 0.3:
-            logger.info(f"🔄 Fact conflict detected for '{claim[:50]}'. Re-verifying...")
-            # Запрашиваем LLM выбрать наиболее достоверный источник
-            prompt = f"Даны противоречивые данные по '{claim}':\n" + "\n".join(f"- {src}: {conf:.2f}" for src, conf in sources) + "\nВыбери наиболее достоверный источник и обоснуй."
+            self._fact_store[key] = {"value": claim, "sources": list(sources)}
+        else:
+            self._fact_store[key]["sources"].extend(sources)
+
+        all_vals = [conf for _, conf in self._fact_store[key]["sources"]]
+        avg_conf = float(np.mean(all_vals)) if all_vals else 0.0
+        self._fact_store[key]["avg_confidence"] = avg_conf
+
+        # Разброс уверенностей источников > 0.3 => источники реально не согласны,
+        # просим LLM явно рассудить, а не молча усреднять.
+        if len(all_vals) > 1 and float(np.std(all_vals)) > 0.3:
+            logger.info(f"🔄 Fact conflict detected for '{claim[:50]}' (avg_conf={avg_conf:.2f}). Re-verifying...")
+            src_lines = "\n".join(f"- {src}: уверенность {conf:.2f}" for src, conf in self._fact_store[key]["sources"])
+            prompt = (
+                f"Утверждение: '{claim}'\nИсточники и их уверенность:\n{src_lines}\n"
+                "Согласованы ли источники? Если нет — какой версии стоит доверять больше и почему? "
+                "Ответь 1-2 предложениями."
+            )
             resolution = await self._assistant._call_llm([{"role": "user", "content": prompt}])
-            return f"{claim} (разрешён конфликт: {resolution[:100]})"
-        return claim
+            resolved_value = f"{claim} [средняя уверенность {avg_conf:.2f}; разброс мнений источников — {resolution[:150]}]"
+            self._fact_store[key]["value"] = resolved_value
+            return resolved_value
+
+        return f"{claim} [уверенность {avg_conf:.2f}]" if avg_conf else claim
 
 # ==================================================================
 # 🤖 ОСНОВНОЙ АССИСТЕНТ (с интеллектуальным поиском + автономностью)
@@ -1852,7 +1913,7 @@ class SelfImprovingAssistant(EmergenceMixin):
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.vocab = DynamicVocab()
-        self.subconscious = Subconscious()
+        self.subconscious = PromptAdvisor()
         self.memory = CognitiveMemory(self.vocab.encode)
         self.cache: Dict[str, Tuple[str, float]] = {}
         self.image_cache: Dict[str, Tuple[str, float]] = {}
@@ -1930,14 +1991,8 @@ class SelfImprovingAssistant(EmergenceMixin):
 
     def get_subconscious_instruction(self, text: str, context: str = "") -> str:
         try:
-            query_emb = torch.tensor(
-                self.vocab.encode(text), dtype=torch.float32
-            ).unsqueeze(0)
-            mem_emb = (
-                torch.tensor(self.vocab.encode(context), dtype=torch.float32).unsqueeze(0)
-                if context
-                else torch.zeros(1, EMBEDDING_DIM)
-            )
+            query_emb = self.vocab.encode(text)
+            mem_emb = self.vocab.encode(context) if context else np.zeros(EMBEDDING_DIM)
             _, logits = self.subconscious.forward(query_emb, mem_emb)
             instruction, _ = self.subconscious.generate_prompt_instruction(logits)
             return instruction
@@ -1966,6 +2021,31 @@ class SelfImprovingAssistant(EmergenceMixin):
         if sub_instruction:
             prompt += f"\n\n{sub_instruction}"
         return prompt
+
+    def _check_grounding(self, response: str, web_ctx: Optional[str]) -> bool:
+        """
+        Дешёвая эвристическая проверка: пересекается ли ответ по смыслу
+        с найденными в интернете данными. Не заменяет полноценный
+        фактчекинг, но ловит явные случаи, когда модель проигнорировала
+        источники и досочинила ответ из общих знаний.
+        """
+        if not web_ctx:
+            return True
+        low = response.lower()
+        honest_markers = (
+            "не удалось получить актуальные данные", "не нашёл", "не удалось найти",
+            "недостаточно данных", "не смог подтвердить",
+        )
+        if any(m in low for m in honest_markers):
+            return True  # модель сама честно сообщила о нехватке данных
+        resp_emb = self.vocab.encode(response)
+        ctx_emb = self.vocab.encode(web_ctx)
+        rn, cn = np.linalg.norm(resp_emb), np.linalg.norm(ctx_emb)
+        sim = float(np.dot(resp_emb, ctx_emb) / (rn * cn + 1e-8)) if rn > 1e-8 and cn > 1e-8 else 0.0
+        resp_words = set(re.findall(r'\b[а-яёa-z]{4,}\b', low))
+        ctx_words = set(re.findall(r'\b[а-яёa-z]{4,}\b', web_ctx.lower()))
+        overlap = len(resp_words & ctx_words) / max(1, len(resp_words))
+        return sim > 0.15 or overlap > 0.12
 
     async def _apply_reflection(self):
         entry = await self.reflect.reflect(self.total_interactions, self._call_llm)
@@ -2042,9 +2122,8 @@ class SelfImprovingAssistant(EmergenceMixin):
             return cached, {'cached': True, 'response_time': time.time() - start}
 
         mem_ctx = self.memory.get_context(message)
-        query_emb = torch.tensor(self.vocab.encode(message), dtype=torch.float32).unsqueeze(0)
-        memory_emb = torch.tensor(self.vocab.encode(mem_ctx), dtype=torch.float32).unsqueeze(
-            0) if mem_ctx else torch.zeros(1, EMBEDDING_DIM)
+        query_emb = self.vocab.encode(message)
+        memory_emb = self.vocab.encode(mem_ctx) if mem_ctx else np.zeros(EMBEDDING_DIM)
         latent, logits = self.subconscious.forward(query_emb, memory_emb)
         sub_instruction, chosen_indices = self.subconscious.generate_prompt_instruction(logits)
 
@@ -2069,10 +2148,20 @@ class SelfImprovingAssistant(EmergenceMixin):
         if not response:
             response = "⚠️ Не удалось получить ответ от модели."
 
+        # Проверка заземлённости: подтверждён ли ответ реальными данными поиска.
+        # Если web_search использовался, но ответ по смыслу не пересекается с
+        # найденными фрагментами — модель, вероятно, придумала часть ответа.
+        grounded = self._check_grounding(response, web_ctx) if has_web else True
+        if has_web and not grounded:
+            logger.warning(f"⚠️ Низкая заземлённость ответа относительно найденных данных: {message[:60]}")
+            response += ("\n\n⚠️ Не удалось однозначно подтвердить часть этого ответа найденными "
+                         "источниками — уточните критичные детали самостоятельно.")
+
         meta = {
             'complexity': min(1.0, len(message.split()) / 20),
             'web_search_used': has_web,
-            'response_length': len(response.split())
+            'response_length': len(response.split()),
+            'grounded': grounded,
         }
         reward = self.subconscious.compute_reward(response, meta)
         self.subconscious.learn(query_emb, memory_emb, chosen_indices, reward)
@@ -2086,7 +2175,7 @@ class SelfImprovingAssistant(EmergenceMixin):
         self.anomaly_detector.observe(quality, error)
         asyncio.create_task(self.anomaly_detector.check_and_correct())
 
-        if quality > MIN_QUALITY_SCORE:
+        if quality > MIN_QUALITY_SCORE and grounded:
             self.memory.add_episode(f"Q: {message}\nA: {response}", importance=quality, search_meta=search_meta)
             if not has_web and quality > 0.6:
                 store[ck] = (response, time.time())
@@ -2094,7 +2183,10 @@ class SelfImprovingAssistant(EmergenceMixin):
                     oldest = min(store.items(), key=lambda x: x[1][1])[0]
                     del store[oldest]
 
-        if quality >= MIN_GLOBAL_QUALITY and not has_web:
+        # ИСПРАВЛЕНО: раньше в глобальную базу (общую для всех пользователей)
+        # утекали именно НЕ-подтверждённые вебом ответы (`not has_web`), а
+        # проверенные поиском — нет. Теперь требуем заземлённости в любом случае.
+        if quality >= MIN_GLOBAL_QUALITY and grounded:
             try:
                 emb_contrib = self.vocab.encode(message + " " + response)
                 asyncio.create_task(
@@ -2113,11 +2205,7 @@ class SelfImprovingAssistant(EmergenceMixin):
             self.memory.consolidate()
             self._save()
 
-        # Эмерджентный блок (без изменений)
-        reward = meta.get('reward', 0.0)
-        complexity = meta.get('complexity', 0.5)
-        self.emotions.update_from_reward(reward, complexity)
-
+        # Эмерджентный блок
         asyncio.create_task(self.curiosity.check_and_research(message, response, meta))
         self.meta_learner.observe_quality(quality)
 
@@ -2183,9 +2271,8 @@ class SelfImprovingAssistant(EmergenceMixin):
             return
 
         mem_ctx = self.memory.get_context(message)
-        query_emb = torch.tensor(self.vocab.encode(message), dtype=torch.float32).unsqueeze(0)
-        memory_emb = torch.tensor(self.vocab.encode(mem_ctx), dtype=torch.float32).unsqueeze(
-            0) if mem_ctx else torch.zeros(1, EMBEDDING_DIM)
+        query_emb = self.vocab.encode(message)
+        memory_emb = self.vocab.encode(mem_ctx) if mem_ctx else np.zeros(EMBEDDING_DIM)
         _, logits = self.subconscious.forward(query_emb, memory_emb)
         sub_instruction, chosen_indices = self.subconscious.generate_prompt_instruction(logits)
 
@@ -2251,10 +2338,17 @@ class SelfImprovingAssistant(EmergenceMixin):
             return
 
         if full_response:
+            grounded = self._check_grounding(full_response, web_ctx) if has_web else True
+            if has_web and not grounded:
+                logger.warning(f"⚠️ Низкая заземлённость ответа (stream): {message[:60]}")
+                full_response += ("\n\n⚠️ Не удалось однозначно подтвердить часть этого ответа найденными "
+                                   "источниками — уточните критичные детали самостоятельно.")
+
             meta = {
                 'complexity': min(1.0, len(message.split()) / 20),
                 'web_search_used': has_web,
-                'response_length': len(full_response.split())
+                'response_length': len(full_response.split()),
+                'grounded': grounded,
             }
             reward = self.subconscious.compute_reward(full_response, meta)
             self.subconscious.learn(query_emb, memory_emb, chosen_indices, reward)
@@ -2267,7 +2361,7 @@ class SelfImprovingAssistant(EmergenceMixin):
             self.anomaly_detector.observe(quality, error)
             asyncio.create_task(self.anomaly_detector.check_and_correct())
 
-            if quality > MIN_QUALITY_SCORE:
+            if quality > MIN_QUALITY_SCORE and grounded:
                 self.memory.add_episode(f"Q: {message}\nA: {full_response}", importance=quality,
                                         search_meta=search_meta)
                 if not has_web and quality > 0.6:
@@ -2276,7 +2370,7 @@ class SelfImprovingAssistant(EmergenceMixin):
                         oldest = min(store.items(), key=lambda x: x[1][1])[0]
                         del store[oldest]
 
-            if quality >= MIN_GLOBAL_QUALITY and not has_web:
+            if quality >= MIN_GLOBAL_QUALITY and grounded:
                 try:
                     emb_contrib = self.vocab.encode(message + " " + full_response)
                     asyncio.create_task(
@@ -2296,10 +2390,6 @@ class SelfImprovingAssistant(EmergenceMixin):
                 self._save()
 
             # Эмерджентные шаги
-            reward = meta.get('reward', 0.0)
-            complexity = meta.get('complexity', 0.5)
-            self.emotions.update_from_reward(reward, complexity)
-
             asyncio.create_task(self.curiosity.check_and_research(message, full_response, meta))
             self.meta_learner.observe_quality(quality)
 

@@ -8,19 +8,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncio
-import json
 import logging
 import random
 import time
 import hashlib
-import inspect
-from typing import Dict, List, Any, Optional, Callable, Tuple
+from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from collections import deque, defaultdict
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 # Теперь agent_core виден
 from agent_core import ReflectionLog
@@ -145,15 +140,16 @@ class CuriosityEngine:
 
     def compute_uncertainty(self, message: str, response: str) -> float:
         """Оценивает неопределённость ответа (чем выше, тем больше нужно исследовать)."""
-        # 1. Энтропия подсознания
+        # 1. Энтропия PromptAdvisor (лёгкая numpy-политика, без PyTorch)
         try:
-            with torch.no_grad():
-                emb = torch.tensor(self._a.vocab.encode(message), dtype=torch.float32).unsqueeze(0)
-                mem_emb = torch.zeros(1, 128)  # упрощённо
-                _, logits = self._a.subconscious.forward(emb, mem_emb)
-                probs = torch.softmax(logits.squeeze(), dim=-1)
-                entropy = -torch.sum(probs * torch.log(probs + 1e-8)).item()
-        except:
+            emb = self._a.vocab.encode(message)
+            mem_emb = np.zeros(self._a.vocab.dim)
+            _, logits = self._a.subconscious.forward(emb, mem_emb)
+            logits = logits - np.max(logits)
+            probs = np.exp(logits) / (np.sum(np.exp(logits)) + 1e-8)
+            entropy = float(-np.sum(probs * np.log(probs + 1e-8)))
+            entropy = entropy / max(1e-8, np.log(len(probs)))  # нормируем в [0..~1]
+        except Exception:
             entropy = 0.5
 
         # 2. Наличие маркеров неуверенности в ответе
@@ -398,7 +394,20 @@ class HierarchicalPlanner:
 # 7. ИНТЕГРАЦИЯ ВНЕШНИХ API И СРЕД
 # ==================================================================
 class ExternalToolbox:
-    """Набор инструментов для взаимодействия с внешними сервисами."""
+    """
+    Набор инструментов для взаимодействия с внешними сервисами.
+
+    ВАЖНО: раньше здесь были fetch_news и send_email — ЗАГЛУШКИ, которые
+    регистрировались как настоящие инструменты и возвращали фиктивный текст
+    ("1. ... 2. ..." / "Email отправлен"). Агент воспринимал это как реальный
+    результат и на его основе "узнавал" несуществующие новости или считал,
+    что письмо отправлено — прямой источник галлюцинаций. Не реализованные
+    инструменты теперь НЕ регистрируются вообще: агент должен использовать
+    web_search (он настоящий, через DuckDuckGo/Wikipedia), а не мнимый
+    fetch_news. Если нужен реальный fetch_news/send_email — подключите
+    конкретный API (RSS/NewsAPI, SMTP) и зарегистрируйте инструмент только
+    после этого.
+    """
 
     def __init__(self, assistant):
         self._a = assistant
@@ -410,132 +419,57 @@ class ExternalToolbox:
             self._http_session = aiohttp.ClientSession()
         return self._http_session
 
-    async def fetch_news(self, query: str) -> str:
-        """Получает новости через RSS или NewsAPI (заглушка)."""
-        return f"[Новости по запросу '{query}']: 1. ... 2. ..."
-
     async def execute_code(self, code: str) -> str:
-        """Выполняет Python-код в изолированной среде (заглушка)."""
-        try:
-            exec_globals = {}
-            exec(code, exec_globals)
-            return str(exec_globals.get('result', 'Код выполнен без явного результата'))
-        except Exception as e:
-            return f"Ошибка выполнения: {e}"
+        """
+        Выполняет Python-код. НЕ песочница: используется тот же процесс,
+        без ограничения builtins/файловой системы/сети. Включать только
+        если вы доверяете источнику кода (обычно — только себе).
+        Таймаут и обрезка вывода — минимальная защита от зависаний.
+        """
+        import asyncio as _asyncio
+        import io
+        import contextlib
 
-    async def send_email(self, address: str, subject: str, body: str) -> str:
-        """Отправляет email (заглушка)."""
-        return f"Email отправлен на {address}"
+        def _run(src: str) -> str:
+            exec_globals: Dict[str, Any] = {"__builtins__": __builtins__}
+            buf = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(buf):
+                    exec(src, exec_globals)
+                out = buf.getvalue().strip()
+                result = exec_globals.get("result")
+                if result is not None:
+                    return f"{out}\nresult = {result!r}".strip()
+                return out or "Код выполнен без вывода и без переменной result"
+            except Exception as e:
+                return f"Ошибка выполнения: {e}"
+
+        try:
+            return await _asyncio.wait_for(_asyncio.to_thread(_run, code), timeout=10)
+        except _asyncio.TimeoutError:
+            return "Ошибка выполнения: превышен таймаут (10с)"
 
     def register_tools(self, agent):
-        """Регистрирует внешние инструменты в реестре агента."""
-        agent.tools.register("fetch_news", self.fetch_news, "Получить новости по запросу")
-        agent.tools.register("execute_code", self.execute_code, "Выполнить Python-код в песочнице")
-        agent.tools.register("send_email", self.send_email, "Отправить email (адрес, тема, тело)")
+        """Регистрирует ТОЛЬКО реально работающие внешние инструменты."""
+        if getattr(self._a, "enable_code_execution", False):
+            agent.tools.register(
+                "execute_code", self.execute_code,
+                "Выполнить Python-код в текущем процессе (НЕ изолировано, только для доверенного кода)",
+            )
 
 
 # ==================================================================
-# 8. ЭМОЦИОНАЛЬНАЯ МОДЕЛЬ
-# ==================================================================
-class EmotionalModel:
-    """
-    Управляет эмоциональными состояниями и использует их для принятия решений.
-    """
-
-    def __init__(self):
-        self.valence = 0.0  # -1..1
-        self.arousal = 0.0  # 0..1
-        self._history = deque(maxlen=20)
-
-    def update_from_reward(self, reward: float, complexity: float):
-        """Обновляет эмоции на основе награды и сложности."""
-        self.valence = 0.9 * self.valence + 0.1 * reward
-        self.arousal = 0.9 * self.arousal + 0.1 * (0.5 + 0.5 * complexity)
-        self.arousal = np.clip(self.arousal + random.uniform(-0.05, 0.05), 0, 1)
-        self._history.append({'valence': self.valence, 'arousal': self.arousal, 'time': time.time()})
-
-    def get_decision_biases(self) -> Dict:
-        """Возвращает смещения для принятия решений."""
-        biases = {}
-        if self.valence < -0.2:
-            biases['prefer_reliable'] = True
-            biases['risk_tolerance'] = 0.2
-        else:
-            biases['prefer_reliable'] = False
-            biases['risk_tolerance'] = 0.8
-
-        if self.arousal > 0.7:
-            biases['speed_over_accuracy'] = True
-        else:
-            biases['speed_over_accuracy'] = False
-
-        return biases
-
-    def get_state_string(self) -> str:
-        return f"Эмоции: валентность={self.valence:.2f}, возбуждение={self.arousal:.2f}"
-
-
-# ==================================================================
-# 9. СЛУЧАЙНОСТЬ И МУТАЦИЯ
-# ==================================================================
-class MutationEngine:
-    """
-    Вносит случайные изменения в параметры и стратегии для поиска новых решений.
-    """
-
-    def __init__(self, assistant):
-        self._a = assistant
-        self._mutation_prob = 0.05  # вероятность мутации при каждом шаге
-
-    async def maybe_mutate(self):
-        """С некоторой вероятностью применяет мутацию."""
-        if random.random() < self._mutation_prob:
-            mutations = [
-                self._mutate_thresholds,
-                self._mutate_tool_params,
-                self._mutate_system_prompt,
-                self._mutate_learning_rate,
-            ]
-            mutation = random.choice(mutations)
-            result = await mutation()
-            logger.info(f"🧬 Мутация: {result}")
-
-    async def _mutate_thresholds(self):
-        """Изменяет пороги (MIN_QUALITY, MEMORY_CONSOLIDATION_THRESHOLD)."""
-        delta = random.uniform(-0.05, 0.05)
-        old = self._a._quality_threshold = getattr(self._a, '_quality_threshold', 0.4)
-        new = np.clip(old + delta, 0.1, 0.9)
-        self._a._quality_threshold = new
-        return f"threshold {old:.2f} -> {new:.2f}"
-
-    async def _mutate_tool_params(self):
-        """Изменяет параметры инструментов (например, CHUNK_SIZE)."""
-        if hasattr(self._a, 'web_searcher'):
-            old = self._a.web_searcher._chunk_size = getattr(self._a.web_searcher, '_chunk_size', 800)
-            new = max(200, old + random.randint(-100, 100))
-            self._a.web_searcher._chunk_size = new
-            return f"chunk_size {old} -> {new}"
-
-    async def _mutate_system_prompt(self):
-        """Добавляет случайную инструкцию в системный промпт."""
-        variations = [
-            "Используй метафоры для объяснения.",
-            "Ставь под сомнение общепринятые факты.",
-            "Предлагай нестандартные решения.",
-            "Проверяй данные на противоречия."
-        ]
-        chosen = random.choice(variations)
-        self._a._system_prompt_mutations = getattr(self._a, '_system_prompt_mutations', [])
-        self._a._system_prompt_mutations.append(chosen)
-        return f"prompt mutation: {chosen}"
-
-    async def _mutate_learning_rate(self):
-        old = self._a.current_lr
-        new = old * random.uniform(0.7, 1.3)
-        self._a.current_lr = np.clip(new, 0.0001, 0.005)
-        return f"LR {old:.5f} -> {self._a.current_lr:.5f}"
-
-
+# Удалено: EmotionalModel и MutationEngine.
+#
+# EmotionalModel писал valence/arousal, но их нигде не читали (кроме
+# неиспользуемого get_decision_biases) — чистый мёртвый код.
+#
+# MutationEngine случайно менял learning_rate/пороги/chunk_size/системный
+# промпт каждые ~120с БЕЗ проверки, помогло это или навредило — это не
+# обучение, а случайное блуждание параметров, которое реально снижает
+# стабильность и качество ответов со временем. Настоящая адаптация
+# гиперпараметров у нас уже есть в MetaLearner (ниже) — она меняет lr
+# по фактическому тренду качества, а не наугад.
 # ==================================================================
 # 10. ИНТЕГРАЦИЯ ВСЕХ КОМПОНЕНТОВ В СУЩЕСТВУЮЩУЮ СИСТЕМУ
 # ==================================================================
@@ -552,8 +486,6 @@ class EmergenceMixin:
         self.meta_learner = MetaLearner(self)
         self.hierarchical_planner = HierarchicalPlanner(self)
         self.external_tools = ExternalToolbox(self)
-        self.emotions = EmotionalModel()
-        self.mutation_engine = MutationEngine(self)
         # Подписываемся на шину сообщений
         self.message_bus = AgentMessageBus()
         self.message_bus.subscribe('global_fact', self._handle_global_fact)
@@ -572,7 +504,6 @@ class EmergenceMixin:
         while True:
             try:
                 await self.meta_learner.adjust_if_needed()
-                await self.mutation_engine.maybe_mutate()
                 next_goal = await self.hierarchical_planner.get_next_action()
                 if next_goal and hasattr(self, 'agent'):
                     asyncio.create_task(self.agent.run_goal(next_goal))
@@ -590,10 +521,6 @@ class EmergenceMixin:
         """Обёртка вокруг get_response с добавлением эмерджентных шагов."""
         self.curiosity._last_message = message
         response, meta = await self.get_response(message, **kwargs)
-
-        reward = meta.get('reward', 0)
-        complexity = meta.get('complexity', 0.5)
-        self.emotions.update_from_reward(reward, complexity)
 
         await self.curiosity.check_and_research(message, response, meta)
         quality = meta.get('quality', 0.5)
@@ -614,8 +541,9 @@ class EmergenceMixin:
     async def _extract_key_fact(self, text: str) -> Optional[str]:
         """Извлекает один ключевой факт из ответа (упрощённо)."""
         sentences = text.split('.')
+        markers = ('является', 'составляет', 'равно')
         for s in sentences:
-            if len(s) > 20 and 'является' in s or 'составляет' in s or 'равно' in s:
+            if len(s) > 20 and any(m in s for m in markers):
                 return s.strip()
         return None
 
