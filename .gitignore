@@ -1,8 +1,5 @@
 *.zip
 .env
-.env
-.env
-.env
 *.db
 *.log
 *.db-shm
