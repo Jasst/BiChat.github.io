@@ -1,8 +1,5 @@
 *.zip
 .env
-.env
-.env
-.env
 *.db
 *.log
 *.db-shm
@@ -11,3 +8,4 @@
 *.pid
 /mobile/node_modules
 /mobile/android
+/uploads

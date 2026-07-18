@@ -2,8 +2,10 @@
 title Dark Messenger Server Controller
 setlocal enabledelayedexpansion
 
+:: Устанавливаем кодировку UTF-8
 chcp 65001 >nul 2>&1
 
+:: Цвета для ANSI
 set "RESET=[0m"
 set "RED=[91m"
 set "GREEN=[92m"
@@ -14,11 +16,15 @@ set "WHITE=[97m"
 set "BOLD=[1m"
 set "DIM=[2m"
 
+:: Путь к проекту (ИЗМЕНИТЕ НА ВАШ)
 set "PROJECT_DIR=E:\BlockcoinWitres"
+
+:: Файлы
 set "PID_FILE=%PROJECT_DIR%\app.pid"
 set "LOG_FILE=%PROJECT_DIR%\messenger.log"
 set "AUTORESTART_FLAG=%TEMP%\darkmessenger_autorestart.flag"
 
+:: Проверка существования проекта
 if not exist "%PROJECT_DIR%" (
     echo %RED%ERROR: Project directory not found: %PROJECT_DIR%%RESET%
     echo %YELLOW%Please edit the PROJECT_DIR variable in this script%RESET%
@@ -26,6 +32,7 @@ if not exist "%PROJECT_DIR%" (
     exit /b 1
 )
 
+:: Проверка наличия docker и docker-compose
 where docker >nul 2>&1
 if errorlevel 1 (
     echo %RED%ERROR: Docker not found. Please install Docker Desktop.%RESET%
@@ -40,12 +47,16 @@ if errorlevel 1 (
     set "DOCKER_COMPOSE=docker-compose"
 )
 
+:: Проверка наличия docker-compose.yml
 if not exist "%PROJECT_DIR%\docker-compose.yml" (
     echo %RED%ERROR: docker-compose.yml not found in %PROJECT_DIR%%RESET%
     pause
     exit /b 1
 )
 
+:: ==============================================
+:: АВТО-ВОССТАНОВЛЕНИЕ (при краше сервера)
+:: ==============================================
 if "%1"=="--autorestart" (
     del "%AUTORESTART_FLAG%" 2>nul
     goto START_SILENT
@@ -126,6 +137,7 @@ echo.
 :START_SILENT
 cd /d "%PROJECT_DIR%"
 
+:: Запуск контейнеров (Nginx + Coturn)
 echo %BOLD%%BLUE%[1/4]%RESET% %WHITE%> Starting Docker containers (Nginx + Coturn)...%RESET%
 %DOCKER_COMPOSE% up -d
 if errorlevel 1 (
@@ -137,6 +149,7 @@ if errorlevel 1 (
 )
 echo.
 
+:: Активация venv
 echo %BOLD%%BLUE%[2/4]%RESET% %WHITE%> Activating environment...%RESET%
 if exist "%PROJECT_DIR%\venv\Scripts\activate.bat" (
     call "%PROJECT_DIR%\venv\Scripts\activate.bat"
@@ -146,11 +159,13 @@ if exist "%PROJECT_DIR%\venv\Scripts\activate.bat" (
 )
 echo.
 
+:: Очистка старого PID файла
 if exist "%PID_FILE%" (
     echo %YELLOW%  ⚠ Found stale PID file, cleaning...%RESET%
     del "%PID_FILE%" >nul 2>&1
 )
 
+:: Запуск сервера
 echo %BOLD%%BLUE%[3/4]%RESET% %WHITE%> Starting Waitress server...%RESET%
 echo.
 echo %YELLOW%╔══════════════════════════════════════════════════════════════╗%RESET%
@@ -165,10 +180,14 @@ echo %YELLOW%╚═════════════════════�
 echo.
 
 cd /d "%PROJECT_DIR%"
+
+:: Запуск run.py (Python-сервер)
 python run.py
 
+:: Сюда попадаем после остановки (Ctrl+C или ошибка)
 set "EXIT_CODE=%errorlevel%"
 
+:: Остановка контейнеров после завершения Python
 echo.
 echo %BOLD%%RED%[4/4]%RESET% %WHITE%> Stopping Docker containers...%RESET%
 %DOCKER_COMPOSE% down
@@ -179,6 +198,7 @@ if errorlevel 1 (
 echo %GREEN%  ✓ Containers stopped%RESET%
 echo.
 
+:: Если сервер упал с ошибкой (не по Ctrl+C) - создаем флаг для авто-восстановления
 if %EXIT_CODE% neq 0 (
     if "%1" neq "--autorestart" (
         echo %TIME% - Server crashed with error code %EXIT_CODE% >> "%LOG_FILE%"
@@ -193,6 +213,7 @@ echo %RED%║%RESET%              %BOLD%%RED%✖ SERVER STOPPED ✖%RESET%      
 echo %RED%╚══════════════════════════════════════════════════════════════╝%RESET%
 echo.
 
+:: Если есть флаг авто-восстановления, перезапускаем
 if exist "%AUTORESTART_FLAG%" (
     echo %YELLOW%⟳ Auto-recovery active, restarting in 5 seconds...%RESET%
     timeout /t 5 /nobreak >nul
@@ -221,18 +242,28 @@ echo.
 
 :MONITOR_LOOP
 cd /d "%PROJECT_DIR%"
+
+:: Убедимся, что контейнеры запущены
 %DOCKER_COMPOSE% up -d >nul 2>&1
+
+:: Активация venv
 if exist "%PROJECT_DIR%\venv\Scripts\activate.bat" (
     call "%PROJECT_DIR%\venv\Scripts\activate.bat" >nul 2>&1
 )
+
+:: Запуск с флагом monitor
 set WAITRESS_MODE=stable
 python run.py
+
+:: Если сервер упал - перезапускаем
 if errorlevel 1 (
     echo %TIME% - Server crashed! Restarting in 5 seconds... >> "%LOG_FILE%"
     echo %YELLOW%⚠ Server crashed! Restarting in 5 seconds...%RESET%
     timeout /t 5 /nobreak >nul
     goto MONITOR_LOOP
 )
+
+:: Нормальное завершение - останавливаем контейнеры
 %DOCKER_COMPOSE% down >nul 2>&1
 exit /b 0
 
@@ -243,7 +274,11 @@ echo %CYAN%╔══════════════════════
 echo %CYAN%║%RESET%              %BOLD%%RED%■ STOPPING SERVER ■%RESET%                       %CYAN%║%RESET%
 echo %CYAN%╚══════════════════════════════════════════════════════════════╝%RESET%
 echo.
+
+:: Удаляем флаг авто-восстановления
 del "%AUTORESTART_FLAG%" 2>nul
+
+:: Остановка контейнеров
 echo %BOLD%%RED%[1/1]%RESET% %WHITE%> Stopping Docker containers...%RESET%
 cd /d "%PROJECT_DIR%"
 %DOCKER_COMPOSE% down
@@ -253,6 +288,7 @@ if errorlevel 1 (
 )
 echo %GREEN%  ✓ Containers stopped%RESET%
 echo.
+
 echo %GREEN%✅ Server stopped successfully%RESET%
 echo.
 echo %WHITE%Press any key to return to menu...%RESET%
@@ -266,6 +302,8 @@ echo %CYAN%╔══════════════════════
 echo %CYAN%║%RESET%              %BOLD%%BLUE%ℹ SERVER STATUS ℹ%RESET%                         %CYAN%║%RESET%
 echo %CYAN%╚══════════════════════════════════════════════════════════════╝%RESET%
 echo.
+
+:: Проверка статуса контейнеров
 echo %BOLD%%WHITE%> Docker containers:%RESET%
 cd /d "%PROJECT_DIR%"
 %DOCKER_COMPOSE% ps --services --filter "status=running" 2>nul | findstr /i "nginx coturn" >nul
@@ -274,6 +312,8 @@ if errorlevel 1 (
 ) else (
     echo   %GREEN%✅ RUNNING%RESET%
 )
+
+:: Проверка порта 8000 (Waitress)
 echo.
 echo %BOLD%%WHITE%> Waitress (Port 8000):%RESET%
 netstat -ano | findstr ":8000.*LISTENING" >nul
@@ -284,6 +324,8 @@ if errorlevel 1 (
         echo   %GREEN%✅ RUNNING (PID: %%a)%RESET%
     )
 )
+
+:: Проверка через HTTP
 echo.
 echo %BOLD%%WHITE%> Health Check:%RESET%
 curl -s -o nul -w "%%{http_code}" http://127.0.0.1:8000/health 2>nul | find "200" >nul
@@ -292,6 +334,7 @@ if errorlevel 1 (
 ) else (
     echo   %GREEN%✅ HEALTHY%RESET%
 )
+
 echo.
 echo %WHITE%Press any key to return to menu...%RESET%
 pause >nul
@@ -304,6 +347,7 @@ echo %CYAN%╔══════════════════════
 echo %CYAN%║%RESET%              %BOLD%%YELLOW%📋 LAST 20 LOG LINES 📋%RESET%                      %CYAN%║%RESET%
 echo %CYAN%╚══════════════════════════════════════════════════════════════╝%RESET%
 echo.
+
 if exist "%LOG_FILE%" (
     echo %DIM%╔══════════════════════════════════════════════════════════════╗%RESET%
     powershell -Command "Get-Content '%LOG_FILE%' -Tail 20"
@@ -311,6 +355,7 @@ if exist "%LOG_FILE%" (
 ) else (
     echo %RED%  ✗ Log file not found: %LOG_FILE%%RESET%
 )
+
 echo.
 echo %WHITE%Press any key to return to menu...%RESET%
 pause >nul

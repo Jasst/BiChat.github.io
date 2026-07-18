@@ -75,6 +75,17 @@ def wallet_page(request: Request):
     })
 
 
+# ========== НОВЫЙ МАРШРУТ ДЛЯ СТРАНИЦЫ ЗВОНКОВ ==========
+@router.get('/calls', response_class=HTMLResponse)
+def calls_page(request: Request):
+    if not request.session.get('address'):
+        return RedirectResponse('/')
+    return templates.TemplateResponse(request, 'calls.html', {
+        'address': request.session['address'],
+    })
+# ========================================================
+
+
 @router.post('/create_wallet', status_code=201)
 async def create_wallet(body: CreateWalletRequest, request: Request):
     address = body.address

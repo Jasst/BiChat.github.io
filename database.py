@@ -56,7 +56,6 @@ async def close_db():
 
 @asynccontextmanager
 async def get_db_cursor():
-    """Возвращает сырое asyncpg соединение (для совместимости с существующим кодом)."""
     async with _pool.acquire() as conn:
         async with conn.transaction():
             yield conn
@@ -215,14 +214,10 @@ async def _apply_migrations(conn: asyncpg.Connection):
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_messages(user_address)")
         await conn.execute("""INSERT INTO schema_version (version, applied_at) VALUES (7, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
         current_version = 7
-
     if current_version < 8:
-        # ИСПРАВЛЕНИЕ: добавляем endpoint_hash — нужен для UPSERT в routes/push.py
-        # и для корректного удаления мёртвых подписок (iOS меняет ключи, endpoint тот же)
         await conn.execute(
             "ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS endpoint_hash TEXT"
         )
-        # Заполняем endpoint_hash для существующих строк
         rows = await conn.fetch("SELECT id, subscription FROM push_subscriptions WHERE endpoint_hash IS NULL")
         import hashlib, json as _json
         for row in rows:
@@ -235,8 +230,6 @@ async def _apply_migrations(conn: asyncpg.Connection):
                 )
             except Exception:
                 pass
-        # Дропаем старый UNIQUE(user_address, subscription) — он не работает с большими JSON на PostgreSQL
-        # и мешает UPSERT по endpoint_hash
         await conn.execute("""
             DO $$
             BEGIN
@@ -248,7 +241,6 @@ async def _apply_migrations(conn: asyncpg.Connection):
                 END IF;
             END $$;
         """)
-        # Добавляем правильный уникальный индекс по (user_address, endpoint_hash)
         await conn.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_push_sub_user_endpoint
             ON push_subscriptions (user_address, endpoint_hash)
@@ -261,26 +253,85 @@ async def _apply_migrations(conn: asyncpg.Connection):
         await conn.execute("""
             DROP INDEX IF EXISTS idx_push_sub_user_endpoint
         """)
-
         await conn.execute("""
             ALTER TABLE push_subscriptions
             ADD CONSTRAINT push_subscriptions_user_endpoint
             UNIQUE(user_address, endpoint_hash)
         """)
-
         await conn.execute("""
             INSERT INTO schema_version(version, applied_at)
             VALUES (9, extract(epoch from now()))
             ON CONFLICT(version) DO NOTHING
         """)
+        current_version = 9
 
     if current_version < 10:
         await conn.execute("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS ws_nonce TEXT")
         await conn.execute(
-            """INSERT INTO schema_version (version, applied_at) VALUES (10, extract(epoch from now())) ON CONFLICT (version) DO NOTHING""")
+            """INSERT INTO schema_version (version, applied_at) VALUES (10, extract(epoch from now())) ON CONFLICT (version) DO NOTHING"""
+        )
         current_version = 10
 
+    # ──────────────────────────────────────────────────────────────
+    # МИГРАЦИЯ (версия 11) – таблица call_logs
+    # ──────────────────────────────────────────────────────────────
+    if current_version < 11:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS call_logs (
+                id              BIGSERIAL PRIMARY KEY,
+                user_address    TEXT NOT NULL,
+                contact_address TEXT NOT NULL,
+                contact_name    TEXT,
+                direction       TEXT NOT NULL,
+                status          TEXT NOT NULL,
+                duration        INTEGER DEFAULT 0,
+                timestamp       BIGINT NOT NULL,
+                created_at      DOUBLE PRECISION DEFAULT extract(epoch from now())
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_call_logs_user ON call_logs(user_address)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_call_logs_timestamp ON call_logs(timestamp DESC)")
+        await conn.execute("""
+            INSERT INTO schema_version (version, applied_at)
+            VALUES (11, extract(epoch from now()))
+            ON CONFLICT (version) DO NOTHING
+        """)
+        current_version = 11
 
+    # ──────────────────────────────────────────────────────────────
+    # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: если таблица call_logs всё ещё не существует,
+    # создаём её принудительно (например, если миграция была пропущена)
+    # ──────────────────────────────────────────────────────────────
+    table_exists = await conn.fetchval("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_name = 'call_logs'
+        )
+    """)
+    if not table_exists:
+        logger.warning("Table call_logs does not exist, creating it now (fallback)")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS call_logs (
+                id              BIGSERIAL PRIMARY KEY,
+                user_address    TEXT NOT NULL,
+                contact_address TEXT NOT NULL,
+                contact_name    TEXT,
+                direction       TEXT NOT NULL,
+                status          TEXT NOT NULL,
+                duration        INTEGER DEFAULT 0,
+                timestamp       BIGINT NOT NULL,
+                created_at      DOUBLE PRECISION DEFAULT extract(epoch from now())
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_call_logs_user ON call_logs(user_address)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_call_logs_timestamp ON call_logs(timestamp DESC)")
+        # Если версия ещё не была обновлена, обновляем
+        if current_version < 11:
+            await conn.execute("""
+                INSERT INTO schema_version (version, applied_at)
+                VALUES (11, extract(epoch from now()))
+                ON CONFLICT (version) DO NOTHING
+            """)
 
 
 async def _create_indexes(conn: asyncpg.Connection):
@@ -296,7 +347,6 @@ async def _create_indexes(conn: asyncpg.Connection):
         "CREATE INDEX IF NOT EXISTS idx_coin_tx_block ON coin_transactions(block_ref)",
         "CREATE INDEX IF NOT EXISTS idx_stakes_address ON stakes(address)",
         "CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_messages(user_address)",
-
     ]
     for sql in indexes:
         try:
@@ -322,10 +372,6 @@ class Blockchain:
                              previous_hash: Optional[str] = None,
                              miner_address: Optional[str] = None,
                              miner_reward: Optional[int] = None) -> int:
-        """
-        Создаёт новый блок.
-        miner_reward – награда майнеру (если None, то используется BLOCK_REWARD).
-        """
         rows = await conn.fetch("SELECT * FROM coin_transactions WHERE block_ref IS NULL")
         coin_txs = [dict(r) for r in rows]
 
@@ -367,7 +413,6 @@ class Blockchain:
 
         await self.adjust_difficulty(conn)
 
-        # Автоматическое увеличение доли стейкинга, если нужно (оставляем как было)
         if ENABLE_STAKING:
             from config import STAKING_FEE_INCREASE_INTERVAL, STAKING_FEE_INCREASE_STEP, MAX_STAKING_FEE
             if block_index % STAKING_FEE_INCREASE_INTERVAL == 0:
@@ -462,19 +507,16 @@ class Blockchain:
                     if not await self.valid_proof_with_challenge(conn, last_proof, proof, challenge):
                         return False, "Invalid proof", 0, 0
 
-                    # --- НАЧАЛО ИСПРАВЛЕНИЯ ---
                     staking_fee = 0
                     if ENABLE_STAKING:
                         staking_fee_ratio = await self.get_staking_fee_ratio(conn)
                         staking_fee = int(BLOCK_REWARD * staking_fee_ratio)
                     miner_reward = BLOCK_REWARD - staking_fee
-                    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
                     block_index = await self._new_block_raw(
                         conn, proof, miner_address=miner_address, miner_reward=miner_reward
                     )
 
-                    # --- ДОБАВЛЯЕМ КОМИССИЮ В СТЕЙКИНГ-ПУЛ ---
                     if staking_fee > 0 and ENABLE_STAKING:
                         from services.wallet import staking_manager
                         if staking_manager:
@@ -485,8 +527,6 @@ class Blockchain:
                 logger.error(f"try_mine_block error: {e}")
                 return False, str(e), 0, 0
 
-
-    # FIX: исправленная подпись и использование conn
     async def valid_proof_with_challenge(self, conn: asyncpg.Connection, last_proof: int, proof: int, challenge: str) -> bool:
         difficulty = await self.get_difficulty(conn)
         guess = f"{last_proof}{challenge}{proof}".encode()
@@ -536,16 +576,13 @@ class Blockchain:
             logger.info(f"Difficulty adjusted: {current_diff} -> {new_diff}")
 
     async def get_staking_fee_ratio(self, conn: asyncpg.Connection) -> float:
-        """Возвращает текущую долю награды блока, идущую в стейкинг-пул."""
         row = await conn.fetchval("SELECT value FROM staking_state WHERE key = 'staking_fee_ratio'")
         if row is None:
-            # Если записи нет, возвращаем значение из конфига
             from config import STAKING_FEE_FROM_BLOCK_REWARD
             return STAKING_FEE_FROM_BLOCK_REWARD
         return float(row)
 
     async def set_staking_fee_ratio(self, conn: asyncpg.Connection, ratio: float):
-        """Устанавливает новую долю награды для стейкинг-пула."""
         await conn.execute("""
             INSERT INTO staking_state (key, value) VALUES ('staking_fee_ratio', $1)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
