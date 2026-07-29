@@ -162,7 +162,7 @@ async def websocket_endpoint(
     await manager.connect(user_id, websocket)
 
     try:
-        # Отправка пропущенных сообщений
+        # ========== ОТПРАВКА ПРОПУЩЕННЫХ СООБЩЕНИЙ ==========
         try:
             missed = await message_notifier.get_offline_messages(user_id)
             for msg in missed:
@@ -170,9 +170,12 @@ async def websocket_endpoint(
                     await websocket.send_json(msg)
                 except Exception as e:
                     logger.error(f"Failed to send missed message: {e}")
+            # ИСПРАВЛЕНИЕ: удаляем отправленные сообщения из очереди
+            await message_notifier.clear_offline_messages(user_id)
         except Exception as e:
             logger.error(f"Failed to fetch missed messages: {e}")
 
+        # ========== ОСНОВНОЙ ЦИКЛ ОБРАБОТКИ СООБЩЕНИЙ ==========
         while True:
             try:
                 data = await websocket.receive_json()

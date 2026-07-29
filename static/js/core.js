@@ -119,17 +119,16 @@
     // ✅ ИСПРАВЛЕНИЕ: Если WS не готов — ждём с повторными попытками
     // Это критично для звонков — приложение только что открылось из push-уведомления
     let retries = 0;
-    const maxRetries = 20; // 10 секунд максимум
-    const retryInterval = setInterval(() => {
-        retries++;
-        if (trySendGetCall() || retries >= maxRetries) {
-            clearInterval(retryInterval);
-            if (retries >= maxRetries) {
-                console.warn('[App] Failed to send get_call — WS not ready after 10s');
-            }
+const maxRetries = 40; // ИСПРАВЛЕНИЕ: 20 секунд максимум
+const retryInterval = setInterval(() => {
+    retries++;
+    if (trySendGetCall() || retries >= maxRetries) {
+        clearInterval(retryInterval);
+        if (retries >= maxRetries) {
+            console.warn('[App] Failed to send get_call — WS not ready after 20s');
         }
-    }, 500);
-};
+    }
+}, 500);
 
     window.addMessageToCache = function(chatId, message, position = 'end') {
         if (!chatId || !message || !message.id) return;

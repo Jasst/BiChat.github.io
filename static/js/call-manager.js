@@ -203,16 +203,27 @@
                 const ice = this.pc.iceConnectionState;
 
                 if (state === 'failed' || state === 'closed' || ice === 'failed') {
-                    console.warn('[CallManager] Recovery: restarting call due to state', { state, ice });
-                    this.restartCallFull();
-                } else {
-                    console.warn('[CallManager] Forcing ICE restart to restore video after tab switch');
-                    this.restartIce().catch(() => {
-                        console.warn('[CallManager] ICE restart failed, falling back to full restart');
-                        this.restartCallFull();
-                    });
-                }
-            };
+    console.warn('[CallManager] Recovery: restarting call due to state', { state, ice });
+    // ИСПРАВЛЕНИЕ: для получателя пробуем переотправить answer
+    if (!this.isInitiator && this._lastOffer) {
+        console.warn('[CallManager] Re-answering call as non-initiator');
+        this.answerCall(this.currentCallId, this.currentPartner, this._lastOffer, this.currentPartnerName, !this.isAudioOnly);
+        return;
+    }
+    this.restartCallFull();
+} else {
+                console.warn('[CallManager] Forcing ICE restart to restore video after tab switch');
+                this.restartIce().catch(() => {
+        console.warn('[CallManager] ICE restart failed, falling back to full restart');
+        // ИСПРАВЛЕНИЕ: аналогично для получателя при неудачном ICE-restart
+        if (!this.isInitiator && this._lastOffer) {
+            this.answerCall(this.currentCallId, this.currentPartner, this._lastOffer, this.currentPartnerName, !this.isAudioOnly);
+            return;
+        }
+        this.restartCallFull();
+    });
+                 }
+                    };
             document.addEventListener('visibilitychange', this._visibilityHandler);
 
             if (typeof i18next !== 'undefined' && i18next.isInitialized) {
@@ -1273,6 +1284,8 @@
             modal.dataset.offerSdp = JSON.stringify(offerSdp);
             modal.dataset.video = isVideoFlag ? 'true' : 'false';
             this.currentPartnerName = fromName || from.slice(0,16) + '…';
+            // ИСПРАВЛЕНИЕ: сохраняем оффер для возможного повторного ответа
+            this._lastOffer = offerSdp;
 
             this.pendingCandidates = bufferedCandidates || [];
             console.log('[CallManager] Buffered candidates from server:', this.pendingCandidates.length);

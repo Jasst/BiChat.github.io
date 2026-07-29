@@ -358,9 +358,12 @@ const deleteBtn = msg.is_mine ? `<button class="delete-btn" data-id="${msg.id}" 
         State.lastKnownMessageId = 0;
         State.lastMessageTimestamp = 0;
         State.pendingImageData = null;
-        if (window.stopStatusPolling) window.stopStatusPolling();
-        if (window.startStatusPolling) window.startStatusPolling();
-        // Очищаем Object URL предыдущего чата
+       if (window.stopStatusPolling) window.stopStatusPolling();
+       if (window.startStatusPolling) window.startStatusPolling();
+       // ИСПРАВЛЕНИЕ: перезапускаем поллинг статусов пользователей для свежих данных
+       if (window.stopUserStatusPolling) window.stopUserStatusPolling();
+       if (window.startUserStatusPolling) window.startUserStatusPolling();
+
 
         if (container) {
             container.querySelectorAll('[data-object-url]').forEach(el => {

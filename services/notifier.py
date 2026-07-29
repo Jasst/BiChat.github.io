@@ -102,6 +102,12 @@ class AsyncMessageNotifier:
             await conn.execute("DELETE FROM offline_messages WHERE user_address = $1", user_address)
         return [json.loads(row['payload']) for row in rows]
 
+    async def clear_offline_messages(self, user_address: str):
+        """Удаляет все накопленные сообщения для пользователя после успешной отправки."""
+        from database import get_db_cursor
+        async with get_db_cursor() as conn:
+            await conn.execute("DELETE FROM offline_messages WHERE user_address = $1", user_address)
+
     async def get_stats(self) -> dict:
         from database import get_db_cursor
         async with get_db_cursor() as conn:

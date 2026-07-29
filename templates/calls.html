@@ -517,44 +517,52 @@
     }
   }
 
-  // ===== Добавление в контакты =====
-  async function addToContacts(address, name) {
-    // Проверяем, есть ли уже такой контакт
-    const exists = allContacts.some(c => c.address === address);
-    if (exists) {
-      window.NotificationManager?.showToast(t('contact_already_exists'), 'warning');
-      return;
-    }
-    // Запрашиваем имя, если не передано
-    if (!name || name === address.slice(0,16)+'…') {
-      const newName = await window.showPromptModal(
+// ===== Добавление в контакты =====
+async function addToContacts(address, name) {
+  // Проверяем, есть ли уже такой контакт
+  const exists = allContacts.some(c => c.address === address);
+  if (exists) {
+    window.NotificationManager?.showToast(t('contact_already_exists'), 'warning');
+    return;
+  }
+
+  // Если имя не передано или равно умолчанию — запрашиваем
+  if (!name || name === address.slice(0,16) + '…') {
+    let newName = null;
+    if (typeof window.showPromptModal === 'function') {
+      newName = await window.showPromptModal(
         t('add_contact_title', 'Add Contact'),
         t('enter_contact_name', 'Enter contact name'),
         address.slice(0,10)
       );
-      if (!newName) return;
-      name = newName;
+    } else {
+      // fallback для страниц, где модалка не определена
+      newName = prompt(t('enter_contact_name', 'Enter contact name:'), address.slice(0,10));
     }
-    try {
-      const res = await fetch('/add_contact_from_chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contact_address: address, contact_name: name })
-      });
-      if (res.ok) {
-        window.NotificationManager?.showToast(t('contact_added'), 'success');
-        await loadAllContacts(); // обновляем список контактов
-        // обновляем заголовки групп, чтобы отобразить, что контакт добавлен (можно перерисовать)
-        renderCalls(currentFilter);
-      } else {
-        const err = await res.json();
-        window.NotificationManager?.showToast(err.error || 'Failed', 'error');
-      }
-    } catch (e) {
-      console.error(e);
-      window.NotificationManager?.showToast('Network error', 'error');
-    }
+    if (!newName) return;
+    name = newName;
   }
+
+  try {
+    const res = await fetch('/add_contact_from_chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contact_address: address, contact_name: name })
+    });
+    if (res.ok) {
+      window.NotificationManager?.showToast(t('contact_added'), 'success');
+      await loadAllContacts(); // обновляем список контактов
+      // перерисовываем историю, чтобы обновить кнопку "добавить"
+      renderCalls(currentFilter);
+    } else {
+      const err = await res.json();
+      window.NotificationManager?.showToast(err.error || 'Failed', 'error');
+    }
+  } catch (e) {
+    console.error(e);
+    window.NotificationManager?.showToast('Network error', 'error');
+  }
+}
 
   // ===== Рендер с группировкой =====
   function renderCalls(filter) {
@@ -839,16 +847,14 @@
 
   // ===== Модалка нового звонка =====
   function openNewCallModal() {
-    document.getElementById('newCallModal').classList.remove('hidden');
-    document.getElementById('callAddressInput').value = '';
-    document.getElementById('newCallError').classList.add('hidden');
-    loadContactsForModal();
-    ModalManager.open('newCallModal');
-  }
-  function closeNewCallModal() {
-    document.getElementById('newCallModal').classList.add('hidden');
-    ModalManager.close('newCallModal');
-  }
+  document.getElementById('newCallModal').classList.remove('hidden');
+  document.getElementById('callAddressInput').value = '';
+  document.getElementById('newCallError').classList.add('hidden');
+  loadContactsForModal();
+}
+function closeNewCallModal() {
+  document.getElementById('newCallModal').classList.add('hidden');
+}
 
   function startCallFromModal(isVideo) {
     const select = document.getElementById('callContactSelect');
