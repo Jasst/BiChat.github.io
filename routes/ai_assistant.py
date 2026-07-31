@@ -249,18 +249,18 @@ class ConfidenceClassifier:
         return float(1 / (1 + np.exp(-out)))  # sigmoid
 
     def train_on_log(self, query_emb, ctx_emb, meta_emb, target: float):
-        # Простой SGD шаг
         x = np.concatenate([query_emb, ctx_emb, meta_emb[:64]])
         h = np.tanh(x @ self.fc1 + self.b1)
-        pred = 1/(1+np.exp(-(h @ self.fc2 + self.b2)))
-        grad_loss = pred - target  # MSE derivative
-        grad_out = grad_loss * pred * (1-pred)
+        pred = 1 / (1 + np.exp(-(h @ self.fc2 + self.b2)))
+        grad_loss = pred - target
+        grad_out = grad_loss * pred * (1 - pred)
         grad_fc2 = np.outer(h, grad_out)
         grad_b2 = grad_out
-        grad_h = grad_out * self.fc2.T
-        grad_h_tanh = grad_h * (1 - h**2)
-        grad_fc1 = np.outer(x, grad_h_tanh)
-        grad_b1 = grad_h_tanh
+        grad_h = (grad_out * self.fc2.T).flatten()  # -> (32,)
+        grad_h_tanh = grad_h * (1 - h ** 2)  # -> (32,)
+        grad_fc1 = np.outer(x, grad_h_tanh)  # -> (input_dim, 32)
+        grad_b1 = grad_h_tanh  # -> (32,)
+        # обновления
         self.fc1 -= self.lr * grad_fc1
         self.b1 -= self.lr * grad_b1
         self.fc2 -= self.lr * grad_fc2
