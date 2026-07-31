@@ -2155,11 +2155,11 @@ def _shutdown_all():
         logger.error(f"Shutdown merge failed: {e}")
     for uid, a in _assistants.items():
         try:
-            a._save()
-            if hasattr(a, 'web_searcher') and a.web_searcher.session:
-                loop = asyncio.new_event_loop()
-                loop.run_until_complete(a.web_searcher.close())
-                loop.close()
+            loop = asyncio.new_event_loop()
+            if hasattr(a, 'shutdown_emergence'):
+                loop.run_until_complete(a.shutdown_emergence())
+            loop.run_until_complete(a.shutdown())  # это уже вызывает _save() и закрывает web_searcher внутри себя
+            loop.close()
         except Exception as e:
             logger.error(f"Save failed {uid}: {e}")
 

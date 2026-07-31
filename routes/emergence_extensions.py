@@ -120,7 +120,7 @@ class SelfModifier:
             logger.info(f"SelfModifier: {key} = {value} (was {old})")
             return True
         try:
-            import config
+            import config_ai as config
             if hasattr(config, key):
                 old = getattr(config, key)
                 setattr(config, key, value)
