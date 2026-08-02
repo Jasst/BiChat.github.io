@@ -29,7 +29,7 @@ from routes.emergence_extensions import EmergenceMixin
 
 from config_ai import (
     LM_STUDIO_URL, LM_STUDIO_API_KEY, MEMORY_BASE_DIR,
-    EMBEDDING_DIM, LATENT_DIM, LEARNING_RATE, REPLAY_BATCH_SIZE,
+    EMBEDDING_DIM, LATENT_DIM, LEARNING_RATE, VOCAB_LEARNING_RATE, REPLAY_BATCH_SIZE,
     REPLAY_FREQUENCY, WORKING_MEMORY_SIZE, MEMORY_CONSOLIDATION_THRESHOLD,
     FORGETTING_FACTOR, QUALITY_CHECK_PROB, MIN_QUALITY_SCORE,
     INITIAL_VOCAB_SIZE, MAX_VOCAB_SIZE, VOCAB_EXPANSION_STEP,
@@ -1214,7 +1214,10 @@ class CognitiveMemory:
         self.working.append(content)
     def recall(self, query, top_k=5):
         self.total_searches += 1
-        return self.episodic.search(self.embed(query), top_k)
+        results = self.episodic.search(self.embed(query), top_k)
+        for ep, _score in results:
+            ep.strengthen()
+        return results
     def get_context(self, query):
         parts = []
         if self.working:
@@ -1735,6 +1738,8 @@ class SelfImprovingAssistant(EmergenceMixin):
         self.subconscious.learn(req['query_emb'], req['memory_emb'], req['chosen_indices'], reward)
         if self.total_interactions % REPLAY_FREQUENCY == 0:
             self.subconscious.experience_replay()
+        self._update_vocab_embeddings(message, req['query_emb'], reward)
+        self._self_organize(message)
 
         quality = max(0.0, (reward + 1) / 2)
         error = any(err in response.lower() for err in ["ошибка", "извините", "не удалось"])
@@ -1879,6 +1884,8 @@ class SelfImprovingAssistant(EmergenceMixin):
             self.subconscious.learn(req['query_emb'], req['memory_emb'], req['chosen_indices'], reward)
             if self.total_interactions % REPLAY_FREQUENCY == 0:
                 self.subconscious.experience_replay()
+            self._update_vocab_embeddings(message, req['query_emb'], reward)
+            self._self_organize(message)
             quality = max(0.0, (reward + 1) / 2)
 
             error = any(err in full_response.lower() for err in ["ошибка", "извините", "не удалось"])
@@ -1945,6 +1952,51 @@ class SelfImprovingAssistant(EmergenceMixin):
             if len(s) > 20 and ('является' in s or 'составляет' in s or 'равно' in s):
                 return s.strip()
         return None
+
+    # ---- ИСПРАВЛЕНИЕ: подключение к движку самоорганизации целей ----
+    def _self_organize(self, message: str):
+        """
+        Раньше SelfGoalEngine (agent_core.py) наблюдал сообщения только внутри
+        AutonomousAgent.chat(), который не вызывался из обычного /chat эндпоинта.
+        Из-за этого темы разговоров никогда не накапливались и автоцели
+        никогда не генерировались. Теперь каждое сообщение проходит через
+        SelfGoalEngine независимо от того, каким путём (get_response/stream_response)
+        оно обрабатывается.
+        """
+        agent = self.agent
+        if not agent:
+            return
+        try:
+            agent.goals.observe_message(message)
+            new_goals = agent.goals.generate_goals()
+            if new_goals:
+                logger.info(f"🎯 Автоцели из диалога: {[g.description[:50] for g in new_goals]}")
+                for goal in new_goals[:2]:
+                    agent._background_researcher.schedule(goal, agent)
+        except Exception as e:
+            logger.debug(f"Self-organize error: {e}")
+
+    # ---- ИСПРАВЛЕНИЕ: обучение эмбеддингов слов ----
+    def _update_vocab_embeddings(self, message: str, query_emb: np.ndarray, reward: float):
+        """
+        DynamicVocab.update_embedding()/update_quality() существовали, но нигде
+        не вызывались — эмбеддинги слов оставались случайными от инициализации
+        и никогда не обучались. Простое хеббовское правило: слово из сообщения
+        притягивается к вектору запроса при положительной награде и
+        отталкивается при отрицательной.
+        """
+        try:
+            words = {w for w in re.findall(r'\b\w+\b', message.lower()) if len(w) > 2}
+            for w in words:
+                idx = self.vocab.word2idx.get(w)
+                if idx is None:
+                    continue
+                word_emb = self.vocab.embeddings[idx]
+                grad = (word_emb - query_emb) * reward
+                self.vocab.update_embedding(w, grad, lr=VOCAB_LEARNING_RATE)
+                self.vocab.update_quality(w, max(0.0, (reward + 1) / 2))
+        except Exception as e:
+            logger.debug(f"Vocab update error: {e}")
 
 # ==================================================================
 # 🌐 FastAPI роутер (без изменений)

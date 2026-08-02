@@ -24,6 +24,7 @@ LM_STUDIO_STREAM_TIMEOUT = 500   # таймаут для стриминга (с�
 EMBEDDING_DIM = 128          # размерность эмбеддингов слов
 LATENT_DIM = 64              # размерность скрытого состояния подсознания
 LEARNING_RATE = 0.0005       # начальная скорость обучения
+VOCAB_LEARNING_RATE = 0.01   # скорость обучения эмбеддингов слов (Adam-шаг в DynamicVocab.update_embedding)
 REPLAY_BATCH_SIZE = 32       # размер батча для воспроизведения опыта
 REPLAY_FREQUENCY = 10        # частота вызова experience_replay
 
